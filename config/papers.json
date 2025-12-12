@@ -213,5 +213,210 @@
                 "url": "https://arxiv.org/abs/2404.03657"
             }
         ]
+    },
+    "linear_algebra_books": {
+        "description": "Linear Algebra - Foundational textbooks and materials on vectors, matrices, eigenvalues, and linear transformations",
+        "items": [
+            {
+                "title": "Introduction to Linear Algebra (Gilbert Strang, 5th Edition)",
+                "source": "https://math.mit.edu/~gs/linearalgebra/ila5/linearalgebra5_Front.pdf",
+                "split_method": "toc",
+                "notes": "Classic MIT textbook by Gilbert Strang. Covers fundamental concepts with clear explanations."
+            },
+            {
+                "title": "Linear Algebra Done Right (Sheldon Axler, 3rd Edition)",
+                "source": "https://linear.axler.net/LADR4e.pdf",
+                "split_method": "toc",
+                "notes": "Focuses on vector spaces and linear maps rather than matrices. Freely available from author's website."
+            }
+        ]
+    },
+    "calculus_books": {
+        "description": "Calculus & Analysis - Single and multivariable calculus, differential equations, and real analysis",
+        "items": [
+            {
+                "title": "Calculus (Gilbert Strang)",
+                "source": "https://ocw.mit.edu/ans7870/resources/Strang/Edited/Calculus/Calculus.pdf",
+                "split_method": "toc",
+                "notes": "Free calculus textbook from MIT OpenCourseWare. Comprehensive coverage of single and multivariable calculus."
+            },
+            {
+                "title": "APEX Calculus (Gregory Hartman et al.)",
+                "source": "https://www.apexcalculus.com/downloads/APEX_Calculus_Version_4.pdf",
+                "split_method": "toc",
+                "notes": "Free, open-source calculus textbook covering Calculus I, II, and III."
+            },
+            {
+                "title": "Vector Calculus (Michael Corral)",
+                "source": "https://www.mecmath.net/vcalc.pdf",
+                "split_method": "none",
+                "notes": "Focused treatment of vector calculus and multivariable topics. Shorter, more specialized text."
+            },
+            {
+                "title": "Elementary Differential Equations (William F. Trench)",
+                "source": "https://digitalcommons.trinity.edu/cgi/viewcontent.cgi?article=1007&context=mono",
+                "split_method": "toc",
+                "notes": "Comprehensive introduction to ordinary differential equations with many examples."
+            }
+        ]
+    },
+    "numerical_optimization_books": {
+        "description": "Numerical Methods & Optimization - Algorithms for optimization, numerical linear algebra, and computational methods",
+        "items": [
+            {
+                "title": "Numerical Optimization (Nocedal & Wright, 2nd Edition)",
+                "source": "https://www.csie.ntu.edu.tw/~r97002/temp/num_optimization.pdf",
+                "split_method": "manual",
+                "chapters": [
+                    {
+                        "name": "1. Introduction",
+                        "pages": [
+                            1,
+                            27
+                        ]
+                    },
+                    {
+                        "name": "2. Fundamentals of Unconstrained Optimization",
+                        "pages": [
+                            28,
+                            52
+                        ]
+                    },
+                    {
+                        "name": "3. Line Search Methods",
+                        "pages": [
+                            53,
+                            81
+                        ]
+                    },
+                    {
+                        "name": "4. Trust-Region Methods",
+                        "pages": [
+                            82,
+                            103
+                        ]
+                    },
+                    {
+                        "name": "5. Conjugate Gradient Methods",
+                        "pages": [
+                            104,
+                            139
+                        ]
+                    },
+                    {
+                        "name": "6. Quasi-Newton Methods",
+                        "pages": [
+                            140,
+                            175
+                        ]
+                    },
+                    {
+                        "name": "7. Large-Scale Unconstrained Optimization",
+                        "pages": [
+                            176,
+                            211
+                        ]
+                    },
+                    {
+                        "name": "8-10. Nonlinear Equations & Least Squares",
+                        "pages": [
+                            212,
+                            289
+                        ]
+                    },
+                    {
+                        "name": "11-12. Nonlinear Constraints",
+                        "pages": [
+                            290,
+                            395
+                        ]
+                    },
+                    {
+                        "name": "13-19. Advanced Topics",
+                        "pages": [
+                            396,
+                            636
+                        ]
+                    }
+                ],
+                "notes": "The standard reference for numerical optimization. Comprehensive and rigorous."
+            },
+            {
+                "title": "Convex Optimization (Boyd & Vandenberghe)",
+                "source": "https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf",
+                "split_method": "toc",
+                "notes": "Classic Stanford textbook on convex optimization. Essential for understanding modern ML optimization."
+            },
+            {
+                "title": "Algorithms for Optimization (Kochenderfer & Wheeler)",
+                "source": "https://algorithmsbook.com/optimization/files/optimization.pdf",
+                "split_method": "toc",
+                "notes": "Modern treatment with Julia code examples. Covers gradient-free and gradient-based methods."
+            },
+            {
+                "title": "Numerical Linear Algebra (Trefethen & Bau)",
+                "source": "https://people.maths.ox.ac.uk/trefethen/text.html",
+                "split_method": "none",
+                "notes": "Concise introduction to numerical methods for linear algebra. Note: Check if PDF is available; may need to find alternative source."
+            },
+            {
+                "title": "First-Order Methods in Optimization (Beck)",
+                "source": "https://archive.siam.org/books/mo25/mo25_ch1.pdf",
+                "split_method": "none",
+                "notes": "Sample chapter on gradient descent and related methods. Highly relevant for deep learning."
+            }
+        ]
+    },
+    "machine_learning_books": {
+        "description": "Machine Learning Theory - Foundational textbooks on statistical learning, pattern recognition, and ML theory",
+        "items": [
+            {
+                "title": "The Elements of Statistical Learning (Hastie, Tibshirani, Friedman)",
+                "source": "https://hastie.su.domains/ElemStatLearn/printings/ESLII_print12_toc.pdf",
+                "split_method": "toc",
+                "notes": "Classic Stanford textbook on statistical learning. Comprehensive coverage of traditional ML methods."
+            },
+            {
+                "title": "Pattern Recognition and Machine Learning (Bishop)",
+                "source": "https://www.microsoft.com/en-us/research/uploads/prod/2006/01/Bishop-Pattern-Recognition-and-Machine-Learning-2006.pdf",
+                "split_method": "toc",
+                "notes": "Comprehensive Bayesian approach to machine learning. Dense but authoritative."
+            },
+            {
+                "title": "Understanding Machine Learning: From Theory to Algorithms (Shalev-Shwartz & Ben-David)",
+                "source": "https://www.cs.huji.ac.il/~shais/UnderstandingMachineLearning/understanding-machine-learning-theory-algorithms.pdf",
+                "split_method": "toc",
+                "notes": "Theoretical foundations with focus on computational learning theory."
+            },
+            {
+                "title": "Mathematics for Machine Learning (Deisenroth, Faisal, Ong)",
+                "source": "https://mml-book.github.io/book/mml-book.pdf",
+                "split_method": "toc",
+                "notes": "Covers the mathematical foundations: linear algebra, analytic geometry, matrix decompositions, probability, and optimization."
+            }
+        ]
+    },
+    "deep_learning_books": {
+        "description": "Deep Learning - Comprehensive textbooks on neural networks, deep learning architectures, and modern techniques",
+        "items": [
+            {
+                "title": "Deep Learning (Goodfellow, Bengio, Courville)",
+                "source": "https://www.deeplearningbook.org/contents/TOC.html",
+                "split_method": "none",
+                "notes": "The definitive deep learning textbook. Note: Website provides HTML; PDF may need alternative source."
+            },
+            {
+                "title": "Neural Networks and Deep Learning (Michael Nielsen)",
+                "source": "http://static.latexstudio.net/article/2018/0912/neuralnetworksanddeeplearning.pdf",
+                "split_method": "none",
+                "notes": "Accessible introduction with interactive visualizations. Great for beginners."
+            },
+            {
+                "title": "Dive into Deep Learning (Zhang et al.)",
+                "source": "https://d2l.ai/d2l-en.pdf",
+                "split_method": "toc",
+                "notes": "Modern interactive book with code in PyTorch, TensorFlow, and JAX. Regularly updated."
+            }
+        ]
     }
 }
