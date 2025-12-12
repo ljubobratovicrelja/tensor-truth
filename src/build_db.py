@@ -13,27 +13,15 @@ import chromadb
 
 from rag_engine import get_embed_model
 
-# --- CONFIGURATION: MODULE MAP ---
-# Map a "Key" to a "Source Directory"
-# You can add as many as you want here.
-INDEX_REGISTRY = {
-    "pytorch": "./library_docs/pytorch_2.9",
-    "papers":  "./library_docs/papers",
-    # "numpy": "./library_docs/numpy_1.26",
-}
-
+SOURCE_DIR = "./library_docs"
 BASE_INDEX_DIR = "./indexes"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("BUILDER")
 
 def build_module(module_name):
-    if module_name not in INDEX_REGISTRY:
-        print(f"❌ Error: Module '{module_name}' not found in registry.")
-        print(f"Available modules: {list(INDEX_REGISTRY.keys())}")
-        return
 
-    source_dir = INDEX_REGISTRY[module_name]
+    source_dir = os.path.join(SOURCE_DIR, module_name)
     persist_dir = os.path.join(BASE_INDEX_DIR, module_name)
     
     print(f"\n--- BUILDING MODULE: {module_name} ---")

@@ -174,18 +174,18 @@
             },
             {
                 "title": "4D-Rotor Gaussian Splatting: Towards Efficient Novel View Synthesis for Dynamic Scenes",
-                "arxiv_id": "2403.10123",
-                "url": "https://arxiv.org/abs/2403.10123"
+                "arxiv_id": "2402.03307",
+                "url": "https://arxiv.org/abs/2402.03307"
             },
             {
                 "title": "GaussianForest: Hierarchical-Hybrid 3D Gaussian Splatting for Compressed Scene Modeling",
-                "arxiv_id": "2406.06216",
-                "url": "https://arxiv.org/abs/2406.06216"
+                "arxiv_id": "2406.08759",
+                "url": "https://arxiv.org/abs/2406.08759"
             },
             {
                 "title": "Relightable 3D Gaussian: Real-time Point Cloud Relighting with BRDF Decomposition and Ray Tracing",
-                "arxiv_id": "2311.18102",
-                "url": "https://arxiv.org/abs/2311.18102"
+                "arxiv_id": "2311.16043",
+                "url": "https://arxiv.org/abs/2311.16043"
             },
             {
                 "title": "GS-IR: 3D Gaussian Splatting for Inverse Rendering",
@@ -199,8 +199,8 @@
             },
             {
                 "title": "GaussianShader: 3D Gaussian Splatting with Shading Functions for Reflective Surfaces",
-                "arxiv_id": "2401.01201",
-                "url": "https://arxiv.org/abs/2401.01201"
+                "arxiv_id": "2311.17977",
+                "url": "https://arxiv.org/abs/2311.17977"
             },
             {
                 "title": "PBIR-GS: Physically-Based Inverse Rendering with 3D Gaussian Splatting",
