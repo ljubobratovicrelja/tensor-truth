@@ -42,7 +42,7 @@ def get_ollama_models():
             return sorted(models)
     except:
         pass
-    return ["deepseek-r1:14b"] 
+    return ["deepseek-r1:8b"] 
 
 def free_memory():
     if "engine" in st.session_state:
@@ -175,7 +175,8 @@ with st.sidebar:
             
             p = curr_sess.get("params", {})
             st.caption(f"Model: {p.get('model', 'Unknown')}")
-            st.caption(f"Temp: {p.get('temperature')} | Ctx: {p.get('context_window')}")
+            st.caption(f"Reranker: {p.get('reranker_model', 'Default')} (Top {p.get('reranker_top_n')})")
+            st.caption(f"Temp: {p.get('temperature')} | Ctx: {p.get('context_window')} | Conf: {p.get('confidence_cutoff')}")
             
             md_data = convert_chat_to_markdown(curr_sess)
             st.download_button("📥 Export to Markdown", md_data, f"{curr_sess['title'][:20]}.md", "text/markdown")
@@ -206,7 +207,7 @@ if st.session_state.mode == "setup":
         # Determine defaults
         default_model_idx = 0
         for i, m in enumerate(available_models):
-            if "deepseek-r1:14b" in m: default_model_idx = i
+            if "deepseek-r1:8b" in m: default_model_idx = i
         
         with st.form("new_chat_form"):
             st.markdown("### 🚀 Start a New Research Session")
@@ -224,6 +225,19 @@ if st.session_state.mode == "setup":
                     st.subheader("Model Selection")
                     selected_model = st.selectbox("LLM:", available_models, index=default_model_idx)
                     sys_prompt = st.text_area("System Instructions:", height=68, placeholder="Optional...")
+
+                st.subheader("3. Retrieval Strategy (Reranker)")
+                r1, r2, r3 = st.columns(3)
+                with r1:
+                    reranker_model = st.selectbox(
+                        "Reranker Model", 
+                        options=["BAAI/bge-reranker-v2-m3", "BAAI/bge-reranker-base", "cross-encoder/ms-marco-MiniLM-L-6-v2"],
+                        index=0
+                    )
+                with r2:
+                    top_n = st.number_input("Top N (Final Context)", min_value=1, max_value=20, value=3)
+                with r3:
+                    conf = st.slider("Confidence Cutoff", 0.0, 1.0, 0.3, 0.05)
 
                 st.subheader("Parameters")
                 c1, c2 = st.columns(2)
@@ -243,7 +257,10 @@ if st.session_state.mode == "setup":
                         "model": selected_model,
                         "temperature": temp, 
                         "context_window": ctx,
-                        "system_prompt": sys_prompt
+                        "system_prompt": sys_prompt,
+                        "reranker_model": reranker_model,
+                        "reranker_top_n": top_n,
+                        "confidence_cutoff": conf
                     }
                     create_session(selected_mods, params)
                     st.session_state.mode = "chat"
@@ -273,7 +290,7 @@ elif st.session_state.mode == "chat":
         
     session = st.session_state.chat_data["sessions"][current_id]
     modules = session.get("modules", [])
-    params = session.get("params", {"model": "deepseek-r1:8b", "temperature": 0.3, "context_window": 4096})
+    params = session.get("params", {"model": "deepseek-r1:8b", "temperature": 0.3, "context_window": 4096, "confidence_cutoff": 0.3})
     
     if modules:
         engine = ensure_engine_loaded(modules, params)
@@ -310,10 +327,24 @@ elif st.session_state.mode == "chat":
                 with st.spinner(f"Thinking ({params.get('model')})..."):
                     start_time = time.time()
                     response = engine.chat(prompt)
-                    raw_content = response.response
+
+                    if not response.source_nodes and response.response.strip() == "Empty Response":
+                        raw_content = (
+                            "I analyzed the knowledge base, but I could not find any documents "
+                            "with sufficient relevance to answer this query.\n\n"
+                            "I am strictly constrained to answer **only** from the provided context."
+                        )
+
+                        # Clear thought since we didn't run the model
+                        thought = None 
+                        answer = raw_content
+                    else:
+                        # Standard processing
+                        raw_content = response.response
+                        thought, answer = parse_thinking_response(raw_content)
+
                     elapsed = time.time() - start_time
                     
-                    thought, answer = parse_thinking_response(raw_content)
                     if thought:
                         with st.expander("💭 Thought Process", expanded=True): st.markdown(thought)
                     st.markdown(answer)

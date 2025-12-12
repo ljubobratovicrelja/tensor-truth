@@ -4,12 +4,12 @@ from llama_index.core import (
     load_index_from_storage,
     Settings,
     QueryBundle,
-    PromptTemplate  # <--- NEW IMPORT
 )
+
 from llama_index.core.chat_engine import CondensePlusContextChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core.retrievers import AutoMergingRetriever, BaseRetriever
-from llama_index.core.postprocessor import SentenceTransformerRerank
+from llama_index.core.postprocessor import SentenceTransformerRerank, SimilarityPostprocessor
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -42,10 +42,14 @@ def get_llm(params):
         system_prompt=user_system_prompt
     )
 
-def get_reranker():
+def get_reranker(params):
+    # Default to the high-precision BGE-M3 v2 if not specified
+    model = params.get("reranker_model", "BAAI/bge-reranker-v2-m3")
+    top_n = params.get("reranker_top_n", 3)
+    
     return SentenceTransformerRerank(
-        model="BAAI/bge-reranker-v2-m3", 
-        top_n=3,
+        model=model, 
+        top_n=top_n,
         device="cuda"
     )
 
@@ -68,6 +72,8 @@ def load_engine_for_modules(selected_modules, engine_params=None):
         raise ValueError("No modules selected!")
     
     if engine_params is None: engine_params = {}
+
+    similarity_cutoff = engine_params.get("confidence_cutoff", 0.0)
 
     active_retrievers = []
     print(f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} ---")
@@ -95,9 +101,14 @@ def load_engine_for_modules(selected_modules, engine_params=None):
     memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
     llm = get_llm(engine_params)
 
+    node_postprocessors = [get_reranker(engine_params)]
+
+    if similarity_cutoff > 0:
+        node_postprocessors.append(SimilarityPostprocessor(similarity_cutoff=similarity_cutoff))
+
     chat_engine = CondensePlusContextChatEngine.from_defaults(
         retriever=composite_retriever,
-        node_postprocessors=[get_reranker()],
+        node_postprocessors=node_postprocessors,
         llm=llm,
         memory=memory,
         condense_prompt=(
