@@ -153,9 +153,19 @@ Top 30 Influential Papers
 - arXiv:2201.05989 - Instant NGP: Accelerated neural graphics primitives for real-time rendering.
 - arXiv:1911.09070 - EfficientDet: Scaled object detection efficiently with compound scaling and BiFPN.
 - arXiv:1807.06521 - CBAM: Convolutional Block Attention Module.
+- arXiv:2310.08528 - 4D Gaussian Splatting for Real-Time Dynamic Scene Rendering: Extended 3DGS to dynamic scenes with temporal consistency.
+- arXiv:2309.13101 - Deformable 3D Gaussians: Introduced deformation fields for high-fidelity dynamic scene reconstruction.
+- arXiv:2311.18102 - Relightable 3D Gaussian: Enabled material decomposition and relighting in Gaussian representations.
+- arXiv:2311.12775 - GS-IR (3D Gaussian Splatting for Inverse Rendering): Decomposed materials and lighting for inverse rendering.
+- arXiv:2312.03203 - Relightable Gaussian Codec Avatars: Combined relightable avatars with efficient Gaussian representations.
+- arXiv:2401.01201 - GaussianShader: Achieved 3D-consistent appearance interpolation with Gaussians under varying lighting.
+- arXiv:2403.10123 - 4D-Rotor Gaussian Splatting: Improved dynamic scene modeling with rotational velocity parameterization.
+- arXiv:2406.06216 - GaussianForest: Hierarchical 4D Gaussian splatting for dynamic scenes with better scalability.
+- arXiv:2312.02121 - PBIR-GS: Physically-Based Inverse Rendering with Gaussian Splatting for material estimation.
+- arXiv:2404.03657 - Gaussian-SLAM: Real-time SLAM system using 3D Gaussian representations.
 
 Fetch paper command:
 
 ```bash
-python src/fetch_paper.py 1512.03385 1706.03762 1406.2661 1810.04805 2010.11929 1506.02640 1506.01497 1703.06870 2003.08934 2103.00020 2006.11239 1812.04948 1409.1556 1412.6980 1502.03167 2005.12872 1611.07004 1703.10593 1804.02767 1912.04958 1704.04861 1905.11946 2304.02643 2112.10752 2308.04079 1409.4842 2201.03545 2204.06125 2201.05989 1911.09070 1807.06521
+python src/fetch_paper.py 1512.03385 1706.03762 1406.2661 1810.04805 2010.11929 1506.02640 1506.01497 1703.06870 2003.08934 2103.00020 2006.11239 1812.04948 1409.1556 1412.6980 1502.03167 2005.12872 1611.07004 1703.10593 1804.02767 1912.04958 1704.04861 1905.11946 2304.02643 2112.10752 2308.04079 1409.4842 2201.03545 2204.06125 2201.05989 1911.09070 1807.06521 2310.08528 2309.13101 2311.18102 2311.12775 2312.03203 2401.01201 2403.10123 2406.06216 2312.02121 2404.03657
 ```

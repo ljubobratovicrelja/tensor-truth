@@ -3,7 +3,8 @@ from llama_index.core import (
     StorageContext,
     load_index_from_storage,
     Settings,
-    QueryBundle
+    QueryBundle,
+    PromptTemplate  # <--- NEW IMPORT
 )
 from llama_index.core.chat_engine import CondensePlusContextChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
@@ -25,14 +26,20 @@ def get_embed_model():
         embed_batch_size=16
     )
 
-# CHANGED: Now accepts dynamic params
 def get_llm(params):
+    model_name = params.get("model", "deepseek-r1:14b")
+    user_system_prompt = params.get("system_prompt", "").strip()
+    
     return Ollama(
-        model="deepseek-r1:14b", 
+        model=model_name, 
         request_timeout=300.0,
-        temperature=params.get("temperature", 0.1),
+        temperature=params.get("temperature", 0.3),
         context_window=params.get("context_window", 4096),
-        additional_kwargs={"num_ctx": params.get("context_window", 4096)}
+        additional_kwargs={
+            "num_ctx": params.get("context_window", 4096),
+            "options": {"num_predict": -1} # Prevent truncation
+        },
+        system_prompt=user_system_prompt
     )
 
 def get_reranker():
@@ -43,9 +50,7 @@ def get_reranker():
     )
 
 Settings.embedding_model = get_embed_model()
-# Note: Settings.llm will be overridden per-session now
 
-# --- CUSTOM COMPOSITE RETRIEVER ---
 class MultiIndexRetriever(BaseRetriever):
     def __init__(self, retrievers):
         self.retrievers = retrievers
@@ -58,22 +63,18 @@ class MultiIndexRetriever(BaseRetriever):
             combined_nodes.extend(nodes)
         return combined_nodes
 
-# CHANGED: Accepts engine_params
 def load_engine_for_modules(selected_modules, engine_params=None):
     if not selected_modules:
         raise ValueError("No modules selected!")
     
-    # Default params if none provided
-    if engine_params is None:
-        engine_params = {"temperature": 0.1, "context_window": 4096}
+    if engine_params is None: engine_params = {}
 
     active_retrievers = []
-    print(f"--- MOUNTING MODULES: {selected_modules} WITH PARAMS: {engine_params} ---")
+    print(f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} ---")
     
     for module in selected_modules:
         path = os.path.join(BASE_INDEX_DIR, module)
-        if not os.path.exists(path):
-            continue
+        if not os.path.exists(path): continue
             
         db = chromadb.PersistentClient(path=path)
         collection = db.get_or_create_collection("data")
@@ -92,8 +93,6 @@ def load_engine_for_modules(selected_modules, engine_params=None):
     composite_retriever = MultiIndexRetriever(active_retrievers)
     
     memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
-
-    # Initialize LLM with custom params
     llm = get_llm(engine_params)
 
     chat_engine = CondensePlusContextChatEngine.from_defaults(
