@@ -14,7 +14,6 @@ authors = [
 ]
 keywords = ["rag", "deepseek", "ollama", "pytorch", "llm", "local-ai"]
 
-# The Core Stack
 dependencies = [
     # --- Orchestration & RAG ---
     "llama-index>=0.10.0",
@@ -41,7 +40,9 @@ dependencies = [
     "markdownify",
     "sphobjinv",      # Essential for parsing Sphinx inventory files
     "tqdm",           # Progress bars
-]
+    "arxiv",
+    "pymupdf4llm",
+] # The Core Stack
 
 [project.optional-dependencies]
 # Tools for maintaining code quality if you expand the project

@@ -1,148 +1,216 @@
 import streamlit as st
 import sys
 import os
-import time
-import json  # NEW: Required for persistence
+import json
+import uuid
+from datetime import datetime
 
-# Add src to path
 sys.path.append(os.path.abspath("./src"))
-# IMPORT FROM NEW SHARED LIB
-from rag_engine import load_inference_index, get_query_engine
+from rag_engine import load_engine_for_modules
 
-# --- CONFIGURATION ---
-HISTORY_FILE = "chat_history.json"  # NEW: File path for persistence
+# --- CONFIG ---
+SESSIONS_FILE = "chat_sessions.json"
+INDEX_DIR = "./indexes"
 
-st.set_page_config(
-    page_title="Tensor-Truth", 
-    page_icon="⚡", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Tensor-Truth Modular", layout="wide", page_icon="⚡")
 
+# --- CSS FOR UI POLISH ---
 st.markdown("""
 <style>
+    .stButton button {
+        text-align: left;
+        padding-left: 10px;
+        width: 100%;
+    }
     .stChatMessage { padding: 1rem; border-radius: 10px; }
-    .stSpinner { margin-top: 2rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- PERSISTENCE FUNCTIONS (NEW) ---
-def load_history():
-    """Loads chat history from local JSON file."""
-    if os.path.exists(HISTORY_FILE):
+# --- HELPER: Scan Available Modules ---
+def get_available_modules():
+    if not os.path.exists(INDEX_DIR):
+        return []
+    return [d for d in os.listdir(INDEX_DIR) if os.path.isdir(os.path.join(INDEX_DIR, d))]
+
+# --- SESSION MANAGEMENT ---
+def load_sessions():
+    if os.path.exists(SESSIONS_FILE):
         try:
-            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception as e:
-            # If file is corrupted, return empty list
-            return []
-    return []
+        except: pass
+    return {"current_id": str(uuid.uuid4()), "sessions": {}}
 
-def save_history(messages):
-    """Saves current chat history to local JSON file."""
-    try:
-        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(messages, f, indent=2)
-    except Exception as e:
-        st.error(f"Failed to save history: {e}")
+def save_sessions():
+    with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
+        json.dump(st.session_state.chat_data, f, indent=2)
 
-# --- CACHED RESOURCE LOADING ---
-@st.cache_resource(show_spinner=False)
-def get_global_engine():
-    print("--- BOOTING APP ENGINE ---")
-    start_time = time.time()
-    
-    try:
-        # This now ONLY loads. It never builds.
-        index = load_inference_index() 
-        engine = get_query_engine(index)
-    except FileNotFoundError as e:
-        # Nice error message for the UI
-        st.error(f"🚨 Setup Required: {e}")
-        st.info("Run `python src/build_db.py` in your terminal first.")
-        st.stop()
-    
-    print(f"--- READY in {time.time() - start_time:.2f}s ---")
-    return engine
+def create_new_session():
+    new_id = str(uuid.uuid4())
+    st.session_state.chat_data["sessions"][new_id] = {
+        "title": "New Chat",
+        "created_at": str(datetime.now()),
+        "messages": []
+    }
+    st.session_state.chat_data["current_id"] = new_id
+    save_sessions()
 
-# --- SIDEBAR CONTROLS ---
-with st.sidebar:
-    st.header("⚡ Tensor-Truth")
-    st.caption(f"Running on: RTX 3090Ti")
-    
-    with st.status("System Status", expanded=True):
-        st.write("✅ **Embeddings:** BGE-M3 (GPU)")
-        st.write("✅ **LLM:** DeepSeek-R1:32b")
-        st.write("✅ **Vector DB:** Chroma (Persisted)")
-        st.write("✅ **History:** Auto-Saving") # NEW
-        
-    st.divider()
-    
-    # 2. Session Management
-    if st.button("🧹 Clear Chat History", use_container_width=True):
-        st.session_state.messages = []
-        save_history([]) # NEW: Clear the file on disk too!
+def update_title_if_new(session_id, user_message):
+    session = st.session_state.chat_data["sessions"][session_id]
+    if session.get("title") == "New Chat":
+        new_title = (user_message[:30] + '..') if len(user_message) > 30 else user_message
+        session["title"] = new_title
+        save_sessions()
+
+def rename_session(new_title):
+    current_id = st.session_state.chat_data["current_id"]
+    if current_id in st.session_state.chat_data["sessions"]:
+        st.session_state.chat_data["sessions"][current_id]["title"] = new_title
+        save_sessions()
         st.rerun()
 
-    st.info("💡 **Note:** History is now saved to disk. It will survive app restarts.")
+# --- INITIALIZATION ---
+if "chat_data" not in st.session_state:
+    st.session_state.chat_data = load_sessions()
 
-# --- MAIN APP LOGIC ---
+# Ensure valid current_id
+if not st.session_state.chat_data.get("current_id"):
+    create_new_session()
 
-# 1. Load Engine
-try:
-    with st.spinner("Connecting to Neural Core..."):
-        query_engine = get_global_engine()
-except Exception as e:
-    st.error(f"Critical Error: {e}")
+# State for Engine
+if "engine" not in st.session_state:
+    st.session_state.engine = None
+if "active_modules" not in st.session_state:
+    st.session_state.active_modules = []
+
+# ==========================================
+# SIDEBAR: CONFIGURATION
+# ==========================================
+with st.sidebar:
+    st.header("⚡ Tensor-Truth")
+    
+    # 1. Module Selector
+    with st.expander("📚 Knowledge Base", expanded=True):
+        available = get_available_modules()
+        if not available:
+            st.error("No indices found! Run `build_db.py` first.")
+        
+        selected = st.multiselect(
+            "Select Active Contexts:", 
+            available, 
+            default=available 
+        )
+        
+        if st.button("🚀 Load / Reload Engine", type="primary"):
+            with st.spinner("Mounting Vector Databases..."):
+                try:
+                    st.session_state.engine = load_engine_for_modules(selected)
+                    st.session_state.active_modules = selected
+                    st.success("Engine Online!")
+                except Exception as e:
+                    st.error(f"Failed: {e}")
+
+    st.divider()
+    
+    # 2. Current Chat Management (Rename / Delete)
+    # We get the current session title safely
+    current_id = st.session_state.chat_data.get("current_id")
+    if current_id and current_id in st.session_state.chat_data["sessions"]:
+        current_title = st.session_state.chat_data["sessions"][current_id].get("title", "Untitled")
+        
+        with st.expander("⚙️ Active Chat Settings", expanded=False):
+            # Rename Input
+            new_title = st.text_input("Rename Chat:", value=current_title)
+            if st.button("Update Title"):
+                rename_session(new_title)
+            
+            # Delete Button
+            st.markdown("---")
+            if st.button("🗑️ Delete This Chat", type="secondary"):
+                del st.session_state.chat_data["sessions"][current_id]
+                remaining = list(st.session_state.chat_data["sessions"].keys())
+                st.session_state.chat_data["current_id"] = remaining[-1] if remaining else None
+                save_sessions()
+                st.rerun()
+
+    st.divider()
+
+    # 3. History List
+    st.subheader("🗂️ History")
+    
+    if st.button("➕ New Chat", use_container_width=True):
+        create_new_session()
+        st.rerun()
+
+    # List Sessions
+    session_ids = list(st.session_state.chat_data["sessions"].keys())
+    current_id = st.session_state.chat_data["current_id"]
+
+    for sess_id in reversed(session_ids):
+        sess = st.session_state.chat_data["sessions"][sess_id]
+        title = sess.get("title", "Untitled")
+        
+        if sess_id == current_id:
+            st.button(f"📂 {title}", key=sess_id, disabled=True, use_container_width=True)
+        else:
+            if st.button(f"📄 {title}", key=sess_id, use_container_width=True):
+                st.session_state.chat_data["current_id"] = sess_id
+                st.rerun()
+    
+    # Nuke Button at the very bottom
+    if st.button("🔥 Nuke All History"):
+        st.session_state.chat_data = {"current_id": None, "sessions": {}}
+        if os.path.exists(SESSIONS_FILE): os.remove(SESSIONS_FILE)
+        st.rerun()
+
+# ==========================================
+# MAIN PAGE
+# ==========================================
+
+# 1. Check if Engine is Loaded
+if st.session_state.engine is None:
+    st.title("⚡ Tensor-Truth")
+    st.info("👈 Please select your modules in the sidebar and click 'Load Engine' to start.")
     st.stop()
 
-# 2. Load Chat History (UPDATED)
-if "messages" not in st.session_state:
-    # Try to load from disk first
-    st.session_state.messages = load_history()
+# 2. Get Current Session
+current_id = st.session_state.chat_data.get("current_id")
+if not current_id or current_id not in st.session_state.chat_data["sessions"]:
+    create_new_session()
+    st.rerun()
 
-# 3. Display Chat
-st.title("Local RAG Interface")
-if not st.session_state.messages:
-    st.markdown("👋 _Ready. Ask about PyTorch, NumPy, or your indexed libraries._")
+session = st.session_state.chat_data["sessions"][current_id]
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# 3. Render Header
+st.title(f"{session.get('title', 'New Chat')}")
+st.caption(f"Active Contexts: {', '.join(st.session_state.active_modules)}")
 
-# 4. Input & Processing
-if prompt := st.chat_input("How do I..."):
-    # Append User Msg
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    save_history(st.session_state.messages) # NEW: Save immediately
-    
+# 4. Render History
+for msg in session["messages"]:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# 5. Handle Input
+if prompt := st.chat_input("Ask..."):
+    update_title_if_new(current_id, prompt)
+
     with st.chat_message("user"):
         st.markdown(prompt)
-
-    # Generate Response
+    
+    session["messages"].append({"role": "user", "content": prompt})
+    save_sessions()
+    
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        
-        try:
-            with st.spinner("DeepSeek is thinking..."):
-                response = query_engine.query(prompt)
-                
-                full_response = response.response
-                message_placeholder.markdown(full_response)
-                
-                with st.expander("🔍 Source Context (Reranked)"):
-                    for i, node in enumerate(response.source_nodes):
-                        score = node.score if node.score else 0.0
-                        color = "green" if score > 0.7 else "orange"
-                        
-                        st.markdown(f"**Node {i+1}** (Score: :{color}[{score:.3f}])")
-                        st.caption(f"File: `{node.metadata.get('file_name', 'Unknown')}`")
-                        st.code(node.node.get_content()[:400] + "...", language="python")
-                        st.divider()
-
-            # Append Assistant Msg
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            save_history(st.session_state.messages) # NEW: Save immediately
-
-        except Exception as e:
-            st.error(f"Generation Error: {e}")
+        with st.spinner("Thinking..."):
+            response = st.session_state.engine.chat(prompt)
+            st.markdown(response.response)
+            
+            if response.source_nodes:
+                with st.expander("Src"):
+                    for node in response.source_nodes:
+                        st.caption(f"{node.metadata.get('file_name')} ({node.score:.2f})")
+            
+            session["messages"].append({"role": "assistant", "content": response.response})
+            save_sessions()
+            
+    st.rerun()

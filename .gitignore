@@ -211,5 +211,7 @@ venv/
 
 library_docs/
 chroma_db/
+indexes/
 
 chat_history.json
+chat_sessions.json
