@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tensor-truth"
+version = "0.1.0"
+description = "Local RAG pipeline for fixing LLM hallucinations using high-precision documentation indexing."
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "Private" }
+authors = [
+    { name = "Relja Ljubobratovic", email = "ljubobratovic.relja@gmail.com" },
+]
+keywords = ["rag", "deepseek", "ollama", "pytorch", "llm", "local-ai"]
+
+# The Core Stack
+dependencies = [
+    # --- Orchestration & RAG ---
+    "llama-index>=0.10.0",
+    "llama-index-core",
+    "llama-index-llms-ollama",
+    "llama-index-embeddings-huggingface",
+    "llama-index-vector-stores-chroma",
+    "llama-index-readers-file",
+
+    # --- Vector Database ---
+    "chromadb>=1.3.5",
+
+    # --- ML / Embeddings (GPU Support) ---
+    # Note: Torch often defaults to CPU on pip install. 
+    # Ensure your venv has the CUDA version installed.
+    "torch=>2.9",
+    "transformers",
+    "hf_xet>=1.2.00",
+    "sentence-transformers",
+
+    # --- Documentation Scraper ---
+    "requests",
+    "beautifulsoup4",
+    "markdownify",
+    "sphobjinv",      # Essential for parsing Sphinx inventory files
+    "tqdm",           # Progress bars
+]
+
+[project.optional-dependencies]
+# Tools for maintaining code quality if you expand the project
+dev = [
+    "black",     # Formatter
+    "ruff",      # Linter
+    "pytest",    # Testing
+    "ipykernel", # Jupyter support for experimentation
+]
+
+[tool.setuptools.packages.find]
+where = ["src"] # Tells python that your code lives in 'src/'
+
+# Tool Configurations
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.black]
+line-length = 88

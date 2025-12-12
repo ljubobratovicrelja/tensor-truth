@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+venv/
+
+library_docs/
+chroma_db/
+
+chat_history.json
