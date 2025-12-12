@@ -5,7 +5,6 @@ from llama_index.core import (
     Settings,
     QueryBundle
 )
-# CHANGED: Import Chat Engine components
 from llama_index.core.chat_engine import CondensePlusContextChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core.retrievers import AutoMergingRetriever, BaseRetriever
@@ -26,13 +25,14 @@ def get_embed_model():
         embed_batch_size=16
     )
 
-def get_llm(context_window=4096):
+# CHANGED: Now accepts dynamic params
+def get_llm(params):
     return Ollama(
         model="deepseek-r1:14b", 
         request_timeout=300.0,
-        temperature=0.1,
-        context_window=context_window,
-        additional_kwargs={"num_ctx": context_window}
+        temperature=params.get("temperature", 0.1),
+        context_window=params.get("context_window", 4096),
+        additional_kwargs={"num_ctx": params.get("context_window", 4096)}
     )
 
 def get_reranker():
@@ -43,7 +43,7 @@ def get_reranker():
     )
 
 Settings.embedding_model = get_embed_model()
-Settings.llm = get_llm()
+# Note: Settings.llm will be overridden per-session now
 
 # --- CUSTOM COMPOSITE RETRIEVER ---
 class MultiIndexRetriever(BaseRetriever):
@@ -58,12 +58,17 @@ class MultiIndexRetriever(BaseRetriever):
             combined_nodes.extend(nodes)
         return combined_nodes
 
-def load_engine_for_modules(selected_modules):
+# CHANGED: Accepts engine_params
+def load_engine_for_modules(selected_modules, engine_params=None):
     if not selected_modules:
         raise ValueError("No modules selected!")
+    
+    # Default params if none provided
+    if engine_params is None:
+        engine_params = {"temperature": 0.1, "context_window": 4096}
 
     active_retrievers = []
-    print(f"--- MOUNTING MODULES: {selected_modules} ---")
+    print(f"--- MOUNTING MODULES: {selected_modules} WITH PARAMS: {engine_params} ---")
     
     for module in selected_modules:
         path = os.path.join(BASE_INDEX_DIR, module)
@@ -86,16 +91,16 @@ def load_engine_for_modules(selected_modules):
 
     composite_retriever = MultiIndexRetriever(active_retrievers)
     
-    # --- CHANGED: Return a CHAT Engine instead of a Query Engine ---
-    # Memory Buffer: Holds the last 4 turns of conversation
     memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
+
+    # Initialize LLM with custom params
+    llm = get_llm(engine_params)
 
     chat_engine = CondensePlusContextChatEngine.from_defaults(
         retriever=composite_retriever,
         node_postprocessors=[get_reranker()],
-        llm=get_llm(),
+        llm=llm,
         memory=memory,
-        # This prompt tells the model how to rewrite the user's question
         condense_prompt=(
             "Given the following conversation between a user and an AI assistant and a follow up question from user, "
             "rephrase the follow up question to be a standalone question.\n\n"
