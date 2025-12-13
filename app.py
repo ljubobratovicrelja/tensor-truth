@@ -6,7 +6,8 @@ import uuid
 import gc
 import torch
 import time
-import requests 
+import requests
+import tarfile
 from datetime import datetime
 
 sys.path.append(os.path.abspath("./src"))
@@ -18,6 +19,7 @@ SESSIONS_FILE = "chat_sessions.json"
 PRESETS_FILE = "presets.json"
 INDEX_DIR = "./indexes"
 MAX_VRAM_GB = 24.0  # RTX 3090 Ti Limit (Configurable)
+GDRIVE_LINK = "https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing"  # Replace with actual Google Drive share link
 
 st.set_page_config(page_title="Tensor-Truth", layout="wide", page_icon="⚡")
 
@@ -32,6 +34,53 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- HELPERS ---
+
+def download_and_extract_indexes():
+    """
+    Check if indexes directory is empty or missing.
+    If so, download tarball from Google Drive, extract it, and clean up.
+    """
+    # Check if indexes directory exists and has content
+    needs_download = False
+
+    if not os.path.exists(INDEX_DIR):
+        needs_download = True
+        os.makedirs(INDEX_DIR, exist_ok=True)
+    elif not os.listdir(INDEX_DIR):
+        needs_download = True
+
+    if not needs_download:
+        return
+
+    tarball_path = "indexes.tar"
+
+    try:
+        # Check if gdown is available
+        try:
+            import gdown
+        except ImportError:
+            st.warning("⚠️ gdown library not installed. Install with: pip install gdown")
+            return
+
+        with st.spinner("📥 Downloading indexes from Google Drive (this may take a few minutes)..."):
+            # Download using gdown (handles Google Drive's quirks automatically)
+            gdown.download(GDRIVE_LINK, tarball_path, quiet=False, fuzzy=True)
+
+        with st.spinner("📦 Extracting indexes..."):
+            # Extract tarball to root directory (tar already contains indexes/ folder)
+            with tarfile.open(tarball_path, 'r:') as tar:
+                tar.extractall(path=".")
+
+        # Clean up tarball
+        os.remove(tarball_path)
+
+        st.success("✅ Indexes downloaded and extracted successfully!")
+
+    except Exception as e:
+        st.error(f"❌ Error downloading/extracting indexes: {e}")
+        # Clean up partial download
+        if os.path.exists(tarball_path):
+            os.remove(tarball_path)
 
 @st.cache_data(ttl=10)
 def get_available_modules():
@@ -468,6 +517,9 @@ def process_command(prompt, session):
     return True, response_msg
 
 # --- INITIALIZATION ---
+# Download indexes from Google Drive if directory is empty or missing
+download_and_extract_indexes()
+
 if "chat_data" not in st.session_state: st.session_state.chat_data = load_sessions()
 if "mode" not in st.session_state: st.session_state.mode = "setup"
 if "loaded_config" not in st.session_state: st.session_state.loaded_config = None

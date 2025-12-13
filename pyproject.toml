@@ -29,19 +29,24 @@ dependencies = [
     # --- ML / Embeddings (GPU Support) ---
     # Note: Torch often defaults to CPU on pip install. 
     # Ensure your venv has the CUDA version installed.
-    "torch=>2.9",
+    "torch>=2.0",
     "transformers",
-    "hf_xet>=1.2.00",
     "sentence-transformers",
+
+    # --- Web App ---
+    "streamlit",
+    "watchdog",  # For auto-reloading during development
 
     # --- Documentation Scraper ---
     "requests",
+    "semanticscholar",
     "beautifulsoup4",
     "markdownify",
     "sphobjinv",      # Essential for parsing Sphinx inventory files
     "tqdm",           # Progress bars
     "arxiv",
     "pymupdf4llm",
+    "gdown",          # Google Drive downloads
 ] # The Core Stack
 
 [project.optional-dependencies]
