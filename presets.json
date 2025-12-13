@@ -1,0 +1,18 @@
+{
+  "DL Research Assistant": {
+    "modules": [
+      "deep_learning_books",
+      "machine_learning_books",
+      "dl_foundations"
+    ],
+    "model": "deepseek-r1:14b",
+    "reranker_model": "BAAI/bge-reranker-v2-m3",
+    "context_window": 8192,
+    "temperature": 0.6,
+    "reranker_top_n": 5,
+    "confidence_cutoff": 0.0,
+    "system_prompt": "",
+    "rag_device": "cpu",
+    "llm_device": "gpu"
+  }
+}
