@@ -98,7 +98,6 @@ def apply_preset(name, available_mods, available_models, available_devices):
     p = presets[name]
     
     # Update Session State Keys directly
-    # Validation: Ensure referenced items still exist
     
     # 1. Modules
     valid_mods = [m for m in p.get("modules", []) if m in available_mods]
@@ -186,7 +185,7 @@ def estimate_vram_usage(model_name, num_indices, context_window, rag_device, llm
     if llm_device == "cpu":
         llm_size = 0.0
     else:
-        name = model_name.lower()
+        name = model_name.lower() if model_name else ""
         if "70b" in name: llm_size = 40.0
         elif "32b" in name: llm_size = 19.0
         elif "14b" in name: llm_size = 9.5
@@ -492,7 +491,7 @@ with st.sidebar:
             p = curr_sess.get("params", {})
             mods = curr_sess.get("modules", [])
             
-            # Dynamic Gauge
+            # Dynamic Gauge (Outside form in chat mode, ok)
             render_vram_gauge(
                 p.get('model', 'Unknown'), 
                 len(mods), 
@@ -558,6 +557,7 @@ if st.session_state.mode == "setup":
             st.session_state.setup_top_n = 3
             st.session_state.setup_conf = 0.3
             st.session_state.setup_sys_prompt = ""
+            # Default RAG to CPU
             st.session_state.setup_rag_device = "cpu" if "cpu" in system_devices else "cuda"
             st.session_state.setup_llm_device = "gpu"
             st.session_state.setup_init = True
@@ -580,57 +580,113 @@ if st.session_state.mode == "setup":
                         delete_preset(selected_preset)
                         st.rerun()
 
-        # --- SELECTION AREA ---
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.subheader("1. Knowledge Base")
-            selected_mods = st.multiselect("Active Indices:", available_mods, key="setup_mods")
-        
-        with col_b:
-            st.subheader("2. Model Selection")
-            if available_models:
-                selected_model = st.selectbox("LLM:", available_models, key="setup_model")
-            else:
-                st.error("No models found in Ollama.")
-                selected_model = "None"
+        # --- FORM WRAPPER FOR STABILITY ---
+        with st.form("launch_form"):
+            # --- SELECTION AREA ---
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.subheader("1. Knowledge Base")
+                selected_mods = st.multiselect("Active Indices:", available_mods, key="setup_mods")
             
-        st.subheader("3. RAG Parameters")
-        p1, p2, p3 = st.columns(3)
-        with p1:
-            reranker_model = st.selectbox(
-                "Reranker", 
-                options=["BAAI/bge-reranker-v2-m3", "BAAI/bge-reranker-base", "cross-encoder/ms-marco-MiniLM-L-6-v2"],
-                key="setup_reranker"
+            with col_b:
+                st.subheader("2. Model Selection")
+                if available_models:
+                    selected_model = st.selectbox("LLM:", available_models, key="setup_model")
+                else:
+                    st.error("No models found in Ollama.")
+                    selected_model = "None"
+                
+            st.subheader("3. RAG Parameters")
+            p1, p2, p3 = st.columns(3)
+            with p1:
+                reranker_model = st.selectbox(
+                    "Reranker", 
+                    options=["BAAI/bge-reranker-v2-m3", "BAAI/bge-reranker-base", "cross-encoder/ms-marco-MiniLM-L-6-v2"],
+                    key="setup_reranker"
+                )
+            with p2:
+                ctx = st.select_slider("Context Window", options=[2048, 4096, 8192, 16384, 32768], key="setup_ctx")
+            with p3:
+                temp = st.slider("Temperature", 0.0, 1.0, step=0.1, key="setup_temp")
+
+            # Persist expander state
+            if "expander_open" not in st.session_state: st.session_state.expander_open = False
+            
+            # Using custom callback to toggle expander state logic not possible easily with st.expander,
+            # but wrapping in form essentially freezes it anyway until submit.
+            # We just leave it as standard expander, the form prevents the 'close on slider' behavior.
+            with st.expander("Advanced Settings"):
+                top_n = st.number_input("Top N (Final Context)", min_value=1, max_value=20, key="setup_top_n")
+                conf = st.slider("Confidence Cutoff", 0.0, 1.0, step=0.05, key="setup_conf")
+                sys_prompt = st.text_area("System Instructions:", height=68, placeholder="Optional...", key="setup_sys_prompt")
+                
+                st.markdown("#### Hardware Allocation")
+                h1, h2 = st.columns(2)
+                
+                with h1:
+                    rag_device = st.selectbox(
+                        "Pipeline Device (Embed/Rerank)", 
+                        options=system_devices, 
+                        help="Run Retrieval on specific hardware. CPU saves VRAM but is slower.",
+                        key="setup_rag_device"
+                    )
+                with h2:
+                    llm_device = st.selectbox(
+                        "Model Device (Ollama)",
+                        options=["gpu", "cpu"],
+                        help="Force Ollama to run on CPU to save VRAM for other tasks.",
+                        key="setup_llm_device"
+                    )
+
+            st.markdown("---")
+            
+            # VRAM GAUGE (Inside Form = Updates on Submit)
+            st.caption("Click 'Refresh Estimate' to update resource calculation based on current form selections.")
+            
+            # Use session state values for the gauge to ensure it persists visual state
+            # Note: inside form, we see current session state, but new widget values aren't committed to it until submit.
+            # So the gauge will always lag one step behind unless we rely on submit.
+            vram_est = render_vram_gauge(
+                st.session_state.setup_model, 
+                len(st.session_state.setup_mods), 
+                st.session_state.setup_ctx, 
+                st.session_state.setup_rag_device, 
+                st.session_state.setup_llm_device
             )
-        with p2:
-            ctx = st.select_slider("Context Window", options=[2048, 4096, 8192, 16384, 32768], key="setup_ctx")
-        with p3:
-            temp = st.slider("Temperature", 0.0, 1.0, step=0.1, key="setup_temp")
-
-        with st.expander("Advanced Settings"):
-            top_n = st.number_input("Top N (Final Context)", min_value=1, max_value=20, key="setup_top_n")
-            conf = st.slider("Confidence Cutoff", 0.0, 1.0, step=0.05, key="setup_conf")
-            sys_prompt = st.text_area("System Instructions:", height=68, placeholder="Optional...", key="setup_sys_prompt")
             
-            st.markdown("#### Hardware Allocation")
-            h1, h2 = st.columns(2)
-            
-            with h1:
-                rag_device = st.selectbox(
-                    "Pipeline Device (Embed/Rerank)", 
-                    options=system_devices, 
-                    help="Run Retrieval on specific hardware. CPU saves VRAM but is slower.",
-                    key="setup_rag_device"
-                )
-            with h2:
-                llm_device = st.selectbox(
-                    "Model Device (Ollama)",
-                    options=["gpu", "cpu"],
-                    help="Force Ollama to run on CPU to save VRAM for other tasks.",
-                    key="setup_llm_device"
-                )
+            c_btn1, c_btn2 = st.columns([1, 1])
+            with c_btn1:
+                submitted_check = st.form_submit_button("🔄 Refresh Estimate", use_container_width=True)
+            with c_btn2:
+                submitted_start = st.form_submit_button("🚀 Start Session", type="primary", use_container_width=True)
 
-        # --- SAVE PRESET SECTION ---
+            if submitted_check:
+                # Just doing this triggers a rerun, updating session_state with new values, 
+                # which then redraws the gauge above with correct data.
+                pass
+
+            if submitted_start:
+                if not selected_mods:
+                    st.error("Please select at least one index.")
+                elif vram_est > (MAX_VRAM_GB + 4.0): 
+                    st.error(f"Config is extremely heavy ({vram_est:.1f}GB). Reduce parameters.")
+                else:
+                    params = {
+                        "model": selected_model,
+                        "temperature": temp, 
+                        "context_window": ctx,
+                        "system_prompt": sys_prompt,
+                        "reranker_model": reranker_model,
+                        "reranker_top_n": top_n,
+                        "confidence_cutoff": conf,
+                        "rag_device": rag_device,
+                        "llm_device": llm_device
+                    }
+                    create_session(selected_mods, params)
+                    st.session_state.mode = "chat"
+                    st.rerun()
+
+        # --- SAVE PRESET SECTION (Outside form to allow name typing without submit) ---
         with st.expander("💾 Save Configuration as Preset"):
             col_s1, col_s2 = st.columns([3, 1])
             with col_s1:
@@ -640,50 +696,23 @@ if st.session_state.mode == "setup":
                 st.write("") 
                 if st.button("Save", use_container_width=True):
                     if new_preset_name:
+                        # Grab values from session state since they are bound to widgets
                         config_to_save = {
-                            "modules": selected_mods,
-                            "model": selected_model,
-                            "reranker_model": reranker_model,
-                            "context_window": ctx,
-                            "temperature": temp,
-                            "reranker_top_n": top_n,
-                            "confidence_cutoff": conf,
-                            "system_prompt": sys_prompt,
-                            "rag_device": rag_device,
-                            "llm_device": llm_device
+                            "modules": st.session_state.setup_mods,
+                            "model": st.session_state.setup_model,
+                            "reranker_model": st.session_state.setup_reranker,
+                            "context_window": st.session_state.setup_ctx,
+                            "temperature": st.session_state.setup_temp,
+                            "reranker_top_n": st.session_state.setup_top_n,
+                            "confidence_cutoff": st.session_state.setup_conf,
+                            "system_prompt": st.session_state.setup_sys_prompt,
+                            "rag_device": st.session_state.setup_rag_device,
+                            "llm_device": st.session_state.setup_llm_device
                         }
                         save_preset(new_preset_name, config_to_save)
                         st.success(f"Saved: {new_preset_name}")
                         time.sleep(1)
                         st.rerun()
-
-        # --- VRAM ESTIMATION ---
-        st.markdown("---")
-        vram_est = render_vram_gauge(selected_model, len(selected_mods), ctx, rag_device, llm_device)
-
-        st.markdown("---")
-        
-        # MAIN ACTION BUTTON
-        if st.button("Start Session", type="primary", use_container_width=True):
-            if not selected_mods:
-                st.error("Please select at least one index.")
-            elif vram_est > (MAX_VRAM_GB + 4.0): # Slight buffer for CPU overflow logic
-                st.error(f"Config is extremely heavy ({vram_est:.1f}GB). Reduce parameters.")
-            else:
-                params = {
-                    "model": selected_model,
-                    "temperature": temp, 
-                    "context_window": ctx,
-                    "system_prompt": sys_prompt,
-                    "reranker_model": reranker_model,
-                    "reranker_top_n": top_n,
-                    "confidence_cutoff": conf,
-                    "rag_device": rag_device,
-                    "llm_device": llm_device
-                }
-                create_session(selected_mods, params)
-                st.session_state.mode = "chat"
-                st.rerun()
 
     with tab_ingest:
         st.subheader("Add Papers to Library")
