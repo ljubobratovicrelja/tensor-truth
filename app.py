@@ -31,14 +31,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- HELPERS ---
+
+@st.cache_data(ttl=10)
 def get_available_modules():
     if not os.path.exists(INDEX_DIR): return []
     return sorted([d for d in os.listdir(INDEX_DIR) if os.path.isdir(os.path.join(INDEX_DIR, d))])
 
+@st.cache_data(ttl=60)
 def get_ollama_models():
     """Fetches list of available models from local Ollama instance."""
     try:
-        response = requests.get("http://localhost:11434/api/tags")
+        response = requests.get("http://localhost:11434/api/tags", timeout=1)
         if response.status_code == 200:
             models = [m["name"] for m in response.json()["models"]]
             return sorted(models)
@@ -53,6 +56,7 @@ def free_memory():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
+@st.cache_data(ttl=2, show_spinner=False)
 def get_vram_breakdown():
     """
     Returns detailed VRAM stats:
@@ -73,7 +77,8 @@ def get_vram_breakdown():
         
         # 3. Ollama Usage (External process)
         ollama_usage_gb = 0.0
-        active_models = get_running_models() # From utils
+        # This calls requests.get, so it's good we are caching this function now
+        active_models = get_running_models() 
         for m in active_models:
             # m['size_vram'] is like "4.8 GB"
             try:
