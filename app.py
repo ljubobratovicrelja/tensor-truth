@@ -291,42 +291,89 @@ def ensure_engine_loaded(target_modules, target_params):
             st.error(f"Startup Failed: {e}")
             st.stop()
 
+def ensure_title_model_available():
+    """Ensures the title generation model is available, pulling it if necessary."""
+    title_model = "qwen2.5:0.5b"
+
+    try:
+        # Check if model exists
+        resp = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if resp.status_code == 200:
+            models = [m["name"] for m in resp.json().get("models", [])]
+            if title_model in models:
+                return True
+
+        # Model not found, pull it
+        print(f"[Title Gen] Model {title_model} not found, pulling...")
+        pull_payload = {"name": title_model, "stream": False}
+        pull_resp = requests.post("http://localhost:11434/api/pull", json=pull_payload, timeout=120)
+
+        if pull_resp.status_code == 200:
+            print(f"[Title Gen] Successfully pulled {title_model}")
+            return True
+        else:
+            print(f"[Title Gen] Failed to pull model: {pull_resp.status_code}")
+            return False
+    except Exception as e:
+        print(f"[Title Gen] Error checking/pulling model: {e}")
+        return False
+
 def generate_smart_title(text, model_name):
     """
-    Uses the local LLM to generate a concise title.
+    Uses a small, dedicated LLM to generate a concise title.
+    Loads a tiny model (qwen2.5:0.5b), generates title, then unloads it.
     Returns the generated title or a truncated fallback.
     """
+    # Use a tiny, fast model for title generation
+    title_model = "qwen2.5:0.5b"
+
+    # Ensure model is available (pull if needed)
+    if not ensure_title_model_available():
+        print(f"[Title Gen] Model unavailable, using fallback")
+        return (text[:30] + '..') if len(text) > 30 else text
+
     try:
         # Prompt designed to minimize fluff
         prompt = f"Summarize this query into a concise 3-5 word title. Return ONLY the title text, no quotes. Query: {text}"
-        
+
         payload = {
-            "model": model_name,
+            "model": title_model,
             "prompt": prompt,
             "stream": False,
             "options": {
-                "num_ctx": 1024, # Low context for speed
-                "num_predict": 20 # Short answer
-            }
+                "num_ctx": 512,  # Minimal context
+                "num_predict": 15,  # Short answer
+                "temperature": 0.3
+            },
+            "keep_alive": 0  # Unload immediately after generation
         }
-        
+
         # Direct API call to avoid spinning up full engine logic
-        resp = requests.post("http://localhost:11434/api/generate", json=payload, timeout=5)
+        resp = requests.post("http://localhost:11434/api/generate", json=payload, timeout=10)
         if resp.status_code == 200:
             raw = resp.json().get("response", "")
-            
+
             # Clean reasoning traces if model uses them (e.g. DeepSeek-R1)
             _, clean = parse_thinking_response(raw)
-            
+
             # Final cleanup
             title = clean.replace('"', '').replace("'", "").replace(".", "").strip()
             if title:
+                print(f"[Title Gen] Success: '{title}'")
                 return title
+            else:
+                print(f"[Title Gen] Empty response after cleanup. Raw: {raw[:100]}")
+        else:
+            print(f"[Title Gen] API returned status {resp.status_code}")
+    except requests.exceptions.Timeout:
+        print(f"[Title Gen] Timeout after 10s")
+    except requests.exceptions.ConnectionError:
+        print(f"[Title Gen] Connection error - is Ollama running?")
     except Exception as e:
-        # Silently fail to fallback
-        pass
-    
+        print(f"[Title Gen] Error: {type(e).__name__}: {str(e)}")
+
     # Fallback
+    print(f"[Title Gen] Using fallback: '{text[:30]}...'")
     return (text[:30] + '..') if len(text) > 30 else text
 
 # --- SESSION MGMT ---
@@ -537,11 +584,6 @@ with st.sidebar:
         curr_sess = st.session_state.chat_data["sessions"][curr_id]
         
         with st.expander("⚙️ Session Settings", expanded=True):
-            # FIX: Removed automatic render_vram_gauge here to prevent lag in chat
-            st.info("VRAM monitoring paused in chat. Use `/status` to check.")
-            
-            st.divider()
-            
             new_name = st.text_input("Rename:", value=curr_sess.get("title"))
             if st.button("Update Title"): rename_session(new_name)
             
@@ -555,13 +597,59 @@ with st.sidebar:
 
             st.markdown("---")
             if st.button("🗑️ Delete Chat"):
+                st.session_state.show_delete_confirm = True
+                st.rerun()
+
+# Delete confirmation dialog
+if st.session_state.get("show_delete_confirm", False):
+    @st.dialog("Delete Chat Session?")
+    def confirm_delete():
+        st.write(f"Are you sure you want to delete this chat session?")
+        st.write(f"**{st.session_state.chat_data['sessions'][st.session_state.chat_data['current_id']]['title']}**")
+        st.caption("This action cannot be undone.")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Cancel", use_container_width=True):
+                st.session_state.show_delete_confirm = False
+                st.rerun()
+        with col2:
+            if st.button("Delete", type="primary", use_container_width=True):
+                curr_id = st.session_state.chat_data["current_id"]
                 del st.session_state.chat_data["sessions"][curr_id]
                 st.session_state.chat_data["current_id"] = None
                 st.session_state.mode = "setup"
                 free_memory()
                 st.session_state.loaded_config = None
+                st.session_state.show_delete_confirm = False
                 save_sessions()
                 st.rerun()
+
+    confirm_delete()
+
+# Preset delete confirmation dialog
+if st.session_state.get("show_preset_delete_confirm", False):
+    @st.dialog("Delete Preset?")
+    def confirm_preset_delete():
+        preset_name = st.session_state.get("preset_to_delete", "")
+        st.write(f"Are you sure you want to delete this preset?")
+        st.write(f"**{preset_name}**")
+        st.caption("This action cannot be undone.")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Cancel", use_container_width=True):
+                st.session_state.show_preset_delete_confirm = False
+                st.session_state.preset_to_delete = None
+                st.rerun()
+        with col2:
+            if st.button("Delete", type="primary", use_container_width=True):
+                delete_preset(preset_name)
+                st.session_state.show_preset_delete_confirm = False
+                st.session_state.preset_to_delete = None
+                st.rerun()
+
+    confirm_preset_delete()
 
 # ==========================================
 # MAIN CONTENT AREA
@@ -626,7 +714,8 @@ if st.session_state.mode == "setup":
                         st.rerun()
                 with col_p3:
                     if st.button("🗑️ Delete", type="primary", use_container_width=True):
-                        delete_preset(selected_preset)
+                        st.session_state.show_preset_delete_confirm = True
+                        st.session_state.preset_to_delete = selected_preset
                         st.rerun()
 
         # --- FORM WRAPPER FOR STABILITY ---
