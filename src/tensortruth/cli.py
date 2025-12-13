@@ -21,7 +21,10 @@ def main():
     try:
         from streamlit.web import cli as st_cli
     except ImportError:
-        print("Error: Streamlit is not installed. Install with: pip install streamlit", file=sys.stderr)
+        print(
+            "Error: Streamlit is not installed. Install with: pip install streamlit",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # Run the Streamlit app
@@ -32,18 +35,21 @@ def main():
 def fetch_paper():
     """Entry point for paper fetching tool."""
     from tensortruth.fetch_paper import main as fetch_main
+
     sys.exit(fetch_main())
 
 
 def scrape_docs():
     """Entry point for documentation scraping tool."""
     from tensortruth.scrape_docs import main as scrape_main
+
     sys.exit(scrape_main())
 
 
 def build_db():
     """Entry point for database building tool."""
     from tensortruth.build_db import main as build_main
+
     sys.exit(build_main())
 
 

@@ -290,9 +290,9 @@ def render_vram_gauge(model_name, num_indices, context_window, rag_device, llm_d
     m3.metric(
         "Predicted Peak",
         f"{predicted:.1f} GB",
-        delta=f"{predicted - MAX_VRAM_GB:.1f} GB"
-        if predicted > MAX_VRAM_GB
-        else "Safe",
+        delta=(
+            f"{predicted - MAX_VRAM_GB:.1f} GB" if predicted > MAX_VRAM_GB else "Safe"
+        ),
         delta_color="inverse",
     )
 
