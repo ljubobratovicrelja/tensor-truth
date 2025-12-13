@@ -1,127 +1,102 @@
 # Tensor Truth
 
-A local RAG (Retrieval-Augmented Generation) pipeline for reducing hallucinations in LLMs by indexing technical documentation and research papers. Built for personal use on local hardware, but shared in case others find it useful.
+A local RAG pipeline for reducing hallucinations in LLMs by indexing technical documentation and research papers. Built for personal use on local hardware, shared here in case others find it useful.
 
 ## What It Does
 
-Tensor Truth indexes technical documentation and research papers into a vector database, then uses retrieval-augmented generation to ground LLM responses in accurate source material. This significantly reduces hallucination when working with technical topics.
-
-The system uses hierarchical node parsing with auto-merging retrieval and cross-encoder reranking to maximize accuracy while staying within context windows.
+Indexes technical documentation and research papers into vector databases, then uses retrieval-augmented generation to ground LLM responses in source material. Uses hierarchical node parsing with auto-merging retrieval and cross-encoder reranking to balance accuracy and context window constraints.
 
 ## Quick Start
 
-1. Install dependencies:
+Install dependencies:
 ```bash
 pip install -e .
 ```
 
-2. Ensure Ollama is running:
+Start Ollama:
 ```bash
 ollama serve
 ```
 
-3. Start the web interface:
+Run the app:
 ```bash
 streamlit run app.py
 ```
 
-The application will automatically download pre-built indexes from Google Drive on first run. This may take a few minutes.
+On first launch, pre-built indexes will auto-download from Google Drive (takes a few minutes).
 
 ## Index Downloads
 
-Pre-built indexes are hosted on Google Drive and auto-download on first launch. Note that Google Drive has rate limits to prevent abuse - if you hit the limit, you'll need to wait before retrying.
+Pre-built indexes download automatically on startup. Note that Google Drive has rate limits - if you hit the limit, wait a bit before retrying.
 
-Manual download link: [Download Indexes](https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing)
+Manual download if needed: [indexes.tar](https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing)
 
-Extract to the `./indexes` directory in the project root.
+Extract to `./indexes` in the project root.
 
-## Building Your Own Databases
+For details on the contents of this archive, see [config/api.json](config/api.json) and [config/papers.json](config/papers.json). These are my curated lists of useful libraries and research papers. Feel free to fork and set up your own indexes. See below instructions on how to build the indexes.
 
-You can create custom knowledge bases using the included tools:
+## Requirements
 
-### Scrape Documentation
+Tested on:
+- MacBook M1 Max (32GB unified memory)
+- Desktop with RTX 3090 Ti (24GB VRAM)
 
-Index official library documentation (PyTorch, NumPy, OpenCV, etc.):
+Minimum recommended: 16GB RAM, Python 3.13+. GPU optional but significantly faster.
 
+### Recommended Models
+
+Any Ollama model works, but these are tested:
+
+**General Purpose:**
 ```bash
-python -m tensortruth.scrape_docs --config library_docs.json pytorch
+ollama pull deepseek-r1:8b     # Balanced
+ollama pull deepseek-r1:14b    # High quality
+ollama pull deepseek-r1:32b    # Best quality (24GB+)
 ```
 
-See available libraries:
+**Code/Technical Docs:**
 ```bash
-python -m tensortruth.scrape_docs --list
+ollama pull deepseek-coder-v2:16b
+ollama pull deepseek-coder-v2
 ```
 
-### Fetch Research Papers
+DeepSeek-R1 models include chain-of-thought reasoning. Coder-V2 variants are optimized for technical content and work particularly well with programming documentation.
 
-Add arXiv papers to your knowledge base:
+## Building Your Own Indexes
 
+Pre-built indexes cover common libraries, but you can create custom knowledge bases:
+
+**Scrape Documentation:**
+```bash
+python -m tensortruth.scrape_docs --list          # Show available libraries
+python -m tensortruth.scrape_docs pytorch         # Scrape PyTorch docs
+```
+
+**Fetch Research Papers:**
 ```bash
 python -m tensortruth.fetch_paper --config ./config/papers.json --category your_category --ids 2301.12345
-```
-
-Rebuild all papers in a category:
-```bash
 python -m tensortruth.fetch_paper --rebuild your_category
 ```
 
-### Build Vector Indexes
-
-After adding documents, build the vector index:
-
+**Build Vector Index:**
 ```bash
 python -m tensortruth.build_db module_name
 ```
 
-## Requirements
+## Configuration
 
-- Python 3.13+
-- Ollama running locally
-- 16GB+ RAM recommended (8GB minimum)
-- GPU optional but recommended for faster inference
+This system is configured for personal research workflows with these assumptions:
 
-### Recommended Ollama Models
+- ChromaDB for vector storage (persistent, single-process)
+- HuggingFace sentence-transformers for embeddings
+- BGE cross-encoder models for reranking
+- Ollama for local LLM inference
+- All processing runs locally
 
-The system works with any Ollama model, but these are tested and recommended:
-
-**General Purpose (with reasoning):**
-```bash
-# Lightweight (8GB RAM)
-ollama pull deepseek-r1:1.5b
-
-# Balanced (16GB RAM)
-ollama pull deepseek-r1:8b
-
-# High quality (24GB+ RAM/VRAM)
-ollama pull deepseek-r1:14b
-ollama pull deepseek-r1:32b
-```
-
-**Code-Focused (technical documentation):**
-```bash
-# Balanced (16GB RAM)
-ollama pull deepseek-coder-v2:16b
-
-# High quality (24GB+ RAM/VRAM)
-ollama pull deepseek-coder-v2
-```
-
-The DeepSeek-R1 models include chain-of-thought reasoning. The DeepSeek-Coder-V2 variants are optimized for code and technical content, which works particularly well when querying programming documentation.
-
-## Configuration Notes
-
-This RAG system is configured for personal research workflows. Key assumptions:
-
-- Indexes are pre-built for speed
-- Models run via Ollama (local inference)
-- Vector store uses ChromaDB (persistent, single-process)
-- Embeddings via HuggingFace sentence-transformers
-- Reranking with BGE cross-encoder models
-
-If you want different behavior, you'll need to modify the configuration in the source files.
+If you need different chunking strategies or retrieval parameters, you'll need to modify the source files. The current setup is tuned for technical documentation and research papers.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
-This project is provided as-is with no warranty. Built for personal use but released publicly in case others find it useful.
+Built for personal use but released publicly. Provided as-is with no warranty.
