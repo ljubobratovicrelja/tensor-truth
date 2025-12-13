@@ -1,119 +1,127 @@
 # Tensor Truth
 
-## Overview
+A local RAG (Retrieval-Augmented Generation) pipeline for reducing hallucinations in LLMs by indexing technical documentation and research papers. Built for personal use on local hardware, but shared in case others find it useful.
 
-This project is a modular framework for building Retrieval-Augmented Generation (RAG) pipelines running entirely on local hardware (RTX 3090Ti).
+## What It Does
 
-**Primary Goal:** Reduce hallucination in local LLMs (specifically DeepSeek-R1-Distill versions) by indexing technical documentation (PyTorch, NumPy, etc.) with high precision.
+Tensor Truth indexes technical documentation and research papers into a vector database, then uses retrieval-augmented generation to ground LLM responses in accurate source material. This significantly reduces hallucination when working with technical topics.
 
-**Core Mechanics:**
+The system uses hierarchical node parsing with auto-merging retrieval and cross-encoder reranking to maximize accuracy while staying within context windows.
 
-  * **Orchestration:** LlamaIndex.
-  * **Inference:** Ollama (serving GGUF/ExLlamaV2 models).
-  * **Vector Store:** ChromaDB (Persistent).
-  * **Retrieval Strategy:** Hierarchical Node Parsing + Auto-Merging Retriever + Cross-Encoder Reranking.
+## Quick Start
 
-## Architecture
-
-The pipeline uses a "Small-to-Big" retrieval strategy to maximize context window efficiency while maintaining retrieval accuracy.
-
-1.  **Ingestion:** Documents are parsed into parent nodes (2048 tokens) and child nodes (128 tokens).
-2.  **Indexing:** Only child nodes are embedded and stored in ChromaDB. Parent nodes are stored in a DocStore key-value store.
-3.  **Retrieval:** Query matches child nodes. If enough children of a specific parent are found, they are merged into the parent node.
-4.  **Reranking:** Top-k retrieved contexts are re-scored by a Cross-Encoder (BGE-Reranker) before LLM generation.
-
-## Prerequisites
-
-  * **Hardware:** NVIDIA GPU with 24GB+ VRAM recommended (RTX 3090/4090).
-  * **System:** Linux/WSL2 or Windows with CUDA toolkit installed.
-  * **Ollama:** Must be running as a background service (`ollama serve`).
-
-## Installation
-
-1. **Environment (venv)**
+1. Install dependencies:
 ```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate (Linux/WSL)
-source venv/bin/activate
-
-# Activate (Windows PowerShell)
-.\venv\Scripts\activate
+pip install -e .
 ```
 
-2.  **Dependencies**
-
+2. Ensure Ollama is running:
 ```bash
-pip install llama-index llama-index-llms-ollama llama-index-embeddings-huggingface llama-index-vector-stores-chroma llama-index-readers-file chromadb torch transformers sentence-transformers
+ollama serve
 ```
 
-3.  **Model Pull (Ollama)**
+3. Start the web interface:
+```bash
+streamlit run app.py
+```
+
+The application will automatically download pre-built indexes from Google Drive on first run. This may take a few minutes.
+
+## Index Downloads
+
+Pre-built indexes are hosted on Google Drive and auto-download on first launch. Note that Google Drive has rate limits to prevent abuse - if you hit the limit, you'll need to wait before retrying.
+
+Manual download link: [Download Indexes](https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing)
+
+Extract to the `./indexes` directory in the project root.
+
+## Building Your Own Databases
+
+You can create custom knowledge bases using the included tools:
+
+### Scrape Documentation
+
+Index official library documentation (PyTorch, NumPy, OpenCV, etc.):
 
 ```bash
+python -m tensortruth.scrape_docs --config library_docs.json pytorch
+```
+
+See available libraries:
+```bash
+python -m tensortruth.scrape_docs --list
+```
+
+### Fetch Research Papers
+
+Add arXiv papers to your knowledge base:
+
+```bash
+python -m tensortruth.fetch_paper --config ./config/papers.json --category your_category --ids 2301.12345
+```
+
+Rebuild all papers in a category:
+```bash
+python -m tensortruth.fetch_paper --rebuild your_category
+```
+
+### Build Vector Indexes
+
+After adding documents, build the vector index:
+
+```bash
+python -m tensortruth.build_db module_name
+```
+
+## Requirements
+
+- Python 3.13+
+- Ollama running locally
+- 16GB+ RAM recommended (8GB minimum)
+- GPU optional but recommended for faster inference
+
+### Recommended Ollama Models
+
+The system works with any Ollama model, but these are tested and recommended:
+
+**General Purpose (with reasoning):**
+```bash
+# Lightweight (8GB RAM)
+ollama pull deepseek-r1:1.5b
+
+# Balanced (16GB RAM)
+ollama pull deepseek-r1:8b
+
+# High quality (24GB+ RAM/VRAM)
+ollama pull deepseek-r1:14b
 ollama pull deepseek-r1:32b
 ```
 
-## Usage
-
-### 1\. Directory Structure
-
-The script expects a flat directory or subdirectory structure for documents.
-
-```text
-.
-├── chroma_db/              # Generated vector store persistence
-├── library_docs/           # DROP RAW FILES HERE (.md, .txt)
-├── src/
-│   └── pipeline.py         # Main entry point
-└── README.md
-```
-
-### 2\. Configuration
-
-Modify `src/pipeline.py` globals to switch contexts or models.
-
-```python
-# Configuration Constants
-DOCS_DIR = "./library_docs/pytorch_v2"  # Source for specific library
-COLLECTION_NAME = "pytorch_index"       # ChromaDB collection namespace
-LLM_MODEL = "deepseek-r1:32b"           # Ollama model tag
-```
-
-### 3\. Execution
-
-Run the pipeline. It handles both indexing (if new data) and querying.
-
+**Code-Focused (technical documentation):**
 ```bash
-python src/pipeline.py
+# Balanced (16GB RAM)
+ollama pull deepseek-coder-v2:16b
+
+# High quality (24GB+ RAM/VRAM)
+ollama pull deepseek-coder-v2
 ```
 
-## Strategy & Customization
+The DeepSeek-R1 models include chain-of-thought reasoning. The DeepSeek-Coder-V2 variants are optimized for code and technical content, which works particularly well when querying programming documentation.
 
-### Adding New Contexts (e.g., Internal Codebase)
+## Configuration Notes
 
-To index a different dataset without overwriting the previous one:
+This RAG system is configured for personal research workflows. Key assumptions:
 
-1.  Change `DOCS_DIR` to point to the new files.
-2.  Change `COLLECTION_NAME` to a unique string (e.g., `internal_legacy_code`).
-3.  Run the script. ChromaDB will create a new collection alongside the existing ones.
+- Indexes are pre-built for speed
+- Models run via Ollama (local inference)
+- Vector store uses ChromaDB (persistent, single-process)
+- Embeddings via HuggingFace sentence-transformers
+- Reranking with BGE cross-encoder models
 
-### Modifying Chunking
+If you want different behavior, you'll need to modify the configuration in the source files.
 
-Adjust `HierarchicalNodeParser` in `build_or_load_index` for different data types.
+## License
 
-  * **Code/API Docs:** Use smaller leaf nodes (128 tokens) to isolate function signatures.
-  * **Prose/Wiki:** Increase leaf nodes (256-512 tokens) to capture semantic meaning.
+MIT License - see [LICENSE](LICENSE) file for details.
 
-### GPU VRAM Management
-
-If OOM errors occur during ingestion or heavy query loads:
-
-1.  **Offload Embeddings:** Set `device="cpu"` in `HuggingFaceEmbedding`.
-2.  **Limit Ollama:** Reduce `num_gpu` layers in Ollama or use a smaller quant (Q4\_K\_M).
-
-## Technical Notes
-
-  * **Persistency:** The `chroma_db` folder contains the vector embeddings. The `storage_context` (DocStore) is saved alongside it. **Do not delete this folder** unless you want to re-index everything.
-  * **Reranker:** Currently uses `BAAI/bge-reranker-v2-m3`. It is computationally expensive but necessary for code disambiguation.
-  * **Locking:** ChromaDB is single-threaded/process locked. Ensure only one script instance accesses the DB at a time.
+This project is provided as-is with no warranty. Built for personal use but released publicly in case others find it useful.
