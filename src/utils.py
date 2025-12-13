@@ -1,6 +1,6 @@
 import re
 import requests
-from fetch_paper import fetch_and_convert
+from fetch_paper import fetch_and_convert_paper, paper_already_processed
 
 from build_db import build_module
 
@@ -72,7 +72,7 @@ def parse_thinking_response(raw_text):
     # 3. No Thinking detected
     return None, raw_text
 
-def run_ingestion(arxiv_id):
+def run_ingestion(category, arxiv_id):
     """
     Orchestrates the Fetch -> Build pipeline.
     """
@@ -80,10 +80,12 @@ def run_ingestion(arxiv_id):
     
     try:
         status_log.append(f"📥 Fetching ArXiv ID: {arxiv_id}...")
-        fetch_and_convert(arxiv_id)
-        
-        status_log.append("📚 Updating Vector Index (this takes a moment)...")
-        build_module("papers")
+        if paper_already_processed(category, arxiv_id):
+            status_log.append("⚠️ Paper already processed. Skipping fetch.")
+        else:
+            fetch_and_convert_paper(category, arxiv_id)
+            status_log.append("📚 Updating Vector Index (this takes a moment)...")
+            build_module("papers")
         
         status_log.append(f"✅ Success! {arxiv_id} is now in your library.")
         return True, status_log

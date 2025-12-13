@@ -19,7 +19,7 @@ BASE_INDEX_DIR = "./indexes"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("BUILDER")
 
-def build_module(module_name):
+def build_module(module_name, chunk_sizes=[2048, 512, 128]):
 
     source_dir = os.path.join(SOURCE_DIR, module_name)
     persist_dir = os.path.join(BASE_INDEX_DIR, module_name)
@@ -41,13 +41,13 @@ def build_module(module_name):
     documents = SimpleDirectoryReader(
         source_dir,
         recursive=True,
-        required_exts=[".md"]
+        required_exts=[".md", ".html"]
     ).load_data()
 
     print(f"Loaded {len(documents)} documents.")
 
     # 3. Parse
-    node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=[2048, 512, 128])
+    node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
     nodes = node_parser.get_nodes_from_documents(documents)
     leaf_nodes = get_leaf_nodes(nodes)
     print(f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves).")
@@ -75,7 +75,39 @@ def build_module(module_name):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("module", help="Name of the module to build (e.g., 'pytorch')")
+    parser.add_argument("--modules", nargs="+", help="Module names to build (subfolders in library_docs)")
+    parser.add_argument("--all", action="store_true", help="Build all modules found in library_docs")
+    parser.add_argument("--chunk_sizes", nargs="+", type=int, default=[2048, 512, 128], help="Chunk sizes for hierarchical parsing")
+
     args = parser.parse_args()
+
+
+    if args.all:
+        # Check if modules were also specified
+        if args.modules:
+            print("❌ Cannot use --all and --modules together.")
+            exit(1)
+
+        args.modules = [
+            name for name in os.listdir(SOURCE_DIR)
+            if os.path.isdir(os.path.join(SOURCE_DIR, name))
+        ]
     
-    build_module(args.module)
+    print()
+    print(f"\nModules to build: {args.modules}")
+    print()
+    
+    for module in args.modules:
+
+        print()
+        print("=" * 60)
+        print(f" Building Module: {module} ")
+        print("=" * 60)
+        print()
+
+        build_module(module, args.chunk_sizes)
+
+        print()
+        print("=" * 60)
+        print(f"\n✅ Completed Module: {module} ")
+        print("=" * 60)
