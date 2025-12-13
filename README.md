@@ -1,6 +1,6 @@
 # Tensor Truth
 
-A local RAG pipeline for reducing hallucinations in LLMs by indexing technical documentation and research papers. Built for personal use on local hardware, shared here in case others find it useful.
+A local RAG pipeline for reducing hallucinations in LLMs by indexing technical documentation and research papers. Built for personal use on local hardware, shared here in case others find it useful. Web UI is built with Streamlit, with high level of configurability for the pipeline.
 
 ## What It Does
 
@@ -8,12 +8,29 @@ Indexes technical documentation and research papers into vector databases, then 
 
 ## Quick Start
 
-Install dependencies:
+Install the tool via PyPI. But before you do, I advise you prep the environment because of large volume of dependencies (use Python 3.13+):
+
 ```bash
-pip install -e .
+python -m venv venv
+source venv/bin/activate  # or .\venv\Scripts\activate(.ps1) on Windows CMD/PowerShell
 ```
 
-Start Ollama:
+Or via conda:
+
+```bash
+conda create -n tensor-truth python=3.13
+conda activate tensor-truth
+```
+
+If using CUDA, make sure to first install the appropriate PyTorch version from [pytorch.org](https://pytorch.org/get-started/locally/). I used torch 2.9 and CUDA 12.8 in environments with CUDA.
+
+If not, just install tensor-truth via pip, which includes CPU-only PyTorch.
+
+```bash
+pip install tensor-truth
+```
+
+Make sure [ollama](https://ollama.com/) is installed and set up. Start the server:
 ```bash
 ollama serve
 ```
@@ -23,7 +40,7 @@ Run the app:
 tensor-truth
 ```
 
-On first launch, pre-built indexes will auto-download from Google Drive (takes a few minutes).
+On first launch, pre-built indexes will auto-download from Google Drive (takes a few minutes). Also a small qwen2.5:0.5b will be pulled automatically for assigning automatic titles to chats.
 
 ## Index Downloads
 
