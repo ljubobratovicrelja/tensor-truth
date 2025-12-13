@@ -494,8 +494,9 @@ with st.sidebar:
         current_id = st.session_state.chat_data.get("current_id")
         is_active = (sess_id == current_id)
         
-        label = f"{'📂' if is_active else '📄'} {title} "
-        if st.button(label, key=sess_id, use_container_width=True, disabled=is_active):
+        label = f" {title} "
+        # FIX: Removed disabled=is_active so you can always switch back to the current chat
+        if st.button(label, key=sess_id, use_container_width=True):
             st.session_state.chat_data["current_id"] = sess_id
             st.session_state.mode = "chat"
             st.rerun()
@@ -507,17 +508,8 @@ with st.sidebar:
         curr_sess = st.session_state.chat_data["sessions"][curr_id]
         
         with st.expander("⚙️ Session Settings", expanded=True):
-            p = curr_sess.get("params", {})
-            mods = curr_sess.get("modules", [])
-            
-            # Dynamic Gauge (Outside form in chat mode, ok)
-            render_vram_gauge(
-                p.get('model', 'Unknown'), 
-                len(mods), 
-                p.get('context_window', 4096),
-                p.get('rag_device', 'cuda'),
-                p.get('llm_device', 'gpu')
-            )
+            # FIX: Removed automatic render_vram_gauge here to prevent lag in chat
+            st.info("VRAM monitoring paused in chat. Use `/status` to check.")
             
             st.divider()
             
@@ -525,6 +517,7 @@ with st.sidebar:
             if st.button("Update Title"): rename_session(new_name)
             
             st.caption("Active Indices:")
+            mods = curr_sess.get("modules", [])
             if not mods: st.caption("*None*")
             for m in mods: st.code(m, language="text")
             
