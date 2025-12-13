@@ -77,7 +77,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--modules", nargs="+", help="Module names to build (subfolders in library_docs)")
     parser.add_argument("--all", action="store_true", help="Build all modules found in library_docs")
-    parser.add_argument("--chunk_sizes", nargs="+", type=int, default=[2048, 512, 128], help="Chunk sizes for hierarchical parsing")
+    parser.add_argument("--chunk-sizes", nargs="+", type=int, default=[2048, 512, 128], help="Chunk sizes for hierarchical parsing")
 
     args = parser.parse_args()
 

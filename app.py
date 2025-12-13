@@ -219,7 +219,7 @@ if st.session_state.mode == "setup":
                 col_a, col_b = st.columns(2)
                 with col_a:
                     st.subheader("Knowledge Base")
-                    selected_mods = st.multiselect("Active Indices:", available_mods, default=available_mods)
+                    selected_mods = st.multiselect("Active Indices:", available_mods, default=[])
                 
                 with col_b:
                     st.subheader("Model Selection")

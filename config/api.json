@@ -80,7 +80,7 @@
         "version": "4.57",
         "doc_type": "sphinx",
         "doc_root": "https://huggingface.co/docs/transformers/",
-        "inventory_url": "https://huggingface.co/docs/transformers/objects.inv",
+        "inventory_url": "https://huggingface.co/docs/transformers/main/en/objects.inv",
         "selector": "main"
     },
     "pillow": {
