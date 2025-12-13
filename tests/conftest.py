@@ -2,17 +2,18 @@
 Pytest configuration and shared fixtures.
 """
 
-import pytest
 import json
 import os
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import tempfile
 
+import pytest
 
 # ============================================================================
 # Path Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def fixtures_dir():
@@ -35,6 +36,7 @@ def mock_responses_dir(fixtures_dir):
 # ============================================================================
 # Temporary Directory Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def temp_dir(tmp_path):
@@ -62,6 +64,7 @@ def temp_library_dir(tmp_path):
 # Mock Data Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def sample_paper_metadata():
     """Mock arXiv paper metadata."""
@@ -71,7 +74,7 @@ def sample_paper_metadata():
         "abstract": "This is a test abstract for testing purposes.",
         "arxiv_id": "1234.56789",
         "year": 2023,
-        "url": "https://arxiv.org/abs/1234.56789"
+        "url": "https://arxiv.org/abs/1234.56789",
     }
 
 
@@ -82,25 +85,20 @@ def sample_chat_session():
         "title": "Test Session",
         "created_at": "2023-12-13T10:00:00",
         "messages": [
-            {
-                "role": "user",
-                "content": "What is PyTorch?"
-            },
+            {"role": "user", "content": "What is PyTorch?"},
             {
                 "role": "assistant",
                 "content": "PyTorch is a deep learning framework.",
-                "sources": [
-                    {"file": "pytorch_intro.md", "score": 0.95}
-                ],
-                "time_taken": 2.5
-            }
+                "sources": [{"file": "pytorch_intro.md", "score": 0.95}],
+                "time_taken": 2.5,
+            },
         ],
         "modules": ["pytorch"],
         "params": {
             "model": "deepseek-r1:8b",
             "temperature": 0.3,
-            "context_window": 4096
-        }
+            "context_window": 4096,
+        },
     }
 
 
@@ -142,6 +140,7 @@ Some symbols: α β γ × ÷ ≤ ≥
 # Mock API Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def mock_ollama_models_response():
     """Mock Ollama /api/tags response."""
@@ -151,14 +150,14 @@ def mock_ollama_models_response():
                 "name": "deepseek-r1:8b",
                 "size": 5500000000,
                 "digest": "abc123",
-                "modified_at": "2023-12-13T10:00:00Z"
+                "modified_at": "2023-12-13T10:00:00Z",
             },
             {
                 "name": "llama2:7b",
                 "size": 3800000000,
                 "digest": "def456",
-                "modified_at": "2023-12-13T10:00:00Z"
-            }
+                "modified_at": "2023-12-13T10:00:00Z",
+            },
         ]
     }
 
@@ -171,7 +170,7 @@ def mock_ollama_ps_response():
             {
                 "name": "deepseek-r1:8b",
                 "size_vram": 5500000000,
-                "expires_at": "2023-12-13T11:00:00Z"
+                "expires_at": "2023-12-13T11:00:00Z",
             }
         ]
     }
@@ -180,18 +179,15 @@ def mock_ollama_ps_response():
 @pytest.fixture
 def mock_requests_get(monkeypatch):
     """Mock requests.get for API calls."""
+
     def mock_get(url, *args, **kwargs):
         mock_response = MagicMock()
         mock_response.status_code = 200
 
         if "tags" in url:
-            mock_response.json.return_value = {
-                "models": [{"name": "deepseek-r1:8b"}]
-            }
+            mock_response.json.return_value = {"models": [{"name": "deepseek-r1:8b"}]}
         elif "ps" in url:
-            mock_response.json.return_value = {
-                "models": []
-            }
+            mock_response.json.return_value = {"models": []}
         else:
             mock_response.json.return_value = {}
 
@@ -204,6 +200,7 @@ def mock_requests_get(monkeypatch):
 # ============================================================================
 # Mock ML Model Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def mock_embedding_model():
@@ -234,10 +231,12 @@ def mock_reranker():
 # Mock ChromaDB Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def mock_chroma_client(temp_index_dir):
     """Mock ChromaDB client with temporary storage."""
     import chromadb
+
     client = chromadb.PersistentClient(path=str(temp_index_dir))
     return client
 
@@ -246,10 +245,12 @@ def mock_chroma_client(temp_index_dir):
 # Environment Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def mock_cuda_available(monkeypatch):
     """Mock torch.cuda.is_available() to return True."""
     import torch
+
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
 
 
@@ -257,6 +258,7 @@ def mock_cuda_available(monkeypatch):
 def mock_cuda_unavailable(monkeypatch):
     """Mock torch.cuda.is_available() to return False."""
     import torch
+
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
 
 
@@ -278,6 +280,7 @@ def mock_mps_available(monkeypatch):
 # Config File Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def sample_papers_config():
     """Sample papers configuration."""
@@ -288,9 +291,9 @@ def sample_papers_config():
                 {
                     "title": "Attention Is All You Need",
                     "arxiv_id": "1706.03762",
-                    "url": "https://arxiv.org/abs/1706.03762"
+                    "url": "https://arxiv.org/abs/1706.03762",
                 }
-            ]
+            ],
         }
     }
 
@@ -305,9 +308,9 @@ def sample_books_config():
                 {
                     "title": "Introduction to Linear Algebra",
                     "source": "https://example.com/linear_algebra.pdf",
-                    "split_method": "none"
+                    "split_method": "none",
                 }
-            ]
+            ],
         }
     }
 
@@ -316,12 +319,15 @@ def sample_books_config():
 # Test Data Generators
 # ============================================================================
 
+
 @pytest.fixture
 def create_test_pdf(temp_dir):
     """Factory fixture to create minimal test PDFs."""
+
     def _create_pdf(filename="test.pdf", content="Test PDF Content"):
         try:
             import fitz  # PyMuPDF
+
             pdf_path = temp_dir / filename
 
             doc = fitz.open()
@@ -343,6 +349,7 @@ def create_test_pdf(temp_dir):
 @pytest.fixture
 def create_test_markdown(temp_dir):
     """Factory fixture to create test markdown files."""
+
     def _create_markdown(filename="test.md", content="# Test\n\nTest content"):
         md_path = temp_dir / filename
         md_path.write_text(content, encoding="utf-8")
@@ -354,6 +361,7 @@ def create_test_markdown(temp_dir):
 # ============================================================================
 # Cleanup Fixtures
 # ============================================================================
+
 
 @pytest.fixture(autouse=True)
 def cleanup_temp_files():

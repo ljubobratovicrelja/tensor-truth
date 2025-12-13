@@ -2,23 +2,24 @@
 Unit tests for tensortruth.fetch_paper module.
 """
 
-import pytest
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, mock_open, patch
+
+import pytest
 
 from tensortruth.fetch_paper import (
-    clean_filename,
-    paper_already_processed,
     book_already_processed,
-    post_process_math,
+    clean_filename,
     detect_category_type,
+    paper_already_processed,
+    post_process_math,
 )
-
 
 # ============================================================================
 # Tests for clean_filename
 # ============================================================================
+
 
 @pytest.mark.unit
 class TestCleanFilename:
@@ -35,7 +36,7 @@ class TestCleanFilename:
         assert "@" not in result
         assert "#" not in result
         assert "$" not in result
-        assert all(c.isalnum() or c == '_' for c in result)
+        assert all(c.isalnum() or c == "_" for c in result)
 
     def test_truncation(self):
         """Test that long titles are truncated."""
@@ -64,6 +65,7 @@ class TestCleanFilename:
 # Tests for paper_already_processed
 # ============================================================================
 
+
 @pytest.mark.unit
 class TestPaperAlreadyProcessed:
     """Tests for paper_already_processed function."""
@@ -71,9 +73,7 @@ class TestPaperAlreadyProcessed:
     def test_paper_not_processed_no_directory(self, temp_dir):
         """Test when output directory doesn't exist."""
         result = paper_already_processed(
-            "test_category",
-            "1234.56789",
-            root_dir=str(temp_dir)
+            "test_category", "1234.56789", root_dir=str(temp_dir)
         )
         assert result is False
 
@@ -83,9 +83,7 @@ class TestPaperAlreadyProcessed:
         category_dir.mkdir()
 
         result = paper_already_processed(
-            "test_category",
-            "1234.56789",
-            root_dir=str(temp_dir)
+            "test_category", "1234.56789", root_dir=str(temp_dir)
         )
         assert result is False
 
@@ -103,9 +101,7 @@ class TestPaperAlreadyProcessed:
         md_path.write_text(f"# ArXiv ID: 1234.56789\n\nContent...")
 
         result = paper_already_processed(
-            "test_category",
-            "1234.56789",
-            root_dir=str(temp_dir)
+            "test_category", "1234.56789", root_dir=str(temp_dir)
         )
         assert result is True
 
@@ -123,9 +119,7 @@ class TestPaperAlreadyProcessed:
         md_path.write_text("# Some other paper\n\nContent...")
 
         result = paper_already_processed(
-            "test_category",
-            "1234.56789",
-            root_dir=str(temp_dir)
+            "test_category", "1234.56789", root_dir=str(temp_dir)
         )
         assert result is False
 
@@ -134,6 +128,7 @@ class TestPaperAlreadyProcessed:
 # Tests for book_already_processed
 # ============================================================================
 
+
 @pytest.mark.unit
 class TestBookAlreadyProcessed:
     """Tests for book_already_processed function."""
@@ -141,9 +136,7 @@ class TestBookAlreadyProcessed:
     def test_book_not_processed(self, temp_dir):
         """Test when book is not processed."""
         result = book_already_processed(
-            "test_category",
-            "Test Book",
-            root_dir=str(temp_dir)
+            "test_category", "Test Book", root_dir=str(temp_dir)
         )
         assert result is False
 
@@ -158,9 +151,7 @@ class TestBookAlreadyProcessed:
         md_path.write_text("# Test Book\n\nContent...")
 
         result = book_already_processed(
-            "test_category",
-            "Test Book",
-            root_dir=str(temp_dir)
+            "test_category", "Test Book", root_dir=str(temp_dir)
         )
         assert result is True
 
@@ -176,9 +167,7 @@ class TestBookAlreadyProcessed:
             md_path.write_text(f"# Chapter {i}\n\nContent...")
 
         result = book_already_processed(
-            "test_category",
-            "Test Book",
-            root_dir=str(temp_dir)
+            "test_category", "Test Book", root_dir=str(temp_dir)
         )
         assert result is True
 
@@ -186,6 +175,7 @@ class TestBookAlreadyProcessed:
 # ============================================================================
 # Tests for post_process_math
 # ============================================================================
+
 
 @pytest.mark.unit
 class TestPostProcessMath:
@@ -251,6 +241,7 @@ class TestPostProcessMath:
 # Tests for detect_category_type
 # ============================================================================
 
+
 @pytest.mark.unit
 class TestDetectCategoryType:
     """Tests for detect_category_type function."""
@@ -263,9 +254,9 @@ class TestDetectCategoryType:
                 {
                     "title": "Test Paper",
                     "arxiv_id": "1234.56789",
-                    "url": "https://arxiv.org/abs/1234.56789"
+                    "url": "https://arxiv.org/abs/1234.56789",
                 }
-            ]
+            ],
         }
 
         result = detect_category_type(category_data)
@@ -279,9 +270,9 @@ class TestDetectCategoryType:
                 {
                     "title": "Test Book",
                     "source": "https://example.com/book.pdf",
-                    "split_method": "none"
+                    "split_method": "none",
                 }
-            ]
+            ],
         }
 
         result = detect_category_type(category_data)
@@ -289,19 +280,14 @@ class TestDetectCategoryType:
 
     def test_empty_category(self):
         """Test empty category defaults to papers."""
-        category_data = {
-            "description": "Empty category",
-            "items": []
-        }
+        category_data = {"description": "Empty category", "items": []}
 
         result = detect_category_type(category_data)
         assert result == "papers"
 
     def test_no_items_key(self):
         """Test category without items key."""
-        category_data = {
-            "description": "No items"
-        }
+        category_data = {"description": "No items"}
 
         result = detect_category_type(category_data)
         assert result == "papers"
@@ -311,13 +297,15 @@ class TestDetectCategoryType:
 # Property-based tests
 # ============================================================================
 
+
 @pytest.mark.unit
 class TestFetchPaperProperties:
     """Property-based tests for fetch_paper functions."""
 
     def test_clean_filename_never_crashes(self):
         """Test that clean_filename handles any string input."""
-        from hypothesis import given, strategies as st
+        from hypothesis import given
+        from hypothesis import strategies as st
 
         @given(st.text(max_size=1000))
         def inner_test(title):
@@ -326,4 +314,3 @@ class TestFetchPaperProperties:
             assert len(result) <= 50
 
         inner_test()
-

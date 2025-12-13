@@ -2,23 +2,24 @@
 Unit tests for tensortruth.utils module.
 """
 
-import pytest
 import json
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, mock_open, patch
+
+import pytest
 import torch
 
 from tensortruth.utils import (
-    parse_thinking_response,
     convert_chat_to_markdown,
-    get_running_models,
     get_max_memory_gb,
+    get_running_models,
+    parse_thinking_response,
     stop_model,
 )
-
 
 # ============================================================================
 # Tests for parse_thinking_response
 # ============================================================================
+
 
 @pytest.mark.unit
 class TestParseThinkingResponse:
@@ -85,6 +86,7 @@ class TestParseThinkingResponse:
 # Tests for convert_chat_to_markdown
 # ============================================================================
 
+
 @pytest.mark.unit
 class TestConvertChatToMarkdown:
     """Tests for convert_chat_to_markdown function."""
@@ -113,7 +115,7 @@ class TestConvertChatToMarkdown:
         session = {
             "title": "Empty Session",
             "created_at": "2023-12-13T10:00:00",
-            "messages": []
+            "messages": [],
         }
         markdown = convert_chat_to_markdown(session)
 
@@ -127,8 +129,8 @@ class TestConvertChatToMarkdown:
             "created_at": "2023-12-13T10:00:00",
             "messages": [
                 {"role": "user", "content": "Hello"},
-                {"role": "assistant", "content": "Hi there"}
-            ]
+                {"role": "assistant", "content": "Hi there"},
+            ],
         }
         markdown = convert_chat_to_markdown(session)
 
@@ -143,9 +145,9 @@ class TestConvertChatToMarkdown:
             "messages": [
                 {
                     "role": "assistant",
-                    "content": "<thought>Internal thoughts</thought>Visible answer"
+                    "content": "<thought>Internal thoughts</thought>Visible answer",
                 }
-            ]
+            ],
         }
         markdown = convert_chat_to_markdown(session)
 
@@ -158,11 +160,12 @@ class TestConvertChatToMarkdown:
 # Tests for get_running_models
 # ============================================================================
 
+
 @pytest.mark.unit
 class TestGetRunningModels:
     """Tests for get_running_models function."""
 
-    @patch('tensortruth.utils.requests.get')
+    @patch("tensortruth.utils.requests.get")
     def test_successful_response(self, mock_get, mock_ollama_ps_response):
         """Test successful API response."""
         mock_response = MagicMock()
@@ -176,7 +179,7 @@ class TestGetRunningModels:
         assert models[0]["name"] == "deepseek-r1:8b"
         assert "5.1 GB" in models[0]["size_vram"]
 
-    @patch('tensortruth.utils.requests.get')
+    @patch("tensortruth.utils.requests.get")
     def test_api_failure(self, mock_get):
         """Test API failure handling."""
         mock_get.side_effect = Exception("Connection error")
@@ -185,7 +188,7 @@ class TestGetRunningModels:
 
         assert models == []
 
-    @patch('tensortruth.utils.requests.get')
+    @patch("tensortruth.utils.requests.get")
     def test_timeout(self, mock_get):
         """Test timeout handling."""
         mock_get.side_effect = TimeoutError()
@@ -194,7 +197,7 @@ class TestGetRunningModels:
 
         assert models == []
 
-    @patch('tensortruth.utils.requests.get')
+    @patch("tensortruth.utils.requests.get")
     def test_empty_models(self, mock_get):
         """Test empty models list."""
         mock_response = MagicMock()
@@ -210,6 +213,7 @@ class TestGetRunningModels:
 # ============================================================================
 # Tests for get_max_memory_gb
 # ============================================================================
+
 
 @pytest.mark.unit
 class TestGetMaxMemoryGB:
@@ -284,11 +288,12 @@ class TestGetMaxMemoryGB:
 # Tests for stop_model
 # ============================================================================
 
+
 @pytest.mark.unit
 class TestStopModel:
     """Tests for stop_model function."""
 
-    @patch('tensortruth.utils.requests.post')
+    @patch("tensortruth.utils.requests.post")
     def test_successful_stop(self, mock_post):
         """Test successful model stop."""
         mock_response = MagicMock()
@@ -305,7 +310,7 @@ class TestStopModel:
         assert call_args[1]["json"]["model"] == "deepseek-r1:8b"
         assert call_args[1]["json"]["keep_alive"] == 0
 
-    @patch('tensortruth.utils.requests.post')
+    @patch("tensortruth.utils.requests.post")
     def test_failed_stop(self, mock_post):
         """Test failed model stop."""
         mock_post.side_effect = Exception("Connection error")
@@ -314,7 +319,7 @@ class TestStopModel:
 
         assert result is False
 
-    @patch('tensortruth.utils.requests.post')
+    @patch("tensortruth.utils.requests.post")
     def test_timeout(self, mock_post):
         """Test timeout handling."""
         mock_post.side_effect = TimeoutError()
@@ -328,13 +333,15 @@ class TestStopModel:
 # Property-based tests with hypothesis
 # ============================================================================
 
+
 @pytest.mark.unit
 class TestUtilsProperties:
     """Property-based tests for utils functions."""
 
     def test_parse_thinking_never_crashes(self):
         """Test that parse_thinking_response handles any string input."""
-        from hypothesis import given, strategies as st
+        from hypothesis import given
+        from hypothesis import strategies as st
 
         @given(st.text())
         def inner_test(text):
@@ -348,11 +355,7 @@ class TestUtilsProperties:
     def test_convert_markdown_with_various_sessions(self):
         """Test markdown conversion with various session structures."""
         # Test with minimal session
-        minimal = {
-            "title": "Test",
-            "created_at": "2023-01-01",
-            "messages": []
-        }
+        minimal = {"title": "Test", "created_at": "2023-01-01", "messages": []}
         result = convert_chat_to_markdown(minimal)
         assert isinstance(result, str)
         assert len(result) > 0

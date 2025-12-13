@@ -95,6 +95,10 @@ target-version = "py310"
 [tool.black]
 line-length = 88
 
+[tool.isort]
+profile = "black"
+line_length = 88
+
 [tool.pytest.ini_options]
 # Test discovery patterns
 python_files = ["test_*.py"]

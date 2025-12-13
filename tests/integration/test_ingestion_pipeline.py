@@ -2,30 +2,27 @@
 Integration tests for the ingestion pipeline.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from tensortruth.utils import run_ingestion
+import pytest
 
+from tensortruth.utils import run_ingestion
 
 # ============================================================================
 # Integration Tests for Ingestion Pipeline
 # ============================================================================
 
+
 @pytest.mark.integration
 class TestIngestionPipeline:
     """Integration tests for paper ingestion workflow."""
 
-    @patch('tensortruth.utils.fetch_and_convert_paper')
-    @patch('tensortruth.utils.build_module')
-    @patch('tensortruth.utils.paper_already_processed')
+    @patch("tensortruth.utils.fetch_and_convert_paper")
+    @patch("tensortruth.utils.build_module")
+    @patch("tensortruth.utils.paper_already_processed")
     def test_run_ingestion_new_paper(
-        self,
-        mock_processed,
-        mock_build,
-        mock_fetch,
-        sample_paper_metadata
+        self, mock_processed, mock_build, mock_fetch, sample_paper_metadata
     ):
         """Test ingestion pipeline for new paper."""
         # Setup mocks
@@ -46,15 +43,10 @@ class TestIngestionPipeline:
         mock_fetch.assert_called_once()
         mock_build.assert_called_once_with("papers")
 
-    @patch('tensortruth.utils.fetch_and_convert_paper')
-    @patch('tensortruth.utils.build_module')
-    @patch('tensortruth.utils.paper_already_processed')
-    def test_run_ingestion_existing_paper(
-        self,
-        mock_processed,
-        mock_build,
-        mock_fetch
-    ):
+    @patch("tensortruth.utils.fetch_and_convert_paper")
+    @patch("tensortruth.utils.build_module")
+    @patch("tensortruth.utils.paper_already_processed")
+    def test_run_ingestion_existing_paper(self, mock_processed, mock_build, mock_fetch):
         """Test ingestion pipeline when paper already exists."""
         # Setup mocks
         mock_processed.return_value = True  # Paper already processed
@@ -69,13 +61,9 @@ class TestIngestionPipeline:
         # Verify fetch wasn't called
         mock_fetch.assert_not_called()
 
-    @patch('tensortruth.utils.fetch_and_convert_paper')
-    @patch('tensortruth.utils.paper_already_processed')
-    def test_run_ingestion_failure(
-        self,
-        mock_processed,
-        mock_fetch
-    ):
+    @patch("tensortruth.utils.fetch_and_convert_paper")
+    @patch("tensortruth.utils.paper_already_processed")
+    def test_run_ingestion_failure(self, mock_processed, mock_fetch):
         """Test ingestion pipeline handles failures gracefully."""
         # Setup mocks
         mock_processed.return_value = False
@@ -93,6 +81,7 @@ class TestIngestionPipeline:
 # ============================================================================
 # Integration Tests for Database Building
 # ============================================================================
+
 
 @pytest.mark.integration
 @pytest.mark.slow
@@ -117,7 +106,8 @@ class TestDatabaseBuilding:
         module_dir.mkdir()
 
         sample_md = module_dir / "sample.md"
-        sample_md.write_text("""
+        sample_md.write_text(
+            """
 # Sample Document
 
 This is a sample document for testing the database building process.
@@ -129,7 +119,8 @@ Some content here about PyTorch tensors.
 ## Section 2
 
 More content about neural networks.
-""")
+"""
+        )
 
         # Build the module
         # Note: This will actually try to load embedding models
@@ -146,16 +137,14 @@ More content about neural networks.
 # Integration Tests for Config-based Rebuilding
 # ============================================================================
 
+
 @pytest.mark.integration
 class TestConfigBasedRebuilding:
     """Integration tests for config-based category rebuilding."""
 
-    @patch('tensortruth.fetch_paper.fetch_and_convert_paper')
+    @patch("tensortruth.fetch_paper.fetch_and_convert_paper")
     def test_rebuild_category_from_config(
-        self,
-        mock_fetch,
-        sample_papers_config,
-        temp_dir
+        self, mock_fetch, sample_papers_config, temp_dir
     ):
         """Test rebuilding a category from configuration."""
         from tensortruth.fetch_paper import rebuild_category
@@ -164,7 +153,7 @@ class TestConfigBasedRebuilding:
         mock_fetch.return_value = {
             "title": "Test Paper",
             "arxiv_id": "1706.03762",
-            "url": "https://arxiv.org/abs/1706.03762"
+            "url": "https://arxiv.org/abs/1706.03762",
         }
 
         # This would normally process all papers in config

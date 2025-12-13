@@ -1,12 +1,12 @@
-import re
-import requests
 import os
+import re
 import tarfile
+
+import requests
 import torch
 
-from tensortruth.fetch_paper import fetch_and_convert_paper, paper_already_processed
 from tensortruth.build_db import build_module
-
+from tensortruth.fetch_paper import fetch_and_convert_paper, paper_already_processed
 
 OLLAMA_API_BASE = "http://localhost:11434/api"
 
@@ -32,6 +32,7 @@ def get_max_memory_gb():
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         try:
             import psutil
+
             # On Apple Silicon, use total system RAM as it's unified memory
             return psutil.virtual_memory().total / (1024**3)
         except Exception:
@@ -40,6 +41,7 @@ def get_max_memory_gb():
     # Fallback to system RAM for CPU-only systems
     try:
         import psutil
+
         return psutil.virtual_memory().total / (1024**3)
     except Exception:
         # Ultimate fallback
@@ -71,13 +73,15 @@ def download_and_extract_indexes(index_dir, gdrive_link):
         try:
             import gdown
         except ImportError:
-            raise ImportError("gdown library not installed. Install with: pip install gdown")
+            raise ImportError(
+                "gdown library not installed. Install with: pip install gdown"
+            )
 
         # Download using gdown (handles Google Drive's quirks automatically)
         gdown.download(gdrive_link, tarball_path, quiet=False, fuzzy=True)
 
         # Extract tarball to root directory (tar already contains indexes/ folder)
-        with tarfile.open(tarball_path, 'r:') as tar:
+        with tarfile.open(tarball_path, "r:") as tar:
             tar.extractall(path=".")
 
         # Clean up tarball
@@ -103,15 +107,18 @@ def get_running_models():
             # simplify data for UI
             active = []
             for m in data.get("models", []):
-                active.append({
-                    "name": m["name"],
-                    "size_vram": f"{m.get('size_vram', 0) / 1024**3:.1f} GB",
-                    "expires": m.get("expires_at", "Unknown")
-                })
+                active.append(
+                    {
+                        "name": m["name"],
+                        "size_vram": f"{m.get('size_vram', 0) / 1024**3:.1f} GB",
+                        "expires": m.get("expires_at", "Unknown"),
+                    }
+                )
             return active
     except Exception:
-        return [] # Server likely down
+        return []  # Server likely down
     return []
+
 
 def stop_model(model_name):
     """
@@ -119,16 +126,14 @@ def stop_model(model_name):
     """
     try:
         # We send a dummy request with keep_alive=0 to trigger unload
-        payload = {
-            "model": model_name,
-            "keep_alive": 0
-        }
+        payload = {"model": model_name, "keep_alive": 0}
         # We use /api/chat as the generic endpoint
         requests.post(f"{OLLAMA_API_BASE}/chat", json=payload, timeout=2)
         return True
     except Exception as e:
         print(f"Failed to stop {model_name}: {e}")
         return False
+
 
 def parse_thinking_response(raw_text):
     """
@@ -141,7 +146,7 @@ def parse_thinking_response(raw_text):
     # 1. Standard Case
     think_pattern = r"<thought>(.*?)</thought>"
     match = re.search(think_pattern, raw_text, re.DOTALL)
-    
+
     if match:
         thought = match.group(1).strip()
         answer = re.sub(think_pattern, "", raw_text, flags=re.DOTALL).strip()
@@ -156,12 +161,13 @@ def parse_thinking_response(raw_text):
     # 3. No Thinking detected
     return None, raw_text
 
+
 def run_ingestion(category, arxiv_id):
     """
     Orchestrates the Fetch -> Build pipeline.
     """
     status_log = []
-    
+
     try:
         status_log.append(f"📥 Fetching ArXiv ID: {arxiv_id}...")
         if paper_already_processed(category, arxiv_id):
@@ -170,41 +176,42 @@ def run_ingestion(category, arxiv_id):
             fetch_and_convert_paper(category, arxiv_id)
             status_log.append("📚 Updating Vector Index (this takes a moment)...")
             build_module("papers")
-        
+
         status_log.append(f"✅ Success! {arxiv_id} is now in your library.")
         return True, status_log
     except Exception as e:
         return False, [f"❌ Error: {str(e)}"]
 
+
 def convert_chat_to_markdown(session):
     """
     Converts session JSON to clean Markdown.
     """
-    title = session.get('title', 'Untitled')
-    date = session.get('created_at', 'Unknown Date')
-    
+    title = session.get("title", "Untitled")
+    date = session.get("created_at", "Unknown Date")
+
     md = f"# {title}\n"
     md += f"**Date:** {date}\n\n"
     md += "---\n\n"
-    
+
     for msg in session["messages"]:
-        role = msg['role'].upper()
-        content = msg['content']
-        
+        role = msg["role"].upper()
+        content = msg["content"]
+
         # Clean the markdown export so thoughts don't clutter it (optional)
         # or keep them if you want a full record. Here we separate them.
         thought, clean_content = parse_thinking_response(content)
-        
+
         md += f"### {role}\n\n"
         if thought:
             md += f"> **Thought Process:**\n> {thought.replace('\n', '\n> ')}\n\n"
-        
+
         md += f"{clean_content}\n\n"
-        
+
         if "sources" in msg and msg["sources"]:
             md += "> **Sources:**\n"
             for src in msg["sources"]:
                 md += f"> * {src['file']} ({src['score']:.2f})\n"
             md += "\n"
-            
+
     return md

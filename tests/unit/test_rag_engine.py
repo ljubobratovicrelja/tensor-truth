@@ -2,16 +2,17 @@
 Unit tests for tensortruth.rag_engine module.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from llama_index.core import QueryBundle
 
 from tensortruth.rag_engine import MultiIndexRetriever
 
-
 # ============================================================================
 # Tests for MultiIndexRetriever
 # ============================================================================
+
 
 @pytest.mark.unit
 class TestMultiIndexRetriever:
@@ -114,11 +115,12 @@ class TestMultiIndexRetriever:
 # Tests for get_embed_model (mocked)
 # ============================================================================
 
+
 @pytest.mark.unit
 class TestGetEmbedModel:
     """Tests for get_embed_model function."""
 
-    @patch('tensortruth.rag_engine.HuggingFaceEmbedding')
+    @patch("tensortruth.rag_engine.HuggingFaceEmbedding")
     def test_get_embed_model_cuda(self, mock_embedding_class):
         """Test embedding model initialization with CUDA."""
         from tensortruth.rag_engine import get_embed_model
@@ -136,7 +138,7 @@ class TestGetEmbedModel:
         assert call_kwargs["device"] == "cuda"
         assert "BAAI/bge-m3" in call_kwargs["model_name"]
 
-    @patch('tensortruth.rag_engine.HuggingFaceEmbedding')
+    @patch("tensortruth.rag_engine.HuggingFaceEmbedding")
     def test_get_embed_model_cpu(self, mock_embedding_class):
         """Test embedding model initialization with CPU."""
         from tensortruth.rag_engine import get_embed_model
@@ -149,7 +151,7 @@ class TestGetEmbedModel:
         call_kwargs = mock_embedding_class.call_args[1]
         assert call_kwargs["device"] == "cpu"
 
-    @patch('tensortruth.rag_engine.HuggingFaceEmbedding')
+    @patch("tensortruth.rag_engine.HuggingFaceEmbedding")
     def test_get_embed_model_mps(self, mock_embedding_class):
         """Test embedding model initialization with MPS."""
         from tensortruth.rag_engine import get_embed_model
@@ -167,11 +169,12 @@ class TestGetEmbedModel:
 # Tests for get_llm (mocked)
 # ============================================================================
 
+
 @pytest.mark.unit
 class TestGetLLM:
     """Tests for get_llm function."""
 
-    @patch('tensortruth.rag_engine.Ollama')
+    @patch("tensortruth.rag_engine.Ollama")
     def test_get_llm_defaults(self, mock_ollama_class):
         """Test LLM initialization with default parameters."""
         from tensortruth.rag_engine import get_llm
@@ -185,7 +188,7 @@ class TestGetLLM:
         assert result == mock_llm
         mock_ollama_class.assert_called_once()
 
-    @patch('tensortruth.rag_engine.Ollama')
+    @patch("tensortruth.rag_engine.Ollama")
     def test_get_llm_custom_params(self, mock_ollama_class):
         """Test LLM initialization with custom parameters."""
         from tensortruth.rag_engine import get_llm
@@ -198,7 +201,7 @@ class TestGetLLM:
             "temperature": 0.5,
             "context_window": 8192,
             "system_prompt": "You are a helpful assistant.",
-            "llm_device": "gpu"
+            "llm_device": "gpu",
         }
 
         result = get_llm(params)
@@ -208,7 +211,7 @@ class TestGetLLM:
         assert call_kwargs["temperature"] == 0.5
         assert call_kwargs["context_window"] == 8192
 
-    @patch('tensortruth.rag_engine.Ollama')
+    @patch("tensortruth.rag_engine.Ollama")
     def test_get_llm_cpu_mode(self, mock_ollama_class):
         """Test LLM initialization with CPU mode."""
         from tensortruth.rag_engine import get_llm
@@ -228,11 +231,12 @@ class TestGetLLM:
 # Tests for get_reranker (mocked)
 # ============================================================================
 
+
 @pytest.mark.unit
 class TestGetReranker:
     """Tests for get_reranker function."""
 
-    @patch('tensortruth.rag_engine.SentenceTransformerRerank')
+    @patch("tensortruth.rag_engine.SentenceTransformerRerank")
     def test_get_reranker_defaults(self, mock_reranker_class):
         """Test reranker initialization with defaults."""
         from tensortruth.rag_engine import get_reranker
@@ -248,7 +252,7 @@ class TestGetReranker:
         assert call_kwargs["device"] == "cuda"
         assert call_kwargs["top_n"] == 3  # default
 
-    @patch('tensortruth.rag_engine.SentenceTransformerRerank')
+    @patch("tensortruth.rag_engine.SentenceTransformerRerank")
     def test_get_reranker_custom_model(self, mock_reranker_class):
         """Test reranker with custom model."""
         from tensortruth.rag_engine import get_reranker
@@ -256,10 +260,7 @@ class TestGetReranker:
         mock_reranker = MagicMock()
         mock_reranker_class.return_value = mock_reranker
 
-        params = {
-            "reranker_model": "BAAI/bge-reranker-base",
-            "reranker_top_n": 5
-        }
+        params = {"reranker_model": "BAAI/bge-reranker-base", "reranker_top_n": 5}
         result = get_reranker(params, device="cpu")
 
         call_kwargs = mock_reranker_class.call_args[1]
