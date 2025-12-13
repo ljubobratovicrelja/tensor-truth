@@ -362,7 +362,8 @@ def process_command(prompt, session):
         
         lines.append(f"\n**Pipeline Device:** `{current_params.get('rag_device', 'cuda')}`")
         lines.append(f"**LLM Device:** `{current_params.get('llm_device', 'gpu')}`")
-        lines.append("\n**Usage:** `/load <name>`, `/device rag <cpu|cuda|mps>`, `/device llm <cpu|gpu>`")
+        lines.append(f"**Confidence Cutoff:** `{current_params.get('confidence_cutoff', 0.3)}`")
+        lines.append("\n**Usage:** `/load <name>`, `/device rag <cpu|cuda|mps>`, `/device llm <cpu|gpu>`, `/conf <val>`")
         response_msg = "\n".join(lines)
 
     elif command == "/help":
@@ -374,6 +375,7 @@ def process_command(prompt, session):
             "- **/reload**: Flush VRAM and restart the engine.",
             "- **/device rag <cpu|cuda|mps>**: Move RAG pipeline (Embed/Rerank) to specific hardware.",
             "- **/device llm <cpu|gpu>**: Move LLM (Ollama) to specific hardware.",
+            "- **/conf <0.0-1.0>**: Set the confidence score cutoff for retrieval.",
             "- **/help**: Show this list."
         ]
         response_msg = "\n".join(lines)
@@ -413,6 +415,23 @@ def process_command(prompt, session):
         st.session_state.loaded_config = None
         response_msg = "🔄 **System Reload:** Memory flushed."
         st.rerun()
+
+    elif command in ["/conf", "/confidence"]:
+        if not args:
+            response_msg = "⚠️ Usage: `/conf <value>` (e.g. 0.2)"
+        else:
+            try:
+                new_conf = float(args[0])
+                if 0.0 <= new_conf <= 1.0:
+                    session["params"]["confidence_cutoff"] = new_conf
+                    save_sessions()
+                    st.session_state.loaded_config = None # Force reload to apply postprocessor change
+                    response_msg = f"⚙️ **Confidence Cutoff:** Set to `{new_conf}`. Engine restarting..."
+                    st.rerun()
+                else:
+                    response_msg = "❌ Value must be between 0.0 and 1.0."
+            except ValueError:
+                response_msg = "❌ Invalid number. Example: `/conf 0.3`"
 
     elif command == "/device":
         if len(args) < 2:
