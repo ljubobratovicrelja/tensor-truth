@@ -1,11 +1,95 @@
 import re
 import requests
-from fetch_paper import fetch_and_convert_paper, paper_already_processed
+import os
+import tarfile
+import torch
 
+from fetch_paper import fetch_and_convert_paper, paper_already_processed
 from build_db import build_module
 
 
 OLLAMA_API_BASE = "http://localhost:11434/api"
+
+
+def get_max_memory_gb():
+    """
+    Dynamically determines maximum available memory in GB.
+    - Mac (Apple Silicon): Uses unified memory (total system RAM)
+    - Windows/Linux with CUDA: Uses GPU VRAM
+    - Fallback: CPU RAM
+    """
+    import platform
+
+    # Check if CUDA is available (Windows/Linux with NVIDIA GPU)
+    if torch.cuda.is_available():
+        try:
+            _, total_bytes = torch.cuda.mem_get_info()
+            return total_bytes / (1024**3)
+        except Exception:
+            pass
+
+    # Check if MPS is available (Mac with Apple Silicon - unified memory)
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        try:
+            import psutil
+            # On Apple Silicon, use total system RAM as it's unified memory
+            return psutil.virtual_memory().total / (1024**3)
+        except Exception:
+            pass
+
+    # Fallback to system RAM for CPU-only systems
+    try:
+        import psutil
+        return psutil.virtual_memory().total / (1024**3)
+    except Exception:
+        # Ultimate fallback
+        return 16.0
+
+
+def download_and_extract_indexes(index_dir, gdrive_link):
+    """
+    Check if indexes directory is empty or missing.
+    If so, download tarball from Google Drive, extract it, and clean up.
+    Returns True if download was needed and successful.
+    """
+    # Check if indexes directory exists and has content
+    needs_download = False
+
+    if not os.path.exists(index_dir):
+        needs_download = True
+        os.makedirs(index_dir, exist_ok=True)
+    elif not os.listdir(index_dir):
+        needs_download = True
+
+    if not needs_download:
+        return False
+
+    tarball_path = "indexes.tar"
+
+    try:
+        # Check if gdown is available
+        try:
+            import gdown
+        except ImportError:
+            raise ImportError("gdown library not installed. Install with: pip install gdown")
+
+        # Download using gdown (handles Google Drive's quirks automatically)
+        gdown.download(gdrive_link, tarball_path, quiet=False, fuzzy=True)
+
+        # Extract tarball to root directory (tar already contains indexes/ folder)
+        with tarfile.open(tarball_path, 'r:') as tar:
+            tar.extractall(path=".")
+
+        # Clean up tarball
+        os.remove(tarball_path)
+
+        return True
+
+    except Exception as e:
+        # Clean up partial download
+        if os.path.exists(tarball_path):
+            os.remove(tarball_path)
+        raise e
 
 
 def get_running_models():

@@ -27,11 +27,12 @@ dependencies = [
     "chromadb>=1.3.5",
 
     # --- ML / Embeddings (GPU Support) ---
-    # Note: Torch often defaults to CPU on pip install. 
+    # Note: Torch often defaults to CPU on pip install.
     # Ensure your venv has the CUDA version installed.
     "torch>=2.0",
     "transformers",
     "sentence-transformers",
+    "psutil",  # For system memory detection
 
     # --- Web App ---
     "streamlit",
