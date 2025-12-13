@@ -11,9 +11,7 @@
     "temperature": 0.6,
     "reranker_top_n": 5,
     "confidence_cutoff": 0.0,
-    "system_prompt": "",
-    "rag_device": "cpu",
-    "llm_device": "gpu"
+    "system_prompt": ""
   },
   "DL Coder": {
     "modules": [
@@ -28,8 +26,6 @@
     "temperature": 0.1,
     "reranker_top_n": 3,
     "confidence_cutoff": 0.3,
-    "system_prompt": "You are a coding assistant for machine learning problems. Apart from using the provided resources to answer in the most accurate way, you are also able to reason around the given task on a higher level, helping on architectural problems, both in software architecture and neural network architecture design.",
-    "rag_device": "cpu",
-    "llm_device": "gpu"
+    "system_prompt": "You are a coding assistant for machine learning problems. Apart from using the provided resources to answer in the most accurate way, you are also able to reason around the given task on a higher level, helping on architectural problems, both in software architecture and neural network architecture design."
   }
 }

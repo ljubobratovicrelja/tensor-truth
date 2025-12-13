@@ -118,34 +118,38 @@ def apply_preset(name, available_mods, available_models, available_devices):
     if name not in presets: return
 
     p = presets[name]
-    
-    # Update Session State Keys directly
-    
+
+    # Update Session State Keys directly - only if present in preset
+
     # 1. Modules
-    valid_mods = [m for m in p.get("modules", []) if m in available_mods]
-    st.session_state.setup_mods = valid_mods
-    
+    if "modules" in p:
+        valid_mods = [m for m in p["modules"] if m in available_mods]
+        st.session_state.setup_mods = valid_mods
+
     # 2. Model
-    model = p.get("model")
-    if model in available_models:
-        st.session_state.setup_model = model
-        
-    # 3. Parameters
-    st.session_state.setup_reranker = p.get("reranker_model", "BAAI/bge-reranker-v2-m3")
-    st.session_state.setup_ctx = p.get("context_window", 4096)
-    st.session_state.setup_temp = p.get("temperature", 0.3)
-    st.session_state.setup_top_n = p.get("reranker_top_n", 3)
-    st.session_state.setup_conf = p.get("confidence_cutoff", 0.3)
-    st.session_state.setup_sys_prompt = p.get("system_prompt", "")
-    
-    # 4. Devices
-    rag_dev = p.get("rag_device", "cpu")
-    if rag_dev in available_devices:
-        st.session_state.setup_rag_device = rag_dev
-        
-    llm_dev = p.get("llm_device", "gpu")
-    if llm_dev in ["cpu", "gpu"]:
-        st.session_state.setup_llm_device = llm_dev
+    if "model" in p and p["model"] in available_models:
+        st.session_state.setup_model = p["model"]
+
+    # 3. Parameters - only update if present in preset
+    if "reranker_model" in p:
+        st.session_state.setup_reranker = p["reranker_model"]
+    if "context_window" in p:
+        st.session_state.setup_ctx = p["context_window"]
+    if "temperature" in p:
+        st.session_state.setup_temp = p["temperature"]
+    if "reranker_top_n" in p:
+        st.session_state.setup_top_n = p["reranker_top_n"]
+    if "confidence_cutoff" in p:
+        st.session_state.setup_conf = p["confidence_cutoff"]
+    if "system_prompt" in p:
+        st.session_state.setup_sys_prompt = p["system_prompt"]
+
+    # 4. Devices - only update if present in preset and valid
+    if "rag_device" in p and p["rag_device"] in available_devices:
+        st.session_state.setup_rag_device = p["rag_device"]
+
+    if "llm_device" in p and p["llm_device"] in ["cpu", "gpu"]:
+        st.session_state.setup_llm_device = p["llm_device"]
 
 @st.cache_data(ttl=2, show_spinner=False)
 def get_vram_breakdown():
@@ -585,7 +589,7 @@ if st.session_state.mode == "setup":
                 cpu_index = system_devices.index("cpu")
             except ValueError:
                 cpu_index = 0
-            
+
             st.session_state.setup_mods = []
             st.session_state.setup_model = available_models[default_model_idx] if available_models else None
             st.session_state.setup_reranker = "BAAI/bge-reranker-v2-m3"
@@ -594,9 +598,17 @@ if st.session_state.mode == "setup":
             st.session_state.setup_top_n = 3
             st.session_state.setup_conf = 0.3
             st.session_state.setup_sys_prompt = ""
-            # Default RAG to CPU
-            st.session_state.setup_rag_device = "cpu" if "cpu" in system_devices else "cuda"
-            st.session_state.setup_llm_device = "gpu"
+
+            # Smart device defaults: prefer MPS on Apple Silicon, otherwise CPU/GPU split
+            if "mps" in system_devices:
+                # Apple Silicon - use MPS for both RAG and LLM
+                st.session_state.setup_rag_device = "mps"
+                st.session_state.setup_llm_device = "gpu"  # Ollama will use MPS when available
+            else:
+                # Desktop/CUDA - keep original defaults
+                st.session_state.setup_rag_device = "cpu"
+                st.session_state.setup_llm_device = "gpu"
+
             st.session_state.setup_init = True
             
         st.markdown("### 🚀 Start a New Research Session")
