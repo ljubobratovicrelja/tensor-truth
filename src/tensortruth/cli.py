@@ -3,6 +3,7 @@
 Command-line interface for Tensor-Truth.
 Unified CLI for managing documentation, papers, databases, and the web interface.
 """
+
 import sys
 from pathlib import Path
 
@@ -10,8 +11,8 @@ from pathlib import Path
 def main():
     """Main entry point - launches the Streamlit web application."""
     # Get the project root directory (where app.py lives)
-    project_root = Path(__file__).parent.parent.parent
-    app_path = project_root / "app.py"
+    package_dir = Path(__file__).parent.resolve()
+    app_path = package_dir / "app.py"
 
     if not app_path.exists():
         print(f"Error: Could not find app.py at {app_path}", file=sys.stderr)
