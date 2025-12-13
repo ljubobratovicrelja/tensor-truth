@@ -30,6 +30,15 @@ def get_embed_model(device="cuda"):
 def get_llm(params):
     model_name = params.get("model", "deepseek-r1:14b")
     user_system_prompt = params.get("system_prompt", "").strip()
+    device_mode = params.get("llm_device", "gpu") # 'gpu' or 'cpu'
+    
+    # Ollama specific options
+    ollama_options = {"num_predict": -1} # Prevent truncation
+    
+    # Force CPU if requested
+    if device_mode == "cpu":
+        print(f"Loading LLM {model_name} on: CPU (Forced)")
+        ollama_options["num_gpu"] = 0
     
     return Ollama(
         model=model_name, 
@@ -38,7 +47,7 @@ def get_llm(params):
         context_window=params.get("context_window", 4096),
         additional_kwargs={
             "num_ctx": params.get("context_window", 4096),
-            "options": {"num_predict": -1} # Prevent truncation
+            "options": ollama_options
         },
         system_prompt=user_system_prompt
     )
@@ -74,14 +83,16 @@ def load_engine_for_modules(selected_modules, engine_params=None):
     if engine_params is None: engine_params = {}
 
     similarity_cutoff = engine_params.get("confidence_cutoff", 0.0)
-    device = engine_params.get("rag_device", "cuda") # 'cpu' or 'cuda'
-
-    # Set Global Settings for this session
-    embed_model = get_embed_model(device)
+    
+    # Determine devices
+    rag_device = engine_params.get("rag_device", "cuda")
+    
+    # Set Global Settings for this session (Embedder)
+    embed_model = get_embed_model(rag_device)
     Settings.embedding_model = embed_model
 
     active_retrievers = []
-    print(f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} | DEVICE: {device} ---")
+    print(f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} | RAG DEVICE: {rag_device} ---")
     
     for module in selected_modules:
         path = os.path.join(BASE_INDEX_DIR, module)
@@ -109,7 +120,7 @@ def load_engine_for_modules(selected_modules, engine_params=None):
     llm = get_llm(engine_params)
 
     # Pass device to reranker
-    node_postprocessors = [get_reranker(engine_params, device=device)]
+    node_postprocessors = [get_reranker(engine_params, device=rag_device)]
 
     if similarity_cutoff > 0:
         node_postprocessors.append(SimilarityPostprocessor(similarity_cutoff=similarity_cutoff))

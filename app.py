@@ -16,7 +16,7 @@ from utils import parse_thinking_response, run_ingestion, convert_chat_to_markdo
 # --- CONFIG ---
 SESSIONS_FILE = "chat_sessions.json"
 INDEX_DIR = "./indexes"
-MAX_VRAM_GB = 24.0  # RTX 3090 Ti Limit
+MAX_VRAM_GB = 24.0  # RTX 3090 Ti Limit (Configurable)
 
 st.set_page_config(page_title="Tensor-Truth", layout="wide", page_icon="⚡")
 
@@ -49,12 +49,25 @@ def get_ollama_models():
         pass
     return ["deepseek-r1:8b"] 
 
+def get_system_devices():
+    """Returns list of available compute devices."""
+    devices = ["cpu"]
+    # Check MPS (Apple Silicon)
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        devices.insert(0, "mps")
+    # Check CUDA
+    if torch.cuda.is_available():
+        devices.insert(0, "cuda")
+    return devices
+
 def free_memory():
     if "engine" in st.session_state:
         del st.session_state["engine"]
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        torch.mps.empty_cache()
 
 @st.cache_data(ttl=2, show_spinner=False)
 def get_vram_breakdown():
@@ -65,7 +78,8 @@ def get_vram_breakdown():
     - baseline: What stays (OS, Browser, Display)
     """
     if not torch.cuda.is_available():
-        return {"total_used": 0.0, "reclaimable": 0.0, "baseline": 2.5}
+        # Heuristic for non-CUDA systems (like Mac)
+        return {"total_used": 0.0, "reclaimable": 0.0, "baseline": 4.0}
     
     try:
         # 1. Real Hardware Usage (Everything on the card)
@@ -77,18 +91,14 @@ def get_vram_breakdown():
         
         # 3. Ollama Usage (External process)
         ollama_usage_gb = 0.0
-        # This calls requests.get, so it's good we are caching this function now
         active_models = get_running_models() 
         for m in active_models:
-            # m['size_vram'] is like "4.8 GB"
             try:
                 size_str = m.get('size_vram', '0 GB').split()[0]
                 ollama_usage_gb += float(size_str)
             except: pass
             
         reclaimable = torch_reserved_gb + ollama_usage_gb
-        
-        # Baseline can't be less than 0.5GB realistically
         baseline = max(0.5, total_used_gb - reclaimable)
         
         return {
@@ -96,43 +106,50 @@ def get_vram_breakdown():
             "reclaimable": reclaimable,
             "baseline": baseline
         }
-        
     except Exception:
         return {"total_used": 0.0, "reclaimable": 0.0, "baseline": 2.5}
 
-def estimate_vram_usage(model_name, num_indices, context_window, use_cpu_rag):
+def estimate_vram_usage(model_name, num_indices, context_window, rag_device, llm_device):
     """
     Returns (predicted_total, breakdown_dict, new_session_cost)
     """
     stats = get_vram_breakdown()
     system_baseline = stats["baseline"]
     
-    # --- CALCULATE NEW COST ---
-    # If CPU RAG is enabled, the 1.8GB overhead moves to DDR4/5, not VRAM.
-    rag_overhead = 0.0 if use_cpu_rag else 1.8 
+    # --- RAG COST ---
+    # 1.8GB if running on GPU (CUDA) or MPS (Unified Memory counts as VRAM usage)
+    if rag_device in ["cuda", "mps"]:
+        rag_overhead = 1.8 
+    else:
+        rag_overhead = 0.0 # CPU RAM
     
-    index_overhead = num_indices * 0.15 # Chroma Maps
+    index_overhead = num_indices * 0.15 
     
-    # LLM Model Weights (Heuristic 4-bit)
-    name = model_name.lower()
-    if "70b" in name: llm_size = 40.0
-    elif "32b" in name: llm_size = 19.0
-    elif "14b" in name: llm_size = 9.5
-    elif "8b" in name: llm_size = 5.5
-    elif "7b" in name: llm_size = 5.0
-    elif "1.5b" in name: llm_size = 1.5
-    else: llm_size = 6.0 
+    # --- LLM COST ---
+    if llm_device == "cpu":
+        llm_size = 0.0
+    else:
+        name = model_name.lower()
+        if "70b" in name: llm_size = 40.0
+        elif "32b" in name: llm_size = 19.0
+        elif "14b" in name: llm_size = 9.5
+        elif "8b" in name: llm_size = 5.5
+        elif "7b" in name: llm_size = 5.0
+        elif "1.5b" in name: llm_size = 1.5
+        else: llm_size = 6.0 
     
-    # KV Cache (Linear Approx for context)
+    # KV Cache (Linear Approx)
     kv_cache = (context_window / 4096) * 0.8
-    
+    # KV Cache also moves to RAM if LLM is on CPU
+    if llm_device == "cpu": kv_cache = 0.0
+
     new_session_cost = rag_overhead + index_overhead + llm_size + kv_cache
     predicted_total = system_baseline + new_session_cost
     
     return predicted_total, stats, new_session_cost
 
-def render_vram_gauge(model_name, num_indices, context_window, use_cpu_rag):
-    predicted, stats, new_cost = estimate_vram_usage(model_name, num_indices, context_window, use_cpu_rag)
+def render_vram_gauge(model_name, num_indices, context_window, rag_device, llm_device):
+    predicted, stats, new_cost = estimate_vram_usage(model_name, num_indices, context_window, rag_device, llm_device)
     vram_percent = min(predicted / MAX_VRAM_GB, 1.0)
     
     current_used = stats["total_used"]
@@ -141,20 +158,17 @@ def render_vram_gauge(model_name, num_indices, context_window, use_cpu_rag):
     # Visual Layout
     st.markdown("##### 🖥️ VRAM Status")
     
-    # Detailed Metrics
     m1, m2, m3 = st.columns(3)
     m1.metric("Current Load", f"{current_used:.1f} GB", delta_color="off")
-    m2.metric("Reclaimable", f"{reclaimable:.1f} GB", help="VRAM from Ollama/Torch that will be freed when you start.", delta_color="normal")
+    m2.metric("Reclaimable", f"{reclaimable:.1f} GB", help="VRAM from Ollama/Torch that will be freed.", delta_color="normal")
     m3.metric("Predicted Peak", f"{predicted:.1f} GB", delta=f"{predicted - MAX_VRAM_GB:.1f} GB" if predicted > MAX_VRAM_GB else "Safe", delta_color="inverse")
 
-    # Progress Bar
     color = "green"
     if vram_percent > 0.75: color = "orange"
     if vram_percent > 0.95: color = "red"
     
     st.progress(vram_percent)
     
-    # Context Caption
     if predicted > MAX_VRAM_GB: 
         st.error(f"🛑 Configuration ({predicted:.1f} GB) exceeds limit ({MAX_VRAM_GB} GB).")
     elif predicted > (MAX_VRAM_GB * 0.9): 
@@ -174,7 +188,7 @@ def ensure_engine_loaded(target_modules, target_params):
 
     if current_config is not None:
         placeholder = st.empty()
-        placeholder.info(f"⏳ Loading Model: {target_params.get('model')}... (VRAM Flush)")
+        placeholder.info(f"⏳ Loading Model: {target_params.get('model')} | Pipeline: {target_params.get('rag_device')} | LLM: {target_params.get('llm_device')}...")
         free_memory()
         try:
             engine = load_engine_for_modules(list(target_tuple), target_params)
@@ -242,18 +256,32 @@ def process_command(prompt, session):
     
     active_mods = session.get("modules", [])
     available_mods = get_available_modules()
+    current_params = session.get("params", {})
+    available_devices = get_system_devices()
 
     response_msg = ""
     
     if command in ["/list", "/ls", "/status"]:
-        lines = ["### 📚 Knowledge Base Status"]
+        lines = ["### 📚 Knowledge Base & System Status"]
         for mod in available_mods:
-            if mod in active_mods:
-                lines.append(f"- ✅ **{mod}** (Active)")
-            else:
-                lines.append(f"- ⚪ {mod}")
+            lines.append(f"- {'✅' if mod in active_mods else '⚪'} {mod}")
         
-        lines.append("\n**Usage:** `/load <name>`, `/unload <name>`, `/reload`")
+        lines.append(f"\n**Pipeline Device:** `{current_params.get('rag_device', 'cuda')}`")
+        lines.append(f"**LLM Device:** `{current_params.get('llm_device', 'gpu')}`")
+        lines.append("\n**Usage:** `/load <name>`, `/device rag <cpu|cuda|mps>`, `/device llm <cpu|gpu>`")
+        response_msg = "\n".join(lines)
+
+    elif command == "/help":
+        lines = [
+            "### 🛠️ Command Reference",
+            "- **/list** / **/status**: Show active indices & hardware usage.",
+            "- **/load <index>**: Load a specific knowledge base.",
+            "- **/unload <index>**: Unload a knowledge base.",
+            "- **/reload**: Flush VRAM and restart the engine.",
+            "- **/device rag <cpu|cuda|mps>**: Move RAG pipeline (Embed/Rerank) to specific hardware.",
+            "- **/device llm <cpu|gpu>**: Move LLM (Ollama) to specific hardware.",
+            "- **/help**: Show this list."
+        ]
         response_msg = "\n".join(lines)
 
     elif command == "/load":
@@ -262,13 +290,13 @@ def process_command(prompt, session):
         else:
             target = args[0]
             if target not in available_mods:
-                response_msg = f"❌ Index `{target}` not found in library."
+                response_msg = f"❌ Index `{target}` not found."
             elif target in active_mods:
-                response_msg = f"ℹ️ Index `{target}` is already active."
+                response_msg = f"ℹ️ Index `{target}` is active."
             else:
                 session["modules"].append(target)
                 save_sessions()
-                st.session_state.loaded_config = None # Force reload
+                st.session_state.loaded_config = None 
                 response_msg = f"✅ **Loaded:** `{target}`. Engine restarting..."
                 st.rerun()
 
@@ -278,19 +306,48 @@ def process_command(prompt, session):
         else:
             target = args[0]
             if target not in active_mods:
-                response_msg = f"ℹ️ Index `{target}` is not currently active."
+                response_msg = f"ℹ️ Index `{target}` not active."
             else:
                 session["modules"].remove(target)
                 save_sessions()
-                st.session_state.loaded_config = None # Force reload
+                st.session_state.loaded_config = None
                 response_msg = f"✅ **Unloaded:** `{target}`. Engine restarting..."
                 st.rerun()
 
     elif command == "/reload":
         free_memory()
         st.session_state.loaded_config = None
-        response_msg = "🔄 **System Reload:** Memory flushed and engine restarting..."
+        response_msg = "🔄 **System Reload:** Memory flushed."
         st.rerun()
+
+    elif command == "/device":
+        if len(args) < 2:
+            response_msg = "⚠️ Usage: `/device rag <cpu|cuda|mps>` OR `/device llm <cpu|gpu>`"
+        else:
+            target_type = args[0].lower() # 'rag' or 'llm'
+            target_dev = args[1].lower() # 'cpu', 'cuda', ...
+
+            if target_type == "rag":
+                if target_dev not in available_devices:
+                    response_msg = f"❌ Device `{target_dev}` not available. Options: {available_devices}"
+                else:
+                    session["params"]["rag_device"] = target_dev
+                    save_sessions()
+                    st.session_state.loaded_config = None
+                    response_msg = f"⚙️ **Pipeline Switched:** Now running Embed/Rerank on `{target_dev.upper()}`."
+                    st.rerun()
+            
+            elif target_type == "llm":
+                if target_dev not in ["cpu", "gpu"]:
+                    response_msg = "❌ LLM Device options: `cpu` or `gpu`"
+                else:
+                    session["params"]["llm_device"] = target_dev
+                    save_sessions()
+                    st.session_state.loaded_config = None
+                    response_msg = f"⚙️ **LLM Switched:** Now running Model on `{target_dev.upper()}`."
+                    st.rerun()
+            else:
+                response_msg = "❌ Unknown target. Use `rag` or `llm`."
 
     else:
         return False, None
@@ -337,12 +394,17 @@ with st.sidebar:
         curr_sess = st.session_state.chat_data["sessions"][curr_id]
         
         with st.expander("⚙️ Session Settings", expanded=True):
-            # Dynamic VRAM Monitor in Chat
             p = curr_sess.get("params", {})
             mods = curr_sess.get("modules", [])
-            use_cpu = p.get("rag_device", "cuda") == "cpu"
             
-            render_vram_gauge(p.get('model', 'Unknown'), len(mods), p.get('context_window', 4096), use_cpu)
+            # Dynamic Gauge
+            render_vram_gauge(
+                p.get('model', 'Unknown'), 
+                len(mods), 
+                p.get('context_window', 4096),
+                p.get('rag_device', 'cuda'),
+                p.get('llm_device', 'gpu')
+            )
             
             st.divider()
             
@@ -378,6 +440,7 @@ if st.session_state.mode == "setup":
     with tab_launch:
         available_mods = get_available_modules()
         available_models = get_ollama_models()
+        system_devices = get_system_devices()
         
         # Determine defaults
         default_model_idx = 0
@@ -415,14 +478,34 @@ if st.session_state.mode == "setup":
             conf = st.slider("Confidence Cutoff", 0.0, 1.0, 0.3, 0.05)
             sys_prompt = st.text_area("System Instructions:", height=68, placeholder="Optional...")
             
-            # --- NEW: CPU TOGGLE ---
-            st.markdown("#### Hardware Offloading")
-            use_cpu_rag = st.checkbox("Offload RAG to CPU/RAM (Saves ~2GB VRAM)", value=False, 
-                                    help="Run Embeddings & Reranker on System RAM. Slower retrieval (2-4s), but allows larger LLMs.")
+            st.markdown("#### Hardware Allocation")
+            h1, h2 = st.columns(2)
+            
+            # --- DEFAULTING TO CPU FOR RAG ---
+            # Try to find 'cpu' in the list, otherwise default to 0
+            try:
+                cpu_index = system_devices.index("cpu")
+            except ValueError:
+                cpu_index = 0
+            
+            with h1:
+                rag_device = st.selectbox(
+                    "Pipeline Device (Embed/Rerank)", 
+                    options=system_devices, 
+                    index=cpu_index, # Defaulting to CPU
+                    help="Run Retrieval on specific hardware. CPU saves VRAM but is slower."
+                )
+            with h2:
+                llm_device = st.selectbox(
+                    "Model Device (Ollama)",
+                    options=["gpu", "cpu"],
+                    index=0,
+                    help="Force Ollama to run on CPU to save VRAM for other tasks."
+                )
 
         # --- VRAM ESTIMATION ---
         st.markdown("---")
-        vram_est = render_vram_gauge(selected_model, len(selected_mods), ctx, use_cpu_rag)
+        vram_est = render_vram_gauge(selected_model, len(selected_mods), ctx, rag_device, llm_device)
 
         st.markdown("---")
         
@@ -430,8 +513,8 @@ if st.session_state.mode == "setup":
         if st.button("Start Session", type="primary", use_container_width=True):
             if not selected_mods:
                 st.error("Please select at least one index.")
-            elif vram_est > (MAX_VRAM_GB + 2.0): 
-                st.error(f"Configuration requires ~{vram_est:.1f}GB VRAM. Your limit is {MAX_VRAM_GB}GB. Please reduce Context or Model size.")
+            elif vram_est > (MAX_VRAM_GB + 4.0): # Slight buffer for CPU overflow logic
+                st.error(f"Config is extremely heavy ({vram_est:.1f}GB). Reduce parameters.")
             else:
                 params = {
                     "model": selected_model,
@@ -441,7 +524,8 @@ if st.session_state.mode == "setup":
                     "reranker_model": reranker_model,
                     "reranker_top_n": top_n,
                     "confidence_cutoff": conf,
-                    "rag_device": "cpu" if use_cpu_rag else "cuda"
+                    "rag_device": rag_device,
+                    "llm_device": llm_device
                 }
                 create_session(selected_mods, params)
                 st.session_state.mode = "chat"
@@ -481,7 +565,7 @@ elif st.session_state.mode == "chat":
         engine = None
 
     st.title(session.get("title", "Untitled"))
-    st.caption("💡 Tip: Use `/list` to see indices, `/load <name>` to add, `/unload <name>` to remove.")
+    st.caption("💡 Tip: Type **/help** to see all commands. Use `/device` to manage hardware.")
     
     for msg in session["messages"]:
         with st.chat_message(msg["role"]):
