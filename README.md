@@ -27,9 +27,7 @@ On first launch, pre-built indexes will auto-download from Google Drive (takes a
 
 ## Index Downloads
 
-Pre-built indexes download automatically on startup. Note that Google Drive has rate limits - if you hit the limit, wait a bit before retrying.
-
-Manual download if needed: [indexes.tar](https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing)
+Pre-built indexes download automatically on startup. Note that Google Drive has rate limits, so if it refuses to download, try manually from [indexes.tar](https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing).
 
 Extract to `./indexes` in the project root.
 
