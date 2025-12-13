@@ -6,7 +6,6 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Lock
-from urllib.parse import urlparse
 
 import arxiv
 import pymupdf as fitz
@@ -429,7 +428,7 @@ def fetch_and_convert_paper(
 
     # Prepend Metadata Header
     header = f"""# Title: {paper.title}
-# Authors: {', '.join([a.name for a in paper.authors])}
+# Authors: {", ".join([a.name for a in paper.authors])}
 # Year: {paper.published.year}
 # ArXiv ID: {arxiv_id}
 # Abstract: 
@@ -602,11 +601,11 @@ def fetch_and_convert_book(
 
             # Save chapter markdown
             chapter_safe_name = clean_filename(chapter["title"])
-            md_filename = f"{safe_title}_{i+1:02d}_{chapter_safe_name}.md"
+            md_filename = f"{safe_title}_{i + 1:02d}_{chapter_safe_name}.md"
             md_path = os.path.join(output_dir, md_filename)
 
             header = f"""# Book: {title}
-# Chapter: {chapter['title']}
+# Chapter: {chapter["title"]}
 # Pages: {start_page}-{end_page}
 # Source: {source}
 
@@ -653,7 +652,7 @@ def fetch_and_convert_book(
 
             # Save chapter markdown
             chapter_safe_name = clean_filename(chapter_name)
-            md_filename = f"{safe_title}_{i+1:02d}_{chapter_safe_name}.md"
+            md_filename = f"{safe_title}_{i + 1:02d}_{chapter_safe_name}.md"
             md_path = os.path.join(output_dir, md_filename)
 
             header = f"""# Book: {title}
@@ -786,11 +785,11 @@ def fetch_and_convert_book(
 
             # Save chapter markdown
             chapter_safe_name = clean_filename(chapter["title"])
-            md_filename = f"{safe_title}_{i+1:02d}_{chapter_safe_name}.md"
+            md_filename = f"{safe_title}_{i + 1:02d}_{chapter_safe_name}.md"
             md_path = os.path.join(output_dir, md_filename)
 
             header = f"""# Book: {title}
-# Chapter: {chapter['title']}
+# Chapter: {chapter["title"]}
 # Pages: {start_page}-{end_page}
 # Source: {source}
 
@@ -837,7 +836,7 @@ def fetch_and_convert_book(
 
             # Save chapter markdown
             chapter_safe_name = clean_filename(chapter_name)
-            md_filename = f"{safe_title}_{i+1:02d}_{chapter_safe_name}.md"
+            md_filename = f"{safe_title}_{i + 1:02d}_{chapter_safe_name}.md"
             md_path = os.path.join(output_dir, md_filename)
 
             header = f"""# Book: {title}
@@ -875,13 +874,13 @@ def rebuild_category(config, category, config_path, workers=1, converter="pymupd
     # Check for category-level converter override
     category_converter = config[category].get("converter", converter)
 
-    logging.info(f"\n{'='*60}")
+    logging.info(f"\n{'=' * 60}")
     logging.info(f"Rebuilding category: {category}")
     logging.info(f"Type: {category_type}")
     logging.info(f"Description: {config[category]['description']}")
     logging.info(f"Workers: {workers}")
     logging.info(f"Converter: {category_converter}")
-    logging.info(f"{'='*60}\n")
+    logging.info(f"{'=' * 60}\n")
 
     items = config[category].get("items", [])
     stats = Statistics()
@@ -951,14 +950,14 @@ def rebuild_category(config, category, config_path, workers=1, converter="pymupd
 
     # Print summary
     summary = stats.get_summary()
-    logging.info(f"\n{'='*60}")
+    logging.info(f"\n{'=' * 60}")
     logging.info(f"SUMMARY for {category}")
-    logging.info(f"{'='*60}")
+    logging.info(f"{'=' * 60}")
     logging.info(f"Total items: {summary['total']}")
     logging.info(f"Newly processed: {summary['processed']}")
     logging.info(f"Skipped (already exist): {summary['skipped']}")
     logging.info(f"Failed: {summary['failed']}")
-    logging.info(f"{'='*60}\n")
+    logging.info(f"{'=' * 60}\n")
 
 
 def add_paper_to_config(config, category, arxiv_id, paper_metadata):
@@ -988,25 +987,25 @@ def main():
         epilog="""
 Examples:
   # Add new papers to a category
-  python fetch_paper.py --config papers.json --category dl_foundations --ids 1234.56789 2345.67890
+  tensor-truth-papers --config papers.json --category dl_foundations --ids 1234.56789 2345.67890
   
   # Rebuild all papers in a category from config
-  python fetch_paper.py --config papers.json --rebuild dl_foundations
+  tensor-truth-papers --config papers.json --rebuild dl_foundations
   
   # Rebuild with Marker converter (better math extraction)
-  python fetch_paper.py --config papers.json --rebuild linear_algebra_books --converter marker
+  tensor-truth-papers --config papers.json --rebuild linear_algebra_books --converter marker
   
   # Rebuild multiple categories
-  python fetch_paper.py --config papers.json --rebuild dl_foundations linear_algebra_books
+  tensor-truth-papers --config papers.json --rebuild dl_foundations linear_algebra_books
   
   # Rebuild all categories
-  python fetch_paper.py --config papers.json --rebuild-all
+  tensor-truth-papers --config papers.json --rebuild-all
   
   # Rebuild with parallel workers (faster) and Marker
-  python fetch_paper.py --config papers.json --rebuild-all --workers 8 --converter marker
+  tensor-truth-papers --config papers.json --rebuild-all --workers 8 --converter marker
   
   # List all categories in config
-  python fetch_paper.py --config papers.json --list
+  tensor-truth-papers --config papers.json --list
 
 Converters:
   pymupdf - Fast, good for text-heavy documents (default)

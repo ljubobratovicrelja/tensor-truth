@@ -290,7 +290,7 @@ def scrape_library(
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Scraping: {library_name} v{config['version']}")
     print(f"Doc Type: {config.get('doc_type', 'sphinx')}")
     print(f"Output Format: {output_format}")
@@ -298,7 +298,7 @@ def scrape_library(
     if min_size > 0:
         print(f"Min Size Filter: {min_size} characters")
     print(f"Output: {output_dir}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # 1. Get the list of URLs based on documentation type
     doc_type = config.get(
@@ -344,7 +344,7 @@ def scrape_library(
         print(f"⏭️  Skipped {skipped} files (below {min_size} chars)")
     if failed > 0:
         print(f"❌ Failed {failed} files")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
 
 def list_libraries(config):
@@ -366,37 +366,37 @@ def main():
         epilog="""
 Examples:
   # Scrape a single library (markdown format by default)
-  python scrape_docs.py pytorch
+  tensor-truth-docs pytorch
   
   # Scrape in HTML format instead of markdown
-  python scrape_docs.py opencv --format html
+  tensor-truth-docs opencv --format html
   
   # Scrape with aggressive cleanup (removes diagrams, navigation, etc.)
-  python scrape_docs.py opencv --cleanup
+  tensor-truth-docs opencv --cleanup
   
   # Filter out nearly empty files (< 128 characters)
-  python scrape_docs.py opencv --cleanup --min-size 128
+  tensor-truth-docs opencv --cleanup --min-size 128
   
   # Scrape to cleaned HTML (best for Doxygen docs like OpenCV)
-  python scrape_docs.py opencv --format html --cleanup
+  tensor-truth-docs opencv --format html --cleanup
   
   # Scrape to cleaned Markdown with size filter
-  python scrape_docs.py opencv --format markdown --cleanup --min-size 128
+  tensor-truth-docs opencv --format markdown --cleanup --min-size 128
   
   # Scrape multiple libraries
-  python scrape_docs.py numpy scipy matplotlib
+  tensor-truth-docs numpy scipy matplotlib
   
   # Scrape all libraries with cleanup and size filter
-  python scrape_docs.py --all --cleanup --min-size 128
+  tensor-truth-docs --all --cleanup --min-size 128
   
   # List available libraries
-  python scrape_docs.py --list
+  tensor-truth-docs --list
   
   # Use custom config file
-  python scrape_docs.py --config my_libs.json pytorch
+  tensor-truth-docs --config my_libs.json pytorch
   
   # Adjust parallel workers
-  python scrape_docs.py --workers 10 numpy
+  tensor-truth-docs --workers 10 numpy
         """,
     )
 
@@ -476,18 +476,18 @@ Examples:
     if invalid_libs:
         print(f"❌ Unknown libraries: {', '.join(invalid_libs)}")
         print(f"Available: {', '.join(config.keys())}")
-        print(f"Use --list to see all available libraries")
+        print("Use --list to see all available libraries")
         return
 
     # Scrape each library
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Starting scrape for {len(libraries_to_scrape)} libraries")
     print(f"Workers: {args.workers}")
     print(f"Output Format: {args.format}")
     print(f"Cleanup: {'enabled' if args.cleanup else 'disabled'}")
     if args.min_size > 0:
         print(f"Min Size Filter: {args.min_size} characters")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     for library_name in libraries_to_scrape:
         lib_config = config[library_name]
@@ -500,10 +500,10 @@ Examples:
             min_size=args.min_size,
         )
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"✅ Completed scraping {len(libraries_to_scrape)} libraries")
     print(f"Output directory: {OUTPUT_BASE_DIR}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
 
 if __name__ == "__main__":

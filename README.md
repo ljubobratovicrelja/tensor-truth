@@ -20,7 +20,7 @@ ollama serve
 
 Run the app:
 ```bash
-streamlit run app.py
+tensor-truth
 ```
 
 On first launch, pre-built indexes will auto-download from Google Drive (takes a few minutes).
@@ -68,19 +68,19 @@ Pre-built indexes cover common libraries, but you can create custom knowledge ba
 
 **Scrape Documentation:**
 ```bash
-python -m tensortruth.scrape_docs --list          # Show available libraries
-python -m tensortruth.scrape_docs pytorch         # Scrape PyTorch docs
+tensor-truth-docs --list          # Show available libraries
+tensor-truth-docs pytorch         # Scrape PyTorch docs
 ```
 
 **Fetch Research Papers:**
 ```bash
-python -m tensortruth.fetch_paper --config ./config/papers.json --category your_category --ids 2301.12345
-python -m tensortruth.fetch_paper --rebuild your_category
+tensor-truth-papers --config ./config/papers.json --category your_category --ids 2301.12345
+tensor-truth-papers --rebuild your_category
 ```
 
 **Build Vector Index:**
 ```bash
-python -m tensortruth.build_db module_name
+tensor-truth-build --modules module_name
 ```
 
 ## Configuration

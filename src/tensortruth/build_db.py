@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import shutil
+import sys
 
 import chromadb
 from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreIndex
@@ -70,7 +71,7 @@ def build_module(module_name, chunk_sizes=[2048, 512, 128]):
     print(f"✅ Module '{module_name}' built successfully!")
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--modules",
@@ -94,7 +95,7 @@ if __name__ == "__main__":
         # Check if modules were also specified
         if args.modules:
             print("❌ Cannot use --all and --modules together.")
-            exit(1)
+            return 1
 
         args.modules = [
             name
@@ -120,3 +121,9 @@ if __name__ == "__main__":
         print("=" * 60)
         print(f"\n✅ Completed Module: {module} ")
         print("=" * 60)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -50,6 +50,12 @@ dependencies = [
     "gdown",          # Google Drive downloads
 ] # The Core Stack
 
+[project.scripts]
+tensor-truth = "tensortruth.cli:main"
+tensor-truth-papers = "tensortruth.cli:fetch_paper"
+tensor-truth-docs = "tensortruth.cli:scrape_docs"
+tensor-truth-build = "tensortruth.cli:build_db"
+
 [project.optional-dependencies]
 # Development and testing dependencies
 dev = [
