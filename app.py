@@ -209,6 +209,44 @@ def ensure_engine_loaded(target_modules, target_params):
             st.error(f"Startup Failed: {e}")
             st.stop()
 
+def generate_smart_title(text, model_name):
+    """
+    Uses the local LLM to generate a concise title.
+    Returns the generated title or a truncated fallback.
+    """
+    try:
+        # Prompt designed to minimize fluff
+        prompt = f"Summarize this query into a concise 3-5 word title. Return ONLY the title text, no quotes. Query: {text}"
+        
+        payload = {
+            "model": model_name,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "num_ctx": 1024, # Low context for speed
+                "num_predict": 20 # Short answer
+            }
+        }
+        
+        # Direct API call to avoid spinning up full engine logic
+        resp = requests.post("http://localhost:11434/api/generate", json=payload, timeout=5)
+        if resp.status_code == 200:
+            raw = resp.json().get("response", "")
+            
+            # Clean reasoning traces if model uses them (e.g. DeepSeek-R1)
+            _, clean = parse_thinking_response(raw)
+            
+            # Final cleanup
+            title = clean.replace('"', '').replace("'", "").replace(".", "").strip()
+            if title:
+                return title
+    except Exception as e:
+        # Silently fail to fallback
+        pass
+    
+    # Fallback
+    return (text[:30] + '..') if len(text) > 30 else text
+
 # --- SESSION MGMT ---
 def load_sessions():
     if os.path.exists(SESSIONS_FILE):
@@ -234,10 +272,10 @@ def create_session(modules, params):
     save_sessions()
     return new_id
 
-def update_title(session_id, text):
+def update_title(session_id, text, model_name):
     session = st.session_state.chat_data["sessions"][session_id]
     if session.get("title") == "New Session":
-        new_title = (text[:30] + '..') if len(text) > 30 else text
+        new_title = generate_smart_title(text, model_name)
         session["title"] = new_title
         save_sessions()
 
@@ -593,7 +631,8 @@ elif st.session_state.mode == "chat":
                 st.rerun()
         
         # 2. STANDARD CHAT PROCESSING
-        update_title(current_id, prompt)
+        # Note: update_title uses the active model for summarization
+        update_title(current_id, prompt, params.get("model"))
         
         with st.chat_message("user"): st.markdown(prompt)
         session["messages"].append({"role": "user", "content": prompt})
