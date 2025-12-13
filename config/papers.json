@@ -218,10 +218,10 @@
         "description": "Linear Algebra - Foundational textbooks and materials on vectors, matrices, eigenvalues, and linear transformations",
         "items": [
             {
-                "title": "Introduction to Linear Algebra (Gilbert Strang, 5th Edition)",
-                "source": "https://math.mit.edu/~gs/linearalgebra/ila5/linearalgebra5_Front.pdf",
+                "title": "Linear Algebra (David Cherney, Tom Denton, Rohit Thomas and Andrew Waldron, UC Davis)",
+                "source": "https://www.math.ucdavis.edu/~linear/linear-guest.pdf",
                 "split_method": "toc",
-                "notes": "Classic MIT textbook by Gilbert Strang. Covers fundamental concepts with clear explanations."
+                "notes": "Comprehensive free textbook covering all standard linear algebra topics. Used in UC Davis course."
             },
             {
                 "title": "Linear Algebra Done Right (Sheldon Axler, 3rd Edition)",
