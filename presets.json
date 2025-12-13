@@ -14,5 +14,22 @@
     "system_prompt": "",
     "rag_device": "cpu",
     "llm_device": "gpu"
+  },
+  "DL Coder": {
+    "modules": [
+      "pytorch_2.9",
+      "deep_learning_books",
+      "matplotlib_3.10",
+      "dl_foundations"
+    ],
+    "model": "deepseek-coder-v2:16b",
+    "reranker_model": "BAAI/bge-reranker-v2-m3",
+    "context_window": 4096,
+    "temperature": 0.1,
+    "reranker_top_n": 3,
+    "confidence_cutoff": 0.3,
+    "system_prompt": "You are a coding assistant for machine learning problems. Apart from using the provided resources to answer in the most accurate way, you are also able to reason around the given task on a higher level, helping on architectural problems, both in software architecture and neural network architecture design.",
+    "rag_device": "cpu",
+    "llm_device": "gpu"
   }
 }
