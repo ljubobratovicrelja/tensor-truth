@@ -10,8 +10,8 @@ import requests
 from datetime import datetime
 
 sys.path.append(os.path.abspath("./src"))
-from rag_engine import load_engine_for_modules
-from utils import (
+from tensortruth import (
+    load_engine_for_modules,
     parse_thinking_response,
     run_ingestion,
     convert_chat_to_markdown,

@@ -4,8 +4,8 @@ import os
 import tarfile
 import torch
 
-from fetch_paper import fetch_and_convert_paper, paper_already_processed
-from build_db import build_module
+from tensortruth.fetch_paper import fetch_and_convert_paper, paper_already_processed
+from tensortruth.build_db import build_module
 
 
 OLLAMA_API_BASE = "http://localhost:11434/api"
