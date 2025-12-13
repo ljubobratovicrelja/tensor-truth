@@ -95,7 +95,7 @@ def get_vram_breakdown():
     except Exception:
         return {"total_used": 0.0, "reclaimable": 0.0, "baseline": 2.5}
 
-def estimate_vram_usage(model_name, num_indices, context_window):
+def estimate_vram_usage(model_name, num_indices, context_window, use_cpu_rag):
     """
     Returns (predicted_total, breakdown_dict, new_session_cost)
     """
@@ -103,7 +103,9 @@ def estimate_vram_usage(model_name, num_indices, context_window):
     system_baseline = stats["baseline"]
     
     # --- CALCULATE NEW COST ---
-    rag_overhead = 1.8 # Embedder (BGE-M3) + Reranker loaded on GPU
+    # If CPU RAG is enabled, the 1.8GB overhead moves to DDR4/5, not VRAM.
+    rag_overhead = 0.0 if use_cpu_rag else 1.8 
+    
     index_overhead = num_indices * 0.15 # Chroma Maps
     
     # LLM Model Weights (Heuristic 4-bit)
@@ -124,8 +126,8 @@ def estimate_vram_usage(model_name, num_indices, context_window):
     
     return predicted_total, stats, new_session_cost
 
-def render_vram_gauge(model_name, num_indices, context_window):
-    predicted, stats, new_cost = estimate_vram_usage(model_name, num_indices, context_window)
+def render_vram_gauge(model_name, num_indices, context_window, use_cpu_rag):
+    predicted, stats, new_cost = estimate_vram_usage(model_name, num_indices, context_window, use_cpu_rag)
     vram_percent = min(predicted / MAX_VRAM_GB, 1.0)
     
     current_used = stats["total_used"]
@@ -333,7 +335,9 @@ with st.sidebar:
             # Dynamic VRAM Monitor in Chat
             p = curr_sess.get("params", {})
             mods = curr_sess.get("modules", [])
-            render_vram_gauge(p.get('model', 'Unknown'), len(mods), p.get('context_window', 4096))
+            use_cpu = p.get("rag_device", "cuda") == "cpu"
+            
+            render_vram_gauge(p.get('model', 'Unknown'), len(mods), p.get('context_window', 4096), use_cpu)
             
             st.divider()
             
@@ -405,10 +409,15 @@ if st.session_state.mode == "setup":
             top_n = st.number_input("Top N (Final Context)", min_value=1, max_value=20, value=3)
             conf = st.slider("Confidence Cutoff", 0.0, 1.0, 0.3, 0.05)
             sys_prompt = st.text_area("System Instructions:", height=68, placeholder="Optional...")
+            
+            # --- NEW: CPU TOGGLE ---
+            st.markdown("#### Hardware Offloading")
+            use_cpu_rag = st.checkbox("Offload RAG to CPU/RAM (Saves ~2GB VRAM)", value=False, 
+                                    help="Run Embeddings & Reranker on System RAM. Slower retrieval (2-4s), but allows larger LLMs.")
 
         # --- VRAM ESTIMATION ---
         st.markdown("---")
-        vram_est = render_vram_gauge(selected_model, len(selected_mods), ctx)
+        vram_est = render_vram_gauge(selected_model, len(selected_mods), ctx, use_cpu_rag)
 
         st.markdown("---")
         
@@ -426,7 +435,8 @@ if st.session_state.mode == "setup":
                     "system_prompt": sys_prompt,
                     "reranker_model": reranker_model,
                     "reranker_top_n": top_n,
-                    "confidence_cutoff": conf
+                    "confidence_cutoff": conf,
+                    "rag_device": "cpu" if use_cpu_rag else "cuda"
                 }
                 create_session(selected_mods, params)
                 st.session_state.mode = "chat"

@@ -18,10 +18,11 @@ import chromadb
 # --- GLOBAL CONFIG ---
 BASE_INDEX_DIR = "./indexes"
 
-def get_embed_model():
+def get_embed_model(device="cuda"):
+    print(f"Loading Embedder on: {device.upper()}")
     return HuggingFaceEmbedding(
         model_name="BAAI/bge-m3",
-        device="cuda",
+        device=device,
         model_kwargs={"trust_remote_code": True},
         embed_batch_size=16
     )
@@ -42,18 +43,17 @@ def get_llm(params):
         system_prompt=user_system_prompt
     )
 
-def get_reranker(params):
+def get_reranker(params, device="cuda"):
     # Default to the high-precision BGE-M3 v2 if not specified
     model = params.get("reranker_model", "BAAI/bge-reranker-v2-m3")
     top_n = params.get("reranker_top_n", 3)
     
+    print(f"Loading Reranker on: {device.upper()}")
     return SentenceTransformerRerank(
         model=model, 
         top_n=top_n,
-        device="cuda"
+        device=device
     )
-
-Settings.embedding_model = get_embed_model()
 
 class MultiIndexRetriever(BaseRetriever):
     def __init__(self, retrievers):
@@ -74,9 +74,14 @@ def load_engine_for_modules(selected_modules, engine_params=None):
     if engine_params is None: engine_params = {}
 
     similarity_cutoff = engine_params.get("confidence_cutoff", 0.0)
+    device = engine_params.get("rag_device", "cuda") # 'cpu' or 'cuda'
+
+    # Set Global Settings for this session
+    embed_model = get_embed_model(device)
+    Settings.embedding_model = embed_model
 
     active_retrievers = []
-    print(f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} ---")
+    print(f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} | DEVICE: {device} ---")
     
     for module in selected_modules:
         path = os.path.join(BASE_INDEX_DIR, module)
@@ -87,7 +92,9 @@ def load_engine_for_modules(selected_modules, engine_params=None):
         vector_store = ChromaVectorStore(chroma_collection=collection)
         
         storage_context = StorageContext.from_defaults(persist_dir=path, vector_store=vector_store)
-        index = load_index_from_storage(storage_context, embed_model=get_embed_model())
+        
+        # Explicitly pass the embed_model to ensure consistency
+        index = load_index_from_storage(storage_context, embed_model=embed_model)
         
         base = index.as_retriever(similarity_top_k=10)
         am_retriever = AutoMergingRetriever(base, index.storage_context, verbose=False)
@@ -101,7 +108,8 @@ def load_engine_for_modules(selected_modules, engine_params=None):
     memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
     llm = get_llm(engine_params)
 
-    node_postprocessors = [get_reranker(engine_params)]
+    # Pass device to reranker
+    node_postprocessors = [get_reranker(engine_params, device=device)]
 
     if similarity_cutoff > 0:
         node_postprocessors.append(SimilarityPostprocessor(similarity_cutoff=similarity_cutoff))
