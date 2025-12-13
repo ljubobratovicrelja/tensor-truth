@@ -15,6 +15,7 @@ from utils import parse_thinking_response, run_ingestion, convert_chat_to_markdo
 
 # --- CONFIG ---
 SESSIONS_FILE = "chat_sessions.json"
+PRESETS_FILE = "presets.json"
 INDEX_DIR = "./indexes"
 MAX_VRAM_GB = 24.0  # RTX 3090 Ti Limit (Configurable)
 
@@ -68,6 +69,62 @@ def free_memory():
         torch.cuda.empty_cache()
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         torch.mps.empty_cache()
+
+# --- PRESET MANAGEMENT ---
+def load_presets():
+    if os.path.exists(PRESETS_FILE):
+        try:
+            with open(PRESETS_FILE, "r", encoding="utf-8") as f: return json.load(f)
+        except: pass
+    return {}
+
+def save_preset(name, config):
+    presets = load_presets()
+    presets[name] = config
+    with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+        json.dump(presets, f, indent=2)
+
+def delete_preset(name):
+    presets = load_presets()
+    if name in presets:
+        del presets[name]
+        with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+            json.dump(presets, f, indent=2)
+
+def apply_preset(name, available_mods, available_models, available_devices):
+    presets = load_presets()
+    if name not in presets: return
+
+    p = presets[name]
+    
+    # Update Session State Keys directly
+    # Validation: Ensure referenced items still exist
+    
+    # 1. Modules
+    valid_mods = [m for m in p.get("modules", []) if m in available_mods]
+    st.session_state.setup_mods = valid_mods
+    
+    # 2. Model
+    model = p.get("model")
+    if model in available_models:
+        st.session_state.setup_model = model
+        
+    # 3. Parameters
+    st.session_state.setup_reranker = p.get("reranker_model", "BAAI/bge-reranker-v2-m3")
+    st.session_state.setup_ctx = p.get("context_window", 4096)
+    st.session_state.setup_temp = p.get("temperature", 0.3)
+    st.session_state.setup_top_n = p.get("reranker_top_n", 3)
+    st.session_state.setup_conf = p.get("confidence_cutoff", 0.3)
+    st.session_state.setup_sys_prompt = p.get("system_prompt", "")
+    
+    # 4. Devices
+    rag_dev = p.get("rag_device", "cpu")
+    if rag_dev in available_devices:
+        st.session_state.setup_rag_device = rag_dev
+        
+    llm_dev = p.get("llm_device", "gpu")
+    if llm_dev in ["cpu", "gpu"]:
+        st.session_state.setup_llm_device = llm_dev
 
 @st.cache_data(ttl=2, show_spinner=False)
 def get_vram_breakdown():
@@ -476,27 +533,66 @@ if st.session_state.mode == "setup":
     tab_launch, tab_ingest = st.tabs(["🚀 Launch Session", "📥 Library Ingestion"])
     
     with tab_launch:
+        # 1. Fetch Data
         available_mods = get_available_modules()
         available_models = get_ollama_models()
         system_devices = get_system_devices()
+        presets = load_presets()
         
-        # Determine defaults
         default_model_idx = 0
         for i, m in enumerate(available_models):
             if "deepseek-r1:8b" in m: default_model_idx = i
         
+        # 2. Initialize Widget State if New
+        if "setup_init" not in st.session_state:
+            try:
+                cpu_index = system_devices.index("cpu")
+            except ValueError:
+                cpu_index = 0
+            
+            st.session_state.setup_mods = []
+            st.session_state.setup_model = available_models[default_model_idx] if available_models else None
+            st.session_state.setup_reranker = "BAAI/bge-reranker-v2-m3"
+            st.session_state.setup_ctx = 4096
+            st.session_state.setup_temp = 0.3
+            st.session_state.setup_top_n = 3
+            st.session_state.setup_conf = 0.3
+            st.session_state.setup_sys_prompt = ""
+            st.session_state.setup_rag_device = "cpu" if "cpu" in system_devices else "cuda"
+            st.session_state.setup_llm_device = "gpu"
+            st.session_state.setup_init = True
+            
         st.markdown("### 🚀 Start a New Research Session")
         st.caption("Configure your knowledge base and model parameters.")
+
+        # --- PRESETS SECTION ---
+        if presets:
+            with st.expander("📁 Saved Configurations (Presets)", expanded=True):
+                col_p1, col_p2, col_p3 = st.columns([3, 1, 1])
+                with col_p1:
+                    selected_preset = st.selectbox("Select Preset:", list(presets.keys()), label_visibility="collapsed")
+                with col_p2:
+                    if st.button("📂 Load", use_container_width=True):
+                        apply_preset(selected_preset, available_mods, available_models, system_devices)
+                        st.rerun()
+                with col_p3:
+                    if st.button("🗑️ Delete", type="primary", use_container_width=True):
+                        delete_preset(selected_preset)
+                        st.rerun()
 
         # --- SELECTION AREA ---
         col_a, col_b = st.columns(2)
         with col_a:
             st.subheader("1. Knowledge Base")
-            selected_mods = st.multiselect("Active Indices:", available_mods, default=[])
+            selected_mods = st.multiselect("Active Indices:", available_mods, key="setup_mods")
         
         with col_b:
             st.subheader("2. Model Selection")
-            selected_model = st.selectbox("LLM:", available_models, index=default_model_idx)
+            if available_models:
+                selected_model = st.selectbox("LLM:", available_models, key="setup_model")
+            else:
+                st.error("No models found in Ollama.")
+                selected_model = "None"
             
         st.subheader("3. RAG Parameters")
         p1, p2, p3 = st.columns(3)
@@ -504,42 +600,62 @@ if st.session_state.mode == "setup":
             reranker_model = st.selectbox(
                 "Reranker", 
                 options=["BAAI/bge-reranker-v2-m3", "BAAI/bge-reranker-base", "cross-encoder/ms-marco-MiniLM-L-6-v2"],
-                index=0
+                key="setup_reranker"
             )
         with p2:
-            ctx = st.select_slider("Context Window", options=[2048, 4096, 8192, 16384, 32768], value=4096)
+            ctx = st.select_slider("Context Window", options=[2048, 4096, 8192, 16384, 32768], key="setup_ctx")
         with p3:
-            temp = st.slider("Temperature", 0.0, 1.0, 0.3, 0.1)
+            temp = st.slider("Temperature", 0.0, 1.0, step=0.1, key="setup_temp")
 
         with st.expander("Advanced Settings"):
-            top_n = st.number_input("Top N (Final Context)", min_value=1, max_value=20, value=3)
-            conf = st.slider("Confidence Cutoff", 0.0, 1.0, 0.3, 0.05)
-            sys_prompt = st.text_area("System Instructions:", height=68, placeholder="Optional...")
+            top_n = st.number_input("Top N (Final Context)", min_value=1, max_value=20, key="setup_top_n")
+            conf = st.slider("Confidence Cutoff", 0.0, 1.0, step=0.05, key="setup_conf")
+            sys_prompt = st.text_area("System Instructions:", height=68, placeholder="Optional...", key="setup_sys_prompt")
             
             st.markdown("#### Hardware Allocation")
             h1, h2 = st.columns(2)
-            
-            # --- DEFAULTING TO CPU FOR RAG ---
-            # Try to find 'cpu' in the list, otherwise default to 0
-            try:
-                cpu_index = system_devices.index("cpu")
-            except ValueError:
-                cpu_index = 0
             
             with h1:
                 rag_device = st.selectbox(
                     "Pipeline Device (Embed/Rerank)", 
                     options=system_devices, 
-                    index=cpu_index, # Defaulting to CPU
-                    help="Run Retrieval on specific hardware. CPU saves VRAM but is slower."
+                    help="Run Retrieval on specific hardware. CPU saves VRAM but is slower.",
+                    key="setup_rag_device"
                 )
             with h2:
                 llm_device = st.selectbox(
                     "Model Device (Ollama)",
                     options=["gpu", "cpu"],
-                    index=0,
-                    help="Force Ollama to run on CPU to save VRAM for other tasks."
+                    help="Force Ollama to run on CPU to save VRAM for other tasks.",
+                    key="setup_llm_device"
                 )
+
+        # --- SAVE PRESET SECTION ---
+        with st.expander("💾 Save Configuration as Preset"):
+            col_s1, col_s2 = st.columns([3, 1])
+            with col_s1:
+                new_preset_name = st.text_input("Preset Name", placeholder="e.g. 'Deep Search 32B'")
+            with col_s2:
+                st.write("") # Spacer
+                st.write("") 
+                if st.button("Save", use_container_width=True):
+                    if new_preset_name:
+                        config_to_save = {
+                            "modules": selected_mods,
+                            "model": selected_model,
+                            "reranker_model": reranker_model,
+                            "context_window": ctx,
+                            "temperature": temp,
+                            "reranker_top_n": top_n,
+                            "confidence_cutoff": conf,
+                            "system_prompt": sys_prompt,
+                            "rag_device": rag_device,
+                            "llm_device": llm_device
+                        }
+                        save_preset(new_preset_name, config_to_save)
+                        st.success(f"Saved: {new_preset_name}")
+                        time.sleep(1)
+                        st.rerun()
 
         # --- VRAM ESTIMATION ---
         st.markdown("---")
