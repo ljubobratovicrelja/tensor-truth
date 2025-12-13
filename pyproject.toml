@@ -107,6 +107,10 @@ testpaths = ["tests"]
 # Add src to Python path
 pythonpath = ["src"]
 
+# Asyncio configuration
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
 # Markers for categorizing tests
 markers = [
     "unit: Unit tests (fast, isolated)",
