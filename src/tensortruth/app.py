@@ -4,7 +4,7 @@ import time
 
 import streamlit as st
 
-from tensortruth import convert_chat_to_markdown, get_max_memory_gb, run_ingestion
+from tensortruth import convert_chat_to_markdown, get_max_memory_gb
 from tensortruth.app_utils import (
     apply_preset,
     create_session,
@@ -180,9 +180,7 @@ if st.session_state.get("show_preset_delete_confirm", False):
 if st.session_state.mode == "setup":
     st.title("Control Center")
 
-    tab_launch, tab_ingest = st.tabs(["🚀 Launch Session", "📥 Library Ingestion"])
-
-    with tab_launch:
+    with st.container():
         # 1. Fetch Data
         available_mods = get_available_modules(INDEX_DIR)
         available_models = get_ollama_models()
@@ -415,23 +413,6 @@ if st.session_state.mode == "setup":
                         st.success(f"Saved: {new_preset_name}")
                         time.sleep(1)
                         st.rerun()
-
-    with tab_ingest:
-        st.subheader("Add Papers to Library")
-        arxiv_input = st.text_input("ArXiv ID (e.g., 2310.06825):")
-        if st.button("Fetch & Index"):
-            if not arxiv_input:
-                st.warning("Please enter an ID.")
-            else:
-                progress = st.empty()
-                progress.info("⏳ Starting ingestion pipeline...")
-                success, logs = run_ingestion("papers", arxiv_input)
-                for log in logs:
-                    st.text(log)
-                if success:
-                    st.success("Ingestion Complete!")
-                    time.sleep(2)
-                    st.rerun()
 
 elif st.session_state.mode == "chat":
     current_id = st.session_state.chat_data.get("current_id")
