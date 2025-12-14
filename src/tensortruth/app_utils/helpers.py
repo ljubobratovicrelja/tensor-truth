@@ -1,10 +1,11 @@
 """General helper functions for the Streamlit app."""
 
+import asyncio
 import gc
 import os
 import tarfile
 
-import requests
+import aiohttp
 import torch
 
 from tensortruth import load_engine_for_modules
@@ -95,16 +96,24 @@ except ImportError:
     pass
 
 
-def get_ollama_models():
-    """Fetches list of available models from local Ollama instance."""
+async def get_ollama_models_async():
+    """Fetches list of available models from local Ollama instance (async version)."""
     try:
-        response = requests.get("http://localhost:11434/api/tags", timeout=1)
-        if response.status_code == 200:
-            models = [m["name"] for m in response.json()["models"]]
-            return sorted(models)
+        timeout = aiohttp.ClientTimeout(total=1)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get("http://localhost:11434/api/tags") as response:
+                if response.status == 200:
+                    data = await response.json()
+                    models = [m["name"] for m in data["models"]]
+                    return sorted(models)
     except Exception:
         pass
     return ["deepseek-r1:8b"]
+
+
+def get_ollama_models():
+    """Fetches list of available models from local Ollama instance (sync wrapper)."""
+    return asyncio.run(get_ollama_models_async())
 
 
 # Cache decorator will be applied by Streamlit app if streamlit is available

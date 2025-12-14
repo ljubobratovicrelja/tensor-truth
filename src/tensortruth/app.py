@@ -1,5 +1,6 @@
 """Tensor-Truth Streamlit Application - Main Entry Point."""
 
+import asyncio
 import time
 
 import streamlit as st
@@ -22,8 +23,8 @@ from tensortruth.app_utils import (
     render_vram_gauge,
     save_preset,
     save_sessions,
-    update_title,
 )
+from tensortruth.app_utils.session import update_title_async
 
 # --- CONFIG ---
 SESSIONS_FILE = "chat_sessions.json"
@@ -488,9 +489,13 @@ elif st.session_state.mode == "chat":
         session["messages"].append({"role": "user", "content": prompt})
         save_sessions(SESSIONS_FILE)
 
-        # Update title in background (can be slow with LLM)
-        with st.spinner("Updating session title..."):
-            update_title(current_id, prompt, params.get("model"), SESSIONS_FILE)
+        # Update title in background (can be slow with LLM) - using async for better responsiveness
+        async def update_title_task():
+            await update_title_async(
+                current_id, prompt, params.get("model"), SESSIONS_FILE
+            )
+
+        asyncio.run(update_title_task())
 
         with st.chat_message("assistant"):
             if engine:
@@ -498,16 +503,19 @@ elif st.session_state.mode == "chat":
                 try:
                     # Show RAG pipeline status with actual spinner
                     with st.spinner("🔍 Processing query through RAG pipeline..."):
-                        # The actual RAG work happens here (embedding, retrieval, reranking)
-                        streaming_response = engine.stream_chat(prompt)
+                        # Use async streaming for better responsiveness
+                        async def get_streaming_response():
+                            return await engine.astream_chat(prompt)
 
-                    # Stream the response
-                    def response_generator():
-                        for token in streaming_response.response_gen:
+                        streaming_response = asyncio.run(get_streaming_response())
+
+                    # Stream the response asynchronously
+                    async def async_response_generator():
+                        async for token in streaming_response.async_response_gen():
                             yield token
 
                     # Display streaming response
-                    answer = st.write_stream(response_generator())
+                    answer = st.write_stream(async_response_generator())
 
                     elapsed = time.time() - start_time
 

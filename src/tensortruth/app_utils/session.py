@@ -1,5 +1,6 @@
 """Session management for chat sessions."""
 
+import asyncio
 import json
 import os
 import uuid
@@ -7,7 +8,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from .title_generation import generate_smart_title
+from .title_generation import generate_smart_title_async
 
 
 def load_sessions(sessions_file: str):
@@ -42,13 +43,18 @@ def create_session(modules, params, sessions_file: str):
     return new_id
 
 
-def update_title(session_id, text, model_name, sessions_file: str):
-    """Update session title using smart title generation."""
+async def update_title_async(session_id, text, model_name, sessions_file: str):
+    """Update session title using smart title generation (async version)."""
     session = st.session_state.chat_data["sessions"][session_id]
     if session.get("title") == "New Session":
-        new_title = generate_smart_title(text, model_name)
+        new_title = await generate_smart_title_async(text, model_name)
         session["title"] = new_title
         save_sessions(sessions_file)
+
+
+def update_title(session_id, text, model_name, sessions_file: str):
+    """Update session title using smart title generation (sync wrapper)."""
+    asyncio.run(update_title_async(session_id, text, model_name, sessions_file))
 
 
 def rename_session(new_title, sessions_file: str):
