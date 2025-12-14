@@ -2,12 +2,61 @@
 
 import gc
 import os
+import tarfile
 
 import requests
 import streamlit as st
 import torch
 
-from tensortruth import download_and_extract_indexes, load_engine_for_modules
+from tensortruth import load_engine_for_modules
+
+
+def _download_and_extract_indexes(index_dir: str, gdrive_link: str):
+    """
+    Check if indexes directory is empty or missing.
+    If so, download tarball from Google Drive, extract it, and clean up.
+    Returns True if download was needed and successful.
+    """
+    # Check if indexes directory exists and has content
+    needs_download = False
+
+    if not os.path.exists(index_dir):
+        needs_download = True
+        os.makedirs(index_dir, exist_ok=True)
+    elif not os.listdir(index_dir):
+        needs_download = True
+
+    if not needs_download:
+        return False
+
+    tarball_path = "indexes.tar"
+
+    try:
+        # Check if gdown is available
+        try:
+            import gdown
+        except ImportError:
+            raise ImportError(
+                "gdown library not installed. Install with: pip install gdown"
+            )
+
+        # Download using gdown (handles Google Drive's quirks automatically)
+        gdown.download(gdrive_link, tarball_path, quiet=False, fuzzy=True)
+
+        # Extract tarball to root directory (tar already contains indexes/ folder)
+        with tarfile.open(tarball_path, "r:") as tar:
+            tar.extractall(path=".")
+
+        # Clean up tarball
+        os.remove(tarball_path)
+
+        return True
+
+    except Exception as e:
+        # Clean up partial download
+        if os.path.exists(tarball_path):
+            os.remove(tarball_path)
+        raise e
 
 
 def download_indexes_with_ui(index_dir: str, gdrive_link: str):
@@ -18,7 +67,7 @@ def download_indexes_with_ui(index_dir: str, gdrive_link: str):
         with st.spinner(
             "📥 Downloading indexes from Google Drive (this may take a few minutes)..."
         ):
-            success = download_and_extract_indexes(index_dir, gdrive_link)
+            success = _download_and_extract_indexes(index_dir, gdrive_link)
             if success:
                 st.success("✅ Indexes downloaded and extracted successfully!")
     except ImportError as e:

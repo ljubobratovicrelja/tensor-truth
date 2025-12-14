@@ -30,25 +30,27 @@ def __getattr__(name):
 
         return locals()[name]
 
-    # Utils exports
+    # Utils exports (core utilities)
     if name in (
         "parse_thinking_response",
         "run_ingestion",
         "convert_chat_to_markdown",
-        "get_running_models",
-        "get_max_memory_gb",
-        "download_and_extract_indexes",
-        "stop_model",
     ):
         from tensortruth.utils import (
             convert_chat_to_markdown,
-            download_and_extract_indexes,
-            get_max_memory_gb,
-            get_running_models,
             parse_thinking_response,
             run_ingestion,
-            stop_model,
         )
+
+        return locals()[name]
+
+    # Core exports (system and ollama utilities)
+    if name in (
+        "get_running_models",
+        "get_max_memory_gb",
+        "stop_model",
+    ):
+        from tensortruth.core import get_max_memory_gb, get_running_models, stop_model
 
         return locals()[name]
 
@@ -84,13 +86,13 @@ __all__ = [
     "get_llm",
     "get_reranker",
     "MultiIndexRetriever",
-    # Utils
+    # Utils (Core)
     "parse_thinking_response",
     "run_ingestion",
     "convert_chat_to_markdown",
+    # Core (System & Ollama)
     "get_running_models",
     "get_max_memory_gb",
-    "download_and_extract_indexes",
     "stop_model",
     # Database Building
     "build_module",

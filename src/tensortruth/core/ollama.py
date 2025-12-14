@@ -1,0 +1,48 @@
+"""Ollama API interaction utilities."""
+
+import logging
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+OLLAMA_API_BASE = "http://localhost:11434/api"
+
+
+def get_running_models():
+    """
+    Equivalent to `ollama ps`. Returns list of active models with VRAM usage.
+    """
+    try:
+        response = requests.get(f"{OLLAMA_API_BASE}/ps", timeout=2)
+        if response.status_code == 200:
+            data = response.json()
+            # simplify data for UI
+            active = []
+            for m in data.get("models", []):
+                active.append(
+                    {
+                        "name": m["name"],
+                        "size_vram": f"{m.get('size_vram', 0) / 1024**3:.1f} GB",
+                        "expires": m.get("expires_at", "Unknown"),
+                    }
+                )
+            return active
+    except Exception:
+        return []  # Server likely down
+    return []
+
+
+def stop_model(model_name):
+    """
+    Forces a model to unload immediately by setting keep_alive to 0.
+    """
+    try:
+        # We send a dummy request with keep_alive=0 to trigger unload
+        payload = {"model": model_name, "keep_alive": 0}
+        # We use /api/chat as the generic endpoint
+        requests.post(f"{OLLAMA_API_BASE}/chat", json=payload, timeout=2)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to stop {model_name}: {e}")
+        return False

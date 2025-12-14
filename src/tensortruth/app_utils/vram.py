@@ -3,7 +3,7 @@
 import streamlit as st
 import torch
 
-from tensortruth import get_running_models
+from tensortruth.core import get_running_models
 
 
 @st.cache_data(ttl=2, show_spinner=False)
