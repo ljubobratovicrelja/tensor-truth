@@ -1,5 +1,6 @@
 import gc
 import json
+import logging
 import os
 import sys
 import time
@@ -19,6 +20,16 @@ from tensortruth import (
     load_engine_for_modules,
     run_ingestion,
 )
+
+# --- LOGGING ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # --- CONFIG ---
 SESSIONS_FILE = "chat_sessions.json"
@@ -362,20 +373,20 @@ def ensure_title_model_available():
                 return True
 
         # Model not found, pull it
-        print(f"[Title Gen] Model {title_model} not found, pulling...")
+        logger.info(f"Model {title_model} not found, pulling...")
         pull_payload = {"name": title_model, "stream": False}
         pull_resp = requests.post(
             "http://localhost:11434/api/pull", json=pull_payload, timeout=120
         )
 
         if pull_resp.status_code == 200:
-            print(f"[Title Gen] Successfully pulled {title_model}")
+            logger.info(f"Successfully pulled {title_model}")
             return True
         else:
-            print(f"[Title Gen] Failed to pull model: {pull_resp.status_code}")
+            logger.error(f"Failed to pull model: {pull_resp.status_code}")
             return False
     except Exception as e:
-        print(f"[Title Gen] Error checking/pulling model: {e}")
+        logger.error(f"Error checking/pulling model: {e}")
         return False
 
 
@@ -390,7 +401,7 @@ def generate_smart_title(text, model_name):
 
     # Ensure model is available (pull if needed)
     if not ensure_title_model_available():
-        print("[Title Gen] Model unavailable, using fallback")
+        logger.warning("Title generation model unavailable, using fallback")
         return (text[:30] + "..") if len(text) > 30 else text
 
     try:
@@ -419,21 +430,21 @@ def generate_smart_title(text, model_name):
             # Final cleanup
             title = response.replace('"', "").replace("'", "").replace(".", "").strip()
             if title:
-                print(f"[Title Gen] Success: '{title}'")
+                logger.debug(f"Title generation success: '{title}'")
                 return title
             else:
-                print(f"[Title Gen] Empty response after cleanup. Raw: {response[:100]}")
+                logger.warning(f"Empty response after cleanup. Raw: {response[:100]}")
         else:
-            print(f"[Title Gen] API returned status {resp.status_code}")
+            logger.error(f"Title generation API returned status {resp.status_code}")
     except requests.exceptions.Timeout:
-        print("[Title Gen] Timeout after 10s")
+        logger.warning("Title generation timeout after 10s")
     except requests.exceptions.ConnectionError:
-        print("[Title Gen] Connection error - is Ollama running?")
+        logger.error("Connection error - is Ollama running?")
     except Exception as e:
-        print(f"[Title Gen] Error: {type(e).__name__}: {str(e)}")
+        logger.error(f"Title generation error: {type(e).__name__}: {str(e)}")
 
     # Fallback
-    print(f"[Title Gen] Using fallback: '{text[:30]}...'")
+    logger.info(f"Using fallback title: '{text[:30]}...'")
     return (text[:30] + "..") if len(text) > 30 else text
 
 
