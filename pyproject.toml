@@ -37,6 +37,7 @@ dependencies = [
 
     # --- Documentation Scraper ---
     "requests",
+    "marker-pdf",
     "beautifulsoup4",
     "markdownify",
     "sphobjinv",      # Essential for parsing Sphinx inventory files
