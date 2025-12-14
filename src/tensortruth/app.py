@@ -1,35 +1,33 @@
-import gc
-import json
-import logging
+"""Tensor-Truth Streamlit Application - Main Entry Point."""
+
 import os
 import sys
 import time
-import uuid
-from datetime import datetime
 
-import requests
 import streamlit as st
-import torch
 
 sys.path.append(os.path.abspath("./src"))
-from tensortruth import (
-    convert_chat_to_markdown,
-    download_and_extract_indexes,
-    get_max_memory_gb,
-    get_running_models,
-    load_engine_for_modules,
-    run_ingestion,
-)
 
-# --- LOGGING ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+from tensortruth import convert_chat_to_markdown, get_max_memory_gb, run_ingestion
+from tensortruth.app_utils import (
+    apply_preset,
+    create_session,
+    delete_preset,
+    download_indexes_with_ui,
+    ensure_engine_loaded,
+    free_memory,
+    get_available_modules,
+    get_ollama_models,
+    get_system_devices,
+    load_presets,
+    load_sessions,
+    process_command,
+    rename_session,
+    render_vram_gauge,
+    save_preset,
+    save_sessions,
+    update_title,
 )
-logger = logging.getLogger(__name__)
 
 # --- CONFIG ---
 SESSIONS_FILE = "chat_sessions.json"
@@ -55,587 +53,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- HELPERS ---
-
-
-def download_indexes_with_ui():
-    """
-    Wrapper for download_and_extract_indexes that provides Streamlit UI feedback.
-    """
-    try:
-        with st.spinner(
-            "📥 Downloading indexes from Google Drive (this may take a few minutes)..."
-        ):
-            success = download_and_extract_indexes(INDEX_DIR, GDRIVE_LINK)
-            if success:
-                st.success("✅ Indexes downloaded and extracted successfully!")
-    except ImportError as e:
-        st.warning(f"⚠️ {str(e)}")
-    except Exception as e:
-        st.error(f"❌ Error downloading/extracting indexes: {e}")
-
-
-@st.cache_data(ttl=10)
-def get_available_modules():
-    if not os.path.exists(INDEX_DIR):
-        return []
-    return sorted(
-        [d for d in os.listdir(INDEX_DIR) if os.path.isdir(os.path.join(INDEX_DIR, d))]
-    )
-
-
-@st.cache_data(ttl=60)
-def get_ollama_models():
-    """Fetches list of available models from local Ollama instance."""
-    try:
-        response = requests.get("http://localhost:11434/api/tags", timeout=1)
-        if response.status_code == 200:
-            models = [m["name"] for m in response.json()["models"]]
-            return sorted(models)
-    except:
-        pass
-    return ["deepseek-r1:8b"]
-
-
-def get_system_devices():
-    """Returns list of available compute devices."""
-    devices = ["cpu"]
-    # Check MPS (Apple Silicon)
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        devices.insert(0, "mps")
-    # Check CUDA
-    if torch.cuda.is_available():
-        devices.insert(0, "cuda")
-    return devices
-
-
-def free_memory():
-    if "engine" in st.session_state:
-        del st.session_state["engine"]
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        torch.mps.empty_cache()
-
-
-# --- PRESET MANAGEMENT ---
-def load_presets():
-    if os.path.exists(PRESETS_FILE):
-        try:
-            with open(PRESETS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            pass
-    return {}
-
-
-def save_preset(name, config):
-    presets = load_presets()
-    presets[name] = config
-    with open(PRESETS_FILE, "w", encoding="utf-8") as f:
-        json.dump(presets, f, indent=2)
-
-
-def delete_preset(name):
-    presets = load_presets()
-    if name in presets:
-        del presets[name]
-        with open(PRESETS_FILE, "w", encoding="utf-8") as f:
-            json.dump(presets, f, indent=2)
-
-
-def apply_preset(name, available_mods, available_models, available_devices):
-    presets = load_presets()
-    if name not in presets:
-        return
-
-    p = presets[name]
-
-    # Update Session State Keys directly - only if present in preset
-
-    # 1. Modules
-    if "modules" in p:
-        valid_mods = [m for m in p["modules"] if m in available_mods]
-        st.session_state.setup_mods = valid_mods
-
-    # 2. Model
-    if "model" in p and p["model"] in available_models:
-        st.session_state.setup_model = p["model"]
-
-    # 3. Parameters - only update if present in preset
-    if "reranker_model" in p:
-        st.session_state.setup_reranker = p["reranker_model"]
-    if "context_window" in p:
-        st.session_state.setup_ctx = p["context_window"]
-    if "temperature" in p:
-        st.session_state.setup_temp = p["temperature"]
-    if "reranker_top_n" in p:
-        st.session_state.setup_top_n = p["reranker_top_n"]
-    if "confidence_cutoff" in p:
-        st.session_state.setup_conf = p["confidence_cutoff"]
-    if "system_prompt" in p:
-        st.session_state.setup_sys_prompt = p["system_prompt"]
-
-    # 4. Devices - only update if present in preset and valid
-    if "rag_device" in p and p["rag_device"] in available_devices:
-        st.session_state.setup_rag_device = p["rag_device"]
-
-    if "llm_device" in p and p["llm_device"] in ["cpu", "gpu"]:
-        st.session_state.setup_llm_device = p["llm_device"]
-
-
-@st.cache_data(ttl=2, show_spinner=False)
-def get_vram_breakdown():
-    """
-    Returns detailed VRAM stats:
-    - total_used: What Task Manager says
-    - reclaimable: What we can kill (Ollama + PyTorch)
-    - baseline: What stays (OS, Browser, Display)
-    """
-    if not torch.cuda.is_available():
-        # Heuristic for non-CUDA systems (like Mac)
-        return {"total_used": 0.0, "reclaimable": 0.0, "baseline": 4.0}
-
-    try:
-        # 1. Real Hardware Usage (Everything on the card)
-        free_bytes, total_bytes = torch.cuda.mem_get_info()
-        total_used_gb = (total_bytes - free_bytes) / (1024**3)
-
-        # 2. PyTorch Reserved (What THIS python process holds)
-        torch_reserved_gb = torch.cuda.memory_reserved() / (1024**3)
-
-        # 3. Ollama Usage (External process)
-        ollama_usage_gb = 0.0
-        active_models = get_running_models()
-        for m in active_models:
-            try:
-                size_str = m.get("size_vram", "0 GB").split()[0]
-                ollama_usage_gb += float(size_str)
-            except:
-                pass
-
-        reclaimable = torch_reserved_gb + ollama_usage_gb
-        baseline = max(0.5, total_used_gb - reclaimable)
-
-        return {
-            "total_used": total_used_gb,
-            "reclaimable": reclaimable,
-            "baseline": baseline,
-        }
-    except Exception:
-        return {"total_used": 0.0, "reclaimable": 0.0, "baseline": 2.5}
-
-
-def estimate_vram_usage(
-    model_name, num_indices, context_window, rag_device, llm_device
-):
-    """
-    Returns (predicted_total, breakdown_dict, new_session_cost)
-    """
-    stats = get_vram_breakdown()
-    system_baseline = stats["baseline"]
-
-    # --- RAG COST ---
-    # 1.8GB if running on GPU (CUDA) or MPS (Unified Memory counts as VRAM usage)
-    if rag_device in ["cuda", "mps"]:
-        rag_overhead = 1.8
-    else:
-        rag_overhead = 0.0  # CPU RAM
-
-    index_overhead = num_indices * 0.15
-
-    # --- LLM COST ---
-    if llm_device == "cpu":
-        llm_size = 0.0
-    else:
-        name = model_name.lower() if model_name else ""
-        if "70b" in name:
-            llm_size = 40.0
-        elif "32b" in name:
-            llm_size = 19.0
-        elif "14b" in name:
-            llm_size = 9.5
-        elif "8b" in name:
-            llm_size = 5.5
-        elif "7b" in name:
-            llm_size = 5.0
-        elif "1.5b" in name:
-            llm_size = 1.5
-        else:
-            llm_size = 6.0
-
-    # KV Cache (Linear Approx)
-    kv_cache = (context_window / 4096) * 0.8
-    # KV Cache also moves to RAM if LLM is on CPU
-    if llm_device == "cpu":
-        kv_cache = 0.0
-
-    new_session_cost = rag_overhead + index_overhead + llm_size + kv_cache
-    predicted_total = system_baseline + new_session_cost
-
-    return predicted_total, stats, new_session_cost
-
-
-def render_vram_gauge(model_name, num_indices, context_window, rag_device, llm_device):
-    predicted, stats, new_cost = estimate_vram_usage(
-        model_name, num_indices, context_window, rag_device, llm_device
-    )
-    vram_percent = min(predicted / MAX_VRAM_GB, 1.0)
-
-    current_used = stats["total_used"]
-    reclaimable = stats["reclaimable"]
-
-    # Visual Layout
-    st.markdown("##### 🖥️ VRAM Status")
-
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Current Load", f"{current_used:.1f} GB", delta_color="off")
-    m2.metric(
-        "Reclaimable",
-        f"{reclaimable:.1f} GB",
-        help="VRAM from Ollama/Torch that will be freed.",
-        delta_color="normal",
-    )
-    m3.metric(
-        "Predicted Peak",
-        f"{predicted:.1f} GB",
-        delta=(
-            f"{predicted - MAX_VRAM_GB:.1f} GB" if predicted > MAX_VRAM_GB else "Safe"
-        ),
-        delta_color="inverse",
-    )
-
-    color = "green"
-    if vram_percent > 0.75:
-        color = "orange"
-    if vram_percent > 0.95:
-        color = "red"
-
-    st.progress(vram_percent)
-
-    if predicted > MAX_VRAM_GB:
-        st.error(
-            f"🛑 Configuration ({predicted:.1f} GB) exceeds limit ({MAX_VRAM_GB} GB)."
-        )
-    elif predicted > (MAX_VRAM_GB * 0.9):
-        st.warning("⚠️ High VRAM usage predicted.")
-
-    return predicted
-
-
-def ensure_engine_loaded(target_modules, target_params):
-    target_tuple = tuple(sorted(target_modules))
-    param_items = sorted([(k, v) for k, v in target_params.items()])
-    param_hash = frozenset(param_items)
-
-    current_config = st.session_state.get("loaded_config")
-
-    if current_config == (target_tuple, param_hash):
-        return st.session_state.engine
-
-    if current_config is not None:
-        placeholder = st.empty()
-        placeholder.info(
-            f"⏳ Loading Model: {target_params.get('model')} | Pipeline: {target_params.get('rag_device')} | LLM: {target_params.get('llm_device')}..."
-        )
-        free_memory()
-        try:
-            engine = load_engine_for_modules(list(target_tuple), target_params)
-            st.session_state.engine = engine
-            st.session_state.loaded_config = (target_tuple, param_hash)
-            placeholder.empty()
-            return engine
-        except Exception as e:
-            placeholder.error(f"Failed: {e}")
-            st.stop()
-    else:
-        try:
-            engine = load_engine_for_modules(list(target_tuple), target_params)
-            st.session_state.engine = engine
-            st.session_state.loaded_config = (target_tuple, param_hash)
-            return engine
-        except Exception as e:
-            st.error(f"Startup Failed: {e}")
-            st.stop()
-
-
-def ensure_title_model_available():
-    """Ensures the title generation model is available, pulling it if necessary."""
-    title_model = "qwen2.5:0.5b"
-
-    try:
-        # Check if model exists
-        resp = requests.get("http://localhost:11434/api/tags", timeout=2)
-        if resp.status_code == 200:
-            models = [m["name"] for m in resp.json().get("models", [])]
-            if title_model in models:
-                return True
-
-        # Model not found, pull it
-        logger.info(f"Model {title_model} not found, pulling...")
-        pull_payload = {"name": title_model, "stream": False}
-        pull_resp = requests.post(
-            "http://localhost:11434/api/pull", json=pull_payload, timeout=120
-        )
-
-        if pull_resp.status_code == 200:
-            logger.info(f"Successfully pulled {title_model}")
-            return True
-        else:
-            logger.error(f"Failed to pull model: {pull_resp.status_code}")
-            return False
-    except Exception as e:
-        logger.error(f"Error checking/pulling model: {e}")
-        return False
-
-
-def generate_smart_title(text, model_name):
-    """
-    Uses a small, dedicated LLM to generate a concise title.
-    Loads a tiny model (qwen2.5:0.5b), generates title, then unloads it.
-    Returns the generated title or a truncated fallback.
-    """
-    # Use a tiny, fast model for title generation
-    title_model = "qwen2.5:0.5b"
-
-    # Ensure model is available (pull if needed)
-    if not ensure_title_model_available():
-        logger.warning("Title generation model unavailable, using fallback")
-        return (text[:30] + "..") if len(text) > 30 else text
-
-    try:
-        # Prompt designed to minimize fluff
-        prompt = f"Summarize this query into a concise 3-5 word title. Return ONLY the title text, no quotes. Query: {text}"
-
-        payload = {
-            "model": title_model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "num_ctx": 512,  # Minimal context
-                "num_predict": 15,  # Short answer
-                "temperature": 0.3,
-            },
-            "keep_alive": 0,  # Unload immediately after generation
-        }
-
-        # Direct API call to avoid spinning up full engine logic
-        resp = requests.post(
-            "http://localhost:11434/api/generate", json=payload, timeout=10
-        )
-        if resp.status_code == 200:
-            response = resp.json().get("response", "")
-
-            # Final cleanup
-            title = response.replace('"', "").replace("'", "").replace(".", "").strip()
-            if title:
-                logger.debug(f"Title generation success: '{title}'")
-                return title
-            else:
-                logger.warning(f"Empty response after cleanup. Raw: {response[:100]}")
-        else:
-            logger.error(f"Title generation API returned status {resp.status_code}")
-    except requests.exceptions.Timeout:
-        logger.warning("Title generation timeout after 10s")
-    except requests.exceptions.ConnectionError:
-        logger.error("Connection error - is Ollama running?")
-    except Exception as e:
-        logger.error(f"Title generation error: {type(e).__name__}: {str(e)}")
-
-    # Fallback
-    logger.info(f"Using fallback title: '{text[:30]}...'")
-    return (text[:30] + "..") if len(text) > 30 else text
-
-
-# --- SESSION MGMT ---
-def load_sessions():
-    if os.path.exists(SESSIONS_FILE):
-        try:
-            with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            pass
-    return {"current_id": None, "sessions": {}}
-
-
-def save_sessions():
-    with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
-        json.dump(st.session_state.chat_data, f, indent=2)
-
-
-def create_session(modules, params):
-    new_id = str(uuid.uuid4())
-    st.session_state.chat_data["sessions"][new_id] = {
-        "title": "New Session",
-        "created_at": str(datetime.now()),
-        "messages": [],
-        "modules": modules,
-        "params": params,
-    }
-    st.session_state.chat_data["current_id"] = new_id
-    save_sessions()
-    return new_id
-
-
-def update_title(session_id, text, model_name):
-    session = st.session_state.chat_data["sessions"][session_id]
-    if session.get("title") == "New Session":
-        new_title = generate_smart_title(text, model_name)
-        session["title"] = new_title
-        save_sessions()
-
-
-def rename_session(new_title):
-    current_id = st.session_state.chat_data.get("current_id")
-    if current_id:
-        st.session_state.chat_data["sessions"][current_id]["title"] = new_title
-        save_sessions()
-        st.rerun()
-
-
-def process_command(prompt, session):
-    """Handles /slash commands."""
-    cmd_parts = prompt.strip().split()
-    command = cmd_parts[0].lower()
-    args = cmd_parts[1:] if len(cmd_parts) > 1 else []
-
-    active_mods = session.get("modules", [])
-    available_mods = get_available_modules()
-    current_params = session.get("params", {})
-    available_devices = get_system_devices()
-
-    response_msg = ""
-
-    if command in ["/list", "/ls", "/status"]:
-        lines = ["### 📚 Knowledge Base & System Status"]
-        for mod in available_mods:
-            lines.append(f"- {'✅' if mod in active_mods else '⚪'} {mod}")
-
-        lines.append(
-            f"\n**Pipeline Device:** `{current_params.get('rag_device', 'cuda')}`"
-        )
-        lines.append(f"**LLM Device:** `{current_params.get('llm_device', 'gpu')}`")
-        lines.append(
-            f"**Confidence Cutoff:** `{current_params.get('confidence_cutoff', 0.3)}`"
-        )
-        lines.append(
-            "\n**Usage:** `/load <name>`, `/device rag <cpu|cuda|mps>`, `/device llm <cpu|gpu>`, `/conf <val>`"
-        )
-        response_msg = "\n".join(lines)
-
-    elif command == "/help":
-        lines = [
-            "### 🛠️ Command Reference",
-            "- **/list** / **/status**: Show active indices & hardware usage.",
-            "- **/load <index>**: Load a specific knowledge base.",
-            "- **/unload <index>**: Unload a knowledge base.",
-            "- **/reload**: Flush VRAM and restart the engine.",
-            "- **/device rag <cpu|cuda|mps>**: Move RAG pipeline (Embed/Rerank) to specific hardware.",
-            "- **/device llm <cpu|gpu>**: Move LLM (Ollama) to specific hardware.",
-            "- **/conf <0.0-1.0>**: Set the confidence score cutoff for retrieval.",
-            "- **/help**: Show this list.",
-        ]
-        response_msg = "\n".join(lines)
-
-    elif command == "/load":
-        if not args:
-            response_msg = "⚠️ Usage: `/load <index_name>`"
-        else:
-            target = args[0]
-            if target not in available_mods:
-                response_msg = f"❌ Index `{target}` not found."
-            elif target in active_mods:
-                response_msg = f"ℹ️ Index `{target}` is active."
-            else:
-                session["modules"].append(target)
-                save_sessions()
-                st.session_state.loaded_config = None
-                response_msg = f"✅ **Loaded:** `{target}`. Engine restarting..."
-                st.rerun()
-
-    elif command == "/unload":
-        if not args:
-            response_msg = "⚠️ Usage: `/unload <index_name>`"
-        else:
-            target = args[0]
-            if target not in active_mods:
-                response_msg = f"ℹ️ Index `{target}` not active."
-            else:
-                session["modules"].remove(target)
-                save_sessions()
-                st.session_state.loaded_config = None
-                response_msg = f"✅ **Unloaded:** `{target}`. Engine restarting..."
-                st.rerun()
-
-    elif command == "/reload":
-        free_memory()
-        st.session_state.loaded_config = None
-        response_msg = "🔄 **System Reload:** Memory flushed."
-        st.rerun()
-
-    elif command in ["/conf", "/confidence"]:
-        if not args:
-            response_msg = "⚠️ Usage: `/conf <value>` (e.g. 0.2)"
-        else:
-            try:
-                new_conf = float(args[0])
-                if 0.0 <= new_conf <= 1.0:
-                    session["params"]["confidence_cutoff"] = new_conf
-                    save_sessions()
-                    st.session_state.loaded_config = (
-                        None  # Force reload to apply postprocessor change
-                    )
-                    response_msg = f"⚙️ **Confidence Cutoff:** Set to `{new_conf}`. Engine restarting..."
-                    st.rerun()
-                else:
-                    response_msg = "❌ Value must be between 0.0 and 1.0."
-            except ValueError:
-                response_msg = "❌ Invalid number. Example: `/conf 0.3`"
-
-    elif command == "/device":
-        if len(args) < 2:
-            response_msg = (
-                "⚠️ Usage: `/device rag <cpu|cuda|mps>` OR `/device llm <cpu|gpu>`"
-            )
-        else:
-            target_type = args[0].lower()  # 'rag' or 'llm'
-            target_dev = args[1].lower()  # 'cpu', 'cuda', ...
-
-            if target_type == "rag":
-                if target_dev not in available_devices:
-                    response_msg = f"❌ Device `{target_dev}` not available. Options: {available_devices}"
-                else:
-                    session["params"]["rag_device"] = target_dev
-                    save_sessions()
-                    st.session_state.loaded_config = None
-                    response_msg = f"⚙️ **Pipeline Switched:** Now running Embed/Rerank on `{target_dev.upper()}`."
-                    st.rerun()
-
-            elif target_type == "llm":
-                if target_dev not in ["cpu", "gpu"]:
-                    response_msg = "❌ LLM Device options: `cpu` or `gpu`"
-                else:
-                    session["params"]["llm_device"] = target_dev
-                    save_sessions()
-                    st.session_state.loaded_config = None
-                    response_msg = f"⚙️ **LLM Switched:** Now running Model on `{target_dev.upper()}`."
-                    st.rerun()
-            else:
-                response_msg = "❌ Unknown target. Use `rag` or `llm`."
-
-    else:
-        return False, None
-
-    return True, response_msg
-
-
 # --- INITIALIZATION ---
 # Download indexes from Google Drive if directory is empty or missing
-download_indexes_with_ui()
+download_indexes_with_ui(INDEX_DIR, GDRIVE_LINK)
 
 if "chat_data" not in st.session_state:
-    st.session_state.chat_data = load_sessions()
+    st.session_state.chat_data = load_sessions(SESSIONS_FILE)
 if "mode" not in st.session_state:
     st.session_state.mode = "setup"
 if "loaded_config" not in st.session_state:
@@ -665,7 +88,6 @@ with st.sidebar:
         is_active = sess_id == current_id
 
         label = f" {title} "
-        # FIX: Removed disabled=is_active so you can always switch back to the current chat
         if st.button(label, key=sess_id, use_container_width=True):
             st.session_state.chat_data["current_id"] = sess_id
             st.session_state.mode = "chat"
@@ -680,7 +102,7 @@ with st.sidebar:
         with st.expander("⚙️ Session Settings", expanded=True):
             new_name = st.text_input("Rename:", value=curr_sess.get("title"))
             if st.button("Update Title"):
-                rename_session(new_name)
+                rename_session(new_name, SESSIONS_FILE)
 
             st.caption("Active Indices:")
             mods = curr_sess.get("modules", [])
@@ -724,7 +146,7 @@ if st.session_state.get("show_delete_confirm", False):
                 free_memory()
                 st.session_state.loaded_config = None
                 st.session_state.show_delete_confirm = False
-                save_sessions()
+                save_sessions(SESSIONS_FILE)
                 st.rerun()
 
     confirm_delete()
@@ -747,7 +169,7 @@ if st.session_state.get("show_preset_delete_confirm", False):
                 st.rerun()
         with col2:
             if st.button("Delete", type="primary", use_container_width=True):
-                delete_preset(preset_name)
+                delete_preset(preset_name, PRESETS_FILE)
                 st.session_state.show_preset_delete_confirm = False
                 st.session_state.preset_to_delete = None
                 st.rerun()
@@ -765,10 +187,10 @@ if st.session_state.mode == "setup":
 
     with tab_launch:
         # 1. Fetch Data
-        available_mods = get_available_modules()
+        available_mods = get_available_modules(INDEX_DIR)
         available_models = get_ollama_models()
         system_devices = get_system_devices()
-        presets = load_presets()
+        presets = load_presets(PRESETS_FILE)
 
         default_model_idx = 0
         for i, m in enumerate(available_models):
@@ -827,6 +249,7 @@ if st.session_state.mode == "setup":
                             available_mods,
                             available_models,
                             system_devices,
+                            PRESETS_FILE,
                         )
                         st.rerun()
                 with col_p3:
@@ -876,13 +299,6 @@ if st.session_state.mode == "setup":
             with p3:
                 temp = st.slider("Temperature", 0.0, 1.0, step=0.1, key="setup_temp")
 
-            # Persist expander state
-            if "expander_open" not in st.session_state:
-                st.session_state.expander_open = False
-
-            # Using custom callback to toggle expander state logic not possible easily with st.expander,
-            # but wrapping in form essentially freezes it anyway until submit.
-            # We just leave it as standard expander, the form prevents the 'close on slider' behavior.
             with st.expander("Advanced Settings"):
                 top_n = st.number_input(
                     "Top N (Final Context)",
@@ -925,15 +341,13 @@ if st.session_state.mode == "setup":
                 "Click 'Refresh Estimate' to update resource calculation based on current form selections."
             )
 
-            # Use session state values for the gauge to ensure it persists visual state
-            # Note: inside form, we see current session state, but new widget values aren't committed to it until submit.
-            # So the gauge will always lag one step behind unless we rely on submit.
             vram_est = render_vram_gauge(
                 st.session_state.setup_model,
                 len(st.session_state.setup_mods),
                 st.session_state.setup_ctx,
                 st.session_state.setup_rag_device,
                 st.session_state.setup_llm_device,
+                MAX_VRAM_GB,
             )
 
             c_btn1, c_btn2 = st.columns([1, 1])
@@ -947,8 +361,7 @@ if st.session_state.mode == "setup":
                 )
 
             if submitted_check:
-                # Just doing this triggers a rerun, updating session_state with new values,
-                # which then redraws the gauge above with correct data.
+                # Just triggers rerun to update gauge
                 pass
 
             if submitted_start:
@@ -970,7 +383,7 @@ if st.session_state.mode == "setup":
                         "rag_device": rag_device,
                         "llm_device": llm_device,
                     }
-                    create_session(selected_mods, params)
+                    create_session(selected_mods, params, SESSIONS_FILE)
                     st.session_state.mode = "chat"
                     st.rerun()
 
@@ -986,7 +399,6 @@ if st.session_state.mode == "setup":
                 st.write("")
                 if st.button("Save", use_container_width=True):
                     if new_preset_name:
-                        # Grab values from session state since they are bound to widgets
                         config_to_save = {
                             "modules": st.session_state.setup_mods,
                             "model": st.session_state.setup_model,
@@ -999,7 +411,7 @@ if st.session_state.mode == "setup":
                             "rag_device": st.session_state.setup_rag_device,
                             "llm_device": st.session_state.setup_llm_device,
                         }
-                        save_preset(new_preset_name, config_to_save)
+                        save_preset(new_preset_name, config_to_save, PRESETS_FILE)
                         st.success(f"Saved: {new_preset_name}")
                         time.sleep(1)
                         st.rerun()
@@ -1067,20 +479,22 @@ elif st.session_state.mode == "chat":
     if prompt := st.chat_input("Ask or type /cmd..."):
         # 1. COMMAND PROCESSING
         if prompt.startswith("/"):
-            is_cmd, response = process_command(prompt, session)
+            available_mods = get_available_modules(INDEX_DIR)
+            is_cmd, response = process_command(
+                prompt, session, available_mods, SESSIONS_FILE
+            )
             if is_cmd:
                 session["messages"].append({"role": "assistant", "content": response})
-                save_sessions()
+                save_sessions(SESSIONS_FILE)
                 st.rerun()
 
         # 2. STANDARD CHAT PROCESSING
-        # Note: update_title uses the active model for summarization
-        update_title(current_id, prompt, params.get("model"))
+        update_title(current_id, prompt, params.get("model"), SESSIONS_FILE)
 
         with st.chat_message("user"):
             st.markdown(prompt)
         session["messages"].append({"role": "user", "content": prompt})
-        save_sessions()
+        save_sessions(SESSIONS_FILE)
 
         with st.chat_message("assistant"):
             if engine:
@@ -1147,7 +561,7 @@ elif st.session_state.mode == "chat":
                             "time_taken": elapsed,
                         }
                     )
-                    save_sessions()
+                    save_sessions(SESSIONS_FILE)
                 except Exception as e:
                     st.error(f"Engine Error: {e}")
             else:

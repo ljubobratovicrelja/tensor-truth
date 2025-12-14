@@ -1,0 +1,110 @@
+"""General helper functions for the Streamlit app."""
+
+import gc
+import os
+
+import requests
+import streamlit as st
+import torch
+
+from tensortruth import download_and_extract_indexes, load_engine_for_modules
+
+
+def download_indexes_with_ui(index_dir: str, gdrive_link: str):
+    """
+    Wrapper for download_and_extract_indexes that provides Streamlit UI feedback.
+    """
+    try:
+        with st.spinner(
+            "📥 Downloading indexes from Google Drive (this may take a few minutes)..."
+        ):
+            success = download_and_extract_indexes(index_dir, gdrive_link)
+            if success:
+                st.success("✅ Indexes downloaded and extracted successfully!")
+    except ImportError as e:
+        st.warning(f"⚠️ {str(e)}")
+    except Exception as e:
+        st.error(f"❌ Error downloading/extracting indexes: {e}")
+
+
+@st.cache_data(ttl=10)
+def get_available_modules(index_dir: str):
+    """Get list of available index modules."""
+    if not os.path.exists(index_dir):
+        return []
+    return sorted(
+        [d for d in os.listdir(index_dir) if os.path.isdir(os.path.join(index_dir, d))]
+    )
+
+
+@st.cache_data(ttl=60)
+def get_ollama_models():
+    """Fetches list of available models from local Ollama instance."""
+    try:
+        response = requests.get("http://localhost:11434/api/tags", timeout=1)
+        if response.status_code == 200:
+            models = [m["name"] for m in response.json()["models"]]
+            return sorted(models)
+    except:
+        pass
+    return ["deepseek-r1:8b"]
+
+
+def get_system_devices():
+    """Returns list of available compute devices."""
+    devices = ["cpu"]
+    # Check MPS (Apple Silicon)
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        devices.insert(0, "mps")
+    # Check CUDA
+    if torch.cuda.is_available():
+        devices.insert(0, "cuda")
+    return devices
+
+
+def free_memory():
+    """Free GPU/MPS memory by clearing caches."""
+    if "engine" in st.session_state:
+        del st.session_state["engine"]
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+
+
+def ensure_engine_loaded(target_modules, target_params):
+    """Ensure the RAG engine is loaded with the specified configuration."""
+    target_tuple = tuple(sorted(target_modules))
+    param_items = sorted([(k, v) for k, v in target_params.items()])
+    param_hash = frozenset(param_items)
+
+    current_config = st.session_state.get("loaded_config")
+
+    if current_config == (target_tuple, param_hash):
+        return st.session_state.engine
+
+    if current_config is not None:
+        placeholder = st.empty()
+        placeholder.info(
+            f"⏳ Loading Model: {target_params.get('model')} | Pipeline: {target_params.get('rag_device')} | LLM: {target_params.get('llm_device')}..."
+        )
+        free_memory()
+        try:
+            engine = load_engine_for_modules(list(target_tuple), target_params)
+            st.session_state.engine = engine
+            st.session_state.loaded_config = (target_tuple, param_hash)
+            placeholder.empty()
+            return engine
+        except Exception as e:
+            placeholder.error(f"Failed: {e}")
+            st.stop()
+    else:
+        try:
+            engine = load_engine_for_modules(list(target_tuple), target_params)
+            st.session_state.engine = engine
+            st.session_state.loaded_config = (target_tuple, param_hash)
+            return engine
+        except Exception as e:
+            st.error(f"Startup Failed: {e}")
+            st.stop()
