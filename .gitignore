@@ -219,3 +219,6 @@ chat_history.json
 chat_sessions.json
 
 WARP.md
+
+# Claude AI
+.claude/
