@@ -1108,24 +1108,18 @@ elif st.session_state.mode == "chat":
                     # Clear all status messages
                     status_container.empty()
 
-                    # Stream the response progressively
-                    def response_generator():
-                        for token in streaming_response.response_gen:
-                            yield token
+                    # Create a placeholder for the response that we can replace
+                    response_container = st.empty()
 
-                    # Display streaming response
-                    raw_content = st.write_stream(response_generator())
+                    # Stream the response progressively into the placeholder
+                    with response_container.container():
 
-                    # Parse thinking response after streaming completes
-                    thought, answer = parse_thinking_response(raw_content)
+                        def response_generator():
+                            for token in streaming_response.response_gen:
+                                yield token
 
-                    # If there was thinking content, we need to re-render properly
-                    if thought:
-                        # Clear and re-render with proper structure
-                        st.empty()
-                        with st.expander("💭 Thought Process", expanded=True):
-                            st.markdown(thought)
-                        st.markdown(answer)
+                        # Display streaming response
+                        answer = st.write_stream(response_generator())
 
                     elapsed = time.time() - start_time
 
@@ -1146,7 +1140,7 @@ elif st.session_state.mode == "chat":
                     session["messages"].append(
                         {
                             "role": "assistant",
-                            "content": raw_content,
+                            "content": answer,
                             "sources": source_data,
                             "time_taken": elapsed,
                         }
