@@ -1,8 +1,9 @@
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 
 import chromadb
 from llama_index.core import (
-    PromptTemplate,
     QueryBundle,
     Settings,
     StorageContext,
@@ -98,16 +99,44 @@ def get_reranker(params, device="cuda"):
 
 
 class MultiIndexRetriever(BaseRetriever):
-    def __init__(self, retrievers):
+    def __init__(self, retrievers, max_workers=None, enable_cache=True, cache_size=128):
         self.retrievers = retrievers
+        self.max_workers = max_workers or min(len(retrievers), 8)
+        self.enable_cache = enable_cache
         super().__init__()
 
-    def _retrieve(self, query_bundle: QueryBundle):
+        # Create LRU cache for retrieve operations if enabled
+        if self.enable_cache:
+            self._retrieve_cached = lru_cache(maxsize=cache_size)(self._retrieve_impl)
+        else:
+            self._retrieve_cached = self._retrieve_impl
+
+    def _retrieve_impl(self, query_text: str):
+        """Actual retrieval implementation that can be cached."""
+        # Recreate QueryBundle from cached query text
+        query_bundle = QueryBundle(query_str=query_text)
         combined_nodes = []
-        for r in self.retrievers:
-            nodes = r.retrieve(query_bundle)
-            combined_nodes.extend(nodes)
+
+        # Parallelize retrieval across all indices
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            future_to_retriever = {
+                executor.submit(r.retrieve, query_bundle): r
+                for r in self.retrievers
+            }
+
+            for future in as_completed(future_to_retriever):
+                try:
+                    nodes = future.result()
+                    combined_nodes.extend(nodes)
+                except Exception as e:
+                    # Log error but continue with other retrievers
+                    print(f"Retriever failed: {e}")
+
         return combined_nodes
+
+    def _retrieve(self, query_bundle: QueryBundle):
+        """Public retrieve method that leverages caching."""
+        return self._retrieve_cached(query_bundle.query_str)
 
 
 def load_engine_for_modules(selected_modules, engine_params=None):
@@ -122,13 +151,18 @@ def load_engine_for_modules(selected_modules, engine_params=None):
     # Determine devices
     rag_device = engine_params.get("rag_device", "cuda")
 
+    # Calculate adaptive similarity_top_k based on reranker_top_n
+    # Retrieve 2-3x more candidates than final target to ensure quality
+    reranker_top_n = engine_params.get("reranker_top_n", 3)
+    similarity_top_k = max(5, reranker_top_n * 2)
+
     # Set Global Settings for this session (Embedder)
     embed_model = get_embed_model(rag_device)
     Settings.embedding_model = embed_model
 
     active_retrievers = []
     print(
-        f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} | RAG DEVICE: {rag_device} ---"
+        f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} | RAG DEVICE: {rag_device} | RETRIEVAL: {similarity_top_k} per index → RERANK: top {reranker_top_n} ---"
     )
 
     for module in selected_modules:
@@ -147,7 +181,7 @@ def load_engine_for_modules(selected_modules, engine_params=None):
         # Explicitly pass the embed_model to ensure consistency
         index = load_index_from_storage(storage_context, embed_model=embed_model)
 
-        base = index.as_retriever(similarity_top_k=10)
+        base = index.as_retriever(similarity_top_k=similarity_top_k)
         am_retriever = AutoMergingRetriever(base, index.storage_context, verbose=False)
         active_retrievers.append(am_retriever)
 
@@ -174,7 +208,7 @@ def load_engine_for_modules(selected_modules, engine_params=None):
         memory=memory,
         context_prompt=CUSTOM_CONTEXT_PROMPT_TEMPLATE,
         condense_prompt=CUSTOM_CONDENSE_PROMPT_TEMPLATE,
-        verbose=True,
+        verbose=False,
     )
 
     return chat_engine
