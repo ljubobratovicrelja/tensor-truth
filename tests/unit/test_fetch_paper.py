@@ -2,10 +2,6 @@
 Unit tests for tensortruth.fetch_paper module.
 """
 
-import os
-from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
-
 import pytest
 
 from tensortruth.fetch_paper import (

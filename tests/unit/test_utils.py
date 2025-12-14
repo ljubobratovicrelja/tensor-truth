@@ -2,8 +2,7 @@
 Unit tests for tensortruth.utils and tensortruth.core modules.
 """
 
-import json
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch

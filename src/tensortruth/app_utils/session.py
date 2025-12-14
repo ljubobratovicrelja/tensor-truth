@@ -7,7 +7,6 @@ from datetime import datetime
 
 import streamlit as st
 
-from tensortruth import convert_chat_to_markdown
 
 from .title_generation import generate_smart_title
 

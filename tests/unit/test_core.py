@@ -153,7 +153,6 @@ class TestSystemModule:
 
         # Make psutil unavailable
         import builtins
-        import sys
 
         original_import = builtins.__import__
 

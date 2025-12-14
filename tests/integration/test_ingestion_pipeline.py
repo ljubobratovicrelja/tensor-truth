@@ -2,8 +2,7 @@
 Integration tests for the ingestion pipeline.
 """
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -99,7 +98,6 @@ class TestDatabaseBuilding:
 
         Enable manually for full integration testing.
         """
-        from tensortruth.build_db import build_module
 
         # Create sample markdown files
         module_dir = temp_library_dir / "test_module"
@@ -147,7 +145,6 @@ class TestConfigBasedRebuilding:
         self, mock_fetch, sample_papers_config, temp_dir
     ):
         """Test rebuilding a category from configuration."""
-        from tensortruth.fetch_paper import rebuild_category
 
         # Setup mock
         mock_fetch.return_value = {
