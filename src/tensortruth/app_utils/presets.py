@@ -3,8 +3,6 @@
 import json
 import os
 
-import streamlit as st
-
 
 def load_presets(presets_file: str):
     """Load presets from JSON file."""
@@ -36,6 +34,8 @@ def delete_preset(name, presets_file: str):
 
 def apply_preset(name, available_mods, available_models, available_devices, presets_file: str):
     """Apply a preset configuration to session state."""
+    import streamlit as st
+
     presets = load_presets(presets_file)
     if name not in presets:
         return

@@ -35,11 +35,15 @@ def ensure_title_model_available():
         return False
 
 
-def generate_smart_title(text, model_name):
+def generate_smart_title(text, model_name=None):
     """
     Uses a small, dedicated LLM to generate a concise title.
     Loads a tiny model (qwen2.5:0.5b), generates title, then unloads it.
     Returns the generated title or a truncated fallback.
+
+    Args:
+        text: The text to generate a title for
+        model_name: Optional model name (currently unused, kept for API compatibility)
     """
     # Use a tiny, fast model for title generation
     title_model = "qwen2.5:0.5b"

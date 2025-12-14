@@ -5,7 +5,6 @@ import os
 import tarfile
 
 import requests
-import streamlit as st
 import torch
 
 from tensortruth import load_engine_for_modules
@@ -63,6 +62,8 @@ def download_indexes_with_ui(index_dir: str, gdrive_link: str):
     """
     Wrapper for download_and_extract_indexes that provides Streamlit UI feedback.
     """
+    import streamlit as st
+
     try:
         with st.spinner(
             "📥 Downloading indexes from Google Drive (this may take a few minutes)..."
@@ -76,7 +77,6 @@ def download_indexes_with_ui(index_dir: str, gdrive_link: str):
         st.error(f"❌ Error downloading/extracting indexes: {e}")
 
 
-@st.cache_data(ttl=10)
 def get_available_modules(index_dir: str):
     """Get list of available index modules."""
     if not os.path.exists(index_dir):
@@ -86,7 +86,14 @@ def get_available_modules(index_dir: str):
     )
 
 
-@st.cache_data(ttl=60)
+# Cache decorator will be applied by Streamlit app if streamlit is available
+try:
+    import streamlit as st
+    get_available_modules = st.cache_data(ttl=10)(get_available_modules)
+except ImportError:
+    pass
+
+
 def get_ollama_models():
     """Fetches list of available models from local Ollama instance."""
     try:
@@ -97,6 +104,14 @@ def get_ollama_models():
     except:
         pass
     return ["deepseek-r1:8b"]
+
+
+# Cache decorator will be applied by Streamlit app if streamlit is available
+try:
+    import streamlit as st
+    get_ollama_models = st.cache_data(ttl=60)(get_ollama_models)
+except ImportError:
+    pass
 
 
 def get_system_devices():
@@ -113,6 +128,8 @@ def get_system_devices():
 
 def free_memory():
     """Free GPU/MPS memory by clearing caches."""
+    import streamlit as st
+
     if "engine" in st.session_state:
         del st.session_state["engine"]
     gc.collect()
@@ -124,6 +141,8 @@ def free_memory():
 
 def ensure_engine_loaded(target_modules, target_params):
     """Ensure the RAG engine is loaded with the specified configuration."""
+    import streamlit as st
+
     target_tuple = tuple(sorted(target_modules))
     param_items = sorted([(k, v) for k, v in target_params.items()])
     param_hash = frozenset(param_items)

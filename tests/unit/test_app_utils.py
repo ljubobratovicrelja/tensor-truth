@@ -161,18 +161,23 @@ class TestTitleGeneration:
 
         assert title == "PyTorch Basics"
 
+    @patch("tensortruth.app_utils.title_generation.requests.post")
     @patch("tensortruth.app_utils.title_generation.requests.get")
-    def test_generate_smart_title_model_unavailable(self, mock_get):
+    def test_generate_smart_title_model_unavailable(self, mock_get, mock_post):
         """Test title generation when model is unavailable."""
         mock_get_response = MagicMock()
         mock_get_response.status_code = 200
         mock_get_response.json.return_value = {"models": []}
         mock_get.return_value = mock_get_response
 
-        text = "This is a very long query that should be truncated for the fallback title"
-        title = title_generation.generate_smart_title(text, "deepseek-r1:8b")
+        # Make model pull fail to simulate unavailability
+        mock_post_response = MagicMock()
+        mock_post_response.status_code = 500
+        mock_post.return_value = mock_post_response
 
-        # Should use fallback (first 30 chars + "..")
+        text = "This is a very long query that should be truncated for the fallback title"
+        title = title_generation.generate_smart_title(text)
+
         assert len(title) <= 32
         assert ".." in title
 

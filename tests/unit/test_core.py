@@ -103,8 +103,8 @@ class TestSystemModule:
         monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
 
         def mock_mem_get_info():
-            # 8GB free, 24GB total
-            return (8_000_000_000, 24_000_000_000)
+            # 8 GiB free, 24 GiB total
+            return (8 * 1024**3, 24 * 1024**3)
 
         monkeypatch.setattr(torch.cuda, "mem_get_info", mock_mem_get_info)
 
