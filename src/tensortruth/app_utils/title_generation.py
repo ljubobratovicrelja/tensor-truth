@@ -35,7 +35,7 @@ def ensure_title_model_available():
         return False
 
 
-def generate_smart_title(text, model_name=None):
+def generate_smart_title(text, model_name="qwen2.5:0.5b"):
     """
     Uses a small, dedicated LLM to generate a concise title.
     Loads a tiny model (qwen2.5:0.5b), generates title, then unloads it.
@@ -45,9 +45,6 @@ def generate_smart_title(text, model_name=None):
         text: The text to generate a title for
         model_name: Optional model name (currently unused, kept for API compatibility)
     """
-    # Use a tiny, fast model for title generation
-    title_model = "qwen2.5:0.5b"
-
     # Ensure model is available (pull if needed)
     if not ensure_title_model_available():
         logger.warning("Title generation model unavailable, using fallback")
@@ -58,7 +55,7 @@ def generate_smart_title(text, model_name=None):
         prompt = f"Summarize this query into a concise 3-5 word title. Return ONLY the title text, no quotes. Query: {text}"
 
         payload = {
-            "model": title_model,
+            "model": model_name,
             "prompt": prompt,
             "stream": False,
             "options": {
