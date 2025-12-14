@@ -70,14 +70,14 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run black
-        run: black --check src/tensortruth tests
+        run: black --check src/tensortruth scripts tests
 
       - name: Run flake8
-        run: flake8 src/tensortruth tests
+        run: flake8 src/tensortruth scripts tests
         continue-on-error: true
 
       - name: Run isort
-        run: isort --check-only src/tensortruth tests
+        run: isort --check-only src/tensortruth scripts tests
 
       - name: Run mypy
         run: mypy src/tensortruth --ignore-missing-imports

@@ -5,7 +5,7 @@ Formatting script, also used in pre-commit hooks.
 import subprocess
 import sys
 
-TARGETS = ["src/tensortruth", "tests"]
+TARGETS = ["src/tensortruth", "scripts", "tests"]
 
 
 def run_tool(command):
