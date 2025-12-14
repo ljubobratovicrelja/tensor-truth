@@ -583,12 +583,34 @@ elif st.session_state.mode == "chat":
         save_sessions(SESSIONS_FILE)
 
         # Update title in background (can be slow with LLM) - using async for better responsiveness
+        def run_async_in_thread(coro):
+            """Run async coroutine in a new thread with its own event loop."""
+
+            def run():
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    new_loop.run_until_complete(coro)
+                finally:
+                    new_loop.close()
+
+            thread = threading.Thread(target=run)
+            thread.start()
+            thread.join()
+
+        # Capture chat_data reference for background thread
+        chat_data_snapshot = st.session_state.chat_data
+
         async def update_title_task():
             await update_title_async(
-                current_id, prompt, params.get("model"), SESSIONS_FILE
+                current_id,
+                prompt,
+                params.get("model"),
+                SESSIONS_FILE,
+                chat_data=chat_data_snapshot,
             )
 
-        asyncio.run(update_title_task())
+        run_async_in_thread(update_title_task())
 
         with st.chat_message("assistant"):
             if engine:
@@ -596,30 +618,20 @@ elif st.session_state.mode == "chat":
                 try:
                     # Show RAG pipeline status with actual spinner
                     with st.spinner("🔍 Processing query through RAG pipeline..."):
-                        # Use async streaming for better responsiveness
-                        async def get_streaming_response():
-                            return await engine.astream_chat(prompt)
+                        # Use non-streaming chat (streaming had event loop issues)
+                        response = engine.chat(prompt)
 
-                        streaming_response = asyncio.run(get_streaming_response())
-
-                    # Stream the response asynchronously
-                    async def async_response_generator():
-                        async for token in streaming_response.async_response_gen():
-                            yield token
-
-                    # Display streaming response
-                    answer = st.write_stream(async_response_generator())
+                    # Display response
+                    answer = str(response)
+                    st.markdown(answer)
 
                     elapsed = time.time() - start_time
 
                     # Handle source nodes
                     source_data = []
-                    if (
-                        hasattr(streaming_response, "source_nodes")
-                        and streaming_response.source_nodes
-                    ):
+                    if hasattr(response, "source_nodes") and response.source_nodes:
                         with st.expander("📚 Sources"):
-                            for node in streaming_response.source_nodes:
+                            for node in response.source_nodes:
                                 score = float(node.score) if node.score else 0.0
                                 fname = node.metadata.get("file_name", "Unknown")
                                 st.caption(f"{fname} ({score:.2f})")

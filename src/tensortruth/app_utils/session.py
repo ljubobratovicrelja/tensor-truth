@@ -43,13 +43,21 @@ def create_session(modules, params, sessions_file: str):
     return new_id
 
 
-async def update_title_async(session_id, text, model_name, sessions_file: str):
+async def update_title_async(
+    session_id, text, model_name, sessions_file: str, chat_data: dict = None
+):
     """Update session title using smart title generation (async version)."""
-    session = st.session_state.chat_data["sessions"][session_id]
+    # Accept chat_data as parameter to avoid accessing st.session_state from background thread
+    if chat_data is None:
+        chat_data = st.session_state.chat_data
+
+    session = chat_data["sessions"][session_id]
     if session.get("title") == "New Session":
         new_title = await generate_smart_title_async(text, model_name)
         session["title"] = new_title
-        save_sessions(sessions_file)
+        # Write directly to file instead of using save_sessions (which accesses session_state)
+        with open(sessions_file, "w", encoding="utf-8") as f:
+            json.dump(chat_data, f, indent=2)
 
 
 def update_title(session_id, text, model_name, sessions_file: str):
