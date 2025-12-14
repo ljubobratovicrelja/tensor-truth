@@ -154,27 +154,21 @@ def ensure_engine_loaded(target_modules, target_params):
     if current_config == (target_tuple, param_hash):
         return st.session_state.engine
 
+    # Always show loading message for better UX
+    placeholder = st.empty()
+    placeholder.info(
+        f"⏳ Loading Model: {target_params.get('model')} | Pipeline: {target_params.get('rag_device')} | LLM: {target_params.get('llm_device')}..."
+    )
+
     if current_config is not None:
-        placeholder = st.empty()
-        placeholder.info(
-            f"⏳ Loading Model: {target_params.get('model')} | Pipeline: {target_params.get('rag_device')} | LLM: {target_params.get('llm_device')}..."
-        )
         free_memory()
-        try:
-            engine = load_engine_for_modules(list(target_tuple), target_params)
-            st.session_state.engine = engine
-            st.session_state.loaded_config = (target_tuple, param_hash)
-            placeholder.empty()
-            return engine
-        except Exception as e:
-            placeholder.error(f"Failed: {e}")
-            st.stop()
-    else:
-        try:
-            engine = load_engine_for_modules(list(target_tuple), target_params)
-            st.session_state.engine = engine
-            st.session_state.loaded_config = (target_tuple, param_hash)
-            return engine
-        except Exception as e:
-            st.error(f"Startup Failed: {e}")
-            st.stop()
+
+    try:
+        engine = load_engine_for_modules(list(target_tuple), target_params)
+        st.session_state.engine = engine
+        st.session_state.loaded_config = (target_tuple, param_hash)
+        placeholder.empty()
+        return engine
+    except Exception as e:
+        placeholder.error(f"Failed: {e}")
+        st.stop()

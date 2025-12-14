@@ -372,19 +372,21 @@ if st.session_state.mode == "setup":
                         f"Config is extremely heavy ({vram_est:.1f}GB). Reduce parameters."
                     )
                 else:
-                    params = {
-                        "model": selected_model,
-                        "temperature": temp,
-                        "context_window": ctx,
-                        "system_prompt": sys_prompt,
-                        "reranker_model": reranker_model,
-                        "reranker_top_n": top_n,
-                        "confidence_cutoff": conf,
-                        "rag_device": rag_device,
-                        "llm_device": llm_device,
-                    }
-                    create_session(selected_mods, params, SESSIONS_FILE)
-                    st.session_state.mode = "chat"
+                    # Show immediate feedback before transition
+                    with st.spinner("🚀 Creating session..."):
+                        params = {
+                            "model": selected_model,
+                            "temperature": temp,
+                            "context_window": ctx,
+                            "system_prompt": sys_prompt,
+                            "reranker_model": reranker_model,
+                            "reranker_top_n": top_n,
+                            "confidence_cutoff": conf,
+                            "rag_device": rag_device,
+                            "llm_device": llm_device,
+                        }
+                        create_session(selected_mods, params, SESSIONS_FILE)
+                        st.session_state.mode = "chat"
                     st.rerun()
 
         # --- SAVE PRESET SECTION (Outside form to allow name typing without submit) ---
@@ -479,10 +481,12 @@ elif st.session_state.mode == "chat":
     if prompt := st.chat_input("Ask or type /cmd..."):
         # 1. COMMAND PROCESSING
         if prompt.startswith("/"):
-            available_mods = get_available_modules(INDEX_DIR)
-            is_cmd, response = process_command(
-                prompt, session, available_mods, SESSIONS_FILE
-            )
+            # Show immediate feedback for command execution
+            with st.spinner(f"⚙️ Processing command: {prompt}"):
+                available_mods = get_available_modules(INDEX_DIR)
+                is_cmd, response = process_command(
+                    prompt, session, available_mods, SESSIONS_FILE
+                )
             if is_cmd:
                 session["messages"].append({"role": "assistant", "content": response})
                 save_sessions(SESSIONS_FILE)

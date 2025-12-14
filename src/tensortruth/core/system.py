@@ -10,8 +10,6 @@ def get_max_memory_gb():
     - Windows/Linux with CUDA: Uses GPU VRAM
     - Fallback: CPU RAM
     """
-    import platform
-
     # Check if CUDA is available (Windows/Linux with NVIDIA GPU)
     if torch.cuda.is_available():
         try:
