@@ -582,9 +582,9 @@ elif st.session_state.mode == "chat":
         session["messages"].append({"role": "user", "content": prompt})
         save_sessions(SESSIONS_FILE)
 
-        # Update title in background (can be slow with LLM) - using async for better responsiveness
+        # Update title in background (can be slow with LLM) - fire and forget
         def run_async_in_thread(coro):
-            """Run async coroutine in a new thread with its own event loop."""
+            """Run async coroutine in a new thread with its own event loop (non-blocking)."""
 
             def run():
                 new_loop = asyncio.new_event_loop()
@@ -594,9 +594,9 @@ elif st.session_state.mode == "chat":
                 finally:
                     new_loop.close()
 
-            thread = threading.Thread(target=run)
+            thread = threading.Thread(target=run, daemon=True)
             thread.start()
-            thread.join()
+            # Don't wait for title generation - it can complete in background
 
         # Capture chat_data reference for background thread
         chat_data_snapshot = st.session_state.chat_data
