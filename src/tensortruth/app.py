@@ -17,7 +17,6 @@ from tensortruth import (
     get_max_memory_gb,
     get_running_models,
     load_engine_for_modules,
-    parse_thinking_response,
     run_ingestion,
 )
 
@@ -415,18 +414,15 @@ def generate_smart_title(text, model_name):
             "http://localhost:11434/api/generate", json=payload, timeout=10
         )
         if resp.status_code == 200:
-            raw = resp.json().get("response", "")
-
-            # Clean reasoning traces if model uses them (e.g. DeepSeek-R1)
-            _, clean = parse_thinking_response(raw)
+            response = resp.json().get("response", "")
 
             # Final cleanup
-            title = clean.replace('"', "").replace("'", "").replace(".", "").strip()
+            title = response.replace('"', "").replace("'", "").replace(".", "").strip()
             if title:
                 print(f"[Title Gen] Success: '{title}'")
                 return title
             else:
-                print(f"[Title Gen] Empty response after cleanup. Raw: {raw[:100]}")
+                print(f"[Title Gen] Empty response after cleanup. Raw: {response[:100]}")
         else:
             print(f"[Title Gen] API returned status {resp.status_code}")
     except requests.exceptions.Timeout:
@@ -1046,12 +1042,7 @@ elif st.session_state.mode == "chat":
 
     for msg in session["messages"]:
         with st.chat_message(msg["role"]):
-            thought, answer = parse_thinking_response(msg["content"])
-            if thought:
-                with st.expander("💭 Thought Process", expanded=False):
-                    st.markdown(thought)
-            st.markdown(answer)
-
+            st.markdown(msg["content"])
             meta_cols = st.columns([3, 1])
             with meta_cols[0]:
                 if "sources" in msg and msg["sources"]:
