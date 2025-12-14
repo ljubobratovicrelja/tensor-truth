@@ -1082,50 +1082,78 @@ elif st.session_state.mode == "chat":
 
         with st.chat_message("assistant"):
             if engine:
-                with st.spinner(f"Thinking ({params.get('model')})..."):
-                    start_time = time.time()
-                    try:
-                        response = engine.chat(prompt)
+                start_time = time.time()
+                try:
+                    # Show RAG pipeline status.
+                    status_container = st.empty()
 
-                        if (
-                            not response.source_nodes
-                            and response.response.strip() == "Empty Response"
-                        ):
-                            raw_content = "I could not find relevant context in the loaded indices."
-                            thought = None
-                            answer = raw_content
-                        else:
-                            raw_content = response.response
-                            thought, answer = parse_thinking_response(raw_content)
+                    # Use container to show multiple status steps
+                    with status_container.container():
+                        step1 = st.empty()
+                        step2 = st.empty()
+                        step3 = st.empty()
+                        step4 = st.empty()
 
-                        elapsed = time.time() - start_time
+                        step1.markdown("**Embedding query...**")
+                        time.sleep(0.2)
 
-                        if thought:
-                            with st.expander("💭 Thought Process", expanded=True):
-                                st.markdown(thought)
+                        step2.markdown("**Searching knowledge base...**")
+
+                        # Start the streaming response (RAG happens here)
+                        streaming_response = engine.stream_chat(prompt)
+
+                        step3.markdown("**Ranking results...**")
+                        time.sleep(0.15)
+
+                    # Clear all status messages
+                    status_container.empty()
+
+                    # Stream the response progressively
+                    def response_generator():
+                        for token in streaming_response.response_gen:
+                            yield token
+
+                    # Display streaming response
+                    raw_content = st.write_stream(response_generator())
+
+                    # Parse thinking response after streaming completes
+                    thought, answer = parse_thinking_response(raw_content)
+
+                    # If there was thinking content, we need to re-render properly
+                    if thought:
+                        # Clear and re-render with proper structure
+                        st.empty()
+                        with st.expander("💭 Thought Process", expanded=True):
+                            st.markdown(thought)
                         st.markdown(answer)
 
-                        source_data = []
-                        if response.source_nodes:
-                            with st.expander("📚 Sources"):
-                                for node in response.source_nodes:
-                                    score = float(node.score) if node.score else 0.0
-                                    fname = node.metadata.get("file_name", "Unknown")
-                                    st.caption(f"{fname} ({score:.2f})")
-                                    source_data.append({"file": fname, "score": score})
+                    elapsed = time.time() - start_time
 
-                        st.caption(f"⏱️ {elapsed:.2f}s")
-                        session["messages"].append(
-                            {
-                                "role": "assistant",
-                                "content": raw_content,
-                                "sources": source_data,
-                                "time_taken": elapsed,
-                            }
-                        )
-                        save_sessions()
-                    except Exception as e:
-                        st.error(f"Engine Error: {e}")
+                    # Handle source nodes
+                    source_data = []
+                    if (
+                        hasattr(streaming_response, "source_nodes")
+                        and streaming_response.source_nodes
+                    ):
+                        with st.expander("📚 Sources"):
+                            for node in streaming_response.source_nodes:
+                                score = float(node.score) if node.score else 0.0
+                                fname = node.metadata.get("file_name", "Unknown")
+                                st.caption(f"{fname} ({score:.2f})")
+                                source_data.append({"file": fname, "score": score})
+
+                    st.caption(f"⏱️ {elapsed:.2f}s")
+                    session["messages"].append(
+                        {
+                            "role": "assistant",
+                            "content": raw_content,
+                            "sources": source_data,
+                            "time_taken": elapsed,
+                        }
+                    )
+                    save_sessions()
+                except Exception as e:
+                    st.error(f"Engine Error: {e}")
             else:
                 st.error("Engine not loaded. Use `/load <index>` to start.")
         st.rerun()
