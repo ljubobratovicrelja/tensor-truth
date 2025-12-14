@@ -483,53 +483,31 @@ elif st.session_state.mode == "chat":
                 st.rerun()
 
         # 2. STANDARD CHAT PROCESSING
-        update_title(current_id, prompt, params.get("model"), SESSIONS_FILE)
-
         with st.chat_message("user"):
             st.markdown(prompt)
         session["messages"].append({"role": "user", "content": prompt})
         save_sessions(SESSIONS_FILE)
 
+        # Update title in background (can be slow with LLM)
+        with st.spinner("Updating session title..."):
+            update_title(current_id, prompt, params.get("model"), SESSIONS_FILE)
+
         with st.chat_message("assistant"):
             if engine:
                 start_time = time.time()
                 try:
-                    # Show RAG pipeline status.
-                    status_container = st.empty()
-
-                    # Use container to show multiple status steps
-                    with status_container.container():
-                        step1 = st.empty()
-                        step2 = st.empty()
-                        step3 = st.empty()
-                        step4 = st.empty()
-
-                        step1.markdown("**Embedding query...**")
-                        time.sleep(0.2)
-
-                        step2.markdown("**Searching knowledge base...**")
-
-                        # Start the streaming response (RAG happens here)
+                    # Show RAG pipeline status with actual spinner
+                    with st.spinner("🔍 Processing query through RAG pipeline..."):
+                        # The actual RAG work happens here (embedding, retrieval, reranking)
                         streaming_response = engine.stream_chat(prompt)
 
-                        step3.markdown("**Ranking results...**")
-                        time.sleep(0.15)
+                    # Stream the response
+                    def response_generator():
+                        for token in streaming_response.response_gen:
+                            yield token
 
-                    # Clear all status messages
-                    status_container.empty()
-
-                    # Create a placeholder for the response that we can replace
-                    response_container = st.empty()
-
-                    # Stream the response progressively into the placeholder
-                    with response_container.container():
-
-                        def response_generator():
-                            for token in streaming_response.response_gen:
-                                yield token
-
-                        # Display streaming response
-                        answer = st.write_stream(response_generator())
+                    # Display streaming response
+                    answer = st.write_stream(response_generator())
 
                     elapsed = time.time() - start_time
 
