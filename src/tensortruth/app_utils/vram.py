@@ -98,7 +98,9 @@ def estimate_vram_usage(
     return predicted_total, stats, new_session_cost
 
 
-def render_vram_gauge(model_name, num_indices, context_window, rag_device, llm_device, max_vram_gb):
+def render_vram_gauge(
+    model_name, num_indices, context_window, rag_device, llm_device, max_vram_gb
+):
     """Render VRAM usage gauge in Streamlit UI."""
     predicted, stats, new_cost = estimate_vram_usage(
         model_name, num_indices, context_window, rag_device, llm_device

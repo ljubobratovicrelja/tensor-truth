@@ -91,7 +91,7 @@ class TestVRAM:
             num_indices=2,
             context_window=4096,
             rag_device="cuda",
-            llm_device="gpu"
+            llm_device="gpu",
         )
 
         # RAG overhead (1.8) + index overhead (2*0.15) + LLM (5.5) + KV cache (~0.8)
@@ -105,7 +105,7 @@ class TestVRAM:
             num_indices=2,
             context_window=4096,
             rag_device="cpu",
-            llm_device="cpu"
+            llm_device="cpu",
         )
 
         # Only index overhead matters, LLM and RAG are in RAM
@@ -118,7 +118,7 @@ class TestVRAM:
             num_indices=1,
             context_window=8192,
             rag_device="cuda",
-            llm_device="gpu"
+            llm_device="gpu",
         )
 
         # Should be significantly higher for 70b model
@@ -141,22 +141,17 @@ class TestTitleGeneration:
         # Mock model availability check
         mock_get_response = MagicMock()
         mock_get_response.status_code = 200
-        mock_get_response.json.return_value = {
-            "models": [{"name": "qwen2.5:0.5b"}]
-        }
+        mock_get_response.json.return_value = {"models": [{"name": "qwen2.5:0.5b"}]}
         mock_get.return_value = mock_get_response
 
         # Mock title generation response
         mock_post_response = MagicMock()
         mock_post_response.status_code = 200
-        mock_post_response.json.return_value = {
-            "response": "PyTorch Basics"
-        }
+        mock_post_response.json.return_value = {"response": "PyTorch Basics"}
         mock_post.return_value = mock_post_response
 
         title = title_generation.generate_smart_title(
-            "What are the basics of PyTorch?",
-            "deepseek-r1:8b"
+            "What are the basics of PyTorch?", "deepseek-r1:8b"
         )
 
         assert title == "PyTorch Basics"
@@ -175,7 +170,9 @@ class TestTitleGeneration:
         mock_post_response.status_code = 500
         mock_post.return_value = mock_post_response
 
-        text = "This is a very long query that should be truncated for the fallback title"
+        text = (
+            "This is a very long query that should be truncated for the fallback title"
+        )
         title = title_generation.generate_smart_title(text)
 
         assert len(title) <= 32

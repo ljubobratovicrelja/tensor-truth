@@ -32,7 +32,9 @@ def delete_preset(name, presets_file: str):
             json.dump(presets, f, indent=2)
 
 
-def apply_preset(name, available_mods, available_models, available_devices, presets_file: str):
+def apply_preset(
+    name, available_mods, available_models, available_devices, presets_file: str
+):
     """Apply a preset configuration to session state."""
     import streamlit as st
 

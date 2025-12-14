@@ -127,8 +127,7 @@ class MultiIndexRetriever(BaseRetriever):
         # Parallelize retrieval across all indices
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_retriever = {
-                executor.submit(r.retrieve, query_bundle): r
-                for r in self.retrievers
+                executor.submit(r.retrieve, query_bundle): r for r in self.retrievers
             }
 
             for future in as_completed(future_to_retriever):

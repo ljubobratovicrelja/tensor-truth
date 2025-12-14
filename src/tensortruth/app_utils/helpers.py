@@ -89,6 +89,7 @@ def get_available_modules(index_dir: str):
 # Cache decorator will be applied by Streamlit app if streamlit is available
 try:
     import streamlit as st
+
     get_available_modules = st.cache_data(ttl=10)(get_available_modules)
 except ImportError:
     pass
@@ -109,6 +110,7 @@ def get_ollama_models():
 # Cache decorator will be applied by Streamlit app if streamlit is available
 try:
     import streamlit as st
+
     get_ollama_models = st.cache_data(ttl=60)(get_ollama_models)
 except ImportError:
     pass
