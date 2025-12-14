@@ -8,6 +8,19 @@ import sys
 from pathlib import Path
 
 
+def _missing_imports_message(tool, package, error):
+    """
+    Print a standardized message for missing dependencies for docs and papers scraping tools.
+    """
+    print(
+        (
+            f"Missing dependencies for {tool} CLI tool. Error: {error}.\n"
+            f"Install with: pip install tensor-truth[{package}], or tensor-truth[utils].\n"
+        ),
+        file=sys.stderr,
+    )
+
+
 def main():
     """Main entry point - launches the Streamlit web application."""
     # Get the project root directory (where app.py lives)
@@ -35,14 +48,22 @@ def main():
 
 def fetch_paper():
     """Entry point for paper fetching tool."""
-    from tensortruth.fetch_paper import main as fetch_main
+    try:
+        from tensortruth.fetch_paper import main as fetch_main
+    except ImportError as e:
+        _missing_imports_message("tensor-truth-papers", "papers", e)
+        sys.exit(1)
 
     sys.exit(fetch_main())
 
 
 def scrape_docs():
     """Entry point for documentation scraping tool."""
-    from tensortruth.scrape_docs import main as scrape_main
+    try:
+        from tensortruth.scrape_docs import main as scrape_main
+    except ImportError as e:
+        _missing_imports_message("tensor-truth-scrape", "docs", e)
+        sys.exit(1)
 
     sys.exit(scrape_main())
 

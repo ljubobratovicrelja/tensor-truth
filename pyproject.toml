@@ -35,17 +35,10 @@ dependencies = [
     # --- Web App ---
     "streamlit",
 
-    # --- Documentation Scraper ---
-    "requests",
-    "marker-pdf",
-    "beautifulsoup4",
-    "markdownify",
-    "sphobjinv",      # Essential for parsing Sphinx inventory files
-    "tqdm",           # Progress bars
-    "arxiv",
-    "pymupdf4llm",
-    "gdown",          # Google Drive downloads
-] # The Core Stack
+    # --- Utilities ---
+    "requests", # Ollama API & downloads
+    "gdown",    # Google Drive index downloads
+]
 
 [project.scripts]
 tensor-truth = "tensortruth.cli:main"
@@ -54,6 +47,25 @@ tensor-truth-docs = "tensortruth.cli:scrape_docs"
 tensor-truth-build = "tensortruth.cli:build_db"
 
 [project.optional-dependencies]
+# Documentation scraping tools (tensor-truth-docs)
+docs = [
+    "beautifulsoup4",
+    "markdownify",
+    "sphobjinv",      # Sphinx inventory parsing
+    "tqdm",           # Progress bars
+]
+
+# Paper/book fetching tools (tensor-truth-papers)
+papers = [
+    "arxiv",
+    "pymupdf4llm",
+    "marker-pdf",
+    "tqdm",        # Progress bars
+]
+
+# All utility tools (docs + papers + build)
+utils = ["tensor-truth[docs,papers]"]
+
 # Development and testing dependencies
 dev = [
     # Testing Framework
