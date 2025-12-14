@@ -123,10 +123,10 @@ if st.session_state.get("show_delete_confirm", False):
     @st.dialog("Delete Chat Session?")
     def confirm_delete():
         st.write("Are you sure you want to delete this chat session?")
-        st.write(
-            f"**{st.session_state.chat_data['sessions'][
-                st.session_state.chat_data['current_id']]['title']}**"
-        )
+        session_title = st.session_state.chat_data["sessions"][
+            st.session_state.chat_data["current_id"]
+        ]["title"]
+        st.write(f"**{session_title}**")
         st.caption("This action cannot be undone.")
 
         col1, col2 = st.columns(2)
