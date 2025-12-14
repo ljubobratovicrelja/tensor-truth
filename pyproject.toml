@@ -30,7 +30,7 @@ dependencies = [
     # Note: Torch often defaults to CPU on pip install.
     # Ensure your venv has the CUDA version installed.
     "torch>=2.0",
-    "psutil",  # For system memory detection
+    "psutil",     # For system memory detection
 
     # --- Web App ---
     "streamlit",
@@ -56,38 +56,28 @@ tensor-truth-build = "tensortruth.cli:build_db"
 # Development and testing dependencies
 dev = [
     # Testing Framework
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.11.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-xdist>=3.3.0",  # For parallel test execution
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
 
     # Property-based Testing
     "hypothesis>=6.82.0",
 
-    # HTTP Mocking
-    "responses>=0.23.0",
-
-    # Test Data Generation
-    "faker>=19.2.0",
-
     # Code Quality
-    "black>=23.7.0",
+    "black>=25.12.0",
     "ruff>=0.1.0",
-    "flake8>=6.0.0",
     "mypy>=1.4.0",
-    "isort>=5.12.0",
+    "isort>=7.0.0",
 
     # Coverage Reporting
     "coverage[toml]>=7.2.0",
-
-    # Debugging & Experimentation
-    "ipdb>=0.13.13",
-    "ipykernel",  # Jupyter support
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"] # Tells python that your code lives in 'src/'
+
+[tool.deptry.per_rule_ignores]
+# Ignore DEP002 for CLI tools and test framework (not imported in src/, used in tests/ or via CLI)
+DEP002 = ["pytest", "pytest-cov", "hypothesis", "black", "mypy", "ruff", "isort", "coverage"]
 
 # Tool Configurations
 [tool.ruff]
@@ -140,11 +130,7 @@ addopts = [
 
 [tool.coverage.run]
 source = ["src/tensortruth"]
-omit = [
-    "*/tests/*",
-    "*/venv/*",
-    "*/__pycache__/*",
-]
+omit = ["*/tests/*", "*/venv/*", "*/__pycache__/*"]
 
 [tool.coverage.report]
 precision = 2
