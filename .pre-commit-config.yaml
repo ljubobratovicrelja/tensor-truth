@@ -3,7 +3,6 @@ default_stages: [pre-commit]
 
 repos:
   # --- STAGE 1: PRE-COMMIT (Formatters) ---
-  # These run every time you commit. They auto-fix your code.
 
   # Isort: Sorts imports
   - repo: https://github.com/pycqa/isort
@@ -21,7 +20,6 @@ repos:
         stages: [pre-commit]
 
   # --- STAGE 2: PRE-PUSH (Linters) ---
-  # These run only when you push. They stop bad code from reaching the repo.
 
   # Flake8: Checks for logic/style errors (read-only)
   - repo: https://github.com/pycqa/flake8
@@ -29,9 +27,4 @@ repos:
     hooks:
       - id: flake8
         stages: [pre-push]
-        # Arguments matching your CI/CD pipeline
-        args:
-          [
-            "--max-line-length=100",
-            "--extend-ignore=E203,W503,E501,E722,W291,W293,F401",
-          ]
+        args: ["--max-line-length=100", "--extend-ignore=E203,W503,W291,W293"]
