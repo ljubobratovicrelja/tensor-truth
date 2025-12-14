@@ -440,9 +440,6 @@ elif st.session_state.mode == "chat":
         engine = None
 
     st.title(session.get("title", "Untitled"))
-    st.caption(
-        "💡 Tip: Type **/help** to see all commands. Use `/device` to manage hardware."
-    )
 
     for msg in session["messages"]:
         with st.chat_message(msg["role"]):
@@ -457,7 +454,21 @@ elif st.session_state.mode == "chat":
                 if "time_taken" in msg:
                     st.caption(f"⏱️ {msg['time_taken']:.2f}s")
 
-    if prompt := st.chat_input("Ask or type /cmd..."):
+    # Create placeholder for tip before chat input
+    tip_placeholder = st.empty()
+
+    prompt = st.chat_input("Ask or type /cmd...")
+
+    # Only show tip if no messages exist AND no prompt being processed
+    if not session["messages"] and not prompt:
+        with tip_placeholder:
+            st.caption(
+                "💡 Tip: Type **/help** to see all commands. Use `/device` to manage hardware."
+            )
+    else:
+        tip_placeholder.empty()
+
+    if prompt:
         # 1. COMMAND PROCESSING
         if prompt.startswith("/"):
             # Show immediate feedback for command execution
@@ -549,4 +560,3 @@ elif st.session_state.mode == "chat":
                     st.error(f"Engine Error: {e}")
             else:
                 st.error("Engine not loaded. Use `/load <index>` to start.")
-        st.rerun()
