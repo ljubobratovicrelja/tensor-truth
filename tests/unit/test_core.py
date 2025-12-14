@@ -9,7 +9,6 @@ import torch
 
 from tensortruth.core import get_max_memory_gb, get_running_models, stop_model
 
-
 # ============================================================================
 # Tests for Ollama Module
 # ============================================================================
@@ -153,8 +152,8 @@ class TestSystemModule:
             monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
 
         # Make psutil unavailable
-        import sys
         import builtins
+        import sys
 
         original_import = builtins.__import__
 

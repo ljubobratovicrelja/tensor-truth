@@ -11,7 +11,6 @@ from tensortruth.app_utils import presets, title_generation
 from tensortruth.app_utils.helpers import get_ollama_models, get_system_devices
 from tensortruth.app_utils.vram import estimate_vram_usage
 
-
 # ============================================================================
 # Tests for Helpers Module
 # ============================================================================
