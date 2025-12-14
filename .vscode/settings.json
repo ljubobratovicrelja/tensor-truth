@@ -8,17 +8,12 @@
     },
     "editor.defaultFormatter": "charliermarsh.ruff"
   },
-
   // Use native Ruff integration (not legacy server)
   "ruff.nativeServer": true,
-
   // Ruff configuration
   "ruff.lineLength": 88,
-
-  // Optional: Set Python interpreter to your venv
-  // Uncomment and adjust path if needed
-  // "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-
-  // Optional: Enable Ruff linting
-  "ruff.lint.enable": true
+  // Set default python interpreter to venv
+  "python.defaultInterpreterPath": "${workspaceFolder}/venv",
+  // Enable Ruff linting
+  "ruff.lint.enable": true,
 }
