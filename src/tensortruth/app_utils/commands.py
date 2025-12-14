@@ -36,7 +36,10 @@ def process_command(prompt, session, available_mods, sessions_file: str):
             f"**Confidence Cutoff:** `{current_params.get('confidence_cutoff', 0.3)}`"
         )
         lines.append(
-            "\n**Usage:** `/load <name>`, `/device rag <cpu|cuda|mps>`, `/device llm <cpu|gpu>`, `/conf <val>`"
+            (
+                "\n**Usage:** `/load <name>`, `/device rag <cpu|cuda|mps>`, "
+                "`/device llm <cpu|gpu>`, `/conf <val>`"
+            )
         )
         response_msg = "\n".join(lines)
 
@@ -47,7 +50,10 @@ def process_command(prompt, session, available_mods, sessions_file: str):
             "- **/load <index>**: Load a specific knowledge base.",
             "- **/unload <index>**: Unload a knowledge base.",
             "- **/reload**: Flush VRAM and restart the engine.",
-            "- **/device rag <cpu|cuda|mps>**: Move RAG pipeline (Embed/Rerank) to specific hardware.",
+            (
+                "- **/device rag <cpu|cuda|mps>**: Move RAG pipeline (Embed/Rerank) "
+                "to specific hardware."
+            ),
             "- **/device llm <cpu|gpu>**: Move LLM (Ollama) to specific hardware.",
             "- **/conf <0.0-1.0>**: Set the confidence score cutoff for retrieval.",
             "- **/help**: Show this list.",

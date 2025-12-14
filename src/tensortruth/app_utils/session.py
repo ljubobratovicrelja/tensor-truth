@@ -7,7 +7,6 @@ from datetime import datetime
 
 import streamlit as st
 
-
 from .title_generation import generate_smart_title
 
 

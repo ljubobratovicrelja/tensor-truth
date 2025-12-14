@@ -1,0 +1,37 @@
+# General default: most things run on commit unless specified otherwise
+default_stages: [pre-commit]
+
+repos:
+  # --- STAGE 1: PRE-COMMIT (Formatters) ---
+  # These run every time you commit. They auto-fix your code.
+
+  # Isort: Sorts imports
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        stages: [pre-commit]
+
+  # Black: Formats code
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3.13
+        stages: [pre-commit]
+
+  # --- STAGE 2: PRE-PUSH (Linters) ---
+  # These run only when you push. They stop bad code from reaching the repo.
+
+  # Flake8: Checks for logic/style errors (read-only)
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        stages: [pre-push]
+        # Arguments matching your CI/CD pipeline
+        args:
+          [
+            "--max-line-length=100",
+            "--extend-ignore=E203,W503,E501,E722,W291,W293,F401",
+          ]

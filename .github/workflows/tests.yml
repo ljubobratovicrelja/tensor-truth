@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
   test:
@@ -13,74 +13,72 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest]
-        python-version: ['3.13']
+        python-version: ["3.13"]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Cache pip packages
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        # Install package with dev dependencies
-        pip install -e ".[dev]"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
 
-    - name: Run unit tests
-      run: |
-        pytest tests/unit/ -v --cov=tensortruth --cov-report=xml --cov-report=term
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ -v --cov=tensortruth --cov-report=xml --cov-report=term
 
-    - name: Run integration tests
-      run: |
-        pytest tests/integration/ -v -m "not slow"
+      - name: Run integration tests
+        run: |
+          pytest tests/integration/ -v -m "not slow"
 
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}
-        fail_ci_if_error: false
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}
+          fail_ci_if_error: false
 
   lint:
     runs-on: macos-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.13'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
 
-    - name: Run black
-      run: black --check src/tensortruth tests
+      - name: Run black
+        run: black --check src/tensortruth tests
 
-    - name: Run flake8
-      run: flake8 src/tensortruth tests --max-line-length=100 --extend-ignore=E203,W503,E501,E722,W291,W293,F401
-      continue-on-error: true  # Linting is advisory, don't fail CI
+      - name: Run flake8
+        run: flake8 src/tensortruth tests
+        continue-on-error: true
 
-    - name: Run isort
-      run: isort --check-only src/tensortruth tests
+      - name: Run isort
+        run: isort --check-only src/tensortruth tests
 
-    - name: Run mypy
-      run: mypy src/tensortruth --ignore-missing-imports
-      continue-on-error: true  # Type hints are optional for now
+      - name: Run mypy
+        run: mypy src/tensortruth --ignore-missing-imports
+        continue-on-error: true

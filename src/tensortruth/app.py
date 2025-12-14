@@ -1,12 +1,8 @@
 """Tensor-Truth Streamlit Application - Main Entry Point."""
 
-import os
-import sys
 import time
 
 import streamlit as st
-
-sys.path.append(os.path.abspath("./src"))
 
 from tensortruth import convert_chat_to_markdown, get_max_memory_gb, run_ingestion
 from tensortruth.app_utils import (

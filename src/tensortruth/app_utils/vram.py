@@ -130,12 +130,6 @@ def render_vram_gauge(
         delta_color="inverse",
     )
 
-    color = "green"
-    if vram_percent > 0.75:
-        color = "orange"
-    if vram_percent > 0.95:
-        color = "red"
-
     st.progress(vram_percent)
 
     if predicted > max_vram_gb:

@@ -94,7 +94,7 @@ class TestPaperAlreadyProcessed:
 
         # Create MD with arxiv_id in header
         md_path = category_dir / "test_paper.md"
-        md_path.write_text(f"# ArXiv ID: 1234.56789\n\nContent...")
+        md_path.write_text("# ArXiv ID: 1234.56789\n\nContent...")
 
         result = paper_already_processed(
             "test_category", "1234.56789", root_dir=str(temp_dir)

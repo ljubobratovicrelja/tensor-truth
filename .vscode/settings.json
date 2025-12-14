@@ -1,19 +1,19 @@
 {
-  // Python-specific settings
   "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
-      "source.organizeImports": "explicit",
-      "source.fixAll": "explicit"
-    },
-    "editor.defaultFormatter": "charliermarsh.ruff"
+      "source.organizeImports": "explicit"
+    }
   },
-  // Use native Ruff integration (not legacy server)
-  "ruff.nativeServer": true,
-  // Ruff configuration
-  "ruff.lineLength": 88,
-  // Set default python interpreter to venv
-  "python.defaultInterpreterPath": "${workspaceFolder}/venv",
-  // Enable Ruff linting
-  "ruff.lint.enable": true,
+  // Tools will now automatically read pyproject.toml and .flake8
+  "black-formatter.importStrategy": "fromEnvironment",
+  "isort.check": true,
+  "isort.importStrategy": "fromEnvironment",
+  "flake8.importStrategy": "fromEnvironment",
+  "python.testing.pytestArgs": [
+    "tests"
+  ],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true
 }

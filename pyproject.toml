@@ -64,9 +64,9 @@ dev = [
 
     # Code Quality
     "black>=25.12.0",
-    "ruff>=0.1.0",
-    "mypy>=1.4.0",
     "isort>=7.0.0",
+    "flake8>=7.3.0",
+    "mypy>=1.4.0",
 
     # Coverage Reporting
     "coverage[toml]>=7.2.0",
@@ -83,15 +83,11 @@ DEP002 = [
     "hypothesis",
     "black",
     "mypy",
-    "ruff",
     "isort",
     "coverage",
 ]
 
 # Tool Configurations
-[tool.ruff]
-line-length = 88
-target-version = "py313"
 
 [tool.black]
 line-length = 88

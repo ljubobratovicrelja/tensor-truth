@@ -147,6 +147,7 @@ class TestGetEmbedModel:
         mock_embedding_class.return_value = mock_model
 
         result = get_embed_model(device="cpu")
+        assert result == mock_model
 
         call_kwargs = mock_embedding_class.call_args[1]
         assert call_kwargs["device"] == "cpu"
@@ -160,6 +161,7 @@ class TestGetEmbedModel:
         mock_embedding_class.return_value = mock_model
 
         result = get_embed_model(device="mps")
+        assert result == mock_model
 
         call_kwargs = mock_embedding_class.call_args[1]
         assert call_kwargs["device"] == "mps"
@@ -205,6 +207,7 @@ class TestGetLLM:
         }
 
         result = get_llm(params)
+        assert result == mock_llm
 
         call_kwargs = mock_ollama_class.call_args[1]
         assert call_kwargs["model"] == "llama2:7b"
@@ -221,6 +224,7 @@ class TestGetLLM:
 
         params = {"llm_device": "cpu"}
         result = get_llm(params)
+        assert result == mock_llm
 
         # Should set num_gpu to 0 for CPU mode
         call_kwargs = mock_ollama_class.call_args[1]
@@ -262,6 +266,7 @@ class TestGetReranker:
 
         params = {"reranker_model": "BAAI/bge-reranker-base", "reranker_top_n": 5}
         result = get_reranker(params, device="cpu")
+        assert result == mock_reranker
 
         call_kwargs = mock_reranker_class.call_args[1]
         assert call_kwargs["model"] == "BAAI/bge-reranker-base"
