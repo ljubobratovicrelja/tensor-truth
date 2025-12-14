@@ -30,17 +30,13 @@ dependencies = [
     # Note: Torch often defaults to CPU on pip install.
     # Ensure your venv has the CUDA version installed.
     "torch>=2.0",
-    "transformers",
-    "sentence-transformers",
     "psutil",  # For system memory detection
 
     # --- Web App ---
     "streamlit",
-    "watchdog",  # For auto-reloading during development
 
     # --- Documentation Scraper ---
     "requests",
-    "semanticscholar",
     "beautifulsoup4",
     "markdownify",
     "sphobjinv",      # Essential for parsing Sphinx inventory files
