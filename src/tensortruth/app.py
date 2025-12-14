@@ -1,6 +1,7 @@
 """Tensor-Truth Streamlit Application - Main Entry Point."""
 
 import asyncio
+import threading
 import time
 
 import streamlit as st
@@ -11,7 +12,6 @@ from tensortruth.app_utils import (
     create_session,
     delete_preset,
     download_indexes_with_ui,
-    ensure_engine_loaded,
     free_memory,
     get_available_modules,
     get_ollama_models,
@@ -433,14 +433,70 @@ elif st.session_state.mode == "chat":
         },
     )
 
-    # Engine loading with visual feedback
-    if modules:
-        engine = ensure_engine_loaded(modules, params)
-    else:
+    st.title(session.get("title", "Untitled"))
+
+    # Initialize engine loading state if needed
+    if "engine_loading" not in st.session_state:
+        st.session_state.engine_loading = False
+    if "engine_load_error" not in st.session_state:
+        st.session_state.engine_load_error = None
+
+    # Determine target configuration
+    target_tuple = tuple(sorted(modules)) if modules else None
+    param_items = sorted([(k, v) for k, v in params.items()])
+    param_hash = frozenset(param_items)
+    target_config = (target_tuple, param_hash) if target_tuple else None
+
+    current_config = st.session_state.get("loaded_config")
+    engine = st.session_state.get("engine")
+
+    # Check if we need to load/reload the engine
+    needs_loading = modules and (current_config != target_config)
+
+    # Background engine loading with threading
+    if needs_loading and not st.session_state.engine_loading:
+        # Start loading in background thread
+        st.session_state.engine_loading = True
+        st.session_state.engine_load_error = None
+
+        # Create threading primitives (shared between main and background threads)
+        if "engine_load_event" not in st.session_state:
+            st.session_state.engine_load_event = threading.Event()
+        if "engine_load_result" not in st.session_state:
+            st.session_state.engine_load_result = {"engine": None, "error": None}
+
+        # Capture references for thread closure
+        load_event = st.session_state.engine_load_event
+        load_result = st.session_state.engine_load_result
+        load_event.clear()
+
+        def load_engine_background():
+            try:
+                if current_config is not None:
+                    free_memory()
+                # Call the actual engine loading function directly (bypass UI parts)
+                from tensortruth import load_engine_for_modules
+
+                loaded_engine = load_engine_for_modules(modules, params)
+                # Store in shared dict (not session_state directly)
+                load_result["engine"] = loaded_engine
+                load_result["config"] = target_config
+            except Exception as e:
+                load_result["error"] = str(e)
+            finally:
+                load_event.set()  # Signal completion
+
+        # Start background thread
+        thread = threading.Thread(target=load_engine_background, daemon=True)
+        thread.start()
+
+    # Handle engine load errors or missing modules (don't show loading status - let user type)
+    if st.session_state.engine_load_error:
+        st.error(f"Failed to load engine: {st.session_state.engine_load_error}")
+        engine = None
+    elif not modules:
         st.warning("No linked knowledge base. Use `/load <name>` to attach one.")
         engine = None
-
-    st.title(session.get("title", "Untitled"))
 
     for msg in session["messages"]:
         with st.chat_message(msg["role"]):
@@ -470,6 +526,43 @@ elif st.session_state.mode == "chat":
         tip_placeholder.empty()
 
     if prompt:
+        # If engine is still loading, wait for it to complete
+        if st.session_state.engine_loading:
+            with st.spinner("⏳ Waiting for model to finish loading..."):
+                # Wait for the threading event with timeout (60 seconds)
+                if "engine_load_event" in st.session_state:
+                    event_triggered = st.session_state.engine_load_event.wait(
+                        timeout=60.0
+                    )
+
+                    if not event_triggered:
+                        st.error("Model loading timed out after 60 seconds")
+                        st.session_state.engine_loading = False
+                    else:
+                        # Transfer results from shared dict to session_state
+                        load_result = st.session_state.engine_load_result
+                        if load_result.get("error"):
+                            st.session_state.engine_load_error = load_result["error"]
+                        elif load_result.get("engine"):
+                            st.session_state.engine = load_result["engine"]
+                            st.session_state.loaded_config = load_result["config"]
+                        st.session_state.engine_loading = False
+
+        # Check if background loading completed before prompt (transfer results)
+        if (
+            "engine_load_result" in st.session_state
+            and not st.session_state.engine_loading
+        ):
+            load_result = st.session_state.engine_load_result
+            if load_result.get("engine") and not st.session_state.get("engine"):
+                st.session_state.engine = load_result["engine"]
+                st.session_state.loaded_config = load_result["config"]
+            if load_result.get("error") and not st.session_state.engine_load_error:
+                st.session_state.engine_load_error = load_result["error"]
+
+        # Always refresh engine reference from session state (may have been loaded in background)
+        engine = st.session_state.get("engine")
+
         # 1. COMMAND PROCESSING
         if prompt.startswith("/"):
             # Show immediate feedback for command execution
