@@ -108,7 +108,10 @@ def process_command(prompt, session, available_mods, sessions_file: str):
                     st.session_state.loaded_config = (
                         None  # Force reload to apply postprocessor change
                     )
-                    response_msg = f"⚙️ **Confidence Cutoff:** Set to `{new_conf}`. Engine restarting..."
+                    response_msg = (
+                        f"⚙️ **Confidence Cutoff:** Set to `{new_conf}`. "
+                        f"Engine restarting..."
+                    )
                     st.rerun()
                 else:
                     response_msg = "❌ Value must be between 0.0 and 1.0."
@@ -118,7 +121,7 @@ def process_command(prompt, session, available_mods, sessions_file: str):
     elif command == "/device":
         if len(args) < 2:
             response_msg = (
-                "⚠️ Usage: `/device rag <cpu|cuda|mps>` OR `/device llm <cpu|gpu>`"
+                "⚠️ Usage: `/device rag <cpu|cuda|mps>` OR " "`/device llm <cpu|gpu>`"
             )
         else:
             target_type = args[0].lower()  # 'rag' or 'llm'
@@ -126,12 +129,18 @@ def process_command(prompt, session, available_mods, sessions_file: str):
 
             if target_type == "rag":
                 if target_dev not in available_devices:
-                    response_msg = f"❌ Device `{target_dev}` not available. Options: {available_devices}"
+                    response_msg = (
+                        "❌ Device `{target_dev}` not available. Options: "
+                        f"{available_devices}"
+                    )
                 else:
                     session["params"]["rag_device"] = target_dev
                     save_sessions(sessions_file)
                     st.session_state.loaded_config = None
-                    response_msg = f"⚙️ **Pipeline Switched:** Now running Embed/Rerank on `{target_dev.upper()}`."
+                    response_msg = (
+                        f"⚙️ **Pipeline Switched:** Now running Embed/Rerank on "
+                        f"`{target_dev.upper()}`."
+                    )
                     st.rerun()
 
             elif target_type == "llm":
@@ -141,7 +150,10 @@ def process_command(prompt, session, available_mods, sessions_file: str):
                     session["params"]["llm_device"] = target_dev
                     save_sessions(sessions_file)
                     st.session_state.loaded_config = None
-                    response_msg = f"⚙️ **LLM Switched:** Now running Model on `{target_dev.upper()}`."
+                    response_msg = (
+                        f"⚙️ **LLM Switched:** Now running Model on "
+                        f"`{target_dev.upper()}`."
+                    )
                     st.rerun()
             else:
                 response_msg = "❌ Unknown target. Use `rag` or `llm`."

@@ -52,7 +52,10 @@ def generate_smart_title(text, model_name="qwen2.5:0.5b"):
 
     try:
         # Prompt designed to minimize fluff
-        prompt = f"Summarize this query into a concise 3-5 word title. Return ONLY the title text, no quotes. Query: {text}"
+        prompt = (
+            f"Summarize this query into a concise 3-5 word title. "
+            f"Return ONLY the title text, no quotes. Query: {text}"
+        )
 
         payload = {
             "model": model_name,

@@ -33,7 +33,7 @@ def get_vram_breakdown():
             try:
                 size_str = m.get("size_vram", "0 GB").split()[0]
                 ollama_usage_gb += float(size_str)
-            except:
+            except Exception:
                 pass
 
         reclaimable = torch_reserved_gb + ollama_usage_gb

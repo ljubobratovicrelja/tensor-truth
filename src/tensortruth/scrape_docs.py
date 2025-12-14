@@ -222,7 +222,10 @@ def url_to_filename(url, doc_root):
 def process_url(
     url, config, output_dir, output_format="markdown", enable_cleanup=False, min_size=0
 ):
-    """Download and convert a single URL to markdown or save as HTML, with optional cleanup and size filtering."""
+    """
+    Download and convert a single URL to markdown or save as HTML, with optional
+    cleanup and size filtering.
+    """
     try:
         resp = requests.get(url, timeout=10)
         if resp.status_code != 200:
@@ -437,7 +440,10 @@ Examples:
     parser.add_argument(
         "--cleanup",
         action="store_true",
-        help="Enable aggressive HTML cleanup to remove navigation, diagrams, and other noise (recommended for Doxygen docs)",
+        help=(
+            "Enable aggressive HTML cleanup to remove navigation, diagrams, "
+            "and other noise (recommended for Doxygen docs)"
+        ),
     )
 
     parser.add_argument(
@@ -445,7 +451,10 @@ Examples:
         type=int,
         default=0,
         metavar="CHARS",
-        help="Minimum file size in characters. Files smaller than this will be skipped (e.g., 128 to filter nearly empty files)",
+        help=(
+            "Minimum file size in characters. Files smaller than this will be "
+            "skipped (e.g., 128 to filter nearly empty files)"
+        ),
     )
 
     args = parser.parse_args()

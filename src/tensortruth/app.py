@@ -124,7 +124,8 @@ if st.session_state.get("show_delete_confirm", False):
     def confirm_delete():
         st.write("Are you sure you want to delete this chat session?")
         st.write(
-            f"**{st.session_state.chat_data['sessions'][st.session_state.chat_data['current_id']]['title']}**"
+            f"**{st.session_state.chat_data['sessions'][
+                st.session_state.chat_data['current_id']]['title']}**"
         )
         st.caption("This action cannot be undone.")
 
@@ -334,7 +335,8 @@ if st.session_state.mode == "setup":
 
             # VRAM GAUGE (Inside Form = Updates on Submit)
             st.caption(
-                "Click 'Refresh Estimate' to update resource calculation based on current form selections."
+                "Click 'Refresh Estimate' to update resource calculation "
+                "based on current form selections."
             )
 
             vram_est = render_vram_gauge(

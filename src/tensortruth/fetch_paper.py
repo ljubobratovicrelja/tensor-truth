@@ -205,7 +205,10 @@ def convert_pdf_to_markdown(pdf_path, preserve_math=True, converter="pymupdf"):
 
         if md_text is None or not md_text.strip():
             logging.warning(f"PDF conversion returned empty content for {pdf_path}")
-            md_text = "\n\n[PDF content extraction failed. Please refer to the original PDF file.]\n"
+            md_text = (
+                "\n\n[PDF content extraction failed. "
+                "Please refer to the original PDF file.]\n"
+            )
 
         # Post-process for better math rendering if requested
         if (
@@ -358,7 +361,7 @@ def get_pdf_page_count(pdf_path):
         count = doc.page_count
         doc.close()
         return count
-    except:
+    except Exception:
         return 0
 
 
@@ -596,8 +599,8 @@ def fetch_and_convert_book(
             # Clean up temp PDF
             try:
                 os.remove(temp_pdf)
-            except:
-                pass
+            except Exception as e:
+                logging.warning(f"Failed to remove temp PDF: {e}")
 
             # Save chapter markdown
             chapter_safe_name = clean_filename(chapter["title"])
@@ -647,7 +650,7 @@ def fetch_and_convert_book(
             # Clean up temp PDF
             try:
                 os.remove(temp_pdf)
-            except:
+            except Exception:
                 pass
 
             # Save chapter markdown
@@ -780,7 +783,7 @@ def fetch_and_convert_book(
             # Clean up temp PDF
             try:
                 os.remove(temp_pdf)
-            except:
+            except Exception:
                 pass
 
             # Save chapter markdown
@@ -831,7 +834,7 @@ def fetch_and_convert_book(
             # Clean up temp PDF
             try:
                 os.remove(temp_pdf)
-            except:
+            except Exception:
                 pass
 
             # Save chapter markdown
@@ -1072,7 +1075,10 @@ Books are defined in the JSON config with the following structure:
         "--converter",
         choices=["pymupdf", "marker"],
         default="pymupdf",
-        help="PDF converter: 'pymupdf' (fast, default) or 'marker' (better math, requires marker-pdf)",
+        help=(
+            "PDF converter: 'pymupdf' (fast, default) or 'marker' "
+            "(better math, requires marker-pdf)"
+        ),
     )
 
     parser.add_argument(
@@ -1108,7 +1114,8 @@ Books are defined in the JSON config with the following structure:
 
         categories = list(config.keys())
         logging.info(
-            f"Rebuilding all {len(categories)} categories with {args.workers} workers (converter: {args.converter})"
+            f"Rebuilding all {len(categories)} categories with {args.workers} "
+            f"workers (converter: {args.converter})"
         )
 
         for category in categories:

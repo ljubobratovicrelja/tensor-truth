@@ -16,7 +16,7 @@ def load_sessions(sessions_file: str):
         try:
             with open(sessions_file, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except:
+        except Exception:
             pass
     return {"current_id": None, "sessions": {}}
 

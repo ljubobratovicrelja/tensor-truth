@@ -35,25 +35,35 @@ CUSTOM_CONTEXT_PROMPT_TEMPLATE = (
     "Chat History:\n"
     "{chat_history}\n\n"
     "Instructions:\n"
-    "1. FIRST check if the question refers to something specific from the Chat History (e.g., code we discussed, an example I showed).\n"
-    "2. If YES: prioritize the Chat History and only use documents if they add relevant detail to that specific context.\n"
+    "1. FIRST check if the question refers to something specific from the "
+    "Chat History (e.g., code we discussed, an example I showed).\n"
+    "2. If YES: prioritize the Chat History and only use documents if they "
+    "add relevant detail to that specific context.\n"
     "3. If NO: use the documents above if they contain the answer.\n"
-    "4. If documents are empty, generic, or don't match the specific context, ignore them and rely on Chat History.\n"
-    "5. Never say 'I could not find relevant context' if the answer is in the Chat History.\n\n"
+    "4. If documents are empty, generic, or don't match the specific context, "
+    "ignore them and rely on Chat History.\n"
+    "5. Never say 'I could not find relevant context' if the answer is in "
+    "the Chat History.\n\n"
     "User: {query_str}\n"
     "Assistant:"
 )
 
 CUSTOM_CONDENSE_PROMPT_TEMPLATE = (
-    "Given the following conversation between a user and an AI assistant and a follow up question from user, "
+    "Given the following conversation between a user and an AI assistant "
+    "and a follow up question from user, "
     "rephrase the follow up question to be a standalone question.\n\n"
     "IMPORTANT RULES:\n"
-    "1. If the question uses pronouns (it, this, that) or refers to something previously discussed, "
+    "1. If the question uses pronouns (it, this, that) or refers to "
+    "something previously discussed, "
     "include enough context to make it clear what is being referenced.\n"
-    "2. If the question is asking to elaborate on a specific example or code shown earlier, "
-    "mention that specific context (e.g., 'in the example we discussed' or 'in the code I just showed').\n"
-    "3. Preserve conversational references - don't make the question overly general.\n"
-    "4. When the question clearly follows from the conversation, maintain that connection.\n\n"
+    "2. If the question is asking to elaborate on a specific example or "
+    "code shown earlier, "
+    "mention that specific context (e.g., 'in the example we discussed' or "
+    "'in the code I just showed').\n"
+    "3. Preserve conversational references - don't make the question "
+    "overly general.\n"
+    "4. When the question clearly follows from the conversation, maintain "
+    "that connection.\n\n"
     "Chat History:\n{chat_history}\n\n"
     "Follow Up Input: {question}\n\n"
     "Standalone question:"
@@ -168,7 +178,9 @@ def load_engine_for_modules(selected_modules, engine_params=None):
 
     active_retrievers = []
     print(
-        f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} | RAG DEVICE: {rag_device} | RETRIEVAL: {similarity_top_k} per index → RERANK: top {reranker_top_n} ---"
+        f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} | "
+        f"RAG DEVICE: {rag_device} | RETRIEVAL: {similarity_top_k} per index → "
+        f"RERANK: top {reranker_top_n} ---"
     )
 
     for module in selected_modules:

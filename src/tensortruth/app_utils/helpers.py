@@ -102,7 +102,7 @@ def get_ollama_models():
         if response.status_code == 200:
             models = [m["name"] for m in response.json()["models"]]
             return sorted(models)
-    except:
+    except Exception:
         pass
     return ["deepseek-r1:8b"]
 
@@ -157,7 +157,9 @@ def ensure_engine_loaded(target_modules, target_params):
     # Always show loading message for better UX
     placeholder = st.empty()
     placeholder.info(
-        f"⏳ Loading Model: {target_params.get('model')} | Pipeline: {target_params.get('rag_device')} | LLM: {target_params.get('llm_device')}..."
+        f"⏳ Loading Model: {target_params.get('model')} | "
+        f"Pipeline: {target_params.get('rag_device')} | "
+        f"LLM: {target_params.get('llm_device')}..."
     )
 
     if current_config is not None:
