@@ -16,7 +16,7 @@ repos:
     rev: 24.10.0
     hooks:
       - id: black
-        language_version: python3.11
+        language_version: python3.12
         stages: [pre-commit]
 
   # --- STAGE 2: PRE-PUSH (Linters) ---

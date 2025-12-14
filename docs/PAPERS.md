@@ -52,7 +52,7 @@ Add papers to a category. This will:
 python fetch_paper.py --config papers_config.json --category dl_foundations --ids 2401.12345
 
 # Add multiple papers
-python fetch_paper.py --config papers_config.json --category 3d_reconstruction_rendering --ids 2401.12345 2402.67890 2403.11111
+python fetch_paper.py --config papers_config.json --category 3d_reconstruction_rendering --ids 2401.12345 2402.67890 2403.13111
 ```
 
 ### 2. Rebuild from Config (Read from Config + Download Missing)
