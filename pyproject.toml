@@ -68,6 +68,9 @@ utils = ["tensor-truth[docs,papers]"]
 
 # Development and testing dependencies
 dev = [
+    # All utility tools
+    "tensor-truth[utils]",
+
     # Testing Framework
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
