@@ -50,9 +50,11 @@ tests/
 ├── __init__.py
 ├── conftest.py              # Shared fixtures and configuration
 ├── unit/                    # Fast, isolated unit tests
-│   ├── test_utils.py
-│   ├── test_fetch_paper.py
-│   └── test_rag_engine.py
+│   ├── test_utils.py        # Core utilities (parsing, markdown)
+│   ├── test_core.py         # Core modules (ollama, system)
+│   ├── test_app_utils.py    # App utilities (VRAM, presets, sessions)
+│   ├── test_fetch_paper.py  # Paper fetching logic
+│   └── test_rag_engine.py   # RAG engine components
 ├── integration/             # Integration tests
 │   └── test_ingestion_pipeline.py
 ├── e2e/                     # End-to-end tests (future)
@@ -187,7 +189,7 @@ pytest --cov=tensortruth --cov-report=term-missing
 ## Continuous Integration
 
 Tests run automatically on GitHub Actions for:
-- Python 3.9, 3.10, 3.11
+- Python 3.13
 - Ubuntu and macOS
 - On push to main/develop branches
 - On pull requests

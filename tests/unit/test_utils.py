@@ -1,5 +1,5 @@
 """
-Unit tests for tensortruth.utils module.
+Unit tests for tensortruth.utils and tensortruth.core modules.
 """
 
 import json
@@ -8,13 +8,8 @@ from unittest.mock import MagicMock, mock_open, patch
 import pytest
 import torch
 
-from tensortruth.utils import (
-    convert_chat_to_markdown,
-    get_max_memory_gb,
-    get_running_models,
-    parse_thinking_response,
-    stop_model,
-)
+from tensortruth.core import get_max_memory_gb, get_running_models, stop_model
+from tensortruth.utils import convert_chat_to_markdown, parse_thinking_response
 
 # ============================================================================
 # Tests for parse_thinking_response
@@ -165,7 +160,7 @@ class TestConvertChatToMarkdown:
 class TestGetRunningModels:
     """Tests for get_running_models function."""
 
-    @patch("tensortruth.utils.requests.get")
+    @patch("tensortruth.core.ollama.requests.get")
     def test_successful_response(self, mock_get, mock_ollama_ps_response):
         """Test successful API response."""
         mock_response = MagicMock()
@@ -179,7 +174,7 @@ class TestGetRunningModels:
         assert models[0]["name"] == "deepseek-r1:8b"
         assert "5.1 GB" in models[0]["size_vram"]
 
-    @patch("tensortruth.utils.requests.get")
+    @patch("tensortruth.core.ollama.requests.get")
     def test_api_failure(self, mock_get):
         """Test API failure handling."""
         mock_get.side_effect = Exception("Connection error")
@@ -188,7 +183,7 @@ class TestGetRunningModels:
 
         assert models == []
 
-    @patch("tensortruth.utils.requests.get")
+    @patch("tensortruth.core.ollama.requests.get")
     def test_timeout(self, mock_get):
         """Test timeout handling."""
         mock_get.side_effect = TimeoutError()
@@ -197,7 +192,7 @@ class TestGetRunningModels:
 
         assert models == []
 
-    @patch("tensortruth.utils.requests.get")
+    @patch("tensortruth.core.ollama.requests.get")
     def test_empty_models(self, mock_get):
         """Test empty models list."""
         mock_response = MagicMock()
@@ -293,7 +288,7 @@ class TestGetMaxMemoryGB:
 class TestStopModel:
     """Tests for stop_model function."""
 
-    @patch("tensortruth.utils.requests.post")
+    @patch("tensortruth.core.ollama.requests.post")
     def test_successful_stop(self, mock_post):
         """Test successful model stop."""
         mock_response = MagicMock()
@@ -310,7 +305,7 @@ class TestStopModel:
         assert call_args[1]["json"]["model"] == "deepseek-r1:8b"
         assert call_args[1]["json"]["keep_alive"] == 0
 
-    @patch("tensortruth.utils.requests.post")
+    @patch("tensortruth.core.ollama.requests.post")
     def test_failed_stop(self, mock_post):
         """Test failed model stop."""
         mock_post.side_effect = Exception("Connection error")
@@ -319,7 +314,7 @@ class TestStopModel:
 
         assert result is False
 
-    @patch("tensortruth.utils.requests.post")
+    @patch("tensortruth.core.ollama.requests.post")
     def test_timeout(self, mock_post):
         """Test timeout handling."""
         mock_post.side_effect = TimeoutError()
