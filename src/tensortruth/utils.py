@@ -75,7 +75,8 @@ def convert_chat_to_markdown(session):
 
         md += f"### {role}\n\n"
         if thought:
-            md += f"> **Thought Process:**\n> {thought.replace('\n', '\n> ')}\n\n"
+            formatted_thought = thought.replace("\n", "\n> ")
+            md += f"> **Thought Process:**\n> {formatted_thought}\n\n"
 
         md += f"{clean_content}\n\n"
 

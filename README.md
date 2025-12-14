@@ -1,6 +1,6 @@
 # Tensor Truth
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/tensor-truth.svg)](https://pypi.org/project/tensor-truth/)
 [![Tests](https://github.com/ljubobratovicrelja/tensor-truth/actions/workflows/tests.yml/badge.svg)](https://github.com/ljubobratovicrelja/tensor-truth/actions/workflows/tests.yml)
 
@@ -12,7 +12,7 @@ Indexes technical documentation and research papers into vector databases, then 
 
 ## Quick Start
 
-Install the tool via PyPI. But before you do, I advise you prep the environment because of large volume of dependencies (use Python 3.12+):
+Install the tool via PyPI. But before you do, I advise you prep the environment because of large volume of dependencies (use Python 3.11+):
 
 ```bash
 python -m venv venv
@@ -22,7 +22,7 @@ source venv/bin/activate  # or .\venv\Scripts\activate(.ps1) on Windows CMD/Powe
 Or via conda:
 
 ```bash
-conda create -n tensor-truth python=3.12
+conda create -n tensor-truth python=3.11
 conda activate tensor-truth
 ```
 
@@ -60,7 +60,7 @@ Tested on:
 - MacBook M1 Max (32GB unified memory)
 - Desktop with RTX 3090 Ti (24GB VRAM)
 
-Minimum recommended: 16GB RAM, Python 3.12+. GPU optional but significantly faster.
+Minimum recommended: 16GB RAM, Python 3.11+. GPU optional but significantly faster.
 
 ### Recommended Models
 
