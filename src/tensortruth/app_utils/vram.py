@@ -111,7 +111,7 @@ def render_vram_gauge(
     reclaimable = stats["reclaimable"]
 
     # Visual Layout
-    st.markdown("##### 🖥️ VRAM Status")
+    st.markdown("##### VRAM Status")
 
     m1, m2, m3 = st.columns(3)
     m1.metric("Current Load", f"{current_used:.1f} GB", delta_color="off")

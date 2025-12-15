@@ -1,0 +1,27 @@
+# Tensor-Truth Streamlit Configuration
+# Theme colors derived from logo palette
+
+[theme]
+# Primary brand color (Accent teal from logo)
+primaryColor = "#5c80a7ff"
+
+# Background color (Light grey for main panel)
+backgroundColor = "#E8EEF2"
+
+# Secondary background (Darker grey-blue for sidebar/cards)
+secondaryBackgroundColor = "#afc3d8ff"
+
+# Text color (Dark for light background)
+textColor = "#1A1A1A"
+
+# Font family
+font = "sans serif"
+
+[browser]
+# Gather usage stats
+gatherUsageStats = false
+
+[server]
+# Enable CORS for local development
+enableCORS = false
+enableXsrfProtection = true

@@ -3,6 +3,7 @@
 import asyncio
 import threading
 import time
+from pathlib import Path
 
 import streamlit as st
 
@@ -22,7 +23,6 @@ from tensortruth.app_utils import (
     load_sessions,
     process_command,
     rename_session,
-    render_vram_gauge,
     save_preset,
     save_sessions,
 )
@@ -38,24 +38,26 @@ GDRIVE_LINK = (
 MAX_VRAM_GB = get_max_memory_gb()
 
 
-st.set_page_config(page_title="Tensor-Truth", layout="wide", page_icon="⚡")
+ICON_PATH = Path(__file__).parent.parent.parent / "media" / "tensor_truth_icon_256.png"
+st.set_page_config(
+    page_title="Tensor-Truth",
+    layout="wide",
+    page_icon=str(ICON_PATH),
+    initial_sidebar_state="auto",
+)
 
 # --- CSS ---
-st.markdown(
-    """
-<style>
-    .stButton button { text-align: left; padding-left: 10px; width: 100%; }
-    .stChatMessage { padding: 1rem; border-radius: 10px; }
-    div[data-testid="stExpander"] { border: none; box-shadow: none; }
-    code { color: #d63384; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
+# Load external stylesheet
+CSS_PATH = Path(__file__).parent.parent.parent / "media" / "app_styles.css"
+with open(CSS_PATH) as f:
+    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 # --- INITIALIZATION ---
 # Download indexes from Google Drive if directory is empty or missing
 download_indexes_with_ui(INDEX_DIR, GDRIVE_LINK)
+
+# Path to logo (relative to project root)
+LOGO_PATH = Path(__file__).parent.parent.parent / "media" / "tensor_truth_banner.png"
 
 if "chat_data" not in st.session_state:
     st.session_state.chat_data = load_sessions(SESSIONS_FILE)
@@ -69,16 +71,17 @@ if "engine" not in st.session_state:
 # ==========================================
 # SIDEBAR
 # ==========================================
-with st.sidebar:
-    st.header("⚡ Tensor-Truth")
 
-    if st.button("➕ Start New Chat", type="primary", use_container_width=True):
+with st.sidebar:
+    st.image(str(LOGO_PATH), width=500)
+
+    if st.button("Start New Chat", type="primary", use_container_width=True):
         st.session_state.mode = "setup"
         st.session_state.chat_data["current_id"] = None
         st.rerun()
 
     st.divider()
-    st.subheader("🗂️ History")
+    st.empty()
 
     session_ids = list(st.session_state.chat_data["sessions"].keys())
     for sess_id in reversed(session_ids):
@@ -99,9 +102,10 @@ with st.sidebar:
         curr_id = st.session_state.chat_data["current_id"]
         curr_sess = st.session_state.chat_data["sessions"][curr_id]
 
-        with st.expander("⚙️ Session Settings", expanded=True):
+        with st.expander("Session Settings", expanded=True):
             new_name = st.text_input("Rename:", value=curr_sess.get("title"))
-            if st.button("Update Title"):
+
+            if st.button("Update", use_container_width=True):
                 rename_session(new_name, SESSIONS_FILE)
 
             st.caption("Active Indices:")
@@ -113,11 +117,14 @@ with st.sidebar:
 
             md_data = convert_chat_to_markdown(curr_sess)
             st.download_button(
-                "📥 Export", md_data, f"{curr_sess['title'][:20]}.md", "text/markdown"
+                "Export",
+                md_data,
+                f"{curr_sess['title'][:20]}.md",
+                "text/markdown",
+                use_container_width=True,
             )
 
-            st.markdown("---")
-            if st.button("🗑️ Delete Chat"):
+            if st.button("Delete Chat", use_container_width=True):
                 st.session_state.show_delete_confirm = True
                 st.rerun()
 
@@ -180,7 +187,7 @@ if st.session_state.get("show_preset_delete_confirm", False):
 # No RAG warning dialog
 if st.session_state.get("show_no_rag_warning", False):
 
-    @st.dialog("⚠️ No Knowledge Base Selected")
+    @st.dialog("No Knowledge Base Selected")
     def confirm_no_rag():
         st.warning(
             "You haven't selected any knowledge base modules. "
@@ -204,6 +211,8 @@ if st.session_state.get("show_no_rag_warning", False):
                 st.session_state.mode = "chat"
                 st.session_state.show_no_rag_warning = False
                 st.session_state.pending_params = None
+                # Collapse sidebar when entering chat mode
+                st.session_state.sidebar_state = "collapsed"
                 st.rerun()
 
     confirm_no_rag()
@@ -213,8 +222,6 @@ if st.session_state.get("show_no_rag_warning", False):
 # ==========================================
 
 if st.session_state.mode == "setup":
-    st.title("Control Center")
-
     with st.container():
         # 1. Fetch Data
         available_mods = get_available_modules(INDEX_DIR)
@@ -259,12 +266,12 @@ if st.session_state.mode == "setup":
 
             st.session_state.setup_init = True
 
-        st.markdown("### 🚀 Start a New Research Session")
+        st.markdown("### Start a New Research Session")
         st.caption("Configure your knowledge base and model parameters.")
 
         # --- PRESETS SECTION ---
         if presets:
-            with st.expander("📁 Saved Configurations (Presets)", expanded=True):
+            with st.expander("Saved Configurations (Presets)", expanded=True):
                 col_p1, col_p2, col_p3 = st.columns([3, 1, 1])
                 with col_p1:
                     selected_preset = st.selectbox(
@@ -273,7 +280,7 @@ if st.session_state.mode == "setup":
                         label_visibility="collapsed",
                     )
                 with col_p2:
-                    if st.button("📂 Load", use_container_width=True):
+                    if st.button("Load", use_container_width=True):
                         apply_preset(
                             selected_preset,
                             available_mods,
@@ -283,7 +290,7 @@ if st.session_state.mode == "setup":
                         )
                         st.rerun()
                 with col_p3:
-                    if st.button("🗑️ Delete", type="primary", use_container_width=True):
+                    if st.button("Delete", type="primary", use_container_width=True):
                         st.session_state.show_preset_delete_confirm = True
                         st.session_state.preset_to_delete = selected_preset
                         st.rerun()
@@ -374,34 +381,9 @@ if st.session_state.mode == "setup":
 
             st.markdown("---")
 
-            # VRAM GAUGE (Inside Form = Updates on Submit)
-            st.caption(
-                "Click 'Refresh Estimate' to update resource calculation "
-                "based on current form selections."
+            submitted_start = st.form_submit_button(
+                "Start Session", type="primary", use_container_width=True
             )
-
-            vram_est = render_vram_gauge(
-                st.session_state.setup_model,
-                len(st.session_state.setup_mods),
-                st.session_state.setup_ctx,
-                st.session_state.setup_rag_device,
-                st.session_state.setup_llm_device,
-                MAX_VRAM_GB,
-            )
-
-            c_btn1, c_btn2 = st.columns([1, 1])
-            with c_btn1:
-                submitted_check = st.form_submit_button(
-                    "🔄 Refresh Estimate", use_container_width=True
-                )
-            with c_btn2:
-                submitted_start = st.form_submit_button(
-                    "🚀 Start Session", type="primary", use_container_width=True
-                )
-
-            if submitted_check:
-                # Just triggers rerun to update gauge
-                pass
 
             if submitted_start:
                 if not selected_mods:
@@ -419,13 +401,9 @@ if st.session_state.mode == "setup":
                         "llm_device": llm_device,
                     }
                     st.rerun()
-                elif vram_est > (MAX_VRAM_GB + 4.0):
-                    st.error(
-                        f"Config is extremely heavy ({vram_est:.1f}GB). Reduce parameters."
-                    )
                 else:
                     # Show immediate feedback before transition
-                    with st.spinner("🚀 Creating session..."):
+                    with st.spinner("Creating session..."):
                         params = {
                             "model": selected_model,
                             "temperature": temp,
@@ -439,10 +417,12 @@ if st.session_state.mode == "setup":
                         }
                         create_session(selected_mods, params, SESSIONS_FILE)
                         st.session_state.mode = "chat"
+                        # Collapse sidebar when entering chat mode
+                        st.session_state.sidebar_state = "collapsed"
                     st.rerun()
 
         # --- SAVE PRESET SECTION (Outside form to allow name typing without submit) ---
-        with st.expander("💾 Save Configuration as Preset"):
+        with st.expander("Save Configuration as Preset"):
             col_s1, col_s2 = st.columns([3, 1])
             with col_s1:
                 new_preset_name = st.text_input(
@@ -489,6 +469,10 @@ elif st.session_state.mode == "chat":
     )
 
     st.title(session.get("title", "Untitled"))
+
+    st.divider()
+
+    st.empty()
 
     # Initialize engine loading state if needed
     if "engine_loading" not in st.session_state:
