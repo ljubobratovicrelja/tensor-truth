@@ -1,4 +1,4 @@
-![logo](media/tensor_truth_banner.png)
+![logo](https://raw.githubusercontent.com/ljubobratovicrelja/tensor-truth/main/media/tensor_truth_banner.png)
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/tensor-truth.svg)](https://pypi.org/project/tensor-truth/)
