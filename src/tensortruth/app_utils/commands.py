@@ -10,7 +10,8 @@ def process_command(prompt, session, available_mods):
     Handles /slash commands.
 
     Returns:
-        tuple: (is_command, response_message)
+        tuple: (is_command, response_message, state_modifier_fn)
+        The state_modifier_fn (if not None) should be called to apply state changes.
     """
     cmd_parts = prompt.strip().split()
     command = cmd_parts[0].lower()
@@ -21,6 +22,7 @@ def process_command(prompt, session, available_mods):
     available_devices = get_system_devices()
 
     response_msg = ""
+    state_modifier = None
 
     if command in ["/list", "/ls", "/status"]:
         lines = ["### Knowledge Base & System Status"]
@@ -41,6 +43,7 @@ def process_command(prompt, session, available_mods):
             )
         )
         response_msg = "\n".join(lines)
+        return True, response_msg, None
 
     elif command == "/help":
         lines = [
@@ -69,9 +72,13 @@ def process_command(prompt, session, available_mods):
             elif target in active_mods:
                 response_msg = f" Index `{target}` is active."
             else:
-                session["modules"].append(target)
-                st.session_state.loaded_config = None
                 response_msg = f"✅ **Loaded:** `{target}`. Engine restarting..."
+
+                def load_module():
+                    session["modules"].append(target)
+                    st.session_state.loaded_config = None
+
+                state_modifier = load_module
 
     elif command == "/unload":
         if not args:
@@ -81,14 +88,22 @@ def process_command(prompt, session, available_mods):
             if target not in active_mods:
                 response_msg = f"ℹ️ Index `{target}` not active."
             else:
-                session["modules"].remove(target)
-                st.session_state.loaded_config = None
                 response_msg = f"✅ **Unloaded:** `{target}`. Engine restarting..."
 
+                def unload_module():
+                    session["modules"].remove(target)
+                    st.session_state.loaded_config = None
+
+                state_modifier = unload_module
+
     elif command == "/reload":
-        free_memory()
-        st.session_state.loaded_config = None
         response_msg = "**System Reload:** Memory flushed."
+
+        def reload_system():
+            free_memory()
+            st.session_state.loaded_config = None
+
+        state_modifier = reload_system
 
     elif command in ["/conf", "/confidence"]:
         if not args:
@@ -97,14 +112,18 @@ def process_command(prompt, session, available_mods):
             try:
                 new_conf = float(args[0])
                 if 0.0 <= new_conf <= 1.0:
-                    session["params"]["confidence_cutoff"] = new_conf
-                    st.session_state.loaded_config = (
-                        None  # Force reload to apply postprocessor change
-                    )
                     response_msg = (
                         f"**Confidence Cutoff:** Set to `{new_conf}`. "
                         f"Engine restarting..."
                     )
+
+                    def update_confidence():
+                        session["params"]["confidence_cutoff"] = new_conf
+                        st.session_state.loaded_config = (
+                            None  # Force reload to apply postprocessor change
+                        )
+
+                    state_modifier = update_confidence
                 else:
                     response_msg = "Value must be between 0.0 and 1.0."
             except ValueError:
@@ -122,32 +141,37 @@ def process_command(prompt, session, available_mods):
             if target_type == "rag":
                 if target_dev not in available_devices:
                     response_msg = (
-                        "Device `{target_dev}` not available. Options: "
+                        f"Device `{target_dev}` not available. Options: "
                         f"{available_devices}"
                     )
                 else:
-                    session["params"]["rag_device"] = target_dev
-                    st.session_state.loaded_config = None
                     response_msg = (
                         f"**Pipeline Switched:** Now running Embed/Rerank on "
                         f"`{target_dev.upper()}`."
                     )
 
+                    def update_rag_device():
+                        session["params"]["rag_device"] = target_dev
+                        st.session_state.loaded_config = None
+
+                    state_modifier = update_rag_device
+
             elif target_type == "llm":
                 if target_dev not in ["cpu", "gpu"]:
                     response_msg = "LLM Device options: `cpu` or `gpu`"
                 else:
-                    session["params"]["llm_device"] = target_dev
-                    st.session_state.loaded_config = None
                     response_msg = (
                         f"**LLM Switched:** Now running Model on "
                         f"`{target_dev.upper()}`."
                     )
+
+                    def update_llm_device():
+                        session["params"]["llm_device"] = target_dev
+                        st.session_state.loaded_config = None
+
+                    state_modifier = update_llm_device
             else:
                 response_msg = "Unknown target. Use `rag` or `llm`."
 
-    else:
-        return False, None
-
-    print(response_msg)
-    return True, response_msg
+    # Return the result - all paths lead here except early returns for errors
+    return True, response_msg, state_modifier if response_msg else (False, None, None)

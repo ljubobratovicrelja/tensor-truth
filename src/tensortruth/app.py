@@ -573,17 +573,27 @@ elif st.session_state.mode == "chat":
 
         # 1. COMMAND PROCESSING
         if prompt.startswith("/"):
-            # Show immediate feedback for command execution
-            with st.spinner(f"⚙️ Processing command: {prompt}"):
-                available_mods = get_available_modules(INDEX_DIR)
-                is_cmd, response = process_command(prompt, session, available_mods)
+            # Process command (returns immediately with response message)
+            available_mods = get_available_modules(INDEX_DIR)
+            is_cmd, response, state_modifier = process_command(
+                prompt, session, available_mods
+            )
+
             if is_cmd:
+                # Add command message to history immediately
                 session["messages"].append({"role": "command", "content": response})
 
+                # Display the response immediately (non-blocking)
                 with st.chat_message("command", avatar=":material/settings:"):
                     st.markdown(response)
 
                 save_sessions(SESSIONS_FILE)
+
+                # Apply state changes with a spinner (blocking but with feedback)
+                if state_modifier is not None:
+                    with st.spinner("⚙️ Applying changes..."):
+                        state_modifier()
+
                 st.rerun()
 
         # 2. STANDARD CHAT PROCESSING
