@@ -641,22 +641,77 @@ elif st.session_state.mode == "chat":
             if engine:
                 start_time = time.time()
                 try:
-                    # Show RAG pipeline status with actual spinner
+                    # Phase 1: RAG Retrieval (blocking with spinner)
                     with st.spinner(get_random_rag_processing_message()):
-                        response = engine.chat(prompt)
+                        # Call the internal _run_c3 method to get context
+                        # This does the expensive RAG retrieval upfront
+                        synthesizer, context_source, context_nodes = engine._run_c3(
+                            prompt, chat_history=None, streaming=True
+                        )
 
-                    # Brief response write.
-                    st.markdown(str(response))
+                    # Phase 2: LLM Streaming (responsive, token-by-token)
+                    # Now generate the streaming response using the pre-retrieved context
+                    response = synthesizer.synthesize(prompt, context_nodes)
+
+                    # Use threading to stream tokens asynchronously
+                    import queue
+
+                    token_queue = queue.Queue()
+                    streaming_done = threading.Event()
+
+                    def stream_tokens_in_background():
+                        """Background thread that pulls tokens and puts them in queue."""
+                        try:
+                            for token in response.response_gen:
+                                token_queue.put(token)
+                            streaming_done.set()
+                        except Exception as e:
+                            token_queue.put(None)  # Signal error
+                            streaming_done.set()
+
+                    # Start background streaming thread
+                    stream_thread = threading.Thread(
+                        target=stream_tokens_in_background, daemon=True
+                    )
+                    stream_thread.start()
+
+                    # Display tokens as they arrive with immediate updates
+                    full_response = ""
+                    response_placeholder = st.empty()
+
+                    # Show spinner until first token arrives
+                    with st.spinner("💭 Thinking..."):
+                        # Wait for first token with timeout
+                        try:
+                            first_token = token_queue.get(timeout=30)
+                            if first_token is not None:
+                                full_response = first_token
+                        except queue.Empty:
+                            first_token = None
+
+                    # Immediately display first token
+                    if full_response:
+                        response_placeholder.markdown(full_response)
+
+                    # Stream remaining tokens with responsive updates
+                    while not streaming_done.is_set() or not token_queue.empty():
+                        try:
+                            token = token_queue.get(timeout=0.05)  # 50ms polling
+                            if token is not None:
+                                full_response += token
+                                response_placeholder.markdown(full_response)
+                        except queue.Empty:
+                            continue
 
                     elapsed = time.time() - start_time
 
                     # Handle source nodes
                     source_data = []
-                    if hasattr(response, "source_nodes") and response.source_nodes:
+                    if context_nodes:
                         meta_cols = st.columns([3, 1])
                         with meta_cols[0]:
                             with st.expander("📚 Sources"):
-                                for node in response.source_nodes:
+                                for node in context_nodes:
                                     score = float(node.score) if node.score else 0.0
                                     fname = node.metadata.get("file_name", "Unknown")
                                     source_data.append({"file": fname, "score": score})
@@ -664,10 +719,23 @@ elif st.session_state.mode == "chat":
                         with meta_cols[1]:
                             st.caption(f"⏱️ {elapsed:.2f}s")
 
+                    # Manually update memory (since we bypassed stream_chat)
+                    from llama_index.core.base.llms.types import (
+                        ChatMessage,
+                        MessageRole,
+                    )
+
+                    user_message = ChatMessage(content=prompt, role=MessageRole.USER)
+                    assistant_message = ChatMessage(
+                        content=full_response, role=MessageRole.ASSISTANT
+                    )
+                    engine._memory.put(user_message)
+                    engine._memory.put(assistant_message)
+
                     session["messages"].append(
                         {
                             "role": "assistant",
-                            "content": str(response),
+                            "content": full_response,
                             "sources": source_data,
                             "time_taken": elapsed,
                         }
