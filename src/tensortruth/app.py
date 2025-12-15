@@ -859,7 +859,7 @@ elif st.session_state.mode == "chat":
                     meta_cols = st.columns([3, 1])
 
                     with meta_cols[0]:
-                        if context_nodes and not low_confidence_warning:
+                        if context_nodes:
                             with st.expander("📚 Sources"):
                                 for node in context_nodes:
                                     score = float(node.score) if node.score else 0.0
