@@ -16,6 +16,7 @@ from tensortruth.app_utils import (
     get_available_modules,
     get_ollama_models,
     get_random_rag_processing_message,
+    get_random_thinking_message,
     get_system_devices,
     load_presets,
     load_sessions,
@@ -680,7 +681,7 @@ elif st.session_state.mode == "chat":
                     response_placeholder = st.empty()
 
                     # Show spinner until first token arrives
-                    with st.spinner("💭 Thinking..."):
+                    with st.spinner(get_random_thinking_message()):
                         # Wait for first token with timeout
                         try:
                             first_token = token_queue.get(timeout=30)

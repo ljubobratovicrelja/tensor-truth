@@ -4,6 +4,7 @@ import asyncio
 import gc
 import os
 import tarfile
+import time
 
 import aiohttp
 import torch
@@ -59,9 +60,26 @@ def _download_and_extract_indexes(index_dir: str, gdrive_link: str):
         raise e
 
 
+def get_random_thinking_message():
+    """Returns a random thinking/loading message."""
+
+    messages = [
+        "🤔 Thinking...",
+        "💭 Pondering...",
+        "🧠 Processing...",
+        "🔄 Analyzing...",
+        "⏳ Crunching...",
+        "🧐 What to make of this?...",
+        "💡 Let me think...",
+        "🔍 Diving deep...",
+        "📊 Weighing options...",
+        "📝 Formulating response...",
+    ]
+    return messages[int(time.time()) % len(messages)]
+
+
 def get_random_rag_processing_message():
     """Returns a random RAG processing message."""
-    import time
 
     messages = [
         "🔍 Consulting the knowledge base...",
