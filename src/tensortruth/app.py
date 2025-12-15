@@ -556,14 +556,15 @@ elif st.session_state.mode == "chat":
     for msg in messages_to_render:
         avatar = ":material/settings:" if msg["role"] == "command" else None
         with st.chat_message(msg["role"], avatar=avatar):
-            st.markdown(msg["content"])
-
-            # Show low confidence warning if applicable
-            if msg.get("low_confidence", False):
-                st.warning(
-                    "⚠️ No relevant sources found - response based on general knowledge. "
-                    "Try lowering the Confidence Cutoff or rephrasing your query."
+            # Show low confidence warning BEFORE the message content for visibility
+            # Only show if we have modules (indexes) but no sources were found
+            if msg.get("low_confidence", False) and modules:
+                st.info(
+                    "⚠️ **NO RELEVANT SOURCES FOUND** - Response based on general knowledge only, "
+                    "not your indexed documents. Try lowering the Confidence Cutoff or rephrasing your query."
                 )
+
+            st.markdown(msg["content"])
 
             meta_cols = st.columns([3, 1])
             with meta_cols[0]:
@@ -714,7 +715,16 @@ elif st.session_state.mode == "chat":
                     if not context_nodes or len(context_nodes) == 0:
                         from llama_index.core.schema import NodeWithScore, TextNode
 
-                        from tensortruth.rag_engine import NO_CONTEXT_FALLBACK_CONTEXT
+                        from tensortruth.rag_engine import (
+                            CUSTOM_CONTEXT_PROMPT_NO_SOURCES,
+                            NO_CONTEXT_FALLBACK_CONTEXT,
+                        )
+
+                        # Show prominent warning BEFORE streaming response (light blue info box)
+                        st.info(
+                            "⚠️ **NO RELEVANT SOURCES FOUND** - Response based on general knowledge only, "
+                            "not your indexed documents. Try lowering the Confidence Cutoff or rephrasing your query."
+                        )
 
                         # Create a synthetic node with warning context
                         warning_node = NodeWithScore(
@@ -723,6 +733,11 @@ elif st.session_state.mode == "chat":
                         )
                         context_nodes = [warning_node]
                         no_context_warning = True
+
+                        # Override the context prompt to include warning acknowledgment instruction
+                        synthesizer._context_prompt_template = (
+                            CUSTOM_CONTEXT_PROMPT_NO_SOURCES
+                        )
 
                     # Phase 2: LLM Streaming (responsive, token-by-token)
                     # Now generate the streaming response using the pre-retrieved context
@@ -798,26 +813,24 @@ elif st.session_state.mode == "chat":
 
                     elapsed = time.time() - start_time
 
-                    # Handle source nodes
+                    # Handle source nodes and timing
                     source_data = []
-                    if context_nodes and not no_context_warning:
-                        meta_cols = st.columns([3, 1])
-                        with meta_cols[0]:
+                    meta_cols = st.columns([3, 1])
+
+                    with meta_cols[0]:
+                        if context_nodes and not no_context_warning:
                             with st.expander("📚 Sources"):
                                 for node in context_nodes:
                                     score = float(node.score) if node.score else 0.0
                                     fname = node.metadata.get("file_name", "Unknown")
                                     source_data.append({"file": fname, "score": score})
                                     st.caption(f"{fname} ({score:.2f})")
-                        with meta_cols[1]:
+
+                    with meta_cols[1]:
+                        if no_context_warning:
+                            st.caption(f"⏱️ {elapsed:.2f}s | ⚠️ Low Confidence")
+                        else:
                             st.caption(f"⏱️ {elapsed:.2f}s")
-                    elif no_context_warning:
-                        # Show warning indicator for low confidence
-                        st.warning(
-                            "⚠️ No relevant sources found - response based on general knowledge. "
-                            "Try lowering the Confidence Cutoff or rephrasing your query."
-                        )
-                        st.caption(f"⏱️ {elapsed:.2f}s | ⚠️ Low Confidence")
 
                     # Manually update memory (since we bypassed stream_chat)
                     from llama_index.core.base.llms.types import (
