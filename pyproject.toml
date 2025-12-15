@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tensor-truth"
-version = "0.1.5"
+version = "0.1.6"
 description = "Local RAG pipeline for fixing LLM hallucinations using high-precision documentation indexing."
 readme = "README.md"
 requires-python = ">=3.11"
