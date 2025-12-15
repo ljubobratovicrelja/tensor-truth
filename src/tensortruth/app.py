@@ -666,7 +666,7 @@ elif st.session_state.mode == "chat":
                             for token in response.response_gen:
                                 token_queue.put(token)
                             streaming_done.set()
-                        except Exception as e:
+                        except Exception:
                             token_queue.put(None)  # Signal error
                             streaming_done.set()
 
