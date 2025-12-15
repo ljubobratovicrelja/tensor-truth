@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tensor-truth"
-version = "0.1.3"
+version = "0.1.4"
 description = "Local RAG pipeline for fixing LLM hallucinations using high-precision documentation indexing."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -100,6 +100,14 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"] # Tells python that your code lives in 'src/'
+
+[tool.setuptools.package-data]
+# Include media assets for Streamlit app
+tensortruth = [
+    "../media/app_styles.css",
+    "../media/tensor_truth_banner.png",
+    "../media/tensor_truth_icon_256.png",
+]
 
 [tool.deptry.per_rule_ignores]
 # Ignore DEP002 for CLI tools and test framework (not imported in src/, used in tests/ or via CLI)
