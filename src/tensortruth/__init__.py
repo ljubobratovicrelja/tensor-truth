@@ -7,6 +7,7 @@ running entirely on local hardware.
 
 from tensortruth.core import get_max_memory_gb, get_running_models, stop_model
 from tensortruth.rag_engine import (
+    NO_CONTEXT_FALLBACK_CONTEXT,
     MultiIndexRetriever,
     get_embed_model,
     get_llm,
@@ -24,6 +25,7 @@ __all__ = [
     "get_llm",
     "get_reranker",
     "MultiIndexRetriever",
+    "NO_CONTEXT_FALLBACK_CONTEXT",
     # Utils (Core)
     "parse_thinking_response",
     "convert_chat_to_markdown",

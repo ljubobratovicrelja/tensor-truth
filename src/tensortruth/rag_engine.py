@@ -35,17 +35,27 @@ CUSTOM_CONTEXT_PROMPT_TEMPLATE = (
     "Chat History:\n"
     "{chat_history}\n\n"
     "Instructions:\n"
-    "1. FIRST check if the question refers to something specific from the "
-    "Chat History (e.g., code we discussed, an example I showed).\n"
-    "2. If YES: prioritize the Chat History and only use documents if they "
-    "add relevant detail to that specific context.\n"
-    "3. If NO: use the documents above if they contain the answer.\n"
+    "1. If the documents section contains a [WARNING] message, START your response "
+    "by acknowledging that you couldn't find relevant documents in the knowledge base, "
+    "then provide a helpful answer based on your general knowledge.\n"
+    "2. If the question refers to something specific from the Chat History "
+    "(e.g., code we discussed, an example I showed), prioritize the Chat History "
+    "and only use documents if they add relevant detail.\n"
+    "3. If documents are available and relevant, use them to answer the question.\n"
     "4. If documents are empty, generic, or don't match the specific context, "
-    "ignore them and rely on Chat History.\n"
+    "rely on Chat History or your general knowledge.\n"
     "5. Never say 'I could not find relevant context' if the answer is in "
     "the Chat History.\n\n"
     "User: {query_str}\n"
     "Assistant:"
+)
+
+# Context string injected when confidence cutoff filters all nodes
+NO_CONTEXT_FALLBACK_CONTEXT = (
+    "[WARNING: No relevant documents found in the knowledge base that meet the "
+    "confidence threshold. The following response is based on general knowledge only, "
+    "not your indexed documents. Consider lowering the 'Confidence Cutoff' parameter "
+    "or rephrasing your query for better results.]"
 )
 
 CUSTOM_CONDENSE_PROMPT_TEMPLATE = (

@@ -177,6 +177,37 @@ if st.session_state.get("show_preset_delete_confirm", False):
 
     confirm_preset_delete()
 
+# No RAG warning dialog
+if st.session_state.get("show_no_rag_warning", False):
+
+    @st.dialog("⚠️ No Knowledge Base Selected")
+    def confirm_no_rag():
+        st.warning(
+            "You haven't selected any knowledge base modules. "
+            "This will run as a **simple LLM chat without RAG** - "
+            "the model won't have access to your indexed documents."
+        )
+        st.write("")
+        st.write("Do you want to proceed anyway?")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Cancel", use_container_width=True):
+                st.session_state.show_no_rag_warning = False
+                st.session_state.pending_params = None
+                st.rerun()
+        with col2:
+            if st.button("Proceed", type="primary", use_container_width=True):
+                # Create session with empty modules list (no RAG)
+                params = st.session_state.pending_params
+                create_session([], params, SESSIONS_FILE)
+                st.session_state.mode = "chat"
+                st.session_state.show_no_rag_warning = False
+                st.session_state.pending_params = None
+                st.rerun()
+
+    confirm_no_rag()
+
 # ==========================================
 # MAIN CONTENT AREA
 # ==========================================
@@ -366,7 +397,20 @@ if st.session_state.mode == "setup":
 
             if submitted_start:
                 if not selected_mods:
-                    st.error("Please select at least one index.")
+                    # No modules selected - show warning dialog
+                    st.session_state.show_no_rag_warning = True
+                    st.session_state.pending_params = {
+                        "model": selected_model,
+                        "temperature": temp,
+                        "context_window": ctx,
+                        "system_prompt": sys_prompt,
+                        "reranker_model": reranker_model,
+                        "reranker_top_n": top_n,
+                        "confidence_cutoff": conf,
+                        "rag_device": rag_device,
+                        "llm_device": llm_device,
+                    }
+                    st.rerun()
                 elif vram_est > (MAX_VRAM_GB + 4.0):
                     st.error(
                         f"Config is extremely heavy ({vram_est:.1f}GB). Reduce parameters."
@@ -498,7 +542,9 @@ elif st.session_state.mode == "chat":
         st.error(f"Failed to load engine: {st.session_state.engine_load_error}")
         engine = None
     elif not modules:
-        st.warning("No linked knowledge base. Use `/load <name>` to attach one.")
+        st.info(
+            "💬 Simple LLM mode (No RAG) - Use `/load <name>` to attach a knowledge base."
+        )
         engine = None
 
     # Render message history (but skip the last message if we just added it this run)
@@ -511,6 +557,14 @@ elif st.session_state.mode == "chat":
         avatar = ":material/settings:" if msg["role"] == "command" else None
         with st.chat_message(msg["role"], avatar=avatar):
             st.markdown(msg["content"])
+
+            # Show low confidence warning if applicable
+            if msg.get("low_confidence", False):
+                st.warning(
+                    "⚠️ No relevant sources found - response based on general knowledge. "
+                    "Try lowering the Confidence Cutoff or rephrasing your query."
+                )
+
             meta_cols = st.columns([3, 1])
             with meta_cols[0]:
                 if "sources" in msg and msg["sources"]:
@@ -519,7 +573,15 @@ elif st.session_state.mode == "chat":
                             st.caption(f"{src['file']} ({src['score']:.2f})")
             with meta_cols[1]:
                 if "time_taken" in msg:
-                    st.caption(f"⏱️ {msg['time_taken']:.2f}s")
+                    # Check different response types
+                    if msg.get("low_confidence", False):
+                        st.caption(f"⏱️ {msg['time_taken']:.2f}s | ⚠️ Low Confidence")
+                    elif msg["role"] == "assistant" and (
+                        "sources" not in msg or not msg.get("sources")
+                    ):
+                        st.caption(f"⏱️ {msg['time_taken']:.2f}s | 🔴 No RAG")
+                    else:
+                        st.caption(f"⏱️ {msg['time_taken']:.2f}s")
 
     # Get user input
     prompt = st.chat_input("Ask or type /cmd...")
@@ -647,6 +709,21 @@ elif st.session_state.mode == "chat":
                             prompt, chat_history=None, streaming=True
                         )
 
+                    # Check if confidence cutoff filtered all nodes
+                    no_context_warning = False
+                    if not context_nodes or len(context_nodes) == 0:
+                        from llama_index.core.schema import NodeWithScore, TextNode
+
+                        from tensortruth.rag_engine import NO_CONTEXT_FALLBACK_CONTEXT
+
+                        # Create a synthetic node with warning context
+                        warning_node = NodeWithScore(
+                            node=TextNode(text=NO_CONTEXT_FALLBACK_CONTEXT),
+                            score=0.0,
+                        )
+                        context_nodes = [warning_node]
+                        no_context_warning = True
+
                     # Phase 2: LLM Streaming (responsive, token-by-token)
                     # Now generate the streaming response using the pre-retrieved context
                     import queue
@@ -723,7 +800,7 @@ elif st.session_state.mode == "chat":
 
                     # Handle source nodes
                     source_data = []
-                    if context_nodes:
+                    if context_nodes and not no_context_warning:
                         meta_cols = st.columns([3, 1])
                         with meta_cols[0]:
                             with st.expander("📚 Sources"):
@@ -734,6 +811,13 @@ elif st.session_state.mode == "chat":
                                     st.caption(f"{fname} ({score:.2f})")
                         with meta_cols[1]:
                             st.caption(f"⏱️ {elapsed:.2f}s")
+                    elif no_context_warning:
+                        # Show warning indicator for low confidence
+                        st.warning(
+                            "⚠️ No relevant sources found - response based on general knowledge. "
+                            "Try lowering the Confidence Cutoff or rephrasing your query."
+                        )
+                        st.caption(f"⏱️ {elapsed:.2f}s | ⚠️ Low Confidence")
 
                     # Manually update memory (since we bypassed stream_chat)
                     from llama_index.core.base.llms.types import (
@@ -754,6 +838,7 @@ elif st.session_state.mode == "chat":
                             "content": full_response,
                             "sources": source_data,
                             "time_taken": elapsed,
+                            "low_confidence": no_context_warning,
                         }
                     )
 
@@ -764,5 +849,101 @@ elif st.session_state.mode == "chat":
 
                 except Exception as e:
                     st.error(f"Engine Error: {e}")
+            elif not modules:
+                # NO RAG MODE - Direct Ollama chat
+                start_time = time.time()
+                try:
+                    # Initialize simple LLM if not already loaded for this session
+                    if "simple_llm" not in st.session_state:
+                        from tensortruth.rag_engine import get_llm
+
+                        st.session_state.simple_llm = get_llm(params)
+
+                    llm = st.session_state.simple_llm
+
+                    # Build chat history for context
+                    from llama_index.core.base.llms.types import (
+                        ChatMessage,
+                        MessageRole,
+                    )
+
+                    chat_history = []
+                    for msg in session["messages"]:
+                        if msg["role"] == "user":
+                            chat_history.append(
+                                ChatMessage(
+                                    content=msg["content"], role=MessageRole.USER
+                                )
+                            )
+                        elif msg["role"] == "assistant":
+                            chat_history.append(
+                                ChatMessage(
+                                    content=msg["content"], role=MessageRole.ASSISTANT
+                                )
+                            )
+
+                    # Stream response from Ollama
+                    import queue
+
+                    token_queue = queue.Queue()
+                    streaming_done = threading.Event()
+                    error_holder = {"error": None}
+
+                    def stream_simple_llm():
+                        """Stream directly from Ollama without RAG."""
+                        try:
+                            response = llm.stream_chat(chat_history)
+                            for token in response:
+                                token_queue.put(str(token.delta))
+                            streaming_done.set()
+                        except Exception as e:
+                            error_holder["error"] = e
+                            streaming_done.set()
+
+                    stream_thread = threading.Thread(
+                        target=stream_simple_llm, daemon=True
+                    )
+                    stream_thread.start()
+
+                    full_response = ""
+                    spinner_placeholder = st.empty()
+                    response_placeholder = st.empty()
+
+                    with spinner_placeholder:
+                        with st.spinner(get_random_generating_message()):
+                            while (
+                                not streaming_done.is_set() or not token_queue.empty()
+                            ):
+                                try:
+                                    token = token_queue.get(timeout=0.05)
+                                    if token:
+                                        full_response += token
+                                        response_placeholder.markdown(full_response)
+                                except queue.Empty:
+                                    continue
+
+                    spinner_placeholder.empty()
+
+                    if error_holder["error"]:
+                        raise error_holder["error"]
+
+                    elapsed = time.time() - start_time
+
+                    # Show time with no RAG indicator
+                    st.caption(f"⏱️ {elapsed:.2f}s | 🔴 No RAG")
+
+                    session["messages"].append(
+                        {
+                            "role": "assistant",
+                            "content": full_response,
+                            "time_taken": elapsed,
+                        }
+                    )
+
+                    save_sessions(SESSIONS_FILE)
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"LLM Error: {e}")
             else:
                 st.error("Engine not loaded!")
