@@ -7,11 +7,12 @@
     --light-slate: #A8B8C4;
     
     /* Backgrounds */
+    --background-button-light: #fffffff9;
     --background-light: #F5F7FA;
     --background-white: #FFFFFF;
-    --card-bg: #FFFFFF;
-    --sidebar-dark: #ffffff;
-    --code-bg: #F0F4F8;
+    --card-bg: #f8f8f8e5;
+    --sidebar-dark: #ebebeb;
+    --code-bg: #eef2ff;
     --user-msg-bg: #F0F8FF;
     
     /* Text */
@@ -20,7 +21,7 @@
     --text-on-dark: #E8EEF2;
     
     /* UI Elements */
-    --border-color: #D1D9E0;
+    --border-color: #fcfcfc;
     --border-hover: #6B8699;
     
     /* Status Colors */
@@ -36,6 +37,8 @@
     max-width: 1400px !important;
     margin: 0 auto !important;
     box-sizing: border-box !important;
+    padding-left: 8rem !important;
+    padding-right: 8rem !important;
 }
 
 .stMainBlockContainer {
@@ -48,14 +51,29 @@
 }
 
 .stAppHeader {
-    background-color: var(--background-white) !important;
-    border-bottom: 1px solid var(--border-color) !important;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    background-color: var(--sidebar-dark);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.stExpander {
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* --- Chat Message Avatar --- */
+.stChatMessageAvatarCustom {
+    margin: 2rem !important;
+}
+
+.stChatMessageAvatarCustom img {
+    width: 100px !important;
+    height:  100px !important;
 }
 
 /* --- Sidebar --- */
 section[data-testid="stSidebar"] {
     background-color: var(--sidebar-dark) !important;
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
 
 section[data-testid="stSidebar"] .stMarkdown,
@@ -71,6 +89,75 @@ section[data-testid="stSidebar"] .stButton button {
 
 section[data-testid="stSidebar"] hr {
     border-color: rgba(221, 16, 16, 0.2);
+}
+
+/* Primary Form Submit Button */
+.stFormSubmitButton button[kind="primaryFormSubmit"] {
+    background-color: var(--navy-primary) !important;
+    border-color: var(--navy-primary) !important;
+    color: #FFFFFF !important;
+}
+
+.stFormSubmitButton button[kind="primaryFormSubmit"]:hover {
+    background-color: var(--accent-teal) !important;
+    border-color: var(--accent-teal) !important;
+}
+
+.stFormSubmitButton button[kind="primaryFormSubmit"] *,
+.stFormSubmitButton button[kind="primaryFormSubmit"]:hover * {
+    color: #FFFFFF !important;
+}
+
+/* Enhanced Secondary Button Styling */
+.stButton button[kind="secondary"] {
+    background-color: var(--background-button-light) !important;
+}
+
+.stButton button[kind="secondary"]:hover,
+button[kind="secondary"]:hover {
+    border-color: transparent !important;
+    color: #000000 !important;
+}
+
+.stButton button[kind="secondary"]:focus,
+button[kind="secondary"]:focus {
+    box-shadow: 0 0 0 1px var(--accent-teal) !important;
+}
+
+/* --- Sliders --- */
+div[data-baseweb="slider"] {
+    /* Customize the slider container */
+    padding: 0.5rem 0;
+}
+
+div[data-baseweb="slider"] [role="slider"] {
+    /* Customize the slider thumb/handle */
+    background-color: var(--accent-teal) !important;
+    border: 2px solid var(--navy-primary) !important;
+    width: 20px !important;
+    height: 20px !important;
+    box-shadow: none !important;
+}
+
+div[data-baseweb="slider"] [role="presentation"] {
+    /* Customize the slider track */
+    background-color: var(--border-color) !important;
+    height: 4px !important;
+}
+
+div[data-baseweb="slider"] [role="presentation"] > div {
+    /* Customize the filled portion of the track */
+    background-color: var(--accent-teal) !important;
+}
+
+/* Override any default red styling */
+.stSlider [role="slider"] {
+    background-color: var(--accent-teal) !important;
+    border-color: var(--navy-primary) !important;
+}
+
+.stSlider [role="presentation"] > div {
+    background-color: var(--accent-teal) !important;
 }
 
 /* --- Typography --- */
@@ -138,12 +225,7 @@ button[kind="primary"]:hover * {
     color: #FFFFFF !important;
 }
 
-/* Secondary & Active State Buttons */
-.stButton button[kind="secondary"] {
-    background-color: transparent !important;
-    border: 1px solid var(--border-color) !important;
-}
-
+/* Active State Buttons */
 .stButton button[data-selected="true"] {
     background-color: var(--navy-primary);
     border-left: 4px solid var(--accent-teal);
