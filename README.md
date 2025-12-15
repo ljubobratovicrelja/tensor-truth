@@ -120,3 +120,17 @@ If you need different chunking strategies or retrieval parameters, you'll need t
 MIT License - see [LICENSE](LICENSE) for details.
 
 Built for personal use but released publicly. Provided as-is with no warranty.
+
+## Disclaimer & Content Ownership
+
+**1. Software License:**
+The source code of `tensor-truth` is licensed under the MIT License. This covers the logic, UI, and retrieval pipelines created for this project.
+
+**2. Third-Party Content:**
+This tool is designed to fetch and index publicly available technical documentation, research papers (via ArXiv), and educational textbooks.
+- **I do not own the rights to the indexed content.** All PDF files, textbooks, and research papers fetched by this tool remain the intellectual property of their respective authors and publishers.
+- **Source Links:** The configuration files (`config/papers.json`, etc.) point exclusively to official sources, author-hosted pages, or open-access repositories (like ArXiv).
+- **Usage:** This tool is intended for **personal, non-commercial research and educational use**.
+
+**3. Takedown Request:**
+If you are an author or copyright holder of any material referenced in the default configurations or included in the pre-built indexes and wish for it to be removed, please open an issue or contact me at ljubobratovic.relja@gmail.com, and the specific references/data will be removed immediately.
