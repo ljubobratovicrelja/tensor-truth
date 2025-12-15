@@ -2,7 +2,7 @@
 Unit tests for tensortruth.app_utils modules.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -44,18 +44,22 @@ class TestHelpers:
         assert "cpu" in devices
         assert "cuda" not in devices
 
-    @patch("tensortruth.app_utils.helpers.requests.get")
-    def test_get_ollama_models_success(self, mock_get):
+    @patch("tensortruth.app_utils.helpers.aiohttp.ClientSession")
+    def test_get_ollama_models_success(self, mock_session_class):
         """Test successful Ollama model fetch."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        # Mock the async context manager and response
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={
             "models": [
                 {"name": "deepseek-r1:8b"},
                 {"name": "llama2:7b"},
             ]
-        }
-        mock_get.return_value = mock_response
+        })
+
+        mock_session = MagicMock()
+        mock_session.get.return_value.__aenter__.return_value = mock_response
+        mock_session_class.return_value.__aenter__.return_value = mock_session
 
         models = get_ollama_models()
 
@@ -63,10 +67,11 @@ class TestHelpers:
         assert "deepseek-r1:8b" in models
         assert "llama2:7b" in models
 
-    @patch("tensortruth.app_utils.helpers.requests.get")
-    def test_get_ollama_models_failure(self, mock_get):
+    @patch("tensortruth.app_utils.helpers.aiohttp.ClientSession")
+    def test_get_ollama_models_failure(self, mock_session_class):
         """Test Ollama model fetch when service is down."""
-        mock_get.side_effect = Exception("Connection refused")
+        # Make the session creation raise an exception
+        mock_session_class.side_effect = Exception("Connection refused")
 
         models = get_ollama_models()
 
@@ -133,21 +138,24 @@ class TestVRAM:
 class TestTitleGeneration:
     """Tests for app_utils.title_generation module."""
 
-    @patch("tensortruth.app_utils.title_generation.requests.get")
-    @patch("tensortruth.app_utils.title_generation.requests.post")
-    def test_generate_smart_title_success(self, mock_post, mock_get):
+    @patch("tensortruth.app_utils.title_generation.aiohttp.ClientSession")
+    def test_generate_smart_title_success(self, mock_session_class):
         """Test successful title generation."""
-        # Mock model availability check
-        mock_get_response = MagicMock()
-        mock_get_response.status_code = 200
-        mock_get_response.json.return_value = {"models": [{"name": "qwen2.5:0.5b"}]}
-        mock_get.return_value = mock_get_response
+        # Mock model availability check (GET request)
+        mock_get_response = AsyncMock()
+        mock_get_response.status = 200
+        mock_get_response.json = AsyncMock(return_value={"models": [{"name": "qwen2.5:0.5b"}]})
 
-        # Mock title generation response
-        mock_post_response = MagicMock()
-        mock_post_response.status_code = 200
-        mock_post_response.json.return_value = {"response": "PyTorch Basics"}
-        mock_post.return_value = mock_post_response
+        # Mock title generation response (POST request)
+        mock_post_response = AsyncMock()
+        mock_post_response.status = 200
+        mock_post_response.json = AsyncMock(return_value={"response": "PyTorch Basics"})
+
+        # Create mock session that handles both GET and POST
+        mock_session = MagicMock()
+        mock_session.get.return_value.__aenter__.return_value = mock_get_response
+        mock_session.post.return_value.__aenter__.return_value = mock_post_response
+        mock_session_class.return_value.__aenter__.return_value = mock_session
 
         title = title_generation.generate_smart_title(
             "What are the basics of PyTorch?", "deepseek-r1:8b"
@@ -155,19 +163,23 @@ class TestTitleGeneration:
 
         assert title == "PyTorch Basics"
 
-    @patch("tensortruth.app_utils.title_generation.requests.post")
-    @patch("tensortruth.app_utils.title_generation.requests.get")
-    def test_generate_smart_title_model_unavailable(self, mock_get, mock_post):
+    @patch("tensortruth.app_utils.title_generation.aiohttp.ClientSession")
+    def test_generate_smart_title_model_unavailable(self, mock_session_class):
         """Test title generation when model is unavailable."""
-        mock_get_response = MagicMock()
-        mock_get_response.status_code = 200
-        mock_get_response.json.return_value = {"models": []}
-        mock_get.return_value = mock_get_response
+        # Mock model availability check - model not found
+        mock_get_response = AsyncMock()
+        mock_get_response.status = 200
+        mock_get_response.json = AsyncMock(return_value={"models": []})
 
         # Make model pull fail to simulate unavailability
-        mock_post_response = MagicMock()
-        mock_post_response.status_code = 500
-        mock_post.return_value = mock_post_response
+        mock_post_response = AsyncMock()
+        mock_post_response.status = 500
+
+        # Create mock session that handles both GET and POST
+        mock_session = MagicMock()
+        mock_session.get.return_value.__aenter__.return_value = mock_get_response
+        mock_session.post.return_value.__aenter__.return_value = mock_post_response
+        mock_session_class.return_value.__aenter__.return_value = mock_session
 
         text = (
             "This is a very long query that should be truncated for the fallback title"
