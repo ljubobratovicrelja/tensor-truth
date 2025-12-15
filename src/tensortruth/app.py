@@ -337,7 +337,15 @@ if st.session_state.mode == "setup":
                     key="setup_top_n",
                 )
                 conf = st.slider(
-                    "Confidence Cutoff", 0.0, 1.0, step=0.05, key="setup_conf"
+                    "Confidence Warning Threshold",
+                    0.0,
+                    1.0,
+                    step=0.05,
+                    key="setup_conf",
+                    help=(
+                        "Show a warning if the best similarity score is below "
+                        "this threshold (soft hint, doesn't filter results)"
+                    ),
                 )
                 sys_prompt = st.text_area(
                     "System Instructions:",
@@ -557,13 +565,27 @@ elif st.session_state.mode == "chat":
         avatar = ":material/settings:" if msg["role"] == "command" else None
         with st.chat_message(msg["role"], avatar=avatar):
             # Show low confidence warning BEFORE the message content for visibility
-            # Only show if we have modules (indexes) but no sources were found
             if msg.get("low_confidence", False) and modules:
-                st.info(
-                    "⚠️ **NO RELEVANT SOURCES FOUND** - Response based on general knowledge only, "
-                    "not your indexed documents. Try lowering the Confidence Cutoff or "
-                    "rephrasing your query."
-                )
+                # Get the confidence threshold and best score from the message if available
+                confidence_threshold = params.get("confidence_cutoff", 0.0)
+                # Try to get the best score from sources, otherwise show generic warning
+                if msg.get("sources") and len(msg["sources"]) > 0:
+                    best_score = max(
+                        (src["score"] for src in msg["sources"]), default=0.0
+                    )
+                    st.warning(
+                        f"⚠️ **Low Confidence Match** - Best similarity score ({best_score:.2f}) "
+                        f"is below your threshold ({confidence_threshold:.2f}). "
+                        "The answer may not be reliable. Consider lowering the threshold "
+                        "or rephrasing your query."
+                    )
+                else:
+                    # No sources at all (edge case)
+                    st.warning(
+                        "⚠️ **Low Confidence Match** - "
+                        "The answer may not be reliable. Consider lowering the threshold "
+                        "or rephrasing your query."
+                    )
 
             st.markdown(msg["content"])
 
@@ -711,9 +733,43 @@ elif st.session_state.mode == "chat":
                             prompt, chat_history=None, streaming=True
                         )
 
-                    # Check if confidence cutoff filtered all nodes
-                    no_context_warning = False
-                    if not context_nodes or len(context_nodes) == 0:
+                    # Check confidence threshold for soft warning
+                    low_confidence_warning = False
+                    confidence_threshold = params.get("confidence_cutoff", 0.0)
+
+                    if (
+                        context_nodes
+                        and len(context_nodes) > 0
+                        and confidence_threshold > 0
+                    ):
+                        # Get the best (highest) similarity score from nodes
+                        best_score = max(
+                            (node.score for node in context_nodes if node.score),
+                            default=0.0,
+                        )
+
+                        if best_score < confidence_threshold:
+                            # Import the low confidence prompt
+                            from tensortruth.rag_engine import (
+                                CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE,
+                            )
+
+                            # Override prompt to make LLM aware of low confidence
+                            synthesizer._context_prompt_template = (
+                                CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE
+                            )
+
+                            # Show soft warning but still use the sources
+                            st.warning(
+                                "⚠️ **Low Confidence Match** - "
+                                f"Best similarity score ({best_score:.2f}) "
+                                f"is below your threshold ({confidence_threshold:.2f}). "
+                                "The answer may not be reliable. Consider lowering the threshold "
+                                "or rephrasing your query."
+                            )
+                            low_confidence_warning = True
+                    elif not context_nodes or len(context_nodes) == 0:
+                        # No nodes at all - this shouldn't happen with the reranker, but handle it
                         from llama_index.core.schema import NodeWithScore, TextNode
 
                         from tensortruth.rag_engine import (
@@ -721,12 +777,10 @@ elif st.session_state.mode == "chat":
                             NO_CONTEXT_FALLBACK_CONTEXT,
                         )
 
-                        # Show prominent warning BEFORE streaming response (light blue info box)
                         st.info(
-                            "⚠️ **NO RELEVANT SOURCES FOUND** - "
+                            "⚠️ **NO SOURCES RETRIEVED** - "
                             "Response based on general knowledge only, "
-                            "not your indexed documents. Try lowering the Confidence Cutoff "
-                            "or rephrasing your query."
+                            "not your indexed documents."
                         )
 
                         # Create a synthetic node with warning context
@@ -735,7 +789,7 @@ elif st.session_state.mode == "chat":
                             score=0.0,
                         )
                         context_nodes = [warning_node]
-                        no_context_warning = True
+                        low_confidence_warning = True
 
                         # Override the context prompt to include warning acknowledgment instruction
                         synthesizer._context_prompt_template = (
@@ -821,7 +875,7 @@ elif st.session_state.mode == "chat":
                     meta_cols = st.columns([3, 1])
 
                     with meta_cols[0]:
-                        if context_nodes and not no_context_warning:
+                        if context_nodes and not low_confidence_warning:
                             with st.expander("📚 Sources"):
                                 for node in context_nodes:
                                     score = float(node.score) if node.score else 0.0
@@ -830,7 +884,7 @@ elif st.session_state.mode == "chat":
                                     st.caption(f"{fname} ({score:.2f})")
 
                     with meta_cols[1]:
-                        if no_context_warning:
+                        if low_confidence_warning:
                             st.caption(f"⏱️ {elapsed:.2f}s | ⚠️ Low Confidence")
                         else:
                             st.caption(f"⏱️ {elapsed:.2f}s")
@@ -854,7 +908,7 @@ elif st.session_state.mode == "chat":
                             "content": full_response,
                             "sources": source_data,
                             "time_taken": elapsed,
-                            "low_confidence": no_context_warning,
+                            "low_confidence": low_confidence_warning,
                         }
                     )
 

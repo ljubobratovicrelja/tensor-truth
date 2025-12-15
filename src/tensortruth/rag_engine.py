@@ -11,10 +11,7 @@ from llama_index.core import (
 )
 from llama_index.core.chat_engine import CondensePlusContextChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
-from llama_index.core.postprocessor import (
-    SentenceTransformerRerank,
-    SimilarityPostprocessor,
-)
+from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core.retrievers import AutoMergingRetriever, BaseRetriever
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.ollama import Ollama
@@ -44,6 +41,33 @@ CUSTOM_CONTEXT_PROMPT_TEMPLATE = (
     "ignore them and rely on Chat History.\n"
     "5. Never say 'I could not find relevant context' if the answer is in "
     "the Chat History.\n\n"
+    "User: {query_str}\n"
+    "Assistant:"
+)
+
+# Prompt used when confidence is low but sources are still provided
+CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE = (
+    "The following is a friendly conversation between a user and an AI assistant.\n"
+    "The assistant is a coding expert and helpful assistant.\n\n"
+    "Here are the relevant documents from the knowledge base:\n"
+    "---------------------\n"
+    "{context_str}\n"
+    "---------------------\n\n"
+    "Chat History:\n"
+    "{chat_history}\n\n"
+    "🚨 CRITICAL WARNING - LOW CONFIDENCE MATCH 🚨\n"
+    "The retrieved documents have VERY LOW similarity scores to the user's query. "
+    "They are likely NOT relevant or do NOT directly answer the question.\n\n"
+    "MANDATORY RESPONSE FORMAT - YOU MUST FOLLOW THIS:\n"
+    "1. START your response with one of these phrases (REQUIRED):\n"
+    '   • "I\'m not confident I have relevant information for this in the knowledge base."\n'
+    "   • \"I'm uncertain about this - the indexed documents don't seem "
+    'to match your query well."\n'
+    '   • "I don\'t have strong matches in the knowledge base for this question."\n\n'
+    "2. Then briefly explain what limited information you found (if any).\n"
+    "3. If the question refers to Chat History, prioritize that over the "
+    "low-confidence documents.\n"
+    "4. Be honest and humble - DO NOT present uncertain information as if it were reliable.\n\n"
     "User: {query_str}\n"
     "Assistant:"
 )
@@ -193,8 +217,6 @@ def load_engine_for_modules(selected_modules, engine_params=None):
     if engine_params is None:
         engine_params = {}
 
-    similarity_cutoff = engine_params.get("confidence_cutoff", 0.0)
-
     # Determine devices
     rag_device = engine_params.get("rag_device", "cuda")
 
@@ -243,12 +265,9 @@ def load_engine_for_modules(selected_modules, engine_params=None):
     llm = get_llm(engine_params)
 
     # Pass device to reranker
+    # Note: similarity_cutoff is no longer used as a hard filter here
+    # Instead, it's used in the app layer to show soft warnings when confidence is low
     node_postprocessors = [get_reranker(engine_params, device=rag_device)]
-
-    if similarity_cutoff > 0:
-        node_postprocessors.append(
-            SimilarityPostprocessor(similarity_cutoff=similarity_cutoff)
-        )
 
     chat_engine = CondensePlusContextChatEngine.from_defaults(
         retriever=composite_retriever,
