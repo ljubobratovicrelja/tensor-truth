@@ -15,8 +15,8 @@ from tensortruth.app_utils import (
     free_memory,
     get_available_modules,
     get_ollama_models,
+    get_random_generating_message,
     get_random_rag_processing_message,
-    get_random_thinking_message,
     get_system_devices,
     load_presets,
     load_sessions,
@@ -652,25 +652,44 @@ elif st.session_state.mode == "chat":
 
                     # Phase 2: LLM Streaming (responsive, token-by-token)
                     # Now generate the streaming response using the pre-retrieved context
-                    response = synthesizer.synthesize(prompt, context_nodes)
-
-                    # Use threading to stream tokens asynchronously
                     import queue
 
                     token_queue = queue.Queue()
+                    synthesizer_ready = threading.Event()
                     streaming_done = threading.Event()
+                    error_holder = {"error": None}
 
                     def stream_tokens_in_background():
-                        """Background thread that pulls tokens and puts them in queue."""
+                        """Background thread that calls synthesize and streams tokens."""
                         try:
-                            for token in response.response_gen:
+                            # Move the blocking synthesize() call into background thread
+                            response = synthesizer.synthesize(prompt, context_nodes)
+
+                            # Get the generator - this doesn't trigger Ollama yet
+                            token_gen = iter(response.response_gen)
+
+                            # Pull the FIRST token - THIS is what triggers Ollama and blocks
+                            # Only signal ready after we have the first token
+                            first_token = next(token_gen)
+                            token_queue.put(first_token)
+
+                            # Now signal that streaming has actually started
+                            synthesizer_ready.set()
+
+                            # Stream remaining tokens to queue
+                            for token in token_gen:
                                 token_queue.put(token)
                             streaming_done.set()
-                        except Exception:
-                            token_queue.put(None)  # Signal error
+                        except StopIteration:
+                            # Empty response
+                            synthesizer_ready.set()
+                            streaming_done.set()
+                        except Exception as e:
+                            error_holder["error"] = e
+                            synthesizer_ready.set()  # Signal even on error
                             streaming_done.set()
 
-                    # Start background streaming thread
+                    # Start background thread immediately
                     stream_thread = threading.Thread(
                         target=stream_tokens_in_background, daemon=True
                     )
@@ -678,31 +697,30 @@ elif st.session_state.mode == "chat":
 
                     # Display tokens as they arrive with immediate updates
                     full_response = ""
+
+                    # Create two placeholders: spinner above, response below
+                    spinner_placeholder = st.empty()
                     response_placeholder = st.empty()
 
-                    # Show spinner until first token arrives
-                    with st.spinner(get_random_thinking_message()):
-                        # Wait for first token with timeout
-                        try:
-                            first_token = token_queue.get(timeout=30)
-                            if first_token is not None:
-                                full_response = first_token
-                        except queue.Empty:
-                            first_token = None
+                    # Show spinner in the top placeholder
+                    with spinner_placeholder:
+                        with st.spinner(get_random_generating_message()):
+                            # Stream remaining tokens with responsive updates
+                            while (
+                                not streaming_done.is_set() or not token_queue.empty()
+                            ):
+                                try:
+                                    token = token_queue.get(
+                                        timeout=0.05
+                                    )  # 50ms polling
+                                    if token is not None:
+                                        full_response += token
+                                        response_placeholder.markdown(full_response)
+                                except queue.Empty:
+                                    continue
 
-                    # Immediately display first token
-                    if full_response:
-                        response_placeholder.markdown(full_response)
-
-                    # Stream remaining tokens with responsive updates
-                    while not streaming_done.is_set() or not token_queue.empty():
-                        try:
-                            token = token_queue.get(timeout=0.05)  # 50ms polling
-                            if token is not None:
-                                full_response += token
-                                response_placeholder.markdown(full_response)
-                        except queue.Empty:
-                            continue
+                    # Clear the spinner placeholder after streaming is done
+                    spinner_placeholder.empty()
 
                     elapsed = time.time() - start_time
 

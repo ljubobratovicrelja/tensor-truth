@@ -60,20 +60,20 @@ def _download_and_extract_indexes(index_dir: str, gdrive_link: str):
         raise e
 
 
-def get_random_thinking_message():
-    """Returns a random thinking/loading message."""
+def get_random_generating_message():
+    """Returns a random generating message."""
 
     messages = [
-        "🤔 Thinking...",
-        "💭 Pondering...",
-        "🧠 Processing...",
-        "🔄 Analyzing...",
-        "⏳ Crunching...",
-        "🧐 What to make of this?...",
-        "💡 Let me think...",
-        "🔍 Diving deep...",
-        "📊 Weighing options...",
-        "📝 Formulating response...",
+        "✍️ Generating response...",
+        "💬 Crafting message...",
+        "📝 Writing reply...",
+        "🔄 Building answer...",
+        "⏳ Composing...",
+        "🧐 Putting words together...",
+        "💡 Formulating response...",
+        "🔍 Assembling output...",
+        "📊 Constructing reply...",
+        "✨ Creating response...",
     ]
     return messages[int(time.time()) % len(messages)]
 
