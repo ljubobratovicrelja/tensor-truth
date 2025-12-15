@@ -522,6 +522,9 @@ elif st.session_state.mode == "chat":
     # Get user input
     prompt = st.chat_input("Ask or type /cmd...")
 
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = []
+
     # Show tip if no messages exist AND no prompt being processed
     if not session["messages"] and not prompt:
         st.caption(
@@ -584,53 +587,6 @@ elif st.session_state.mode == "chat":
         session["messages"].append({"role": "user", "content": prompt})
         save_sessions(SESSIONS_FILE)
 
-        print(f"PROMPT: {prompt}")
-
-        # Render the user message inline (before message loop picks it up on next rerun)
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        st.empty()  # Spacer - forces next message to be below user input
-
-        with st.chat_message("assistant"):
-            if engine:
-                start_time = time.time()
-                try:
-                    # Show RAG pipeline status with actual spinner
-                    with st.spinner(get_random_rag_processing_message()):
-                        response = engine.chat(prompt)
-
-                    # Display response
-                    answer = str(response)
-                    st.markdown(answer)
-
-                    elapsed = time.time() - start_time
-
-                    # Handle source nodes
-                    source_data = []
-                    if hasattr(response, "source_nodes") and response.source_nodes:
-                        with st.expander("📚 Sources"):
-                            for node in response.source_nodes:
-                                score = float(node.score) if node.score else 0.0
-                                fname = node.metadata.get("file_name", "Unknown")
-                                st.caption(f"{fname} ({score:.2f})")
-                                source_data.append({"file": fname, "score": score})
-
-                    st.caption(f"⏱️ {elapsed:.2f}s")
-                    session["messages"].append(
-                        {
-                            "role": "assistant",
-                            "content": answer,
-                            "sources": source_data,
-                            "time_taken": elapsed,
-                        }
-                    )
-                    save_sessions(SESSIONS_FILE)
-                except Exception as e:
-                    st.error(f"Engine Error: {e}")
-            else:
-                st.error("Engine not loaded!")
-
         # Update title in background (can be slow with LLM) - fire and forget
         def run_async_in_thread(coro):
             """Run async coroutine in a new thread with its own event loop (non-blocking)."""
@@ -659,4 +615,70 @@ elif st.session_state.mode == "chat":
                 chat_data=chat_data_snapshot,
             )
 
-        run_async_in_thread(update_title_task())
+        if session["title"] == "New Session":
+            run_async_in_thread(update_title_task())
+
+        # Display chat messages from history on app rerun
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+                if message["role"] == "assistant":
+                    meta_cols = st.columns([3, 1])
+                    with meta_cols[0]:
+                        if "sources" in message and message["sources"]:
+                            with st.expander("📚 Sources"):
+                                for src in message["sources"]:
+                                    st.caption(f"{src['file']} ({src['score']:.2f})")
+                    with meta_cols[1]:
+                        if "time_taken" in message:
+                            st.caption(f"⏱️ {message['time_taken']:.2f}s")
+
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            if engine:
+                start_time = time.time()
+                try:
+                    # Show RAG pipeline status with actual spinner
+                    with st.spinner(get_random_rag_processing_message()):
+                        response = engine.chat(prompt)
+
+                    # Brief response write.
+                    st.markdown(str(response))
+
+                    elapsed = time.time() - start_time
+
+                    # Handle source nodes
+                    source_data = []
+                    if hasattr(response, "source_nodes") and response.source_nodes:
+                        meta_cols = st.columns([3, 1])
+                        with meta_cols[0]:
+                            with st.expander("📚 Sources"):
+                                for node in response.source_nodes:
+                                    score = float(node.score) if node.score else 0.0
+                                    fname = node.metadata.get("file_name", "Unknown")
+                                    source_data.append({"file": fname, "score": score})
+                                    st.caption(f"{fname} ({score:.2f})")
+                        with meta_cols[1]:
+                            st.caption(f"⏱️ {elapsed:.2f}s")
+
+                    session["messages"].append(
+                        {
+                            "role": "assistant",
+                            "content": str(response),
+                            "sources": source_data,
+                            "time_taken": elapsed,
+                        }
+                    )
+
+                    save_sessions(SESSIONS_FILE)
+
+                    # Rerun to display the new assistant message
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"Engine Error: {e}")
+            else:
+                st.error("Engine not loaded!")
