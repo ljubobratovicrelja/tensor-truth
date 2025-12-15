@@ -7,6 +7,7 @@ from .helpers import (
     free_memory,
     get_available_modules,
     get_ollama_models,
+    get_random_rag_processing_message,
     get_system_devices,
 )
 from .logging_config import logger
@@ -30,6 +31,7 @@ __all__ = [
     "free_memory",
     "get_available_modules",
     "get_ollama_models",
+    "get_random_rag_processing_message",
     "get_system_devices",
     # Logging
     "logger",

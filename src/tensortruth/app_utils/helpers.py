@@ -59,6 +59,25 @@ def _download_and_extract_indexes(index_dir: str, gdrive_link: str):
         raise e
 
 
+def get_random_rag_processing_message():
+    """Returns a random RAG processing message."""
+    import time
+
+    messages = [
+        "🔍 Consulting the knowledge base...",
+        "📚 Retrieving relevant information...",
+        "🧠 Analyzing documents for context...",
+        "🔎 Searching indexed data...",
+        "✍️ Formulating a response based on sources...",
+        "📖 Reviewing materials to assist...",
+        "💡 Synthesizing information from the knowledge base...",
+        "📝 Compiling insights from documents...",
+        "🔗 Connecting the dots from indexed content...",
+        "🧩 Piecing together relevant information...",
+    ]
+    return messages[int(time.time()) % len(messages)]
+
+
 def download_indexes_with_ui(index_dir: str, gdrive_link: str):
     """
     Wrapper for download_and_extract_indexes that provides Streamlit UI feedback.

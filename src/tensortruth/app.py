@@ -15,6 +15,7 @@ from tensortruth.app_utils import (
     free_memory,
     get_available_modules,
     get_ollama_models,
+    get_random_rag_processing_message,
     get_system_devices,
     load_presets,
     load_sessions,
@@ -34,6 +35,7 @@ GDRIVE_LINK = (
     "https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing"
 )
 MAX_VRAM_GB = get_max_memory_gb()
+
 
 st.set_page_config(page_title="Tensor-Truth", layout="wide", page_icon="⚡")
 
@@ -498,7 +500,13 @@ elif st.session_state.mode == "chat":
         st.warning("No linked knowledge base. Use `/load <name>` to attach one.")
         engine = None
 
-    for msg in session["messages"]:
+    # Render message history (but skip the last message if we just added it this run)
+    messages_to_render = session["messages"]
+    if st.session_state.get("skip_last_message_render", False):
+        messages_to_render = session["messages"][:-1]
+        st.session_state.skip_last_message_render = False
+
+    for msg in messages_to_render:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             meta_cols = st.columns([3, 1])
@@ -511,19 +519,14 @@ elif st.session_state.mode == "chat":
                 if "time_taken" in msg:
                     st.caption(f"⏱️ {msg['time_taken']:.2f}s")
 
-    # Create placeholder for tip before chat input
-    tip_placeholder = st.empty()
-
+    # Get user input
     prompt = st.chat_input("Ask or type /cmd...")
 
-    # Only show tip if no messages exist AND no prompt being processed
+    # Show tip if no messages exist AND no prompt being processed
     if not session["messages"] and not prompt:
-        with tip_placeholder:
-            st.caption(
-                "💡 Tip: Type **/help** to see all commands. Use `/device` to manage hardware."
-            )
-    else:
-        tip_placeholder.empty()
+        st.caption(
+            "💡 Tip: Type **/help** to see all commands. Use `/device` to manage hardware."
+        )
 
     if prompt:
         # If engine is still loading, wait for it to complete
@@ -577,48 +580,24 @@ elif st.session_state.mode == "chat":
                 st.rerun()
 
         # 2. STANDARD CHAT PROCESSING
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        # Add user message to history, save, and display it via message loop
         session["messages"].append({"role": "user", "content": prompt})
         save_sessions(SESSIONS_FILE)
 
-        # Update title in background (can be slow with LLM) - fire and forget
-        def run_async_in_thread(coro):
-            """Run async coroutine in a new thread with its own event loop (non-blocking)."""
+        print(f"PROMPT: {prompt}")
 
-            def run():
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                try:
-                    new_loop.run_until_complete(coro)
-                finally:
-                    new_loop.close()
+        # Render the user message inline (before message loop picks it up on next rerun)
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-            thread = threading.Thread(target=run, daemon=True)
-            thread.start()
-            # Don't wait for title generation - it can complete in background
-
-        # Capture chat_data reference for background thread
-        chat_data_snapshot = st.session_state.chat_data
-
-        async def update_title_task():
-            await update_title_async(
-                current_id,
-                prompt,
-                params.get("model"),
-                SESSIONS_FILE,
-                chat_data=chat_data_snapshot,
-            )
-
-        run_async_in_thread(update_title_task())
+        st.empty()  # Spacer - forces next message to be below user input
 
         with st.chat_message("assistant"):
             if engine:
                 start_time = time.time()
                 try:
                     # Show RAG pipeline status with actual spinner
-                    with st.spinner("🔍 Processing query through RAG pipeline..."):
-                        # Use non-streaming chat (streaming had event loop issues)
+                    with st.spinner(get_random_rag_processing_message()):
                         response = engine.chat(prompt)
 
                     # Display response
@@ -650,4 +629,34 @@ elif st.session_state.mode == "chat":
                 except Exception as e:
                     st.error(f"Engine Error: {e}")
             else:
-                st.error("Engine not loaded. Use `/load <index>` to start.")
+                st.error("Engine not loaded!")
+
+        # Update title in background (can be slow with LLM) - fire and forget
+        def run_async_in_thread(coro):
+            """Run async coroutine in a new thread with its own event loop (non-blocking)."""
+
+            def run():
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    new_loop.run_until_complete(coro)
+                finally:
+                    new_loop.close()
+
+            thread = threading.Thread(target=run, daemon=True)
+            thread.start()
+            # Don't wait for title generation - it can complete in background
+
+        # Capture chat_data reference for background thread
+        chat_data_snapshot = st.session_state.chat_data
+
+        async def update_title_task():
+            await update_title_async(
+                current_id,
+                prompt,
+                params.get("model"),
+                SESSIONS_FILE,
+                chat_data=chat_data_snapshot,
+            )
+
+        run_async_in_thread(update_title_task())
