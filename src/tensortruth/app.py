@@ -38,7 +38,7 @@ GDRIVE_LINK = (
 MAX_VRAM_GB = get_max_memory_gb()
 
 
-ICON_PATH = Path(__file__).parent.parent.parent / "media" / "tensor_truth_icon_256.png"
+ICON_PATH = Path(__file__).parent / "media" / "tensor_truth_icon_256.png"
 st.set_page_config(
     page_title="Tensor-Truth",
     layout="wide",
@@ -48,7 +48,7 @@ st.set_page_config(
 
 # --- CSS ---
 # Load external stylesheet
-CSS_PATH = Path(__file__).parent.parent.parent / "media" / "app_styles.css"
+CSS_PATH = Path(__file__).parent / "media" / "app_styles.css"
 with open(CSS_PATH) as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
@@ -56,8 +56,8 @@ with open(CSS_PATH) as f:
 # Download indexes from Google Drive if directory is empty or missing
 download_indexes_with_ui(INDEX_DIR, GDRIVE_LINK)
 
-# Path to logo (relative to project root)
-LOGO_PATH = Path(__file__).parent.parent.parent / "media" / "tensor_truth_banner.png"
+# Path to logo (now inside the package)
+LOGO_PATH = Path(__file__).parent / "media" / "tensor_truth_banner.png"
 
 if "chat_data" not in st.session_state:
     st.session_state.chat_data = load_sessions(SESSIONS_FILE)

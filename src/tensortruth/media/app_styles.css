@@ -1,0 +1,349 @@
+/* Tensor-Truth Application Styles */
+/* Color Palette derived from logo */
+:root {
+    --navy-primary: #143c60;
+    --slate-blue: #6B8699;
+    --light-slate: #A8B8C4;
+    --accent-teal: #082a48;
+    --sidebar-dark: #ffffff;
+    --background-light: #F5F7FA;
+    --background-white: #FFFFFF;
+    --card-bg: #FFFFFF;
+    --text-dark: #1A1A1A;
+    --text-secondary: #6B8699;
+    --border-color: #D1D9E0;
+    --border-hover: #6B8699;
+}
+
+
+.stMultiSelect span {
+    background-color: var(--navy-primary) !important;
+    color: #FFFFFF !important;
+    border-radius: 4px !important;
+}
+
+.stMainBlockContainer {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 10rem 3rem;
+    box-sizing: border-box;
+}
+
+.stChatInput {
+    width: 100% !important;
+    max-width: 1400px !important;
+    margin: 0 auto !important;
+    padding: 0rem 3rem !important;
+    box-sizing: border-box !important;
+}
+
+.stFormSubmitButton button {
+    height: 5rem !important;
+}
+
+.stAppHeader {
+    background-color: var(--background-white) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Sidebar - Darker Background */
+section[data-testid="stSidebar"] {
+    background-color: var(--sidebar-dark) !important;
+}
+
+section[data-testid="stSidebar"] .stMarkdown,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {
+    color: #E8EEF2 !important;
+}
+
+/* Button Styling - Slightly rounded */
+.stButton button {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 2px;
+    transition: all 0.2s ease;
+    background-color: var(--background-white);
+}
+
+.stButton button:hover {
+    border-color: var(--border-hover);
+    background-color: var(--background-light);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Chat Message Styling */
+.stChatMessage {
+    padding: 1rem;
+    border-radius: 8px;
+    background-color: var(--card-bg);
+    box-shadow: 0 1px 3px rgba(214, 214, 214, 0.08);
+    margin-bottom: 0.75rem;
+}
+
+.stChatMessage[data-testid="user-message"] {
+    background-color: #F0F8FF;
+}
+
+/* Code Blocks */
+code {
+    color: var(--accent-teal);
+    background-color: #F0F4F8;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* Divider Styling */
+hr {
+    border-color: var(--border-color);
+    opacity: 0.5;
+}
+
+/* Sidebar Divider - Lighter for dark background */
+section[data-testid="stSidebar"] hr {
+    border-color: rgba(221, 16, 16, 0.2);
+}
+
+/* Input Fields */
+.stTextInput input,
+.stTextArea textarea,
+.stSelectbox>div>div,
+
+.stTextInput input:focus,
+.stTextArea textarea:focus,
+.stSelectbox>div>div:focus-within,
+
+/* Selectbox dropdown */
+.stSelectbox [data-baseweb="select"] {
+    border-radius: 6px !important;
+}
+
+/* Multiselect tags */
+.stMultiSelect span[data-baseweb="tag"] {
+    background-color: var(--navy-primary) !important;
+    border-radius: 4px !important;
+}
+
+/* Slider Styling */
+.stSlider {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+/* Primary Button Accent */
+.stButton button[kind="primary"],
+button[kind="primary"] {
+    background-color: var(--navy-primary) !important;
+    border-color: var(--navy-primary) !important;
+    color: #FFFFFF !important;
+}
+
+.stButton button[kind="primary"]:hover,
+button[kind="primary"]:hover {
+    background-color: var(--accent-teal) !important;
+    border-color: var(--accent-teal) !important;
+    color: #FFFFFF !important;
+}
+
+/* Ensure primary button text stays white */
+.stButton button[kind="primary"] p,
+.stButton button[kind="primary"] span,
+button[kind="primary"] p,
+button[kind="primary"] span {
+    color: #FFFFFF !important;
+}
+
+/* Secondary/Delete Buttons */
+.stButton button[kind="secondary"] {
+    background-color: transparent !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+/* Warning/Info Box Styling */
+.stAlert {
+    border-radius: 8px !important;
+    border-left-width: 4px !important;
+    background-color: var(--card-bg) !important;
+}
+
+/* Warning - Yellow/Orange theme */
+div[data-baseweb="notification"][kind="warning"] {
+    background-color: #FFF4E5 !important;
+    border-left-color: #FF9800 !important;
+}
+
+/* Error - Red theme */
+div[data-baseweb="notification"][kind="error"] {
+    background-color: #FFEBEE !important;
+    border-left-color: #F44336 !important;
+}
+
+/* Info - Blue theme */
+div[data-baseweb="notification"][kind="info"] {
+    background-color: #E3F2FD !important;
+    border-left-color: var(--accent-teal) !important;
+}
+
+/* Success - Green theme */
+div[data-baseweb="notification"][kind="success"] {
+    background-color: #E8F5E9 !important;
+    border-left-color: #4CAF50 !important;
+}
+
+/* Metric Cards */
+.stMetric {
+    background-color: var(--card-bg);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+/* Expander Header */
+summary {
+    color: var(--text-dark);
+    font-weight: 500;
+}
+
+/* Spinner Custom Color */
+.stSpinner>div {
+    border-top-color: var(--accent-teal) !important;
+}
+
+/* Caption Styling */
+.caption {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+/* Form Styling - Fix double borders */
+.stForm {
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px !important;
+    padding: 1.5rem;
+    background-color: var(--card-bg);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Remove inner borders from form content */
+.stForm>div {
+    border: none !important;
+}
+
+/* Subheader Accent */
+h3 {
+    color: var(--navy-primary);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5rem;
+    margin-top: 1.5rem;
+}
+
+/* Session History Buttons - Active State */
+.stButton button[data-selected="true"] {
+    background-color: var(--navy-primary);
+    border-left: 4px solid var(--accent-teal);
+}
+
+/* Download Button Styling */
+.stDownloadButton button {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-dark);
+    border-radius: 6px;
+}
+
+.stDownloadButton button:hover {
+    border-color: var(--accent-teal);
+    background-color: var(--background-light);
+}
+
+/* Progress Bar */
+.stProgress>div>div {
+    background-color: var(--accent-teal) !important;
+}
+
+/* Number Input */
+.stNumberInput input {
+    border-radius: 6px !important;
+    background-color: var(--background-white) !important;
+}
+
+/* Slider styling */
+.stSlider [role="slider"] {
+    background-color: var(--accent-teal) !important;
+}
+
+.stSlider [data-baseweb="slider"] [role="presentation"] {
+    background-color: var(--border-color) !important;
+}
+
+.stChatInput textarea {
+    border: none !important;
+}
+
+.stChatInput textarea:focus {
+    box-shadow: 0 0 0 1px var(--accent-teal) !important;
+}
+
+/* Titles and headers on main panel */
+h1 {
+    color: var(--navy-primary);
+    font-weight: 600;
+}
+
+h2 {
+    color: var(--navy-primary);
+}
+
+/* Sidebar buttons text alignment fix */
+section[data-testid="stSidebar"] .stButton button {
+    color: #E8EEF2;
+    text-align: center;
+}
+
+/* Tabs styling */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    border-radius: 6px 6px 0 0;
+    padding: 0.5rem 1rem;
+}
+
+/* Dialog/Modal styling */
+div[data-testid="stDialog"] {
+    border-radius: 8px;
+}
+
+div[data-testid="stDialog"]>div {
+    background-color: var(--card-bg);
+}
+
+/* Column containers */
+.row-widget {
+    gap: 1rem;
+}
+
+/* Ensure text is readable on light background */
+p,
+li,
+span {
+    color: var(--text-dark);
+}
+
+/* Override for primary buttons - force white text */
+button[kind="primary"],
+button[kind="primary"]:hover {
+    color: #FFFFFF !important;
+}
+
+button[kind="primary"] *,
+button[kind="primary"]:hover * {
+    color: #FFFFFF !important;
+}
