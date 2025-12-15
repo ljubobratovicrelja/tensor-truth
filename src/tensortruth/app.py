@@ -508,7 +508,8 @@ elif st.session_state.mode == "chat":
         st.session_state.skip_last_message_render = False
 
     for msg in messages_to_render:
-        with st.chat_message(msg["role"]):
+        avatar = ":material/settings:" if msg["role"] == "command" else None
+        with st.chat_message(msg["role"], avatar=avatar):
             st.markdown(msg["content"])
             meta_cols = st.columns([3, 1])
             with meta_cols[0]:
@@ -575,11 +576,13 @@ elif st.session_state.mode == "chat":
             # Show immediate feedback for command execution
             with st.spinner(f"⚙️ Processing command: {prompt}"):
                 available_mods = get_available_modules(INDEX_DIR)
-                is_cmd, response = process_command(
-                    prompt, session, available_mods, SESSIONS_FILE
-                )
+                is_cmd, response = process_command(prompt, session, available_mods)
             if is_cmd:
-                session["messages"].append({"role": "assistant", "content": response})
+                session["messages"].append({"role": "command", "content": response})
+
+                with st.chat_message("command", avatar=":material/settings:"):
+                    st.markdown(response)
+
                 save_sessions(SESSIONS_FILE)
                 st.rerun()
 
@@ -604,36 +607,20 @@ elif st.session_state.mode == "chat":
             thread.start()
             # Don't wait for title generation - it can complete in background
 
-        # Capture chat_data reference for background thread
-        chat_data_snapshot = st.session_state.chat_data
-
-        async def update_title_task():
-            await update_title_async(
-                current_id,
-                prompt,
-                params.get("model"),
-                SESSIONS_FILE,
-                chat_data=chat_data_snapshot,
-            )
-
         if session["title"] == "New Session":
+            # Capture chat_data reference for background thread
+            chat_data_snapshot = st.session_state.chat_data
+
+            async def update_title_task():
+                await update_title_async(
+                    current_id,
+                    prompt,
+                    params.get("model"),
+                    SESSIONS_FILE,
+                    chat_data=chat_data_snapshot,
+                )
+
             run_async_in_thread(update_title_task())
-
-        # Display chat messages from history on app rerun
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-                if message["role"] == "assistant":
-                    meta_cols = st.columns([3, 1])
-                    with meta_cols[0]:
-                        if "sources" in message and message["sources"]:
-                            with st.expander("📚 Sources"):
-                                for src in message["sources"]:
-                                    st.caption(f"{src['file']} ({src['score']:.2f})")
-                    with meta_cols[1]:
-                        if "time_taken" in message:
-                            st.caption(f"⏱️ {message['time_taken']:.2f}s")
 
         with st.chat_message("user"):
             st.markdown(prompt)
