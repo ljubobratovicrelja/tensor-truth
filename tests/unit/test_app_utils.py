@@ -50,12 +50,14 @@ class TestHelpers:
         # Mock the async context manager and response
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "models": [
-                {"name": "deepseek-r1:8b"},
-                {"name": "llama2:7b"},
-            ]
-        })
+        mock_response.json = AsyncMock(
+            return_value={
+                "models": [
+                    {"name": "deepseek-r1:8b"},
+                    {"name": "llama2:7b"},
+                ]
+            }
+        )
 
         mock_session = MagicMock()
         mock_session.get.return_value.__aenter__.return_value = mock_response
@@ -144,7 +146,9 @@ class TestTitleGeneration:
         # Mock model availability check (GET request)
         mock_get_response = AsyncMock()
         mock_get_response.status = 200
-        mock_get_response.json = AsyncMock(return_value={"models": [{"name": "qwen2.5:0.5b"}]})
+        mock_get_response.json = AsyncMock(
+            return_value={"models": [{"name": "qwen2.5:0.5b"}]}
+        )
 
         # Mock title generation response (POST request)
         mock_post_response = AsyncMock()
