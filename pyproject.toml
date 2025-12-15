@@ -46,6 +46,7 @@ dependencies = [
 
     # --- Utilities ---
     "requests", # Ollama API & downloads
+    "aiohttp",  # Async HTTP for better UI responsiveness
     "gdown",    # Google Drive index downloads
 ]
 
