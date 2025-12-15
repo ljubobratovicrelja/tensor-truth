@@ -47,7 +47,7 @@ def ensure_title_model_available():
     return asyncio.run(ensure_title_model_available_async())
 
 
-async def generate_smart_title_async(text, model_name="qwen2.5:0.5b"):
+async def generate_smart_title_async(text, model_name="qwen2.5:0.5b", keep_alive=0):
     """
     Uses a small, dedicated LLM to generate a concise title (async version).
     Loads a tiny model (qwen2.5:0.5b), generates title, then unloads it.
@@ -75,10 +75,9 @@ async def generate_smart_title_async(text, model_name="qwen2.5:0.5b"):
             "stream": False,
             "options": {
                 "num_ctx": 512,  # Minimal context
-                "num_predict": 15,  # Short answer
-                "temperature": 0.3,
+                "temperature": 0.8,
             },
-            "keep_alive": 0,  # Unload immediately after generation
+            "keep_alive": keep_alive,  # Unload immediately after generation
         }
 
         # Direct API call to avoid spinning up full engine logic (async)

@@ -53,7 +53,7 @@ async def update_title_async(
 
     session = chat_data["sessions"][session_id]
     if session.get("title") == "New Session":
-        new_title = await generate_smart_title_async(text, model_name)
+        new_title = await generate_smart_title_async(text, model_name, keep_alive=1)
         session["title"] = new_title
         # Write directly to file instead of using save_sessions (which accesses session_state)
         with open(sessions_file, "w", encoding="utf-8") as f:
