@@ -561,7 +561,8 @@ elif st.session_state.mode == "chat":
             if msg.get("low_confidence", False) and modules:
                 st.info(
                     "⚠️ **NO RELEVANT SOURCES FOUND** - Response based on general knowledge only, "
-                    "not your indexed documents. Try lowering the Confidence Cutoff or rephrasing your query."
+                    "not your indexed documents. Try lowering the Confidence Cutoff or "
+                    "rephrasing your query."
                 )
 
             st.markdown(msg["content"])
@@ -722,8 +723,10 @@ elif st.session_state.mode == "chat":
 
                         # Show prominent warning BEFORE streaming response (light blue info box)
                         st.info(
-                            "⚠️ **NO RELEVANT SOURCES FOUND** - Response based on general knowledge only, "
-                            "not your indexed documents. Try lowering the Confidence Cutoff or rephrasing your query."
+                            "⚠️ **NO RELEVANT SOURCES FOUND** - "
+                            "Response based on general knowledge only, "
+                            "not your indexed documents. Try lowering the Confidence Cutoff "
+                            "or rephrasing your query."
                         )
 
                         # Create a synthetic node with warning context

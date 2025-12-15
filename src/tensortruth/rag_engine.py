@@ -65,7 +65,8 @@ CUSTOM_CONTEXT_PROMPT_NO_SOURCES = (
     "  • 'I couldn't find relevant information in the indexed knowledge base.'\n"
     "  • 'No matching documents were found in the knowledge base.'\n"
     "  • 'The knowledge base doesn't contain information about this query.'\n"
-    "Then add: 'Here's what I can tell you from general knowledge:' before providing your answer.\n\n"
+    "Then add: 'Here's what I can tell you from general knowledge:' "
+    "before providing your answer.\n\n"
     "User: {query_str}\n"
     "Assistant:"
 )
