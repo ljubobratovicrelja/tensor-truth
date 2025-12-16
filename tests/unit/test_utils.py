@@ -8,7 +8,11 @@ import pytest
 import torch
 
 from tensortruth.core import get_max_memory_gb, get_running_models, stop_model
-from tensortruth.utils import convert_chat_to_markdown, parse_thinking_response
+from tensortruth.utils import (
+    convert_chat_to_markdown,
+    convert_latex_delimiters,
+    parse_thinking_response,
+)
 
 # ============================================================================
 # Tests for parse_thinking_response
@@ -74,6 +78,133 @@ class TestParseThinkingResponse:
         assert "First" in thought
         assert "Answer" in answer
         assert "<thought>" not in answer
+
+
+# ============================================================================
+# Tests for convert_latex_delimiters
+# ============================================================================
+
+
+@pytest.mark.unit
+class TestConvertLatexDelimiters:
+    """Tests for convert_latex_delimiters function."""
+
+    def test_inline_math_conversion(self):
+        r"""Test conversion of inline math \(...\) to $...$."""
+        input_text = r"The equation \( x^2 + y^2 = 1 \) is a circle."
+        expected = "The equation $x^2 + y^2 = 1$ is a circle."
+        result = convert_latex_delimiters(input_text)
+        assert result == expected
+
+    def test_display_math_conversion(self):
+        r"""Test conversion of display math \[...\] to $$...$$."""
+        input_text = r"\[ E = mc^2 \]"
+        expected = "$$E = mc^2$$"
+        result = convert_latex_delimiters(input_text)
+        assert result == expected
+
+    def test_multiline_display_math(self):
+        """Test conversion of multiline display math."""
+        input_text = r"""   \[
+   x^{(k+1)} = x^{(k)} - (J^T J + \lambda I)^{-1} J^T r
+   \]"""
+        expected = r"""   $$x^{(k+1)} = x^{(k)} - (J^T J + \lambda I)^{-1} J^T r$$"""
+        result = convert_latex_delimiters(input_text)
+        assert result == expected
+
+    def test_complex_inline_math(self):
+        r"""Test conversion of complex inline math with subscripts and superscripts."""
+        input_text = r"The sum \( f(x) = \sum_{i=1}^m r_i(x)^2 \) represents residuals."
+        expected = r"The sum $f(x) = \sum_{i=1}^m r_i(x)^2$ represents residuals."
+        result = convert_latex_delimiters(input_text)
+        assert result == expected
+
+    def test_mixed_inline_and_display(self):
+        r"""Test conversion with both inline and display math."""
+        input_text = r"Here \( \alpha \) and \[ \beta = \gamma \] are symbols."
+        expected = r"Here $\alpha$ and $$\beta = \gamma$$ are symbols."
+        result = convert_latex_delimiters(input_text)
+        assert result == expected
+
+    def test_multiple_inline_expressions(self):
+        """Test multiple inline math expressions in one line."""
+        input_text = r"We have \( a + b \) and \( c - d \) in the equation."
+        expected = r"We have $a + b$ and $c - d$ in the equation."
+        result = convert_latex_delimiters(input_text)
+        assert result == expected
+
+    def test_nested_braces_in_math(self):
+        r"""Test math with nested braces."""
+        input_text = r"\( x^{(k+1)} \) is the next iteration."
+        expected = r"$x^{(k+1)}$ is the next iteration."
+        result = convert_latex_delimiters(input_text)
+        assert result == expected
+
+    def test_empty_string(self):
+        """Test empty string handling."""
+        result = convert_latex_delimiters("")
+        assert result == ""
+
+    def test_none_input(self):
+        """Test None input handling."""
+        result = convert_latex_delimiters(None)
+        assert result is None
+
+    def test_no_latex_in_text(self):
+        """Test text without LaTeX expressions."""
+        input_text = "This is plain text without any math."
+        result = convert_latex_delimiters(input_text)
+        assert result == input_text
+
+    def test_dollar_signs_preserved(self):
+        """Test that existing dollar signs are preserved."""
+        input_text = "Price is $100 and formula is $x + y$."
+        result = convert_latex_delimiters(input_text)
+        assert result == input_text
+
+    def test_real_world_levenberg_marquardt(self):
+        """Test with real-world example from Levenberg-Marquardt algorithm."""
+        input_text = (
+            r"The LM algorithm minimizes the sum of squared residuals "
+            r"\( f(x) = \sum_{i=1}^m r_i(x)^2 \), where \( r_i(x) \) represents "
+            r"the residuals. The update step is computed using:"
+            r"\["
+            r"   x^{(k+1)} = x^{(k)} - (J^T J + \lambda I)^{-1} J^T r"
+            r"\]"
+            r"where \( \lambda \) is a damping parameter."
+        )
+        result = convert_latex_delimiters(input_text)
+
+        # Verify all conversions happened
+        assert r"\(" not in result
+        assert r"\)" not in result
+        assert r"\[" not in result
+        assert r"\]" not in result
+        assert "$f(x) = \\sum_{i=1}^m r_i(x)^2$" in result
+        assert "$r_i(x)$" in result
+        assert "$\\lambda$" in result
+        assert "$$" in result
+
+    def test_whitespace_trimming(self):
+        r"""Test that whitespace inside delimiters is trimmed."""
+        input_text = r"\(  x + y  \)"
+        expected = "$x + y$"
+        result = convert_latex_delimiters(input_text)
+        assert result == expected
+
+    def test_greek_letters(self):
+        r"""Test conversion with Greek letters."""
+        input_text = r"The angles \( \alpha, \beta, \gamma \) form a triangle."
+        expected = r"The angles $\alpha, \beta, \gamma$ form a triangle."
+        result = convert_latex_delimiters(input_text)
+        assert result == expected
+
+    def test_fractions_and_operators(self):
+        r"""Test conversion with fractions and mathematical operators."""
+        input_text = r"\[ \frac{dy}{dx} = \lim_{h \to 0} \frac{f(x+h) - f(x)}{h} \]"
+        expected = r"$$\frac{dy}{dx} = \lim_{h \to 0} \frac{f(x+h) - f(x)}{h}$$"
+        result = convert_latex_delimiters(input_text)
+        assert result == expected
 
 
 # ============================================================================

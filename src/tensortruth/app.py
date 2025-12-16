@@ -8,7 +8,11 @@ from pathlib import Path
 
 import streamlit as st
 
-from tensortruth import convert_chat_to_markdown, get_max_memory_gb
+from tensortruth import (
+    convert_chat_to_markdown,
+    convert_latex_delimiters,
+    get_max_memory_gb,
+)
 from tensortruth.app_utils import (
     apply_preset,
     create_session,
@@ -757,7 +761,7 @@ elif st.session_state.mode == "chat":
                         "or rephrasing your query."
                     )
 
-            st.markdown(msg["content"])
+            st.markdown(convert_latex_delimiters(msg["content"]))
 
             meta_cols = st.columns([3, 1])
             with meta_cols[0]:
@@ -1031,7 +1035,9 @@ elif st.session_state.mode == "chat":
                                     )  # 50ms polling
                                     if token is not None:
                                         full_response += token
-                                        response_placeholder.markdown(full_response)
+                                        response_placeholder.markdown(
+                                            convert_latex_delimiters(full_response)
+                                        )
                                 except queue.Empty:
                                     continue
 
@@ -1158,7 +1164,9 @@ elif st.session_state.mode == "chat":
                                     token = token_queue.get(timeout=0.05)
                                     if token:
                                         full_response += token
-                                        response_placeholder.markdown(full_response)
+                                        response_placeholder.markdown(
+                                            convert_latex_delimiters(full_response)
+                                        )
                                 except queue.Empty:
                                     continue
 

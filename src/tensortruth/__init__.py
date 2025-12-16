@@ -16,7 +16,11 @@ from tensortruth.rag_engine import (
     get_reranker,
     load_engine_for_modules,
 )
-from tensortruth.utils import convert_chat_to_markdown, parse_thinking_response
+from tensortruth.utils import (
+    convert_chat_to_markdown,
+    convert_latex_delimiters,
+    parse_thinking_response,
+)
 
 __version__ = "0.1.0"
 
@@ -33,6 +37,7 @@ __all__ = [
     # Utils (Core)
     "parse_thinking_response",
     "convert_chat_to_markdown",
+    "convert_latex_delimiters",
     # Core (System & Ollama)
     "get_running_models",
     "get_max_memory_gb",

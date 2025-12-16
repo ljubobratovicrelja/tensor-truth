@@ -30,6 +30,33 @@ def parse_thinking_response(raw_text):
     return None, raw_text
 
 
+def convert_latex_delimiters(text):
+    r"""
+    Converts LaTeX math delimiters from standard LaTeX format to Streamlit format.
+
+    Converts:
+    - \(...\) to $...$ (inline math)
+    - \[...\] to $$...$$ (display math)
+
+    Args:
+        text: String containing LaTeX expressions with standard delimiters
+
+    Returns:
+        String with Streamlit-compatible LaTeX delimiters
+    """
+    if not text:
+        return text
+
+    # Convert display math \[...\] to $$...$$
+    # Use DOTALL flag to match across newlines
+    text = re.sub(r"\\\[\s*(.*?)\s*\\\]", r"$$\1$$", text, flags=re.DOTALL)
+
+    # Convert inline math \(...\) to $...$
+    text = re.sub(r"\\\(\s*(.*?)\s*\\\)", r"$\1$", text, flags=re.DOTALL)
+
+    return text
+
+
 def convert_chat_to_markdown(session):
     """
     Converts session JSON to clean Markdown.
