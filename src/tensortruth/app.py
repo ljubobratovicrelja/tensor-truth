@@ -295,10 +295,17 @@ if st.session_state.mode == "setup":
                         with cols[col_idx]:
                             with st.container(border=True):
                                 st.markdown(f"**{preset_name}**")
-                                # Show module count and device
-                                num_modules = len(preset_config.get("modules", []))
-                                device = preset_config.get("llm_device", "gpu").upper()
-                                st.caption(f"{num_modules} modules • {device}")
+                                # Show description if available
+                                description = preset_config.get("description", "")
+                                if description:
+                                    st.caption(description)
+                                else:
+                                    # Fallback to module count and device
+                                    num_modules = len(preset_config.get("modules", []))
+                                    device = preset_config.get(
+                                        "llm_device", "gpu"
+                                    ).upper()
+                                    st.caption(f"{num_modules} modules • {device}")
 
                                 if st.button(
                                     "LAUNCH",
@@ -495,6 +502,10 @@ if st.session_state.mode == "setup":
             new_preset_name = st.text_input(
                 "Preset Name", placeholder="e.g. 'Deep Search 32B'"
             )
+            new_preset_description = st.text_input(
+                "Description (optional)",
+                placeholder="Brief description of this preset...",
+            )
             mark_as_favorite = st.checkbox("Mark as Favorite", value=False)
 
             if st.button("Save Preset", use_container_width=True, type="primary"):
@@ -511,6 +522,10 @@ if st.session_state.mode == "setup":
                         "rag_device": st.session_state.setup_rag_device,
                         "llm_device": st.session_state.setup_llm_device,
                     }
+
+                    # Add description if provided
+                    if new_preset_description:
+                        config_to_save["description"] = new_preset_description
 
                     if mark_as_favorite:
                         # Find the highest favorite_order

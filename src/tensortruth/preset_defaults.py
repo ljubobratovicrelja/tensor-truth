@@ -28,6 +28,9 @@ def get_default_presets():
     """
     return {
         "DL Research Assistant": {
+            "description": (
+                "Explore deep learning theory and research with comprehensive references"
+            ),
             "favorite": True,
             "favorite_order": 0,
             "modules": [
@@ -43,6 +46,7 @@ def get_default_presets():
             "confidence_cutoff": 0.0,
         },
         "DL Coder": {
+            "description": "Write deep learning code with PyTorch and API documentation",
             "favorite": True,
             "favorite_order": 1,
             "modules": [
@@ -63,6 +67,7 @@ def get_default_presets():
             ),
         },
         "Math Foundations": {
+            "description": "Learn linear algebra and calculus with rigorous explanations",
             "modules": ["linear_algebra_books", "calculus_books"],
             "model_preference": "reasoning",
             "reranker_model": "BAAI/bge-reranker-v2-m3",
@@ -76,6 +81,7 @@ def get_default_presets():
             ),
         },
         "ML Theory": {
+            "description": "Study machine learning theory with mathematical foundations",
             "modules": [
                 "machine_learning_books",
                 "linear_algebra_books",
@@ -93,6 +99,7 @@ def get_default_presets():
             ),
         },
         "PyTorch Developer": {
+            "description": "Build PyTorch projects with API-accurate code examples",
             "favorite": True,
             "favorite_order": 2,
             "modules": ["pytorch_2.9", "numpy_2.3"],
@@ -108,6 +115,7 @@ def get_default_presets():
             ),
         },
         "Computer Vision": {
+            "description": "Combine classical CV and deep learning for vision tasks",
             "modules": [
                 "pytorch_2.9",
                 "opencv_4.12",
@@ -127,6 +135,7 @@ def get_default_presets():
             ),
         },
         "CV Coding": {
+            "description": "Write computer vision pipelines with OpenCV and PyTorch",
             "modules": ["opencv_4.12", "pytorch_2.9", "pillow_12.0", "numpy_2.3"],
             "model_preference": "coding",
             "reranker_model": "BAAI/bge-reranker-v2-m3",
@@ -140,6 +149,7 @@ def get_default_presets():
             ),
         },
         "3D Vision Research": {
+            "description": "Explore 3D reconstruction and rendering with math",
             "modules": [
                 "3d_reconstruction_rendering",
                 "linear_algebra_books",
@@ -157,6 +167,7 @@ def get_default_presets():
             ),
         },
         "Generative Models": {
+            "description": "Study GANs, diffusion models, and generative architectures",
             "modules": [
                 "vision_2d_generative",
                 "dl_foundations",
@@ -175,6 +186,7 @@ def get_default_presets():
             ),
         },
         "NLP & Transformers": {
+            "description": "Work with transformers and NLP using HuggingFace",
             "modules": ["transformers_4.57", "dl_foundations", "pytorch_2.9"],
             "model_preference": "reasoning",
             "reranker_model": "BAAI/bge-reranker-v2-m3",
@@ -188,6 +200,7 @@ def get_default_presets():
             ),
         },
         "Data Science": {
+            "description": "Analyze data with pandas, scikit-learn, and visualization",
             "modules": [
                 "pandas_2.3",
                 "numpy_2.3",
@@ -206,6 +219,7 @@ def get_default_presets():
             ),
         },
         "Scientific Computing": {
+            "description": "Implement numerical algorithms with NumPy and SciPy",
             "modules": [
                 "numpy_2.3",
                 "scipy_1.15",
@@ -224,6 +238,7 @@ def get_default_presets():
             ),
         },
         "Optimization Expert": {
+            "description": "Master optimization from classical methods to deep learning",
             "modules": [
                 "numerical_optimization_books",
                 "calculus_books",
@@ -242,6 +257,7 @@ def get_default_presets():
             ),
         },
         "Linear Algebra": {
+            "description": "Learn linear algebra theory with NumPy implementations",
             "modules": ["linear_algebra_books", "numpy_2.3"],
             "model_preference": "lightweight",
             "reranker_model": "BAAI/bge-reranker-v2-m3",
@@ -255,6 +271,7 @@ def get_default_presets():
             ),
         },
         "Quick Calc Helper": {
+            "description": "Solve calculus and algebra problems step-by-step",
             "modules": ["calculus_books", "linear_algebra_books"],
             "model_preference": "lightweight",
             "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
@@ -268,6 +285,7 @@ def get_default_presets():
             ),
         },
         "Paper Reading": {
+            "description": "Analyze and compare deep learning research papers in depth",
             "modules": [
                 "dl_foundations",
                 "vision_2d_generative",
@@ -285,6 +303,7 @@ def get_default_presets():
             ),
         },
         "Lightweight Coder": {
+            "description": "Quick coding with minimal VRAM and fast models",
             "modules": ["pytorch_2.9", "numpy_2.3"],
             "model_preference": "coder_light",
             "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
@@ -295,6 +314,7 @@ def get_default_presets():
             "system_prompt": "Write concise, correct code. Minimize VRAM usage.",
         },
         "Fast Researcher": {
+            "description": "Get quick answers to ML/DL questions with speed focus",
             "modules": ["deep_learning_books", "machine_learning_books"],
             "model_preference": "lightweight",
             "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
