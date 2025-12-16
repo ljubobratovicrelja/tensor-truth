@@ -47,6 +47,33 @@ tensor-truth
 
 On first launch, pre-built indexes will auto-download from Google Drive (takes a few minutes). Also a small qwen2.5:0.5b will be pulled automatically for assigning automatic titles to chats.
 
+## Docker Deployment
+
+For easier deployment without managing virtual environments or CUDA installations, a Docker image is provided. This approach is useful if you want to avoid setting up PyTorch with CUDA manually, though you still need a machine with NVIDIA GPU and drivers installed.
+
+**Build the image:**
+```bash
+docker build -t tensor-truth .
+```
+
+**Run the container:**
+```bash
+docker run -d \
+  --name tensor-truth \
+  --gpus all \
+  -p 8501:8501 \
+  -v ~/.tensortruth:/root/.tensortruth \
+  -e OLLAMA_HOST=http://host.docker.internal:11434 \
+  tensor-truth
+```
+
+Access the app at `http://localhost:8501`. The `-v` flag mounts your local data directory for persistence across container restarts. Change the port mapping with `-p HOST_PORT:8501` if needed (e.g., `-p 8080:8501` to serve on port 8080).
+
+If Ollama runs on a different host or port, override the `OLLAMA_HOST` environment variable:
+```bash
+-e OLLAMA_HOST=http://192.168.1.50:11434
+```
+
 ## Data Storage
 
 All user data (chat history, presets, indexes) is stored in `~/.tensortruth` on macOS/Linux or `%USERPROFILE%\.tensortruth` on Windows. This keeps your working directory clean while maintaining persistent state across sessions.
