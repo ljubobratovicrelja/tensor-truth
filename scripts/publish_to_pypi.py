@@ -3,12 +3,17 @@
 Script to rebuild and publish tensor-truth to PyPI.
 
 This script:
-1. Checks the latest version on PyPI
-2. Compares it with the local version in pyproject.toml
-3. Verifies the local version has been incremented
-4. Cleans the dist/ directory
-5. Builds the project
-6. Uploads to PyPI using twine
+1. Verifies no uncommitted changes in the repository
+2. Verifies the repository is in sync with HEAD
+3. Checks the latest version on PyPI
+4. Compares it with the local version in pyproject.toml
+5. Verifies the local version has been incremented
+6. Checks that no tag exists with the same version
+7. Verifies the latest git tag is behind the current version
+8. Creates and pushes a git tag with the version
+9. Cleans the dist/ directory
+10. Builds the project
+11. Uploads to PyPI using twine
 """
 
 import logging
@@ -67,6 +72,171 @@ def get_local_version():
     version = data["project"]["version"]
     logger.info(f"Local version: {version}")
     return version
+
+
+def check_git_status():
+    """Check if there are uncommitted changes in the repository"""
+    logger.info("Checking for uncommitted changes...")
+
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=Path(__file__).parent.parent,
+        )
+
+        if result.stdout.strip():
+            logger.error("Repository has uncommitted changes:")
+            logger.error(result.stdout)
+            logger.error("Please commit or stash all changes before publishing.")
+            return False
+
+        logger.info("Repository is clean (no uncommitted changes)")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error checking git status: {e}")
+        return False
+
+
+def check_git_sync_with_head():
+    """Check if the repository is in sync with remote HEAD"""
+    logger.info("Checking if repository is in sync with remote...")
+
+    try:
+        # Fetch latest from remote
+        subprocess.run(
+            ["git", "fetch"],
+            capture_output=True,
+            check=True,
+            cwd=Path(__file__).parent.parent,
+        )
+
+        # Get current branch
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=Path(__file__).parent.parent,
+        )
+        current_branch = result.stdout.strip()
+
+        # Check if local is behind remote
+        result = subprocess.run(
+            ["git", "rev-list", "--count", f"HEAD..origin/{current_branch}"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=Path(__file__).parent.parent,
+        )
+        behind_count = int(result.stdout.strip())
+
+        # Check if local is ahead of remote
+        result = subprocess.run(
+            ["git", "rev-list", "--count", f"origin/{current_branch}..HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=Path(__file__).parent.parent,
+        )
+        ahead_count = int(result.stdout.strip())
+
+        if behind_count > 0:
+            logger.error(
+                f"Local branch is {behind_count} commit(s) behind origin/{current_branch}"
+            )
+            logger.error("Please pull the latest changes before publishing.")
+            return False
+
+        if ahead_count > 0:
+            logger.warning(
+                f"Local branch is {ahead_count} commit(s) ahead of origin/{current_branch}"
+            )
+            logger.warning("Make sure you've pushed your changes to the remote.")
+            response = input("Continue anyway? (yes/no): ")
+            if response.lower() not in ["yes", "y"]:
+                return False
+
+        logger.info(f"Repository is in sync with origin/{current_branch}")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error checking git sync: {e}")
+        return False
+
+
+def check_tag_exists(version):
+    """Check if a git tag with the given version already exists"""
+    logger.info(f"Checking if tag v{version} already exists...")
+
+    try:
+        result = subprocess.run(
+            ["git", "tag", "-l", f"v{version}"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=Path(__file__).parent.parent,
+        )
+
+        if result.stdout.strip():
+            logger.error(f"Tag v{version} already exists!")
+            logger.error("Please increment the version in pyproject.toml")
+            return True
+
+        logger.info(f"Tag v{version} does not exist (good)")
+        return False
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error checking git tags: {e}")
+        return True
+
+
+def get_latest_tag():
+    """Get the latest git tag"""
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=Path(__file__).parent.parent,
+        )
+        tag = result.stdout.strip()
+        # Remove 'v' prefix if present
+        version = tag.lstrip("v")
+        logger.info(f"Latest git tag: {tag} (version: {version})")
+        return version
+    except subprocess.CalledProcessError:
+        logger.info("No git tags found in repository")
+        return "0.0.0"
+
+
+def create_and_push_tag(version):
+    """Create a git tag with the given version and push it to origin"""
+    tag_name = f"v{version}"
+    logger.info(f"Creating tag {tag_name}...")
+
+    try:
+        # Create the tag
+        subprocess.run(
+            ["git", "tag", "-a", tag_name, "-m", f"Release {version}"],
+            check=True,
+            cwd=Path(__file__).parent.parent,
+        )
+        logger.info(f"Tag {tag_name} created successfully")
+
+        # Push the tag to origin
+        logger.info(f"Pushing tag {tag_name} to origin...")
+        subprocess.run(
+            ["git", "push", "origin", tag_name],
+            check=True,
+            cwd=Path(__file__).parent.parent,
+        )
+        logger.info(f"Tag {tag_name} pushed to origin successfully")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error creating or pushing tag: {e}")
+        return False
 
 
 def get_pypi_version(package_name="tensor-truth"):
@@ -183,8 +353,20 @@ def main():
         logger.error("Project root verification failed. Aborting.")
         sys.exit(1)
 
-    # Step 1: Get versions
-    logger.info("Step 1: Checking versions...")
+    # Step 1: Check git status (no uncommitted changes)
+    logger.info("Step 1: Checking git status...")
+    if not check_git_status():
+        logger.error("Git status check failed. Aborting.")
+        sys.exit(1)
+
+    # Step 2: Check git sync with remote
+    logger.info("Step 2: Checking git sync with remote...")
+    if not check_git_sync_with_head():
+        logger.error("Git sync check failed. Aborting.")
+        sys.exit(1)
+
+    # Step 3: Get versions
+    logger.info("Step 3: Checking versions...")
     local_version = get_local_version()
     pypi_version = get_pypi_version()
 
@@ -192,25 +374,45 @@ def main():
         logger.error("Failed to retrieve PyPI version. Aborting.")
         sys.exit(1)
 
-    # Step 2: Compare versions
-    logger.info("Step 2: Comparing versions...")
+    # Step 4: Compare versions with PyPI
+    logger.info("Step 4: Comparing versions with PyPI...")
     if not compare_versions(local_version, pypi_version):
         logger.error("Version check failed!")
         logger.info("Please increment the version in pyproject.toml before publishing.")
         sys.exit(1)
 
-    # Step 3: Clean dist/
-    logger.info("Step 3: Cleaning dist/ directory...")
+    # Step 5: Check if tag already exists
+    logger.info("Step 5: Checking if git tag already exists...")
+    if check_tag_exists(local_version):
+        logger.error("Tag already exists. Aborting.")
+        sys.exit(1)
+
+    # Step 6: Compare with latest git tag
+    logger.info("Step 6: Comparing with latest git tag...")
+    latest_tag = get_latest_tag()
+    if not compare_versions(local_version, latest_tag):
+        logger.error("Version is not greater than the latest git tag!")
+        logger.info("Please increment the version in pyproject.toml.")
+        sys.exit(1)
+
+    # Step 7: Create and push git tag
+    logger.info("Step 7: Creating and pushing git tag...")
+    if not create_and_push_tag(local_version):
+        logger.error("Failed to create or push tag. Aborting.")
+        sys.exit(1)
+
+    # Step 8: Clean dist/
+    logger.info("Step 8: Cleaning dist/ directory...")
     clean_dist()
 
-    # Step 4: Build project
-    logger.info("Step 4: Building project...")
+    # Step 9: Build project
+    logger.info("Step 9: Building project...")
     if not build_project():
         logger.error("Build failed. Aborting.")
         sys.exit(1)
 
-    # Step 5: Upload to PyPI
-    logger.info("Step 5: Uploading to PyPI...")
+    # Step 10: Upload to PyPI
+    logger.info("Step 10: Uploading to PyPI...")
 
     # Ask for confirmation before uploading
     response = input("Ready to upload to PyPI. Continue? (yes/no): ")
@@ -222,7 +424,8 @@ def main():
         sys.exit(1)
 
     logger.info("=" * 60)
-    logger.info("All done! Package published successfully!")
+    logger.info(f"All done! Version {local_version} published successfully!")
+    logger.info(f"Tag v{local_version} created and pushed to origin")
     logger.info("=" * 60)
 
 
