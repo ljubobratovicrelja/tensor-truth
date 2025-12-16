@@ -213,6 +213,21 @@ def process_command(prompt, session, available_mods):
                     state_modifier = update_llm_device
             else:
                 response_msg = "Unknown target. Use `rag` or `llm`."
+    else:
+        # Unknown command - show error and list available commands
+        response_msg = f"❌ **Unknown command:** `{command}`\n\n" + "\n".join(
+            [
+                "### Available Commands",
+                "- **/list** / **/status** - Show active indices & hardware usage",
+                "- **/load <index>** - Load a knowledge base",
+                "- **/unload <index>** - Unload a knowledge base",
+                "- **/reload** - Flush VRAM and restart engine",
+                "- **/device rag <cpu|cuda|mps>** - Move RAG pipeline to specific hardware",
+                "- **/device llm <cpu|gpu>** - Move LLM to specific hardware",
+                "- **/conf <0.0-1.0>** - Set confidence score cutoff",
+                "- **/help** - Show command help",
+            ]
+        )
 
     # Return the result - all paths lead here except early returns for errors
     return True, response_msg, state_modifier if response_msg else (False, None, None)
