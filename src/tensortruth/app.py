@@ -1,6 +1,7 @@
 """Tensor-Truth Streamlit Application - Main Entry Point."""
 
 import asyncio
+import os
 import threading
 import time
 from pathlib import Path
@@ -15,6 +16,7 @@ from tensortruth.app_utils import (
     download_indexes_with_ui,
     free_memory,
     get_available_modules,
+    get_config_file_path,
     get_favorites,
     get_indexes_dir,
     get_ollama_models,
@@ -29,7 +31,6 @@ from tensortruth.app_utils import (
     process_command,
     quick_launch_preset,
     rename_session,
-    save_config,
     save_preset,
     save_sessions,
     toggle_favorite,
@@ -63,6 +64,10 @@ with open(CSS_PATH) as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 # --- INITIALIZATION ---
+# Initialize config file with smart defaults if it doesn't exist
+if os.path.exists(get_config_file_path()) is False:
+    _ = load_config()
+
 # Download indexes from Google Drive if directory is empty or missing
 download_indexes_with_ui(INDEX_DIR, GDRIVE_LINK)
 
@@ -556,16 +561,10 @@ if st.session_state.mode == "setup":
 
         # --- CONNECTION SETTINGS ---
         with st.expander("Connection Settings", expanded=False):
+            from tensortruth.app_utils.config import update_config
 
-            config = None
-
-            try:
-                config = load_config()
-            except Exception as e:
-                # Likely failed reading for not even created yet, which is fine.
-                print(f"Config reading failed: {e}")
-
-            current_url = get_ollama_url(config)
+            config = load_config()
+            current_url = get_ollama_url()
 
             new_url = st.text_input(
                 "Ollama Base URL",
@@ -576,9 +575,9 @@ if st.session_state.mode == "setup":
             if st.button("Save Connection URL"):
                 if new_url != current_url:
                     try:
-                        save_config({"ollama_url": new_url})
+                        update_config(ollama_base_url=new_url)
                         st.success(
-                            "Configuration saved! New connections will use this URL."
+                            "✅ Configuration saved! New connections will use this URL."
                         )
                     except Exception as e:
                         st.error(f"Failed to save config: {e}")

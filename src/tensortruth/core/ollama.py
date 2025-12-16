@@ -7,15 +7,15 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Standard Ollama env var, or default local
-DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
-
-def get_ollama_url(config: dict = None) -> str:
-    if config is not None and "ollama_url" in config:
-        return config["ollama_url"].rstrip("/")
-
-    # 2. Check Environment Variable
+def get_ollama_url() -> str:
+    """
+    Get Ollama base URL with precedence:
+    1. Environment variable (OLLAMA_HOST)
+    2. Config file
+    3. Default (http://localhost:11434)
+    """
+    # 1. Check Environment Variable (highest priority)
     env_host = os.environ.get("OLLAMA_HOST")
     if env_host:
         # Handle cases where OLLAMA_HOST might be just "0.0.0.0:11434"
@@ -23,8 +23,17 @@ def get_ollama_url(config: dict = None) -> str:
             return f"http://{env_host}".rstrip("/")
         return env_host.rstrip("/")
 
+    # 2. Check Config File
+    try:
+        from tensortruth.app_utils.config import load_config
+
+        config = load_config()
+        return config.ollama.base_url.rstrip("/")
+    except Exception:
+        pass
+
     # 3. Return Default
-    return DEFAULT_OLLAMA_URL
+    return "http://localhost:11434"
 
 
 def get_api_base():

@@ -1,7 +1,7 @@
 """App utilities for Streamlit interface."""
 
 from .commands import process_command
-from .config import get_config_file_path, load_config, save_config
+from .config import get_config_file_path, load_config, save_config, update_config
 from .helpers import (
     download_indexes_with_ui,
     ensure_engine_loaded,
@@ -71,6 +71,7 @@ __all__ = [
     "get_config_file_path",
     "load_config",
     "save_config",
+    "update_config",
     # Session
     "create_session",
     "load_sessions",
