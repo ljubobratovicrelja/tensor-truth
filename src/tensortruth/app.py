@@ -566,6 +566,10 @@ elif st.session_state.mode == "chat":
 
     st.title(session.get("title", "Untitled"))
 
+    # Display model name passively under the title
+    model_name = params.get("model", "Unknown")
+    st.caption(f"🤖 {model_name}")
+
     st.divider()
 
     st.empty()

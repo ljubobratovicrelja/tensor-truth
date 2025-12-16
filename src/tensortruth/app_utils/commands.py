@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from .helpers import free_memory, get_system_devices
+from .helpers import free_memory, get_ollama_ps, get_system_devices
 
 
 def process_command(prompt, session, available_mods):
@@ -26,19 +26,60 @@ def process_command(prompt, session, available_mods):
 
     if command in ["/list", "/ls", "/status"]:
         lines = ["### Knowledge Base & System Status"]
+
+        # Knowledge Base Section
         for mod in available_mods:
             lines.append(f"- {'✅' if mod in active_mods else '⚪'} {mod}")
 
+        # Model Configuration Section
+        lines.append("\n#### Model Configuration")
+        lines.append(f"**Model:** `{current_params.get('model', 'Unknown')}`")
+        lines.append(f"**Temperature:** `{current_params.get('temperature', 0.3)}`")
         lines.append(
-            f"\n**Pipeline Device:** `{current_params.get('rag_device', 'cuda')}`"
+            f"**Context Window:** `{current_params.get('context_window', 4096)}`"
         )
-        lines.append(f"**LLM Device:** `{current_params.get('llm_device', 'gpu')}`")
         lines.append(
             f"**Confidence Cutoff:** `{current_params.get('confidence_cutoff', 0.3)}`"
         )
+
+        # Hardware Allocation Section
+        lines.append("\n#### Hardware Allocation")
+        lines.append(
+            f"**Pipeline Device:** `{current_params.get('rag_device', 'cuda')}`"
+        )
+        lines.append(f"**LLM Device:** `{current_params.get('llm_device', 'gpu')}`")
+
+        # Ollama Runtime Info Section
+        try:
+            running_models = get_ollama_ps()
+            if running_models:
+                lines.append("\n#### Ollama Runtime")
+                for model_info in running_models:
+                    model_name = model_info.get("name", "Unknown")
+                    size_vram = model_info.get("size_vram", 0)
+                    size = model_info.get("size", 0)
+
+                    # Convert bytes to GB for readability
+                    size_vram_gb = size_vram / (1024**3) if size_vram else 0
+                    size_gb = size / (1024**3) if size else 0
+
+                    lines.append(f"**Running:** `{model_name}`")
+                    if size_vram_gb > 0:
+                        lines.append(f"**VRAM:** `{size_vram_gb:.2f} GB`")
+                    if size_gb > 0:
+                        lines.append(f"**Model Size:** `{size_gb:.2f} GB`")
+
+                    # Show processor if available
+                    processor = model_info.get("details", {}).get("parameter_size", "")
+                    if processor:
+                        lines.append(f"**Parameters:** `{processor}`")
+        except Exception:
+            # Silently fail if Ollama API is unavailable
+            pass
+
         lines.append(
             (
-                "\n**Usage:** `/load <name>`, `/device rag <cpu|cuda|mps>`, "
+                "\n**Commands:** `/load <name>`, `/device rag <cpu|cuda|mps>`, "
                 "`/device llm <cpu|gpu>`, `/conf <val>`"
             )
         )

@@ -148,6 +148,25 @@ async def get_ollama_models_async():
     return ["deepseek-r1:8b"]
 
 
+async def get_ollama_ps_async():
+    """Fetches running model information from Ollama (async version)."""
+    try:
+        timeout = aiohttp.ClientTimeout(total=1)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get("http://localhost:11434/api/ps") as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get("models", [])
+    except Exception:
+        pass
+    return []
+
+
+def get_ollama_ps():
+    """Fetches running model information from Ollama (sync wrapper)."""
+    return asyncio.run(get_ollama_ps_async())
+
+
 def get_ollama_models():
     """Fetches list of available models from local Ollama instance (sync wrapper)."""
     return asyncio.run(get_ollama_models_async())
