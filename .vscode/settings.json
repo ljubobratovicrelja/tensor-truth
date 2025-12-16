@@ -6,6 +6,9 @@
       "source.organizeImports": "explicit"
     }
   },
+  // Disable Pylance linting and enable flake8
+  "python.analysis.typeCheckingMode": "off",
+
   // Tools will now automatically read pyproject.toml and .flake8
   "black-formatter.importStrategy": "fromEnvironment",
   "isort.check": true,
