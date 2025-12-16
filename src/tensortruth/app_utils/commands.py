@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from .helpers import free_memory, get_ollama_ps, get_system_devices
+from .helpers import free_memory, get_ollama_models, get_ollama_ps, get_system_devices
 
 
 def process_command(prompt, session, available_mods):
@@ -90,6 +90,7 @@ def process_command(prompt, session, available_mods):
         lines = [
             "###  Command Reference",
             "- **/list** / **/status**: Show active indices & hardware usage.",
+            "- **/model [name]**: Show current model info or switch to a different model.",
             "- **/load <index>**: Load a specific knowledge base.",
             "- **/unload <index>**: Unload a knowledge base.",
             "- **/reload**: Flush VRAM and restart the engine.",
@@ -102,6 +103,93 @@ def process_command(prompt, session, available_mods):
             "- **/help**: Show this list.",
         ]
         response_msg = "\n".join(lines)
+
+    elif command == "/model":
+        if not args:
+            # Show current model info and list available models
+            lines = ["### Current Model Configuration"]
+            lines.append(
+                f"**Active Model:** `{current_params.get('model', 'Unknown')}`"
+            )
+
+            # Show Ollama runtime info if available
+            try:
+                running_models = get_ollama_ps()
+                if running_models:
+                    for model_info in running_models:
+                        model_name = model_info.get("name", "Unknown")
+                        size_vram = model_info.get("size_vram", 0)
+                        size = model_info.get("size", 0)
+
+                        # Convert bytes to GB for readability
+                        size_vram_gb = size_vram / (1024**3) if size_vram else 0
+                        size_gb = size / (1024**3) if size else 0
+
+                        if size_vram_gb > 0:
+                            lines.append(f"**VRAM Usage:** `{size_vram_gb:.2f} GB`")
+                        if size_gb > 0:
+                            lines.append(f"**Model Size:** `{size_gb:.2f} GB`")
+
+                        # Show parameters if available
+                        processor = model_info.get("details", {}).get(
+                            "parameter_size", ""
+                        )
+                        if processor:
+                            lines.append(f"**Parameters:** `{processor}`")
+            except Exception:
+                pass
+
+            # List available models
+            try:
+                available_models = get_ollama_models()
+                if available_models:
+                    lines.append("\n### Available Models")
+                    for model in available_models:
+                        if model == current_params.get("model"):
+                            lines.append(f"- ✅ `{model}` (current)")
+                        else:
+                            lines.append(f"- `{model}`")
+                    lines.append("\n💡 **Tip:** Use `/model <name>` to switch models")
+                else:
+                    lines.append("\n⚠️ No Ollama models found")
+            except Exception:
+                lines.append("\n⚠️ Could not fetch available models from Ollama")
+
+            response_msg = "\n".join(lines)
+        else:
+            # Switch to a different model
+            new_model = args[0]
+
+            # Verify the model exists
+            try:
+                available_models = get_ollama_models()
+                if available_models and new_model in available_models:
+                    response_msg = (
+                        f"✅ **Model switched to:** `{new_model}`\n\n"
+                        f"Engine restarting with new model..."
+                    )
+
+                    def update_model():
+                        session["params"]["model"] = new_model
+                        st.session_state.loaded_config = None
+
+                    state_modifier = update_model
+                else:
+                    response_msg = (
+                        f"❌ Model `{new_model}` not found.\n\n"
+                        f"Use `/model` to see available models."
+                    )
+            except Exception:
+                response_msg = (
+                    f"⚠️ Could not verify model availability.\n\n"
+                    f"Attempting to switch to `{new_model}` anyway..."
+                )
+
+                def update_model():
+                    session["params"]["model"] = new_model
+                    st.session_state.loaded_config = None
+
+                state_modifier = update_model
 
     elif command == "/load":
         if not args:
@@ -219,6 +307,7 @@ def process_command(prompt, session, available_mods):
             [
                 "### Available Commands",
                 "- **/list** / **/status** - Show active indices & hardware usage",
+                "- **/model [name]** - Show current model or switch to different model",
                 "- **/load <index>** - Load a knowledge base",
                 "- **/unload <index>** - Unload a knowledge base",
                 "- **/reload** - Flush VRAM and restart engine",
