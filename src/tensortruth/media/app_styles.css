@@ -5,7 +5,7 @@
     --accent-teal: #082a48;
     --slate-blue: #6B8699;
     --light-slate: #A8B8C4;
-    
+
     /* Backgrounds */
     --background-button-light: #fffffff9;
     --background-light: #F5F7FA;
@@ -14,21 +14,25 @@
     --sidebar-dark: #ebebeb;
     --code-bg: #eef2ff;
     --user-msg-bg: #F0F8FF;
-    
+
     /* Text */
     --text-dark: #1A1A1A;
     --text-secondary: #6B8699;
     --text-on-dark: #E8EEF2;
-    
+
     /* UI Elements */
     --border-color: #fcfcfc;
     --border-hover: #6B8699;
-    
+
     /* Status Colors */
-    --warn-bg: #FFF4E5;   --warn-border: #FF9800;
-    --error-bg: #FFEBEE;  --error-border: #F44336;
-    --info-bg: #E3F2FD;   --info-border: var(--accent-teal);
-    --success-bg: #E8F5E9; --success-border: #4CAF50;
+    --warn-bg: #FFF4E5;
+    --warn-border: #FF9800;
+    --error-bg: #FFEBEE;
+    --error-border: #F44336;
+    --info-bg: #E3F2FD;
+    --info-border: var(--accent-teal);
+    --success-bg: #E8F5E9;
+    --success-border: #4CAF50;
 }
 
 /* --- Layout & Containers --- */
@@ -67,7 +71,20 @@
 
 .stChatMessageAvatarCustom img {
     width: 100px !important;
-    height:  100px !important;
+    height: 100px !important;
+}
+
+/* Favorite Preset Cards - Fixed-height layout */
+/* Target the inner stVerticalBlock that contains the card content */
+div[height="200px"].stVerticalBlock {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+}
+
+/* Push LAUNCH button container to bottom using the st-key class */
+div[height="200px"].stVerticalBlock [class*="st-key-launch_"] {
+    margin-top: auto !important;
 }
 
 /* --- Sidebar --- */
@@ -145,7 +162,7 @@ div[data-baseweb="slider"] [role="presentation"] {
     height: 4px !important;
 }
 
-div[data-baseweb="slider"] [role="presentation"] > div {
+div[data-baseweb="slider"] [role="presentation"]>div {
     /* Customize the filled portion of the track */
     background-color: var(--accent-teal) !important;
 }
@@ -156,22 +173,42 @@ div[data-baseweb="slider"] [role="presentation"] > div {
     border-color: var(--navy-primary) !important;
 }
 
-.stSlider [role="presentation"] > div {
+.stSlider [role="presentation"]>div {
     background-color: var(--accent-teal) !important;
 }
 
 /* --- Typography --- */
-h1, h2, h3 { color: var(--navy-primary); }
-h1 { font-weight: 600; }
+h1,
+h2,
+h3 {
+    color: var(--navy-primary);
+}
+
+h1 {
+    font-weight: 600;
+}
+
 h3 {
     border-bottom: 2px solid var(--border-color);
     padding-bottom: 0.5rem;
     margin-top: 1.5rem;
 }
 
-p, li, span, summary { color: var(--text-dark); }
-summary { font-weight: 500; }
-.caption { color: var(--text-secondary); font-size: 0.875rem; }
+p,
+li,
+span,
+summary {
+    color: var(--text-dark);
+}
+
+summary {
+    font-weight: 500;
+}
+
+.caption {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
 
 code {
     color: var(--accent-teal);
@@ -187,15 +224,25 @@ code {
 .stDownloadButton button {
     background-color: var(--background-white);
     border: 1px solid var(--border-color);
-    border-radius: 2px; /* Download button overrides this to 6px below if needed, keeping generic here */
+    border-radius: 2px;
+    /* Download button overrides this to 6px below if needed, keeping generic here */
     color: var(--text-dark);
     transition: all 0.2s ease;
     width: 100%;
 }
 
-.stButton button { text-align: left; padding: 0.5rem 0.75rem; }
-.stDownloadButton button { border-radius: 6px; }
-.stFormSubmitButton button { height: 5rem !important; }
+.stButton button {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+}
+
+.stDownloadButton button {
+    border-radius: 6px;
+}
+
+.stFormSubmitButton button {
+    height: 5rem !important;
+}
 
 .stButton button:hover,
 .stDownloadButton button:hover {
@@ -220,7 +267,7 @@ button[kind="primary"]:hover {
 }
 
 /* Force white text on primary buttons */
-button[kind="primary"] *, 
+button[kind="primary"] *,
 button[kind="primary"]:hover * {
     color: #FFFFFF !important;
 }
@@ -235,7 +282,7 @@ button[kind="primary"]:hover * {
 /* Grouping Inputs for consistent rounded corners */
 .stTextInput input,
 .stTextArea textarea,
-.stSelectbox > div > div,
+.stSelectbox>div>div,
 .stNumberInput input,
 .stSelectbox [data-baseweb="select"] {
     border-radius: 6px !important;
@@ -261,7 +308,9 @@ button[kind="primary"]:hover * {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.stForm > div { border: none !important; }
+.stForm>div {
+    border: none !important;
+}
 
 /* --- Complex Components --- */
 /* Chat Messages */
@@ -286,28 +335,42 @@ button[kind="primary"]:hover * {
 }
 
 /* Tabs */
-.stTabs [data-baseweb="tab-list"] { gap: 8px; }
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+}
+
 .stTabs [data-baseweb="tab"] {
     border-radius: 6px 6px 0 0;
     padding: 0.5rem 1rem;
 }
 
 /* Sliders & Progress */
-.stSlider { padding: 1rem 0; }
+.stSlider {
+    padding: 1rem 0;
+}
+
 .stSlider [role="slider"],
-.stProgress > div > div {
+.stProgress>div>div {
     background-color: var(--accent-teal) !important;
 }
+
 .stSlider [data-baseweb="slider"] [role="presentation"] {
     background-color: var(--border-color) !important;
 }
 
 /* Spinners */
-.stSpinner > div { border-top-color: var(--accent-teal) !important; }
+.stSpinner>div {
+    border-top-color: var(--accent-teal) !important;
+}
 
 /* Dialogs */
-div[data-testid="stDialog"] { border-radius: 8px; }
-div[data-testid="stDialog"] > div { background-color: var(--card-bg); }
+div[data-testid="stDialog"] {
+    border-radius: 8px;
+}
+
+div[data-testid="stDialog"]>div {
+    background-color: var(--card-bg);
+}
 
 /* --- Alerts & Notifications --- */
 .stAlert {
@@ -317,13 +380,31 @@ div[data-testid="stDialog"] > div { background-color: var(--card-bg); }
 }
 
 /* Alert Themes */
-div[data-baseweb="notification"][kind="warning"] { background: var(--warn-bg) !important; border-left-color: var(--warn-border) !important; }
-div[data-baseweb="notification"][kind="error"]   { background: var(--error-bg) !important; border-left-color: var(--error-border) !important; }
-div[data-baseweb="notification"][kind="info"]    { background: var(--info-bg) !important; border-left-color: var(--info-border) !important; }
-div[data-baseweb="notification"][kind="success"] { background: var(--success-bg) !important; border-left-color: var(--success-border) !important; }
+div[data-baseweb="notification"][kind="warning"] {
+    background: var(--warn-bg) !important;
+    border-left-color: var(--warn-border) !important;
+}
+
+div[data-baseweb="notification"][kind="error"] {
+    background: var(--error-bg) !important;
+    border-left-color: var(--error-border) !important;
+}
+
+div[data-baseweb="notification"][kind="info"] {
+    background: var(--info-bg) !important;
+    border-left-color: var(--info-border) !important;
+}
+
+div[data-baseweb="notification"][kind="success"] {
+    background: var(--success-bg) !important;
+    border-left-color: var(--success-border) !important;
+}
 
 /* Utility */
-.row-widget { gap: 1rem; }
+.row-widget {
+    gap: 1rem;
+}
+
 hr {
     border-color: var(--border-color);
     opacity: 0.5;

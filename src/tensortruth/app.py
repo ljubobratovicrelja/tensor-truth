@@ -73,7 +73,8 @@ if os.path.exists(get_config_file_path()) is False:
     _ = load_config()
 
 # Download indexes from Google Drive if directory is empty or missing
-download_indexes_with_ui(INDEX_DIR, GDRIVE_LINK)
+if os.path.exists(INDEX_DIR) is False or not os.listdir(INDEX_DIR):
+    download_indexes_with_ui(INDEX_DIR, GDRIVE_LINK)
 
 # Path to logo (now inside the package)
 LOGO_PATH = Path(__file__).parent / "media" / "tensor_truth_banner.png"
@@ -304,7 +305,7 @@ if st.session_state.mode == "setup":
                     if item_idx < len(fav_items):
                         preset_name, preset_config = fav_items[item_idx]
                         with cols[col_idx]:
-                            with st.container(border=True):
+                            with st.container(border=True, height=200):
                                 st.markdown(f"**{preset_name}**")
                                 # Show description if available
                                 description = preset_config.get("description", "")

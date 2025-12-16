@@ -10,24 +10,7 @@ import torch
 
 
 def _download_and_extract_indexes(index_dir: str, gdrive_link: str):
-    """
-    Check if indexes directory is empty or missing.
-    If so, download tarball from Google Drive, extract it, and clean up.
-    Returns True if download was needed and successful.
-    """
-    # Check if indexes directory exists and has content
-    needs_download = False
-
-    if not os.path.exists(index_dir):
-        needs_download = True
-        os.makedirs(index_dir, exist_ok=True)
-    elif not os.listdir(index_dir):
-        needs_download = True
-
-    if not needs_download:
-        return False
-
-    tarball_path = "indexes.tar"
+    tarball_path = os.path.join(index_dir, "..", "indexes.tar")
 
     try:
         # Check if gdown is available
@@ -43,7 +26,7 @@ def _download_and_extract_indexes(index_dir: str, gdrive_link: str):
 
         # Extract tarball to root directory (tar already contains indexes/ folder)
         with tarfile.open(tarball_path, "r:") as tar:
-            tar.extractall(path=".")
+            tar.extractall(path=index_dir)
 
         # Clean up tarball
         os.remove(tarball_path)
