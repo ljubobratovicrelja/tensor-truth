@@ -1,13 +1,11 @@
 """General helper functions for the Streamlit app."""
 
-import asyncio
 import gc
 import os
 import tarfile
 import time
 from typing import List
 
-import aiohttp
 import torch
 
 
@@ -132,43 +130,18 @@ except ImportError:
     pass
 
 
-async def get_ollama_models_async():
-    """Fetches list of available models from local Ollama instance (async version)."""
-    try:
-        timeout = aiohttp.ClientTimeout(total=1)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get("http://localhost:11434/api/tags") as response:
-                if response.status == 200:
-                    data = await response.json()
-                    models = [m["name"] for m in data["models"]]
-                    return sorted(models)
-    except Exception:
-        pass
-    return ["deepseek-r1:8b"]
+def get_ollama_models():
+    """Fetches list of available models from local Ollama instance."""
+    from tensortruth.core.ollama import get_available_models
 
-
-async def get_ollama_ps_async():
-    """Fetches running model information from Ollama (async version)."""
-    try:
-        timeout = aiohttp.ClientTimeout(total=1)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get("http://localhost:11434/api/ps") as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get("models", [])
-    except Exception:
-        pass
-    return []
+    return get_available_models()
 
 
 def get_ollama_ps():
-    """Fetches running model information from Ollama (sync wrapper)."""
-    return asyncio.run(get_ollama_ps_async())
+    """Fetches running model information from Ollama."""
+    from tensortruth.core.ollama import get_running_models_detailed
 
-
-def get_ollama_models():
-    """Fetches list of available models from local Ollama instance (sync wrapper)."""
-    return asyncio.run(get_ollama_models_async())
+    return get_running_models_detailed()
 
 
 # Cache decorator will be applied by Streamlit app if streamlit is available

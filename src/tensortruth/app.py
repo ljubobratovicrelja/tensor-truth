@@ -32,8 +32,9 @@ from tensortruth.app_utils import (
     save_sessions,
     toggle_favorite,
 )
-from tensortruth.app_utils.config import get_ollama_url, save_config
+from tensortruth.app_utils.config import save_config
 from tensortruth.app_utils.session import update_title_async
+from tensortruth.core.ollama import get_ollama_url
 
 # --- CONFIG ---
 # Use platform-specific user data directory (~/.tensortruth)

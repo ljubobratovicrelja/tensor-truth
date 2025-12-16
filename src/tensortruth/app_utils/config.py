@@ -1,13 +1,11 @@
 """Configuration management for Tensor-Truth."""
 
-import os
-
 import yaml
 
 from tensortruth.app_utils.paths import get_user_data_dir
 
-# Standard Ollama env var, or default local
-DEFAULT_OLLAMA_URL = "http://localhost:11434"
+# Re-export get_ollama_url from core.ollama for backward compatibility
+from tensortruth.core.ollama import get_ollama_url  # noqa: F401
 
 # Use the centralized user data directory from paths.py
 CONFIG_DIR = get_user_data_dir()
@@ -41,28 +39,3 @@ def save_config(new_config):
 
     with open(CONFIG_FILE, "w") as f:
         yaml.safe_dump(current, f, default_flow_style=False)
-
-
-def get_ollama_url():
-    """
-    Get the effective Ollama URL.
-    Priority:
-    1. config.yaml ('ollama_url')
-    2. OLLAMA_HOST environment variable
-    3. Default (http://localhost:11434)
-    """
-    # 1. Check Config File
-    config = load_config()
-    if config.get("ollama_url"):
-        return config["ollama_url"].rstrip("/")
-
-    # 2. Check Environment Variable
-    env_host = os.environ.get("OLLAMA_HOST")
-    if env_host:
-        # Handle cases where OLLAMA_HOST might be just "0.0.0.0:11434"
-        if not env_host.startswith("http"):
-            return f"http://{env_host}".rstrip("/")
-        return env_host.rstrip("/")
-
-    # 3. Return Default
-    return DEFAULT_OLLAMA_URL

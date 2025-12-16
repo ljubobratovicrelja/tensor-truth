@@ -17,7 +17,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from tensortruth.app_utils.config import get_ollama_url
+from tensortruth.core.ollama import get_ollama_url
 
 # --- GLOBAL CONFIG ---
 _BASE_INDEX_DIR_CACHE = None
