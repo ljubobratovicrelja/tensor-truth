@@ -2,6 +2,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/tensor-truth.svg)](https://pypi.org/project/tensor-truth/)
+[![Docker Hub](https://img.shields.io/docker/v/ljubobratovicrelja/tensor-truth?label=docker)](https://hub.docker.com/r/ljubobratovicrelja/tensor-truth)
 [![Tests](https://github.com/ljubobratovicrelja/tensor-truth/actions/workflows/tests.yml/badge.svg)](https://github.com/ljubobratovicrelja/tensor-truth/actions/workflows/tests.yml)
 
 
@@ -49,14 +50,9 @@ On first launch, pre-built indexes will auto-download from Google Drive (takes a
 
 ## Docker Deployment
 
-For easier deployment without managing virtual environments or CUDA installations, a Docker image is provided. This approach is useful if you want to avoid setting up PyTorch with CUDA manually, though you still need a machine with NVIDIA GPU and drivers installed.
+For easier deployment without managing virtual environments or CUDA installations, a pre-built Docker image is available. This approach is useful if you want to avoid setting up PyTorch with CUDA manually, though you still need a machine with NVIDIA GPU and drivers installed.
 
-**Build the image:**
-```bash
-docker build -t tensor-truth .
-```
-
-**Run the container:**
+**Pull and run from Docker Hub:**
 ```bash
 docker run -d \
   --name tensor-truth \
@@ -64,7 +60,7 @@ docker run -d \
   -p 8501:8501 \
   -v ~/.tensortruth:/root/.tensortruth \
   -e OLLAMA_HOST=http://host.docker.internal:11434 \
-  tensor-truth
+  ljubobratovicrelja/tensor-truth:latest
 ```
 
 Access the app at `http://localhost:8501`. The `-v` flag mounts your local data directory for persistence across container restarts. Change the port mapping with `-p HOST_PORT:8501` if needed (e.g., `-p 8080:8501` to serve on port 8080).
@@ -72,6 +68,12 @@ Access the app at `http://localhost:8501`. The `-v` flag mounts your local data 
 If Ollama runs on a different host or port, override the `OLLAMA_HOST` environment variable:
 ```bash
 -e OLLAMA_HOST=http://192.168.1.50:11434
+```
+
+**Build locally (optional):**
+```bash
+docker build -t tensor-truth .
+docker run -d --name tensor-truth --gpus all -p 8501:8501 -v ~/.tensortruth:/root/.tensortruth tensor-truth
 ```
 
 ## Data Storage
