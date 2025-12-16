@@ -3,11 +3,69 @@
 import json
 import os
 
+# UI constraints - these define the valid values for preset parameters
+ALLOWED_CONTEXT_WINDOWS = [2048, 4096, 8192, 16384, 32768]
+ALLOWED_RERANKER_MODELS = [
+    "BAAI/bge-reranker-v2-m3",
+    "BAAI/bge-reranker-base",
+    "cross-encoder/ms-marco-MiniLM-L-6-v2",
+]
+
+
+def _normalize_preset(preset: dict) -> dict:
+    """Normalize preset values to match UI constraints.
+
+    This ensures manually edited presets don't break the UI.
+    Modifies the preset in-place and returns it.
+    """
+    # Normalize context_window to nearest allowed value
+    if "context_window" in preset:
+        ctx = preset["context_window"]
+        if ctx not in ALLOWED_CONTEXT_WINDOWS:
+            nearest = min(ALLOWED_CONTEXT_WINDOWS, key=lambda x: abs(x - ctx))
+            preset["context_window"] = nearest
+
+    # Clamp temperature to [0.0, 1.0]
+    if "temperature" in preset:
+        temp = preset["temperature"]
+        preset["temperature"] = max(0.0, min(1.0, temp))
+
+    # Ensure reranker_top_n is within reasonable bounds [1, 20]
+    if "reranker_top_n" in preset:
+        top_n = preset["reranker_top_n"]
+        preset["reranker_top_n"] = max(1, min(20, int(top_n)))
+
+    # Clamp confidence_cutoff to [0.0, 1.0]
+    if "confidence_cutoff" in preset:
+        conf = preset["confidence_cutoff"]
+        preset["confidence_cutoff"] = max(0.0, min(1.0, conf))
+
+    # Validate reranker_model (fallback to default if invalid)
+    if "reranker_model" in preset:
+        if preset["reranker_model"] not in ALLOWED_RERANKER_MODELS:
+            preset["reranker_model"] = ALLOWED_RERANKER_MODELS[0]
+
+    # Validate llm_device (must be 'cpu' or 'gpu')
+    if "llm_device" in preset:
+        if preset["llm_device"] not in ["cpu", "gpu"]:
+            preset["llm_device"] = "gpu"
+
+    # Ensure system_prompt is a string (handle list/array edge cases)
+    if "system_prompt" in preset:
+        prompt = preset["system_prompt"]
+        if isinstance(prompt, list):
+            preset["system_prompt"] = " ".join(str(p) for p in prompt)
+        elif not isinstance(prompt, str):
+            preset["system_prompt"] = str(prompt)
+
+    return preset
+
 
 def load_presets(presets_file: str):
     """Load presets from JSON file.
 
     If the file doesn't exist, generates it from defaults.
+    Automatically normalizes all presets to match UI constraints.
     """
     # Try to ensure presets exist (generates from defaults if missing)
     try:
@@ -20,16 +78,24 @@ def load_presets(presets_file: str):
     if os.path.exists(presets_file):
         try:
             with open(presets_file, "r", encoding="utf-8") as f:
-                return json.load(f)
+                presets = json.load(f)
+                # Normalize all presets on load
+                for name, preset in presets.items():
+                    _normalize_preset(preset)
+                return presets
         except Exception:
             pass
     return {}
 
 
 def save_preset(name, config, presets_file: str):
-    """Save a preset configuration."""
+    """Save a preset configuration.
+
+    Normalizes the config before saving to ensure consistency.
+    """
     presets = load_presets(presets_file)
-    presets[name] = config
+    # Normalize the config before saving
+    presets[name] = _normalize_preset(config.copy())
     with open(presets_file, "w", encoding="utf-8") as f:
         json.dump(presets, f, indent=2)
 
@@ -172,7 +238,7 @@ def apply_preset(
             except Exception:
                 pass  # Keep existing model if resolution fails
 
-    # 3. Parameters - only update if present in preset
+    # 3. Parameters - already normalized by load_presets()
     if "reranker_model" in p:
         st.session_state.setup_reranker = p["reranker_model"]
     if "context_window" in p:

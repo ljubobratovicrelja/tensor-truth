@@ -98,6 +98,7 @@ with st.sidebar:
     if st.button("Start New Chat", type="primary", use_container_width=True):
         st.session_state.mode = "setup"
         st.session_state.chat_data["current_id"] = None
+        st.session_state.expand_config_section = False
         st.rerun()
 
     st.divider()
@@ -341,7 +342,9 @@ if st.session_state.mode == "setup":
 
         # --- ALL PRESETS MANAGER ---
         if presets:
-            with st.expander("Presets", expanded=False):
+            # Collapse presets when config section is expanded
+            expand_presets = not st.session_state.get("expand_config_section", False)
+            with st.expander("Presets", expanded=expand_presets):
                 for preset_name in presets.keys():
                     is_favorite = presets[preset_name].get("favorite", False)
                     star_icon = "⭐" if is_favorite else "☆"
@@ -360,6 +363,8 @@ if st.session_state.mode == "setup":
                                 system_devices,
                                 PRESETS_FILE,
                             )
+                            # Expand the config section to show loaded values
+                            st.session_state.expand_config_section = True
                             st.rerun()
                     with col3:
                         if st.button(
@@ -378,7 +383,9 @@ if st.session_state.mode == "setup":
                             st.rerun()
 
         # --- MANUAL CONFIGURATION ---
-        with st.expander("Configure New Session", expanded=False):
+        # Expand when a preset is loaded
+        expand_config = st.session_state.get("expand_config_section", False)
+        with st.expander("Configure New Session", expanded=expand_config):
             with st.form("launch_form"):
                 # --- SELECTION AREA ---
                 st.subheader("1. Knowledge Base")
