@@ -32,6 +32,7 @@ from tensortruth.app_utils import (
     save_sessions,
     toggle_favorite,
 )
+from tensortruth.app_utils.config import get_ollama_url, save_config
 from tensortruth.app_utils.session import update_title_async
 
 # --- CONFIG ---
@@ -364,6 +365,24 @@ if st.session_state.mode == "setup":
                         ):
                             toggle_favorite(preset_name, PRESETS_FILE)
                             st.rerun()
+
+        # --- CONNECTION SETTINGS ---
+        with st.expander("⚙️ Connection Settings", expanded=False):
+            current_url = get_ollama_url()
+            new_url = st.text_input(
+                "Ollama Base URL",
+                value=current_url,
+                help="e.g. http://localhost:11434 or http://192.168.1.50:11434",
+            )
+
+            if st.button("Save Connection URL"):
+                if new_url != current_url:
+                    save_config({"ollama_url": new_url})
+                    st.success("Configuration saved! Reloading...")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.info("No changes made.")
 
         # --- MANUAL CONFIGURATION ---
         with st.expander("Manual Configuration", expanded=False):

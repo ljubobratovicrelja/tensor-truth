@@ -3,8 +3,6 @@
 import streamlit as st
 import torch
 
-from tensortruth.core import get_running_models
-
 
 @st.cache_data(ttl=2, show_spinner=False)
 def get_vram_breakdown():
@@ -19,6 +17,8 @@ def get_vram_breakdown():
         return {"total_used": 0.0, "reclaimable": 0.0, "baseline": 4.0}
 
     try:
+        from tensortruth.core import get_running_models
+
         # 1. Real Hardware Usage (Everything on the card)
         free_bytes, total_bytes = torch.cuda.mem_get_info()
         total_used_gb = (total_bytes - free_bytes) / (1024**3)

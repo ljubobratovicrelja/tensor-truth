@@ -17,6 +17,8 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
+from tensortruth.app_utils.config import get_ollama_url
+
 # --- GLOBAL CONFIG ---
 _BASE_INDEX_DIR_CACHE = None
 
@@ -167,6 +169,7 @@ def get_llm(params):
 
     return Ollama(
         model=model_name,
+        base_url=get_ollama_url(),
         request_timeout=300.0,
         temperature=params.get("temperature", 0.3),
         context_window=params.get("context_window", 4096),

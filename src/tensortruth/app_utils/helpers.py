@@ -5,11 +5,10 @@ import gc
 import os
 import tarfile
 import time
+from typing import List
 
 import aiohttp
 import torch
-
-from tensortruth import load_engine_for_modules
 
 
 def _download_and_extract_indexes(index_dir: str, gdrive_link: str):
@@ -210,6 +209,8 @@ def ensure_engine_loaded(target_modules, target_params):
     """Ensure the RAG engine is loaded with the specified configuration."""
     import streamlit as st
 
+    from tensortruth import load_engine_for_modules
+
     target_tuple = tuple(sorted(target_modules))
     param_items = sorted([(k, v) for k, v in target_params.items()])
     param_hash = frozenset(param_items)
@@ -239,3 +240,38 @@ def ensure_engine_loaded(target_modules, target_params):
     except Exception as e:
         placeholder.error(f"Failed: {e}")
         st.stop()
+
+
+def format_ollama_runtime_info() -> List[str]:
+    """
+    Get formatted Ollama runtime information.
+
+    Returns:
+        List of formatted strings describing running models, or empty list if unavailable.
+    """
+    lines = []
+    try:
+        running_models = get_ollama_ps()
+        if running_models:
+            for model_info in running_models:
+                model_name = model_info.get("name", "Unknown")
+                size_vram = model_info.get("size_vram", 0)
+                size = model_info.get("size", 0)
+
+                # Convert bytes to GB for readability
+                size_vram_gb = size_vram / (1024**3) if size_vram else 0
+                size_gb = size / (1024**3) if size else 0
+
+                lines.append(f"**Running:** `{model_name}`")
+                if size_vram_gb > 0:
+                    lines.append(f"**VRAM:** `{size_vram_gb:.2f} GB`")
+                if size_gb > 0:
+                    lines.append(f"**Model Size:** `{size_gb:.2f} GB`")
+
+                processor = model_info.get("details", {}).get("parameter_size", "")
+                if processor:
+                    lines.append(f"**Parameters:** `{processor}`")
+    except Exception:
+        pass
+
+    return lines

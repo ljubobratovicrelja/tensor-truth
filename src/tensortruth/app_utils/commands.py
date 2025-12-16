@@ -5,7 +5,12 @@ from typing import Callable, List, Optional, Tuple
 
 import streamlit as st
 
-from .helpers import free_memory, get_ollama_models, get_ollama_ps, get_system_devices
+from .helpers import (
+    format_ollama_runtime_info,
+    free_memory,
+    get_ollama_models,
+    get_system_devices,
+)
 
 # Type aliases for clarity
 StateModifier = Optional[Callable[[], None]]
@@ -97,30 +102,10 @@ class ListCommand(Command):
         lines.append(f"**LLM Device:** `{current_params.get('llm_device', 'gpu')}`")
 
         # Ollama Runtime Info Section
-        try:
-            running_models = get_ollama_ps()
-            if running_models:
-                lines.append("\n#### Ollama Runtime")
-                for model_info in running_models:
-                    model_name = model_info.get("name", "Unknown")
-                    size_vram = model_info.get("size_vram", 0)
-                    size = model_info.get("size", 0)
-
-                    # Convert bytes to GB for readability
-                    size_vram_gb = size_vram / (1024**3) if size_vram else 0
-                    size_gb = size / (1024**3) if size else 0
-
-                    lines.append(f"**Running:** `{model_name}`")
-                    if size_vram_gb > 0:
-                        lines.append(f"**VRAM:** `{size_vram_gb:.2f} GB`")
-                    if size_gb > 0:
-                        lines.append(f"**Model Size:** `{size_gb:.2f} GB`")
-
-                    processor = model_info.get("details", {}).get("parameter_size", "")
-                    if processor:
-                        lines.append(f"**Parameters:** `{processor}`")
-        except Exception:
-            pass
+        runtime_info = format_ollama_runtime_info()
+        if runtime_info:
+            lines.append("\n#### Ollama Runtime")
+            lines.extend(runtime_info)
 
         lines.append(
             "\n**Commands:** `/load <name>`, `/device rag <cpu|cuda|mps>`, "
@@ -172,26 +157,16 @@ class ModelCommand(Command):
         lines.append(f"**Active Model:** `{current_params.get('model', 'Unknown')}`")
 
         # Show Ollama runtime info if available
-        try:
-            running_models = get_ollama_ps()
-            if running_models:
-                for model_info in running_models:
-                    size_vram = model_info.get("size_vram", 0)
-                    size = model_info.get("size", 0)
-
-                    size_vram_gb = size_vram / (1024**3) if size_vram else 0
-                    size_gb = size / (1024**3) if size else 0
-
-                    if size_vram_gb > 0:
-                        lines.append(f"**VRAM Usage:** `{size_vram_gb:.2f} GB`")
-                    if size_gb > 0:
-                        lines.append(f"**Model Size:** `{size_gb:.2f} GB`")
-
-                    processor = model_info.get("details", {}).get("parameter_size", "")
-                    if processor:
-                        lines.append(f"**Parameters:** `{processor}`")
-        except Exception:
-            pass
+        runtime_info = format_ollama_runtime_info()
+        if runtime_info:
+            # Adjust label for VRAM in model info context
+            adjusted_info = []
+            for line in runtime_info:
+                if line.startswith("**VRAM:**"):
+                    adjusted_info.append(line.replace("**VRAM:**", "**VRAM Usage:**"))
+                elif not line.startswith("**Running:**"):
+                    adjusted_info.append(line)
+            lines.extend(adjusted_info)
 
         # List available models
         try:
