@@ -28,6 +28,8 @@ def get_default_presets():
     """
     return {
         "DL Research Assistant": {
+            "favorite": True,
+            "favorite_order": 0,
             "modules": [
                 "deep_learning_books",
                 "machine_learning_books",
@@ -41,6 +43,8 @@ def get_default_presets():
             "confidence_cutoff": 0.0,
         },
         "DL Coder": {
+            "favorite": True,
+            "favorite_order": 1,
             "modules": [
                 "pytorch_2.9",
                 "deep_learning_books",
@@ -89,6 +93,8 @@ def get_default_presets():
             ),
         },
         "PyTorch Developer": {
+            "favorite": True,
+            "favorite_order": 2,
             "modules": ["pytorch_2.9", "numpy_2.3"],
             "model_preference": "coding",
             "reranker_model": "BAAI/bge-reranker-v2-m3",

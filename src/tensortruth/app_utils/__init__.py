@@ -18,7 +18,15 @@ from .paths import (
     get_sessions_file,
     get_user_data_dir,
 )
-from .presets import apply_preset, delete_preset, load_presets, save_preset
+from .presets import (
+    apply_preset,
+    delete_preset,
+    get_favorites,
+    load_presets,
+    quick_launch_preset,
+    save_preset,
+    toggle_favorite,
+)
 from .session import (
     create_session,
     load_sessions,
@@ -51,8 +59,11 @@ __all__ = [
     # Presets
     "apply_preset",
     "delete_preset",
+    "get_favorites",
     "load_presets",
+    "quick_launch_preset",
     "save_preset",
+    "toggle_favorite",
     # Session
     "create_session",
     "load_sessions",

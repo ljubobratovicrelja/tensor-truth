@@ -15,6 +15,7 @@ from tensortruth.app_utils import (
     download_indexes_with_ui,
     free_memory,
     get_available_modules,
+    get_favorites,
     get_indexes_dir,
     get_ollama_models,
     get_presets_file,
@@ -25,9 +26,11 @@ from tensortruth.app_utils import (
     load_presets,
     load_sessions,
     process_command,
+    quick_launch_preset,
     rename_session,
     save_preset,
     save_sessions,
+    toggle_favorite,
 )
 from tensortruth.app_utils.session import update_title_async
 
@@ -271,123 +274,185 @@ if st.session_state.mode == "setup":
             st.session_state.setup_init = True
 
         st.markdown("### Start a New Research Session")
-        st.caption("Configure your knowledge base and model parameters.")
 
-        # --- PRESETS SECTION ---
-        if presets:
-            with st.expander("Saved Configurations (Presets)", expanded=True):
-                col_p1, col_p2, col_p3 = st.columns([3, 1, 1])
-                with col_p1:
-                    selected_preset = st.selectbox(
-                        "Select Preset:",
-                        list(presets.keys()),
-                        label_visibility="collapsed",
-                    )
-                with col_p2:
-                    if st.button("Load", use_container_width=True):
-                        apply_preset(
-                            selected_preset,
-                            available_mods,
-                            available_models,
-                            system_devices,
-                            PRESETS_FILE,
-                        )
-                        st.rerun()
-                with col_p3:
-                    if st.button("Delete", type="primary", use_container_width=True):
-                        st.session_state.show_preset_delete_confirm = True
-                        st.session_state.preset_to_delete = selected_preset
-                        st.rerun()
+        # --- QUICK LAUNCH FAVORITES ---
+        favorites = get_favorites(PRESETS_FILE)
+        if favorites:
+            st.markdown("#### Quick Launch")
+            st.caption("One-click start with your favorite configurations")
 
-        # --- FORM WRAPPER FOR STABILITY ---
-        with st.form("launch_form"):
-            # --- SELECTION AREA ---
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.subheader("1. Knowledge Base")
-                selected_mods = st.multiselect(
-                    "Active Indices:", available_mods, key="setup_mods"
-                )
+            # Display favorites in cards (3 per row)
+            fav_items = list(favorites.items())
+            num_cols = 3
+            num_rows = (len(fav_items) + num_cols - 1) // num_cols
 
-            with col_b:
-                st.subheader("2. Model Selection")
-                if available_models:
-                    selected_model = st.selectbox(
-                        "LLM:", available_models, key="setup_model"
-                    )
-                else:
-                    st.error("No models found in Ollama.")
-                    selected_model = "None"
+            for row in range(num_rows):
+                cols = st.columns(num_cols)
+                for col_idx in range(num_cols):
+                    item_idx = row * num_cols + col_idx
+                    if item_idx < len(fav_items):
+                        preset_name, preset_config = fav_items[item_idx]
+                        with cols[col_idx]:
+                            with st.container(border=True):
+                                st.markdown(f"**{preset_name}**")
+                                # Show module count and device
+                                num_modules = len(preset_config.get("modules", []))
+                                device = preset_config.get("llm_device", "gpu").upper()
+                                st.caption(f"{num_modules} modules • {device}")
 
-            st.subheader("3. RAG Parameters")
-            p1, p2, p3 = st.columns(3)
-            with p1:
-                reranker_model = st.selectbox(
-                    "Reranker",
-                    options=[
-                        "BAAI/bge-reranker-v2-m3",
-                        "BAAI/bge-reranker-base",
-                        "cross-encoder/ms-marco-MiniLM-L-6-v2",
-                    ],
-                    key="setup_reranker",
-                )
-            with p2:
-                ctx = st.select_slider(
-                    "Context Window",
-                    options=[2048, 4096, 8192, 16384, 32768],
-                    key="setup_ctx",
-                )
-            with p3:
-                temp = st.slider("Temperature", 0.0, 1.0, step=0.1, key="setup_temp")
-
-            with st.expander("Advanced Settings"):
-                top_n = st.number_input(
-                    "Top N (Final Context)",
-                    min_value=1,
-                    max_value=20,
-                    key="setup_top_n",
-                )
-                conf = st.slider(
-                    "Confidence Warning Threshold",
-                    0.0,
-                    1.0,
-                    step=0.05,
-                    key="setup_conf",
-                    help=(
-                        "Show a warning if the best similarity score is below "
-                        "this threshold (soft hint, doesn't filter results)"
-                    ),
-                )
-                sys_prompt = st.text_area(
-                    "System Instructions:",
-                    height=68,
-                    placeholder="Optional...",
-                    key="setup_sys_prompt",
-                )
-
-                st.markdown("#### Hardware Allocation")
-                h1, h2 = st.columns(2)
-
-                with h1:
-                    rag_device = st.selectbox(
-                        "Pipeline Device (Embed/Rerank)",
-                        options=system_devices,
-                        help="Run Retrieval on specific hardware. CPU saves VRAM but is slower.",
-                        key="setup_rag_device",
-                    )
-                with h2:
-                    llm_device = st.selectbox(
-                        "Model Device (Ollama)",
-                        options=["gpu", "cpu"],
-                        help="Force Ollama to run on CPU to save VRAM for other tasks.",
-                        key="setup_llm_device",
-                    )
+                                if st.button(
+                                    "LAUNCH",
+                                    key=f"launch_{preset_name}",
+                                    type="primary",
+                                    use_container_width=True,
+                                ):
+                                    success, error = quick_launch_preset(
+                                        preset_name,
+                                        available_mods,
+                                        PRESETS_FILE,
+                                        SESSIONS_FILE,
+                                    )
+                                    if success:
+                                        st.session_state.mode = "chat"
+                                        st.rerun()
+                                    else:
+                                        st.error(error)
 
             st.markdown("---")
 
-            submitted_start = st.form_submit_button(
-                "Start Session", type="primary", use_container_width=True
-            )
+        # --- ALL PRESETS MANAGER ---
+        if presets:
+            with st.expander("All Presets", expanded=False):
+                for preset_name in presets.keys():
+                    is_favorite = presets[preset_name].get("favorite", False)
+                    star_icon = "⭐" if is_favorite else "☆"
+
+                    col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+                    with col1:
+                        st.markdown(f"**{preset_name}**")
+                    with col2:
+                        if st.button(
+                            "Load", key=f"load_{preset_name}", use_container_width=True
+                        ):
+                            apply_preset(
+                                preset_name,
+                                available_mods,
+                                available_models,
+                                system_devices,
+                                PRESETS_FILE,
+                            )
+                            st.rerun()
+                    with col3:
+                        if st.button(
+                            "Delete", key=f"del_{preset_name}", use_container_width=True
+                        ):
+                            st.session_state.show_preset_delete_confirm = True
+                            st.session_state.preset_to_delete = preset_name
+                            st.rerun()
+                    with col4:
+                        if st.button(
+                            star_icon,
+                            key=f"fav_{preset_name}",
+                            use_container_width=True,
+                        ):
+                            toggle_favorite(preset_name, PRESETS_FILE)
+                            st.rerun()
+
+        # --- MANUAL CONFIGURATION ---
+        with st.expander("Manual Configuration", expanded=False):
+            with st.form("launch_form"):
+                # --- SELECTION AREA ---
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.subheader("1. Knowledge Base")
+                    selected_mods = st.multiselect(
+                        "Active Indices:", available_mods, key="setup_mods"
+                    )
+
+                with col_b:
+                    st.subheader("2. Model Selection")
+                    if available_models:
+                        selected_model = st.selectbox(
+                            "LLM:", available_models, key="setup_model"
+                        )
+                    else:
+                        st.error("No models found in Ollama.")
+                        selected_model = "None"
+
+                st.subheader("3. RAG Parameters")
+                p1, p2, p3 = st.columns(3)
+                with p1:
+                    reranker_model = st.selectbox(
+                        "Reranker",
+                        options=[
+                            "BAAI/bge-reranker-v2-m3",
+                            "BAAI/bge-reranker-base",
+                            "cross-encoder/ms-marco-MiniLM-L-6-v2",
+                        ],
+                        key="setup_reranker",
+                    )
+                with p2:
+                    ctx = st.select_slider(
+                        "Context Window",
+                        options=[2048, 4096, 8192, 16384, 32768],
+                        key="setup_ctx",
+                    )
+                with p3:
+                    temp = st.slider(
+                        "Temperature", 0.0, 1.0, step=0.1, key="setup_temp"
+                    )
+
+                with st.expander("Advanced Settings"):
+                    top_n = st.number_input(
+                        "Top N (Final Context)",
+                        min_value=1,
+                        max_value=20,
+                        key="setup_top_n",
+                    )
+                    conf = st.slider(
+                        "Confidence Warning Threshold",
+                        0.0,
+                        1.0,
+                        step=0.05,
+                        key="setup_conf",
+                        help=(
+                            "Show a warning if the best similarity score is below "
+                            "this threshold (soft hint, doesn't filter results)"
+                        ),
+                    )
+                    sys_prompt = st.text_area(
+                        "System Instructions:",
+                        height=68,
+                        placeholder="Optional...",
+                        key="setup_sys_prompt",
+                    )
+
+                    st.markdown("#### Hardware Allocation")
+                    h1, h2 = st.columns(2)
+
+                    with h1:
+                        rag_device = st.selectbox(
+                            "Pipeline Device (Embed/Rerank)",
+                            options=system_devices,
+                            help=(
+                                "Run Retrieval on specific hardware. "
+                                "CPU saves VRAM but is slower."
+                            ),
+                            key="setup_rag_device",
+                        )
+                    with h2:
+                        llm_device = st.selectbox(
+                            "Model Device (Ollama)",
+                            options=["gpu", "cpu"],
+                            help="Force Ollama to run on CPU to save VRAM for other tasks.",
+                            key="setup_llm_device",
+                        )
+
+                st.markdown("---")
+
+                submitted_start = st.form_submit_button(
+                    "Start Session", type="primary", use_container_width=True
+                )
 
             if submitted_start:
                 if not selected_mods:
@@ -425,34 +490,46 @@ if st.session_state.mode == "setup":
                         st.session_state.sidebar_state = "collapsed"
                     st.rerun()
 
-        # --- SAVE PRESET SECTION (Outside form to allow name typing without submit) ---
-        with st.expander("Save Configuration as Preset"):
-            col_s1, col_s2 = st.columns([3, 1])
-            with col_s1:
-                new_preset_name = st.text_input(
-                    "Preset Name", placeholder="e.g. 'Deep Search 32B'"
-                )
-            with col_s2:
-                st.write("")  # Spacer
-                st.write("")
-                if st.button("Save", use_container_width=True):
-                    if new_preset_name:
-                        config_to_save = {
-                            "modules": st.session_state.setup_mods,
-                            "model": st.session_state.setup_model,
-                            "reranker_model": st.session_state.setup_reranker,
-                            "context_window": st.session_state.setup_ctx,
-                            "temperature": st.session_state.setup_temp,
-                            "reranker_top_n": st.session_state.setup_top_n,
-                            "confidence_cutoff": st.session_state.setup_conf,
-                            "system_prompt": st.session_state.setup_sys_prompt,
-                            "rag_device": st.session_state.setup_rag_device,
-                            "llm_device": st.session_state.setup_llm_device,
-                        }
-                        save_preset(new_preset_name, config_to_save, PRESETS_FILE)
-                        st.success(f"Saved: {new_preset_name}")
-                        time.sleep(1)
-                        st.rerun()
+        # --- SAVE PRESET SECTION ---
+        with st.expander("Save Current Configuration as Preset", expanded=False):
+            new_preset_name = st.text_input(
+                "Preset Name", placeholder="e.g. 'Deep Search 32B'"
+            )
+            mark_as_favorite = st.checkbox("Mark as Favorite", value=False)
+
+            if st.button("Save Preset", use_container_width=True, type="primary"):
+                if new_preset_name:
+                    config_to_save = {
+                        "modules": st.session_state.setup_mods,
+                        "model": st.session_state.setup_model,
+                        "reranker_model": st.session_state.setup_reranker,
+                        "context_window": st.session_state.setup_ctx,
+                        "temperature": st.session_state.setup_temp,
+                        "reranker_top_n": st.session_state.setup_top_n,
+                        "confidence_cutoff": st.session_state.setup_conf,
+                        "system_prompt": st.session_state.setup_sys_prompt,
+                        "rag_device": st.session_state.setup_rag_device,
+                        "llm_device": st.session_state.setup_llm_device,
+                    }
+
+                    if mark_as_favorite:
+                        # Find the highest favorite_order
+                        all_presets = load_presets(PRESETS_FILE)
+                        max_order = -1
+                        for preset in all_presets.values():
+                            if preset.get("favorite", False):
+                                order = preset.get("favorite_order", 0)
+                                if order > max_order:
+                                    max_order = order
+                        config_to_save["favorite"] = True
+                        config_to_save["favorite_order"] = max_order + 1
+
+                    save_preset(new_preset_name, config_to_save, PRESETS_FILE)
+                    st.success(f"Saved: {new_preset_name}")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.warning("Please enter a preset name")
 
 elif st.session_state.mode == "chat":
     current_id = st.session_state.chat_data.get("current_id")

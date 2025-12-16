@@ -43,6 +43,88 @@ def delete_preset(name, presets_file: str):
             json.dump(presets, f, indent=2)
 
 
+def toggle_favorite(name, presets_file: str):
+    """Toggle favorite status for a preset."""
+    presets = load_presets(presets_file)
+    if name in presets:
+        current_status = presets[name].get("favorite", False)
+        presets[name]["favorite"] = not current_status
+
+        # Set favorite_order if becoming a favorite
+        if not current_status:
+            # Find the highest favorite_order and add 1
+            max_order = -1
+            for preset in presets.values():
+                if preset.get("favorite", False):
+                    order = preset.get("favorite_order", 0)
+                    if order > max_order:
+                        max_order = order
+            presets[name]["favorite_order"] = max_order + 1
+
+        with open(presets_file, "w", encoding="utf-8") as f:
+            json.dump(presets, f, indent=2)
+
+
+def get_favorites(presets_file: str):
+    """Get all favorite presets sorted by favorite_order."""
+    presets = load_presets(presets_file)
+    favorites = {
+        name: config
+        for name, config in presets.items()
+        if config.get("favorite", False)
+    }
+    # Sort by favorite_order
+    sorted_favorites = sorted(
+        favorites.items(), key=lambda x: x[1].get("favorite_order", 999)
+    )
+    return dict(sorted_favorites)
+
+
+def quick_launch_preset(name, available_mods, presets_file: str, sessions_file: str):
+    """Quick launch a session directly from a preset.
+
+    Args:
+        name: Preset name to launch
+        available_mods: List of available module names
+        presets_file: Path to presets file
+        sessions_file: Path to sessions file
+
+    Returns:
+        tuple: (success: bool, error_message: str or None)
+    """
+    from tensortruth.app_utils.session import create_session
+
+    presets = load_presets(presets_file)
+    if name not in presets:
+        return False, f"Preset '{name}' not found"
+
+    preset = presets[name]
+
+    # Validate modules
+    modules = preset.get("modules", [])
+    valid_mods = [m for m in modules if m in available_mods]
+
+    if not valid_mods and modules:
+        return False, "None of the preset modules are available"
+
+    # Build params from preset
+    params = {
+        "model": preset.get("model", "deepseek-r1:8b"),
+        "temperature": preset.get("temperature", 0.3),
+        "context_window": preset.get("context_window", 4096),
+        "system_prompt": preset.get("system_prompt", ""),
+        "reranker_model": preset.get("reranker_model", "BAAI/bge-reranker-v2-m3"),
+        "reranker_top_n": preset.get("reranker_top_n", 3),
+        "confidence_cutoff": preset.get("confidence_cutoff", 0.3),
+        "rag_device": preset.get("rag_device", "cpu"),
+        "llm_device": preset.get("llm_device", "gpu"),
+    }
+
+    # Create session
+    create_session(valid_mods, params, sessions_file)
+    return True, None
+
+
 def apply_preset(
     name, available_mods, available_models, available_devices, presets_file: str
 ):
