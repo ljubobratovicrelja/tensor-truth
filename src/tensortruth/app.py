@@ -511,12 +511,55 @@ elif st.session_state.mode == "chat":
 
         def load_engine_background():
             try:
+                # Extract chat history from session messages (not from engine memory)
+                # Convert session messages to ChatMessage format for the new engine
+                preserved_history = None
+
+                if session["messages"]:
+                    try:
+                        from llama_index.core.base.llms.types import (
+                            ChatMessage,
+                            MessageRole,
+                        )
+
+                        chat_messages = []
+                        # Only include user and assistant messages, skip command messages
+                        for msg in session["messages"]:
+                            if msg["role"] == "user":
+                                chat_messages.append(
+                                    ChatMessage(
+                                        content=msg["content"], role=MessageRole.USER
+                                    )
+                                )
+                            elif msg["role"] == "assistant":
+                                chat_messages.append(
+                                    ChatMessage(
+                                        content=msg["content"],
+                                        role=MessageRole.ASSISTANT,
+                                    )
+                                )
+
+                        # Preserve only the last 4 messages (2 conversation turns)
+                        # This maintains immediate context without causing hallucinations
+                        max_messages = 4
+                        if len(chat_messages) > max_messages:
+                            preserved_history = chat_messages[-max_messages:]
+                        else:
+                            preserved_history = chat_messages if chat_messages else None
+
+                    except Exception as e:
+                        print(f"Error preserving chat history: {e}")
+                        preserved_history = None
+
                 if current_config is not None:
                     free_memory()
+
                 # Call the actual engine loading function directly (bypass UI parts)
                 from tensortruth import load_engine_for_modules
 
-                loaded_engine = load_engine_for_modules(modules, params)
+                loaded_engine = load_engine_for_modules(
+                    modules, params, preserved_history
+                )
                 # Store in shared dict (not session_state directly)
                 load_result["engine"] = loaded_engine
                 load_result["config"] = target_config

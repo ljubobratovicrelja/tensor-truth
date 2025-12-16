@@ -202,7 +202,9 @@ class MultiIndexRetriever(BaseRetriever):
         return self._retrieve_cached(query_bundle.query_str)
 
 
-def load_engine_for_modules(selected_modules, engine_params=None):
+def load_engine_for_modules(
+    selected_modules, engine_params=None, preserved_chat_history=None
+):
     if not selected_modules:
         raise ValueError("No modules selected!")
 
@@ -254,6 +256,13 @@ def load_engine_for_modules(selected_modules, engine_params=None):
     composite_retriever = MultiIndexRetriever(active_retrievers)
 
     memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
+
+    # Restore chat history from previous engine if provided
+    if preserved_chat_history:
+        for msg in preserved_chat_history:
+            # Restore each message to the memory buffer
+            memory.put(msg)
+
     llm = get_llm(engine_params)
 
     # Pass device to reranker
