@@ -12,6 +12,12 @@ from .helpers import (
     get_system_devices,
 )
 from .logging_config import logger
+from .paths import (
+    get_indexes_dir,
+    get_presets_file,
+    get_sessions_file,
+    get_user_data_dir,
+)
 from .presets import apply_preset, delete_preset, load_presets, save_preset
 from .session import (
     create_session,
@@ -37,6 +43,11 @@ __all__ = [
     "get_system_devices",
     # Logging
     "logger",
+    # Paths
+    "get_indexes_dir",
+    "get_presets_file",
+    "get_sessions_file",
+    "get_user_data_dir",
     # Presets
     "apply_preset",
     "delete_preset",

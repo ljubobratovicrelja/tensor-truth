@@ -18,7 +18,32 @@ from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 # --- GLOBAL CONFIG ---
+_BASE_INDEX_DIR_CACHE = None
+
+
+def get_base_index_dir():
+    """
+    Get the base index directory, preferring user data dir if available.
+
+    This uses lazy loading to avoid circular import issues.
+    """
+    global _BASE_INDEX_DIR_CACHE
+    if _BASE_INDEX_DIR_CACHE is None:
+        try:
+            from tensortruth.app_utils.paths import get_indexes_dir
+
+            _BASE_INDEX_DIR_CACHE = get_indexes_dir()
+        except (ImportError, AttributeError):
+            # Fallback for standalone usage or during circular imports
+            _BASE_INDEX_DIR_CACHE = "./indexes"
+    return _BASE_INDEX_DIR_CACHE
+
+
+# For backwards compatibility, provide BASE_INDEX_DIR as a constant
+# Note: This will be "./indexes" at import time, but
+# get_base_index_dir() will return the correct path.
 BASE_INDEX_DIR = "./indexes"
+
 
 # --- CUSTOM PROMPTS ---
 CUSTOM_CONTEXT_PROMPT_TEMPLATE = (
@@ -231,7 +256,7 @@ def load_engine_for_modules(
     )
 
     for module in selected_modules:
-        path = os.path.join(BASE_INDEX_DIR, module)
+        path = os.path.join(get_base_index_dir(), module)
         if not os.path.exists(path):
             continue
 

@@ -47,13 +47,13 @@ tensor-truth
 
 On first launch, pre-built indexes will auto-download from Google Drive (takes a few minutes). Also a small qwen2.5:0.5b will be pulled automatically for assigning automatic titles to chats.
 
-## Index Downloads
+## Data Storage
 
-Pre-built indexes download automatically on startup. Note that Google Drive has rate limits, so if it refuses to download, try manually from [indexes.tar](https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing).
+All user data (chat history, presets, indexes) is stored in `~/.tensortruth` on macOS/Linux or `%USERPROFILE%\.tensortruth` on Windows. This keeps your working directory clean while maintaining persistent state across sessions.
 
-Extract to `./indexes` in the project root.
+Pre-built indexes download automatically to this directory on startup. If Google Drive rate limits prevent auto-download, manually fetch [indexes.tar](https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing) and extract to `~/.tensortruth/indexes`.
 
-For details on the contents of this archive, see [config/api.json](config/api.json) and [config/papers.json](config/papers.json). These are my curated lists of useful libraries and research papers. Feel free to fork and set up your own indexes. See below instructions on how to build the indexes.
+For index contents, see [config/api.json](config/api.json) and [config/papers.json](config/papers.json). These are curated lists of useful libraries and research papers. Fork and customize as needed.
 
 ## Requirements
 

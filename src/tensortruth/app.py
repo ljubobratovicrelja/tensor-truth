@@ -15,9 +15,12 @@ from tensortruth.app_utils import (
     download_indexes_with_ui,
     free_memory,
     get_available_modules,
+    get_indexes_dir,
     get_ollama_models,
+    get_presets_file,
     get_random_generating_message,
     get_random_rag_processing_message,
+    get_sessions_file,
     get_system_devices,
     load_presets,
     load_sessions,
@@ -29,9 +32,10 @@ from tensortruth.app_utils import (
 from tensortruth.app_utils.session import update_title_async
 
 # --- CONFIG ---
-SESSIONS_FILE = "chat_sessions.json"
-PRESETS_FILE = "presets.json"
-INDEX_DIR = "./indexes"
+# Use platform-specific user data directory (~/.tensortruth)
+SESSIONS_FILE = get_sessions_file()
+PRESETS_FILE = get_presets_file()
+INDEX_DIR = get_indexes_dir()
 GDRIVE_LINK = (
     "https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing"
 )

@@ -9,10 +9,12 @@ from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreI
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from tensortruth.rag_engine import get_embed_model
+from tensortruth.rag_engine import get_base_index_dir, get_embed_model
 
+# Source directory is in the current working directory (where docs are placed)
 SOURCE_DIR = "./library_docs"
-BASE_INDEX_DIR = "./indexes"
+# Indexes are built directly into the user data directory
+BASE_INDEX_DIR = get_base_index_dir()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("BUILDER")

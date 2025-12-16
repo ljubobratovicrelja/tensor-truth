@@ -10,6 +10,7 @@ from tensortruth.rag_engine import (
     CUSTOM_CONTEXT_PROMPT_NO_SOURCES,
     NO_CONTEXT_FALLBACK_CONTEXT,
     MultiIndexRetriever,
+    get_base_index_dir,
     get_embed_model,
     get_llm,
     get_reranker,
@@ -22,6 +23,7 @@ __version__ = "0.1.0"
 __all__ = [
     # RAG Engine
     "load_engine_for_modules",
+    "get_base_index_dir",
     "get_embed_model",
     "get_llm",
     "get_reranker",
