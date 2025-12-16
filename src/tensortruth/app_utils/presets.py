@@ -5,7 +5,18 @@ import os
 
 
 def load_presets(presets_file: str):
-    """Load presets from JSON file."""
+    """Load presets from JSON file.
+
+    If the file doesn't exist, generates it from defaults.
+    """
+    # Try to ensure presets exist (generates from defaults if missing)
+    try:
+        from tensortruth.preset_defaults import ensure_presets_exist
+
+        ensure_presets_exist(presets_file)
+    except Exception:
+        pass  # Continue even if generation fails
+
     if os.path.exists(presets_file):
         try:
             with open(presets_file, "r", encoding="utf-8") as f:
@@ -35,7 +46,10 @@ def delete_preset(name, presets_file: str):
 def apply_preset(
     name, available_mods, available_models, available_devices, presets_file: str
 ):
-    """Apply a preset configuration to session state."""
+    """Apply a preset configuration to session state.
+
+    Gracefully handles missing models by attempting to resolve a suitable alternative.
+    """
     import streamlit as st
 
     presets = load_presets(presets_file)
@@ -51,9 +65,30 @@ def apply_preset(
         valid_mods = [m for m in p["modules"] if m in available_mods]
         st.session_state.setup_mods = valid_mods
 
-    # 2. Model
-    if "model" in p and p["model"] in available_models:
-        st.session_state.setup_model = p["model"]
+    # 2. Model - with fallback to model preference resolution
+    if "model" in p:
+        if p["model"] in available_models:
+            st.session_state.setup_model = p["model"]
+        else:
+            # Model not available - try to resolve from preference if it exists
+            try:
+                from tensortruth.preset_defaults import (
+                    get_default_presets,
+                    resolve_model_for_preset,
+                )
+
+                defaults = get_default_presets()
+                if name in defaults and "model_preference" in defaults[name]:
+                    fallback = resolve_model_for_preset(
+                        defaults[name], available_models
+                    )
+                    if fallback:
+                        st.session_state.setup_model = fallback
+                        st.warning(
+                            f"Model '{p['model']}' not available. Using '{fallback}' instead."
+                        )
+            except Exception:
+                pass  # Keep existing model if resolution fails
 
     # 3. Parameters - only update if present in preset
     if "reranker_model" in p:
