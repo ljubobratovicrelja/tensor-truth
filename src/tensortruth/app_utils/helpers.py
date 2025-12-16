@@ -9,8 +9,8 @@ from typing import List
 import torch
 
 
-def _download_and_extract_indexes(index_dir: str, gdrive_link: str):
-    tarball_path = os.path.join(index_dir, "..", "indexes.tar")
+def _download_and_extract_indexes(user_dir: str, gdrive_link: str):
+    tarball_path = os.path.join(user_dir, "indexes.tar")
 
     try:
         # Check if gdown is available
@@ -24,9 +24,9 @@ def _download_and_extract_indexes(index_dir: str, gdrive_link: str):
         # Download using gdown (handles Google Drive's quirks automatically)
         gdown.download(gdrive_link, tarball_path, quiet=False, fuzzy=True)
 
-        # Extract tarball to root directory (tar already contains indexes/ folder)
+        # Extract tarball to user directory (tar already contains indexes/ folder)
         with tarfile.open(tarball_path, "r:") as tar:
-            tar.extractall(path=index_dir)
+            tar.extractall(path=user_dir)
 
         # Clean up tarball
         os.remove(tarball_path)
@@ -76,7 +76,7 @@ def get_random_rag_processing_message():
     return messages[int(time.time()) % len(messages)]
 
 
-def download_indexes_with_ui(index_dir: str, gdrive_link: str):
+def download_indexes_with_ui(user_dir: str, gdrive_link: str):
     """
     Wrapper for download_and_extract_indexes that provides Streamlit UI feedback.
     """
@@ -86,7 +86,7 @@ def download_indexes_with_ui(index_dir: str, gdrive_link: str):
         with st.spinner(
             "📥 Downloading indexes from Google Drive (this may take a few minutes)..."
         ):
-            success = _download_and_extract_indexes(index_dir, gdrive_link)
+            success = _download_and_extract_indexes(user_dir, gdrive_link)
             if success:
                 st.success("✅ Indexes downloaded and extracted successfully!")
     except ImportError as e:

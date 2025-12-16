@@ -29,6 +29,7 @@ from tensortruth.app_utils import (
     get_random_rag_processing_message,
     get_sessions_file,
     get_system_devices,
+    get_user_data_dir,
     load_config,
     load_presets,
     load_sessions,
@@ -46,6 +47,7 @@ from tensortruth.core.ollama import get_ollama_url
 # Use platform-specific user data directory (~/.tensortruth)
 SESSIONS_FILE = get_sessions_file()
 PRESETS_FILE = get_presets_file()
+USER_DIR = get_user_data_dir()
 INDEX_DIR = get_indexes_dir()
 GDRIVE_LINK = (
     "https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing"
@@ -74,7 +76,7 @@ if os.path.exists(get_config_file_path()) is False:
 
 # Download indexes from Google Drive if directory is empty or missing
 if os.path.exists(INDEX_DIR) is False or not os.listdir(INDEX_DIR):
-    download_indexes_with_ui(INDEX_DIR, GDRIVE_LINK)
+    download_indexes_with_ui(USER_DIR, GDRIVE_LINK)
 
 # Path to logo (now inside the package)
 LOGO_PATH = Path(__file__).parent / "media" / "tensor_truth_banner.png"
