@@ -576,8 +576,12 @@ if st.session_state.mode == "setup":
                 if new_url != current_url:
                     try:
                         update_config(ollama_base_url=new_url)
+
+                        # Clear cached model list since URL changed
+                        get_ollama_models.clear()
+
                         st.success(
-                            "✅ Configuration saved! New connections will use this URL."
+                            "Configuration saved! Model list will refresh from new URL."
                         )
                     except Exception as e:
                         st.error(f"Failed to save config: {e}")
