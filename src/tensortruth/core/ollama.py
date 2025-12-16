@@ -4,7 +4,6 @@ import logging
 import os
 
 import requests
-import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -12,38 +11,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
 
-def _get_config_file_path():
-    """Get the config file path. Import is lazy to avoid circular dependencies."""
-    from tensortruth.app_utils.paths import get_user_data_dir
-
-    return get_user_data_dir() / "config.yaml"
-
-
-def _load_config():
-    """Load configuration from YAML file."""
-    config_file = _get_config_file_path()
-    if not config_file.exists():
-        return {}
-
-    try:
-        with open(config_file, "r") as f:
-            return yaml.safe_load(f) or {}
-    except Exception as e:
-        logger.warning(f"Error loading config: {e}")
-        return {}
-
-
-def get_ollama_url():
-    """
-    Get the effective Ollama URL.
-    Priority:
-    1. config.yaml ('ollama_url')
-    2. OLLAMA_HOST environment variable
-    3. Default (http://localhost:11434)
-    """
-    # 1. Check Config File
-    config = _load_config()
-    if config.get("ollama_url"):
+def get_ollama_url(config: dict = None) -> str:
+    if config is not None and "ollama_url" in config:
         return config["ollama_url"].rstrip("/")
 
     # 2. Check Environment Variable

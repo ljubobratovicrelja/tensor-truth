@@ -23,16 +23,17 @@ from tensortruth.app_utils import (
     get_random_rag_processing_message,
     get_sessions_file,
     get_system_devices,
+    load_config,
     load_presets,
     load_sessions,
     process_command,
     quick_launch_preset,
     rename_session,
+    save_config,
     save_preset,
     save_sessions,
     toggle_favorite,
 )
-from tensortruth.app_utils.config import save_config
 from tensortruth.app_utils.session import update_title_async
 from tensortruth.core.ollama import get_ollama_url
 
@@ -280,7 +281,6 @@ if st.session_state.mode == "setup":
         # --- QUICK LAUNCH FAVORITES ---
         favorites = get_favorites(PRESETS_FILE)
         if favorites:
-            st.markdown("#### Quick Launch")
             st.caption("One-click start with your favorite configurations")
 
             # Display favorites in cards (3 per row)
@@ -331,7 +331,7 @@ if st.session_state.mode == "setup":
 
         # --- ALL PRESETS MANAGER ---
         if presets:
-            with st.expander("All Presets", expanded=False):
+            with st.expander("Presets", expanded=False):
                 for preset_name in presets.keys():
                     is_favorite = presets[preset_name].get("favorite", False)
                     star_icon = "⭐" if is_favorite else "☆"
@@ -367,37 +367,20 @@ if st.session_state.mode == "setup":
                             toggle_favorite(preset_name, PRESETS_FILE)
                             st.rerun()
 
-        # --- CONNECTION SETTINGS ---
-        with st.expander("⚙️ Connection Settings", expanded=False):
-            current_url = get_ollama_url()
-            new_url = st.text_input(
-                "Ollama Base URL",
-                value=current_url,
-                help="e.g. http://localhost:11434 or http://192.168.1.50:11434",
-            )
-
-            if st.button("Save Connection URL"):
-                if new_url != current_url:
-                    save_config({"ollama_url": new_url})
-                    st.success("Configuration saved! Reloading...")
-                    time.sleep(0.5)
-                    st.rerun()
-                else:
-                    st.info("No changes made.")
-
         # --- MANUAL CONFIGURATION ---
-        with st.expander("Manual Configuration", expanded=False):
+        with st.expander("Configure New Session", expanded=False):
             with st.form("launch_form"):
                 # --- SELECTION AREA ---
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    st.subheader("1. Knowledge Base")
-                    selected_mods = st.multiselect(
-                        "Active Indices:", available_mods, key="setup_mods"
-                    )
+                st.subheader("1. Knowledge Base")
+                selected_mods = st.multiselect(
+                    "Active Indices:", available_mods, key="setup_mods"
+                )
 
-                with col_b:
-                    st.subheader("2. Model Selection")
+                st.subheader("2. Model Selection")
+
+                model_col, context_win_col, temperature_col = st.columns(3)
+
+                with model_col:
                     if available_models:
                         selected_model = st.selectbox(
                             "LLM:", available_models, key="setup_model"
@@ -406,9 +389,22 @@ if st.session_state.mode == "setup":
                         st.error("No models found in Ollama.")
                         selected_model = "None"
 
+                with context_win_col:
+                    ctx = st.select_slider(
+                        "Context Window",
+                        options=[2048, 4096, 8192, 16384, 32768],
+                        key="setup_ctx",
+                    )
+
+                with temperature_col:
+                    temp = st.slider(
+                        "Temperature", 0.0, 1.0, step=0.1, key="setup_temp"
+                    )
+
                 st.subheader("3. RAG Parameters")
-                p1, p2, p3 = st.columns(3)
-                with p1:
+
+                rerank_col, top_n_col, conf_col = st.columns(3)
+                with rerank_col:
                     reranker_model = st.selectbox(
                         "Reranker",
                         options=[
@@ -418,24 +414,15 @@ if st.session_state.mode == "setup":
                         ],
                         key="setup_reranker",
                     )
-                with p2:
-                    ctx = st.select_slider(
-                        "Context Window",
-                        options=[2048, 4096, 8192, 16384, 32768],
-                        key="setup_ctx",
-                    )
-                with p3:
-                    temp = st.slider(
-                        "Temperature", 0.0, 1.0, step=0.1, key="setup_temp"
-                    )
-
-                with st.expander("Advanced Settings"):
+                with top_n_col:
                     top_n = st.number_input(
                         "Top N (Final Context)",
                         min_value=1,
                         max_value=20,
                         key="setup_top_n",
                     )
+
+                with conf_col:
                     conf = st.slider(
                         "Confidence Warning Threshold",
                         0.0,
@@ -447,33 +434,34 @@ if st.session_state.mode == "setup":
                             "this threshold (soft hint, doesn't filter results)"
                         ),
                     )
-                    sys_prompt = st.text_area(
-                        "System Instructions:",
-                        height=68,
-                        placeholder="Optional...",
-                        key="setup_sys_prompt",
+
+                sys_prompt = st.text_area(
+                    "System Instructions:",
+                    height=68,
+                    placeholder="Optional...",
+                    key="setup_sys_prompt",
+                )
+
+                st.markdown("#### Hardware Allocation")
+                h1, h2 = st.columns(2)
+
+                with h1:
+                    rag_device = st.selectbox(
+                        "Pipeline Device (Embed/Rerank)",
+                        options=system_devices,
+                        help=(
+                            "Run Retrieval on specific hardware. "
+                            "CPU saves VRAM but is slower."
+                        ),
+                        key="setup_rag_device",
                     )
-
-                    st.markdown("#### Hardware Allocation")
-                    h1, h2 = st.columns(2)
-
-                    with h1:
-                        rag_device = st.selectbox(
-                            "Pipeline Device (Embed/Rerank)",
-                            options=system_devices,
-                            help=(
-                                "Run Retrieval on specific hardware. "
-                                "CPU saves VRAM but is slower."
-                            ),
-                            key="setup_rag_device",
-                        )
-                    with h2:
-                        llm_device = st.selectbox(
-                            "Model Device (Ollama)",
-                            options=["gpu", "cpu"],
-                            help="Force Ollama to run on CPU to save VRAM for other tasks.",
-                            key="setup_llm_device",
-                        )
+                with h2:
+                    llm_device = st.selectbox(
+                        "Model Device (Ollama)",
+                        options=["gpu", "cpu"],
+                        help="Force Ollama to run on CPU to save VRAM for other tasks.",
+                        key="setup_llm_device",
+                    )
 
                 st.markdown("---")
 
@@ -565,6 +553,38 @@ if st.session_state.mode == "setup":
                     st.rerun()
                 else:
                     st.warning("Please enter a preset name")
+
+        # --- CONNECTION SETTINGS ---
+        with st.expander("Connection Settings", expanded=False):
+
+            config = None
+
+            try:
+                config = load_config()
+            except Exception as e:
+                # Likely failed reading for not even created yet, which is fine.
+                print(f"Config reading failed: {e}")
+
+            current_url = get_ollama_url(config)
+
+            new_url = st.text_input(
+                "Ollama Base URL",
+                value=current_url,
+                help="e.g. http://localhost:11434 or http://192.168.1.50:11434",
+            )
+
+            if st.button("Save Connection URL"):
+                if new_url != current_url:
+                    try:
+                        save_config({"ollama_url": new_url})
+                        st.success(
+                            "Configuration saved! New connections will use this URL."
+                        )
+                    except Exception as e:
+                        st.error(f"Failed to save config: {e}")
+                else:
+                    st.info("No changes made.")
+
 
 elif st.session_state.mode == "chat":
     current_id = st.session_state.chat_data.get("current_id")
