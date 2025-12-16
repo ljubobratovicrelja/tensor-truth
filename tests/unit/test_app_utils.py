@@ -44,24 +44,10 @@ class TestHelpers:
         assert "cpu" in devices
         assert "cuda" not in devices
 
-    @patch("tensortruth.app_utils.helpers.aiohttp.ClientSession")
-    def test_get_ollama_models_success(self, mock_session_class):
+    @patch("tensortruth.core.ollama.get_available_models")
+    def test_get_ollama_models_success(self, mock_get_available):
         """Test successful Ollama model fetch."""
-        # Mock the async context manager and response
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={
-                "models": [
-                    {"name": "deepseek-r1:8b"},
-                    {"name": "llama2:7b"},
-                ]
-            }
-        )
-
-        mock_session = MagicMock()
-        mock_session.get.return_value.__aenter__.return_value = mock_response
-        mock_session_class.return_value.__aenter__.return_value = mock_session
+        mock_get_available.return_value = ["deepseek-r1:8b", "llama2:7b"]
 
         models = get_ollama_models()
 
@@ -69,11 +55,11 @@ class TestHelpers:
         assert "deepseek-r1:8b" in models
         assert "llama2:7b" in models
 
-    @patch("tensortruth.app_utils.helpers.aiohttp.ClientSession")
-    def test_get_ollama_models_failure(self, mock_session_class):
+    @patch("tensortruth.core.ollama.get_available_models")
+    def test_get_ollama_models_failure(self, mock_get_available):
         """Test Ollama model fetch when service is down."""
-        # Make the session creation raise an exception
-        mock_session_class.side_effect = Exception("Connection refused")
+        # Make the function raise an exception
+        mock_get_available.side_effect = Exception("Connection refused")
 
         models = get_ollama_models()
 

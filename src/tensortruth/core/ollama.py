@@ -7,6 +7,9 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# API base constant for backward compatibility
+OLLAMA_API_BASE = "http://localhost:11434/api"
+
 
 def get_ollama_url() -> str:
     """

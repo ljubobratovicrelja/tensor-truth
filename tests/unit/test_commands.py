@@ -49,7 +49,7 @@ def mock_streamlit():
 class TestListStatusCommands:
     """Tests for /list, /ls, and /status commands."""
 
-    @patch("tensortruth.app_utils.commands.get_ollama_ps")
+    @patch("tensortruth.app_utils.helpers.get_ollama_ps")
     @patch("tensortruth.app_utils.commands.get_system_devices")
     def test_list_command(
         self, mock_get_devices, mock_get_ps, base_session, available_modules
@@ -69,7 +69,7 @@ class TestListStatusCommands:
         assert "✅" in response  # Active module marker
         assert "deepseek-r1:8b" in response
 
-    @patch("tensortruth.app_utils.commands.get_ollama_ps")
+    @patch("tensortruth.app_utils.helpers.get_ollama_ps")
     @patch("tensortruth.app_utils.commands.get_system_devices")
     def test_status_command(
         self, mock_get_devices, mock_get_ps, base_session, available_modules
@@ -85,7 +85,7 @@ class TestListStatusCommands:
         assert is_cmd is True
         assert "Knowledge Base & System Status" in response
 
-    @patch("tensortruth.app_utils.commands.get_ollama_ps")
+    @patch("tensortruth.app_utils.helpers.get_ollama_ps")
     @patch("tensortruth.app_utils.commands.get_system_devices")
     def test_list_with_running_model(
         self, mock_get_devices, mock_get_ps, base_session, available_modules
@@ -148,7 +148,7 @@ class TestModelCommand:
     """Tests for /model command."""
 
     @patch("tensortruth.app_utils.commands.get_ollama_models")
-    @patch("tensortruth.app_utils.commands.get_ollama_ps")
+    @patch("tensortruth.app_utils.helpers.get_ollama_ps")
     def test_model_no_args_shows_info(
         self, mock_get_ps, mock_get_models, base_session, available_modules
     ):
