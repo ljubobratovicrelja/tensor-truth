@@ -1,30 +1,77 @@
-"""Slash command processing for chat interface."""
+"""Slash command processing for chat interface - Refactored with class-based architecture."""
+
+from abc import ABC, abstractmethod
+from typing import Callable, List, Optional, Tuple
 
 import streamlit as st
 
 from .helpers import free_memory, get_ollama_models, get_ollama_ps, get_system_devices
 
+# Type aliases for clarity
+StateModifier = Optional[Callable[[], None]]
+CommandResult = Tuple[bool, str, StateModifier]
 
-def process_command(prompt, session, available_mods):
-    """
-    Handles /slash commands.
 
-    Returns:
-        tuple: (is_command, response_message, state_modifier_fn)
-        The state_modifier_fn (if not None) should be called to apply state changes.
-    """
-    cmd_parts = prompt.strip().split()
-    command = cmd_parts[0].lower()
-    args = cmd_parts[1:] if len(cmd_parts) > 1 else []
+class Command(ABC):
+    """Base class for all commands."""
 
-    active_mods = session.get("modules", [])
-    current_params = session.get("params", {})
-    available_devices = get_system_devices()
+    def __init__(
+        self,
+        name: str,
+        aliases: Optional[List[str]] = None,
+        usage: Optional[str] = None,
+    ):
+        """
+        Initialize a command.
 
-    response_msg = ""
-    state_modifier = None
+        Args:
+            name: Primary command name (e.g., "list")
+            aliases: Alternative names for the command (e.g., ["ls", "status"])
+            usage: Usage string shown in help (e.g., "/list - Show active indices")
+        """
+        self.name = name
+        self.aliases = aliases or []
+        self.usage = usage or f"/{name}"
 
-    if command in ["/list", "/ls", "/status"]:
+    def matches(self, command: str) -> bool:
+        """Check if a command string matches this command."""
+        cmd = command.lstrip("/").lower()
+        return cmd == self.name or cmd in self.aliases
+
+    @abstractmethod
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        """
+        Execute the command.
+
+        Args:
+            args: Command arguments
+            session: Current session state
+            available_mods: Available knowledge base modules
+
+        Returns:
+            Tuple of (is_command, response_message, state_modifier_fn)
+        """
+        pass
+
+
+class ListCommand(Command):
+    """Command to show knowledge base and system status."""
+
+    def __init__(self):
+        super().__init__(
+            name="list",
+            aliases=["ls", "status"],
+            usage="/list - Show active indices & hardware usage",
+        )
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        active_mods = session.get("modules", [])
+        current_params = session.get("params", {})
+
         lines = ["### Knowledge Base & System Status"]
 
         # Knowledge Base Section
@@ -69,254 +116,383 @@ def process_command(prompt, session, available_mods):
                     if size_gb > 0:
                         lines.append(f"**Model Size:** `{size_gb:.2f} GB`")
 
-                    # Show processor if available
                     processor = model_info.get("details", {}).get("parameter_size", "")
                     if processor:
                         lines.append(f"**Parameters:** `{processor}`")
         except Exception:
-            # Silently fail if Ollama API is unavailable
             pass
 
         lines.append(
-            (
-                "\n**Commands:** `/load <name>`, `/device rag <cpu|cuda|mps>`, "
-                "`/device llm <cpu|gpu>`, `/conf <val>`"
-            )
+            "\n**Commands:** `/load <name>`, `/device rag <cpu|cuda|mps>`, "
+            "`/device llm <cpu|gpu>`, `/conf <val>`"
         )
-        response_msg = "\n".join(lines)
-        return True, response_msg, None
+        return True, "\n".join(lines), None
 
-    elif command == "/help":
-        lines = [
-            "###  Command Reference",
-            "- **/list** / **/status**: Show active indices & hardware usage.",
-            "- **/model [name]**: Show current model info or switch to a different model.",
-            "- **/load <index>**: Load a specific knowledge base.",
-            "- **/unload <index>**: Unload a knowledge base.",
-            "- **/reload**: Flush VRAM and restart the engine.",
-            (
-                "- **/device rag <cpu|cuda|mps>**: Move RAG pipeline (Embed/Rerank) "
-                "to specific hardware."
-            ),
-            "- **/device llm <cpu|gpu>**: Move LLM (Ollama) to specific hardware.",
-            "- **/conf <0.0-1.0>**: Set the confidence score cutoff for retrieval.",
-            "- **/help**: Show this list.",
-        ]
-        response_msg = "\n".join(lines)
 
-    elif command == "/model":
+class HelpCommand(Command):
+    """Command to show help information."""
+
+    def __init__(self, command_registry: "CommandRegistry"):
+        super().__init__(name="help", usage="/help - Show command help")
+        self.command_registry = command_registry
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        lines = ["###  Command Reference"]
+        for cmd in self.command_registry.commands:
+            lines.append(f"- **{cmd.usage}**")
+        return True, "\n".join(lines), None
+
+
+class ModelCommand(Command):
+    """Command to show or switch models."""
+
+    def __init__(self):
+        super().__init__(
+            name="model",
+            usage="/model [name] - Show current model info or switch to a different model",
+        )
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        current_params = session.get("params", {})
+
         if not args:
             # Show current model info and list available models
-            lines = ["### Current Model Configuration"]
-            lines.append(
-                f"**Active Model:** `{current_params.get('model', 'Unknown')}`"
-            )
-
-            # Show Ollama runtime info if available
-            try:
-                running_models = get_ollama_ps()
-                if running_models:
-                    for model_info in running_models:
-                        model_name = model_info.get("name", "Unknown")
-                        size_vram = model_info.get("size_vram", 0)
-                        size = model_info.get("size", 0)
-
-                        # Convert bytes to GB for readability
-                        size_vram_gb = size_vram / (1024**3) if size_vram else 0
-                        size_gb = size / (1024**3) if size else 0
-
-                        if size_vram_gb > 0:
-                            lines.append(f"**VRAM Usage:** `{size_vram_gb:.2f} GB`")
-                        if size_gb > 0:
-                            lines.append(f"**Model Size:** `{size_gb:.2f} GB`")
-
-                        # Show parameters if available
-                        processor = model_info.get("details", {}).get(
-                            "parameter_size", ""
-                        )
-                        if processor:
-                            lines.append(f"**Parameters:** `{processor}`")
-            except Exception:
-                pass
-
-            # List available models
-            try:
-                available_models = get_ollama_models()
-                if available_models:
-                    lines.append("\n### Available Models")
-                    for model in available_models:
-                        if model == current_params.get("model"):
-                            lines.append(f"- ✅ `{model}` (current)")
-                        else:
-                            lines.append(f"- `{model}`")
-                    lines.append("\n💡 **Tip:** Use `/model <name>` to switch models")
-                else:
-                    lines.append("\n⚠️ No Ollama models found")
-            except Exception:
-                lines.append("\n⚠️ Could not fetch available models from Ollama")
-
-            response_msg = "\n".join(lines)
+            return self._show_model_info(current_params)
         else:
             # Switch to a different model
-            new_model = args[0]
+            return self._switch_model(args[0], session)
 
-            # Verify the model exists
-            try:
-                available_models = get_ollama_models()
-                if available_models and new_model in available_models:
-                    response_msg = (
-                        f"✅ **Model switched to:** `{new_model}`\n\n"
-                        f"Engine restarting with new model..."
-                    )
+    def _show_model_info(self, current_params: dict) -> CommandResult:
+        """Show current model configuration and available models."""
+        lines = ["### Current Model Configuration"]
+        lines.append(f"**Active Model:** `{current_params.get('model', 'Unknown')}`")
 
-                    def update_model():
-                        session["params"]["model"] = new_model
-                        st.session_state.loaded_config = None
+        # Show Ollama runtime info if available
+        try:
+            running_models = get_ollama_ps()
+            if running_models:
+                for model_info in running_models:
+                    size_vram = model_info.get("size_vram", 0)
+                    size = model_info.get("size", 0)
 
-                    state_modifier = update_model
-                else:
-                    response_msg = (
-                        f"❌ Model `{new_model}` not found.\n\n"
-                        f"Use `/model` to see available models."
-                    )
-            except Exception:
-                response_msg = (
-                    f"⚠️ Could not verify model availability.\n\n"
-                    f"Attempting to switch to `{new_model}` anyway..."
+                    size_vram_gb = size_vram / (1024**3) if size_vram else 0
+                    size_gb = size / (1024**3) if size else 0
+
+                    if size_vram_gb > 0:
+                        lines.append(f"**VRAM Usage:** `{size_vram_gb:.2f} GB`")
+                    if size_gb > 0:
+                        lines.append(f"**Model Size:** `{size_gb:.2f} GB`")
+
+                    processor = model_info.get("details", {}).get("parameter_size", "")
+                    if processor:
+                        lines.append(f"**Parameters:** `{processor}`")
+        except Exception:
+            pass
+
+        # List available models
+        try:
+            available_models = get_ollama_models()
+            if available_models:
+                lines.append("\n### Available Models")
+                for model in available_models:
+                    if model == current_params.get("model"):
+                        lines.append(f"- ✅ `{model}` (current)")
+                    else:
+                        lines.append(f"- `{model}`")
+                lines.append("\n💡 **Tip:** Use `/model <name>` to switch models")
+            else:
+                lines.append("\n⚠️ No Ollama models found")
+        except Exception:
+            lines.append("\n⚠️ Could not fetch available models from Ollama")
+
+        return True, "\n".join(lines), None
+
+    def _switch_model(self, new_model: str, session: dict) -> CommandResult:
+        """Switch to a different model."""
+        try:
+            available_models = get_ollama_models()
+            if available_models and new_model in available_models:
+                response = (
+                    f"✅ **Model switched to:** `{new_model}`\n\n"
+                    f"Engine restarting with new model..."
                 )
 
                 def update_model():
                     session["params"]["model"] = new_model
                     st.session_state.loaded_config = None
 
-                state_modifier = update_model
-
-    elif command == "/load":
-        if not args:
-            response_msg = " Usage: `/load <index_name>`"
-        else:
-            target = args[0]
-            if target not in available_mods:
-                response_msg = f"Index `{target}` not found."
-            elif target in active_mods:
-                response_msg = f" Index `{target}` is active."
+                return True, response, update_model
             else:
-                response_msg = f"✅ **Loaded:** `{target}`. Engine restarting..."
+                response = (
+                    f"❌ Model `{new_model}` not found.\n\n"
+                    f"Use `/model` to see available models."
+                )
+                return True, response, None
+        except Exception:
+            response = (
+                f"⚠️ Could not verify model availability.\n\n"
+                f"Attempting to switch to `{new_model}` anyway..."
+            )
 
-                def load_module():
-                    session["modules"].append(target)
-                    st.session_state.loaded_config = None
+            def update_model():
+                session["params"]["model"] = new_model
+                st.session_state.loaded_config = None
 
-                state_modifier = load_module
+            return True, response, update_model
 
-    elif command == "/unload":
+
+class LoadCommand(Command):
+    """Command to load a knowledge base module."""
+
+    def __init__(self):
+        super().__init__(
+            name="load", usage="/load <index> - Load a specific knowledge base"
+        )
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
         if not args:
-            response_msg = " Usage: `/unload <index_name>`"
+            return True, " Usage: `/load <index_name>`", None
+
+        target = args[0]
+        active_mods = session.get("modules", [])
+
+        if target not in available_mods:
+            return True, f"Index `{target}` not found.", None
+        elif target in active_mods:
+            return True, f" Index `{target}` is active.", None
         else:
-            target = args[0]
-            if target not in active_mods:
-                response_msg = f"ℹ️ Index `{target}` not active."
-            else:
-                response_msg = f"✅ **Unloaded:** `{target}`. Engine restarting..."
+            response = f"✅ **Loaded:** `{target}`. Engine restarting..."
 
-                def unload_module():
-                    session["modules"].remove(target)
-                    st.session_state.loaded_config = None
+            def load_module():
+                session["modules"].append(target)
+                st.session_state.loaded_config = None
 
-                state_modifier = unload_module
+            return True, response, load_module
 
-    elif command == "/reload":
-        response_msg = "**System Reload:** Memory flushed."
+
+class UnloadCommand(Command):
+    """Command to unload a knowledge base module."""
+
+    def __init__(self):
+        super().__init__(
+            name="unload", usage="/unload <index> - Unload a knowledge base"
+        )
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        if not args:
+            return True, " Usage: `/unload <index_name>`", None
+
+        target = args[0]
+        active_mods = session.get("modules", [])
+
+        if target not in active_mods:
+            return True, f"ℹ️ Index `{target}` not active.", None
+        else:
+            response = f"✅ **Unloaded:** `{target}`. Engine restarting..."
+
+            def unload_module():
+                session["modules"].remove(target)
+                st.session_state.loaded_config = None
+
+            return True, response, unload_module
+
+
+class ReloadCommand(Command):
+    """Command to reload the system and flush memory."""
+
+    def __init__(self):
+        super().__init__(
+            name="reload", usage="/reload - Flush VRAM and restart the engine"
+        )
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        response = "**System Reload:** Memory flushed."
 
         def reload_system():
             free_memory()
             st.session_state.loaded_config = None
 
-        state_modifier = reload_system
+        return True, response, reload_system
 
-    elif command in ["/conf", "/confidence"]:
-        if not args:
-            response_msg = " Usage: `/conf <value>` (e.g. 0.2)"
-        else:
-            try:
-                new_conf = float(args[0])
-                if 0.0 <= new_conf <= 1.0:
-                    response_msg = (
-                        f"**Confidence Cutoff:** Set to `{new_conf}`. "
-                        f"Engine restarting..."
-                    )
 
-                    def update_confidence():
-                        session["params"]["confidence_cutoff"] = new_conf
-                        st.session_state.loaded_config = (
-                            None  # Force reload to apply postprocessor change
-                        )
+class ConfCommand(Command):
+    """Command to set confidence cutoff."""
 
-                    state_modifier = update_confidence
-                else:
-                    response_msg = "Value must be between 0.0 and 1.0."
-            except ValueError:
-                response_msg = "Invalid number. Example: `/conf 0.3`"
-
-    elif command == "/device":
-        if len(args) < 2:
-            response_msg = (
-                "Usage: `/device rag <cpu|cuda|mps>` OR " "`/device llm <cpu|gpu>`"
-            )
-        else:
-            target_type = args[0].lower()  # 'rag' or 'llm'
-            target_dev = args[1].lower()  # 'cpu', 'cuda', ...
-
-            if target_type == "rag":
-                if target_dev not in available_devices:
-                    response_msg = (
-                        f"Device `{target_dev}` not available. Options: "
-                        f"{available_devices}"
-                    )
-                else:
-                    response_msg = (
-                        f"**Pipeline Switched:** Now running Embed/Rerank on "
-                        f"`{target_dev.upper()}`."
-                    )
-
-                    def update_rag_device():
-                        session["params"]["rag_device"] = target_dev
-                        st.session_state.loaded_config = None
-
-                    state_modifier = update_rag_device
-
-            elif target_type == "llm":
-                if target_dev not in ["cpu", "gpu"]:
-                    response_msg = "LLM Device options: `cpu` or `gpu`"
-                else:
-                    response_msg = (
-                        f"**LLM Switched:** Now running Model on "
-                        f"`{target_dev.upper()}`."
-                    )
-
-                    def update_llm_device():
-                        session["params"]["llm_device"] = target_dev
-                        st.session_state.loaded_config = None
-
-                    state_modifier = update_llm_device
-            else:
-                response_msg = "Unknown target. Use `rag` or `llm`."
-    else:
-        # Unknown command - show error and list available commands
-        response_msg = f"❌ **Unknown command:** `{command}`\n\n" + "\n".join(
-            [
-                "### Available Commands",
-                "- **/list** / **/status** - Show active indices & hardware usage",
-                "- **/model [name]** - Show current model or switch to different model",
-                "- **/load <index>** - Load a knowledge base",
-                "- **/unload <index>** - Unload a knowledge base",
-                "- **/reload** - Flush VRAM and restart engine",
-                "- **/device rag <cpu|cuda|mps>** - Move RAG pipeline to specific hardware",
-                "- **/device llm <cpu|gpu>** - Move LLM to specific hardware",
-                "- **/conf <0.0-1.0>** - Set confidence score cutoff",
-                "- **/help** - Show command help",
-            ]
+    def __init__(self):
+        super().__init__(
+            name="conf",
+            aliases=["confidence"],
+            usage="/conf <0.0-1.0> - Set the confidence score cutoff for retrieval",
         )
 
-    # Return the result - all paths lead here except early returns for errors
-    return True, response_msg, state_modifier if response_msg else (False, None, None)
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        if not args:
+            return True, " Usage: `/conf <value>` (e.g. 0.2)", None
+
+        try:
+            new_conf = float(args[0])
+            if 0.0 <= new_conf <= 1.0:
+                response = (
+                    f"**Confidence Cutoff:** Set to `{new_conf}`. Engine restarting..."
+                )
+
+                def update_confidence():
+                    session["params"]["confidence_cutoff"] = new_conf
+                    st.session_state.loaded_config = None
+
+                return True, response, update_confidence
+            else:
+                return True, "Value must be between 0.0 and 1.0.", None
+        except ValueError:
+            return True, "Invalid number. Example: `/conf 0.3`", None
+
+
+class DeviceCommand(Command):
+    """Command to configure hardware allocation."""
+
+    def __init__(self):
+        super().__init__(
+            name="device",
+            usage=(
+                "/device rag <cpu|cuda|mps> OR /device llm <cpu|gpu> - "
+                "Configure hardware allocation"
+            ),
+        )
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        if len(args) < 2:
+            return (
+                True,
+                "Usage: `/device rag <cpu|cuda|mps>` OR `/device llm <cpu|gpu>`",
+                None,
+            )
+
+        target_type = args[0].lower()  # 'rag' or 'llm'
+        target_dev = args[1].lower()  # 'cpu', 'cuda', ...
+
+        if target_type == "rag":
+            return self._configure_rag_device(target_dev, session)
+        elif target_type == "llm":
+            return self._configure_llm_device(target_dev, session)
+        else:
+            return True, "Unknown target. Use `rag` or `llm`.", None
+
+    def _configure_rag_device(self, target_dev: str, session: dict) -> CommandResult:
+        """Configure RAG pipeline device."""
+        available_devices = get_system_devices()
+        if target_dev not in available_devices:
+            response = (
+                f"Device `{target_dev}` not available. Options: {available_devices}"
+            )
+            return True, response, None
+        else:
+            response = f"**Pipeline Switched:** Now running Embed/Rerank on `{target_dev.upper()}`."
+
+            def update_rag_device():
+                session["params"]["rag_device"] = target_dev
+                st.session_state.loaded_config = None
+
+            return True, response, update_rag_device
+
+    def _configure_llm_device(self, target_dev: str, session: dict) -> CommandResult:
+        """Configure LLM device."""
+        if target_dev not in ["cpu", "gpu"]:
+            return True, "LLM Device options: `cpu` or `gpu`", None
+        else:
+            response = f"**LLM Switched:** Now running Model on `{target_dev.upper()}`."
+
+            def update_llm_device():
+                session["params"]["llm_device"] = target_dev
+                st.session_state.loaded_config = None
+
+            return True, response, update_llm_device
+
+
+class CommandRegistry:
+    """Registry for managing and executing commands."""
+
+    def __init__(self):
+        self.commands: List[Command] = []
+
+    def register(self, command: Command):
+        """Register a command."""
+        self.commands.append(command)
+
+    def find_command(self, command_str: str) -> Optional[Command]:
+        """Find a command by name or alias."""
+        for cmd in self.commands:
+            if cmd.matches(command_str):
+                return cmd
+        return None
+
+    def get_help_text(self) -> str:
+        """Get formatted help text for unknown commands."""
+        lines = [
+            "### Available Commands",
+            "- **/list** / **/status** - Show active indices & hardware usage",
+            "- **/model [name]** - Show current model or switch to different model",
+            "- **/load <index>** - Load a knowledge base",
+            "- **/unload <index>** - Unload a knowledge base",
+            "- **/reload** - Flush VRAM and restart engine",
+            "- **/device rag <cpu|cuda|mps>** - Move RAG pipeline to specific hardware",
+            "- **/device llm <cpu|gpu>** - Move LLM to specific hardware",
+            "- **/conf <0.0-1.0>** - Set confidence score cutoff",
+            "- **/help** - Show command help",
+        ]
+        return "\n".join(lines)
+
+
+# Initialize global command registry
+_registry = CommandRegistry()
+_registry.register(ListCommand())
+_registry.register(ModelCommand())
+_registry.register(LoadCommand())
+_registry.register(UnloadCommand())
+_registry.register(ReloadCommand())
+_registry.register(ConfCommand())
+_registry.register(DeviceCommand())
+_registry.register(HelpCommand(_registry))
+
+
+def process_command(
+    prompt: str, session: dict, available_mods: List[str]
+) -> CommandResult:
+    """
+    Process a slash command.
+
+    Args:
+        prompt: The command string (e.g., "/list" or "/load pytorch")
+        session: Current session state
+        available_mods: Available knowledge base modules
+
+    Returns:
+        Tuple of (is_command, response_message, state_modifier_fn)
+    """
+    cmd_parts = prompt.strip().split()
+    command = cmd_parts[0].lower()
+    args = cmd_parts[1:] if len(cmd_parts) > 1 else []
+
+    # Find and execute command
+    cmd_obj = _registry.find_command(command)
+    if cmd_obj:
+        return cmd_obj.execute(args, session, available_mods)
+    else:
+        # Unknown command
+        response = (
+            f"❌ **Unknown command:** `{command}`\n\n" + _registry.get_help_text()
+        )
+        return True, response, None
