@@ -85,16 +85,31 @@ def process_pdf_upload(uploaded_file, session_id: str, sessions_file: str):
             # TODO: investigate
             _ = handler.convert_pdf_to_markdown(pdf_metadata["path"])
 
-        # Build/rebuild index
-        builder = SessionIndexBuilder(session_id)
+        # Build/rebuild index with metadata extraction
+        # Load existing metadata cache from session
+        metadata_cache = session.get("pdf_metadata_cache", {})
+        builder = SessionIndexBuilder(session_id, metadata_cache=metadata_cache)
+
         with st.spinner("Indexing document..."):
             markdown_files = handler.get_all_markdown_files()
             builder.build_index(markdown_files)
 
-        # Update status to "indexed"
+        # Save updated metadata cache back to session
+        session["pdf_metadata_cache"] = builder.get_metadata_cache()
+
+        # Update PDF document status with extracted metadata
         for doc in session["pdf_documents"]:
             if doc["id"] == pdf_metadata["id"]:
                 doc["status"] = "indexed"
+
+                # Add extracted metadata to PDF document record
+                pdf_meta = metadata_cache.get(pdf_metadata["id"], {})
+                if pdf_meta:
+                    doc["display_name"] = pdf_meta.get("display_name")
+                    doc["authors"] = pdf_meta.get("authors")
+                    doc["source_url"] = pdf_meta.get("source_url")
+                    doc["metadata_extracted_at"] = str(datetime.now())
+
         session["has_temp_index"] = True
         save_sessions(sessions_file)
 
@@ -130,12 +145,17 @@ def delete_pdf_from_session(pdf_id: str, session_id: str, sessions_file: str):
     handler.delete_pdf(pdf_id)
 
     # Rebuild index if any PDFs remain, otherwise delete index
-    builder = SessionIndexBuilder(session_id)
+    # Load metadata cache
+    metadata_cache = session.get("pdf_metadata_cache", {})
+    builder = SessionIndexBuilder(session_id, metadata_cache=metadata_cache)
+
     if session["pdf_documents"]:
         try:
             markdown_files = handler.get_all_markdown_files()
             if markdown_files:
                 builder.build_index(markdown_files)
+                # Update metadata cache
+                session["pdf_metadata_cache"] = builder.get_metadata_cache()
             else:
                 builder.delete_index()
                 session["has_temp_index"] = False
@@ -944,7 +964,36 @@ elif st.session_state.mode == "chat":
                 if "sources" in msg and msg["sources"]:
                     with st.expander("📚 Sources"):
                         for src in msg["sources"]:
-                            st.caption(f"{src['file']} ({src['score']:.2f})")
+                            # Extract metadata (with fallbacks for old sessions)
+                            fname = src.get("file", "Unknown")
+                            display_name = src.get("display_name", fname)
+                            source_url = src.get("source_url")
+                            authors = src.get("authors")
+                            doc_type = src.get("doc_type", "unknown")
+                            score = src.get("score", 0.0)
+
+                            # Icon based on document type
+                            icon_map = {
+                                "paper": "📄",
+                                "library_doc": "📚",
+                                "uploaded_pdf": "📎",
+                                "book": "📖",
+                            }
+                            icon = icon_map.get(doc_type, "📄")
+
+                            # Format display with authors if available
+                            if authors:
+                                label = f"{display_name} - {authors}"
+                            else:
+                                label = display_name
+
+                            # Render with optional link
+                            if source_url:
+                                st.caption(
+                                    f"{icon} [{label}]({source_url}) ({score:.2f})"
+                                )
+                            else:
+                                st.caption(f"{icon} {label} ({score:.2f})")
             with meta_cols[1]:
                 if "time_taken" in msg:
                     # Check different response types
@@ -1231,9 +1280,50 @@ elif st.session_state.mode == "chat":
                             with st.expander("📚 Sources"):
                                 for node in context_nodes:
                                     score = float(node.score) if node.score else 0.0
+
+                                    # Extract metadata (with fallbacks for old indexes)
                                     fname = node.metadata.get("file_name", "Unknown")
-                                    source_data.append({"file": fname, "score": score})
-                                    st.caption(f"{fname} ({score:.2f})")
+                                    display_name = node.metadata.get(
+                                        "display_name", fname
+                                    )
+                                    source_url = node.metadata.get("source_url")
+                                    authors = node.metadata.get("authors")
+                                    doc_type = node.metadata.get("doc_type", "unknown")
+
+                                    # Build source data for message storage
+                                    source_data.append(
+                                        {
+                                            "file": fname,  # Keep original for backwards compat
+                                            "display_name": display_name,
+                                            "source_url": source_url,
+                                            "authors": authors,
+                                            "doc_type": doc_type,
+                                            "score": score,
+                                        }
+                                    )
+
+                                    # Icon based on document type
+                                    icon_map = {
+                                        "paper": "📄",
+                                        "library_doc": "📚",
+                                        "uploaded_pdf": "📎",
+                                        "book": "📖",
+                                    }
+                                    icon = icon_map.get(doc_type, "📄")
+
+                                    # Format display with authors if available
+                                    if authors:
+                                        label = f"{display_name} - {authors}"
+                                    else:
+                                        label = display_name
+
+                                    # Render with optional link
+                                    if source_url:
+                                        st.caption(
+                                            f"{icon} [{label}]({source_url}) ({score:.2f})"
+                                        )
+                                    else:
+                                        st.caption(f"{icon} {label} ({score:.2f})")
 
                     with meta_cols[1]:
                         if low_confidence_warning:

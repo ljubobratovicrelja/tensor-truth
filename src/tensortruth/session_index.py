@@ -111,47 +111,68 @@ class SessionIndexBuilder:
 
             # Extract metadata for each document
             logger.info("Extracting metadata from uploaded PDFs...")
-            ollama_url = get_ollama_url()
 
-            for i, doc in enumerate(documents):
-                file_path = Path(doc.metadata.get("file_path", ""))
-                pdf_id = self._extract_pdf_id_from_filename(file_path.name)
+            try:
+                ollama_url = get_ollama_url()
 
-                try:
-                    # Check cache first
-                    cached_metadata = self._get_cached_metadata(pdf_id)
+                for i, doc in enumerate(documents):
+                    try:
+                        # Get file_path from metadata
+                        file_path_str = doc.metadata.get("file_path", "")
+                        if not file_path_str or not isinstance(file_path_str, str):
+                            logger.debug(
+                                f"Skipping metadata extraction for document {i} "
+                                "(no valid file_path)"
+                            )
+                            continue
 
-                    if cached_metadata:
-                        logger.info(f"  Using cached metadata for {pdf_id}")
-                        metadata = cached_metadata
-                    else:
-                        # Extract with LLM (uploaded PDFs rarely have explicit metadata)
-                        logger.info(f"  Extracting metadata for {pdf_id} with LLM...")
-                        metadata = extract_document_metadata(
-                            doc=doc,
-                            file_path=file_path,
-                            module_name=None,
-                            sources_config=None,
-                            ollama_url=ollama_url,
-                            use_llm_fallback=True,
+                        file_path = Path(file_path_str)
+                        pdf_id = self._extract_pdf_id_from_filename(file_path.name)
+
+                        # Check cache first
+                        cached_metadata = self._get_cached_metadata(pdf_id)
+
+                        if cached_metadata:
+                            logger.info(f"  Using cached metadata for {pdf_id}")
+                            metadata = cached_metadata
+                        else:
+                            # Extract with LLM (uploaded PDFs rarely have explicit metadata)
+                            logger.info(
+                                f"  Extracting metadata for {pdf_id} with LLM..."
+                            )
+                            metadata = extract_document_metadata(
+                                doc=doc,
+                                file_path=file_path,
+                                module_name=None,
+                                sources_config=None,
+                                ollama_url=ollama_url,
+                                use_llm_fallback=True,
+                            )
+
+                            # Force doc_type to uploaded_pdf
+                            metadata["doc_type"] = "uploaded_pdf"
+
+                            # Cache the metadata
+                            self._update_metadata_cache(pdf_id, metadata)
+
+                        # Inject metadata into document
+                        doc.metadata.update(metadata)
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to extract metadata for document {i}: {e}"
                         )
+                        # Continue with default metadata
 
-                        # Force doc_type to uploaded_pdf
-                        metadata["doc_type"] = "uploaded_pdf"
+                logger.info(
+                    f"✓ Metadata extraction complete for {len(documents)} documents"
+                )
 
-                        # Cache the metadata
-                        self._update_metadata_cache(pdf_id, metadata)
-
-                    # Inject metadata into document
-                    doc.metadata.update(metadata)
-
-                except Exception as e:
-                    logger.warning(f"Failed to extract metadata for {pdf_id}: {e}")
-                    # Continue with default metadata
-
-            logger.info(
-                f"✓ Metadata extraction complete for {len(documents)} documents"
-            )
+            except Exception as e:
+                # If metadata extraction completely fails (e.g., Ollama not available),
+                # continue without metadata
+                logger.warning(f"Metadata extraction unavailable: {e}")
+                logger.info("Continuing index build without metadata enrichment")
 
             # Parse with hierarchical chunking
             node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
