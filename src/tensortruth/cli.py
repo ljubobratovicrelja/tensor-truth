@@ -15,7 +15,7 @@ def _missing_imports_message(tool, package, error):
     print(
         (
             f"Missing dependencies for {tool} CLI tool. Error: {error}.\n"
-            f"Install with: pip install tensor-truth[{package}], or tensor-truth[utils].\n"
+            f"Install with: pip install tensor-truth[{package}]\n"
         ),
         file=sys.stderr,
     )
@@ -51,7 +51,7 @@ def fetch_paper():
     try:
         from tensortruth.fetch_paper import main as fetch_main
     except ImportError as e:
-        _missing_imports_message("tensor-truth-papers", "papers", e)
+        _missing_imports_message("tensor-truth-papers", "docs", e)
         sys.exit(1)
 
     sys.exit(fetch_main())

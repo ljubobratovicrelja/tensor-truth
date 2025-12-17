@@ -48,6 +48,11 @@ dependencies = [
     "requests", # Ollama API & downloads
     "aiohttp",  # Async HTTP for better UI responsiveness
     "gdown",    # Google Drive index downloads
+
+    # --- PDF Processing (session documents) ---
+    "pymupdf4llm", # PDF to markdown conversion (required for session PDFs)
+    "marker-pdf",  # Advanced PDF conversion with math support
+    "tqdm",        # Progress bars for PDF processing
 ]
 
 [project.scripts]
@@ -57,29 +62,20 @@ tensor-truth-docs = "tensortruth.cli:scrape_docs"
 tensor-truth-build = "tensortruth.cli:build_db"
 
 [project.optional-dependencies]
-# Documentation scraping tools (tensor-truth-docs)
+# Documentation and paper scraping tools (tensor-truth-docs, tensor-truth-papers)
+# Note: PDF processing deps (pymupdf4llm, marker-pdf, tqdm) are now in core dependencies
+# because they're required for session PDF upload feature in the main app
 docs = [
     "beautifulsoup4",
     "markdownify",
-    "sphobjinv",      # Sphinx inventory parsing
-    "tqdm",           # Progress bars
+    "sphobjinv",  # Sphinx inventory parsing
+    "arxiv",      # ArXiv API client (for tensor-truth-papers command)
 ]
-
-# Paper/book fetching tools (tensor-truth-papers)
-papers = [
-    "arxiv",
-    "pymupdf4llm",
-    "marker-pdf",
-    "tqdm",        # Progress bars
-]
-
-# All utility tools (docs + papers + build)
-utils = ["tensor-truth[docs,papers]"]
 
 # Development and testing dependencies
 dev = [
-    # All utility tools
-    "tensor-truth[utils]",
+    # Documentation/paper scraping tools
+    "tensor-truth[docs]",
 
     # Testing Framework
     "pytest>=9.0.2",
