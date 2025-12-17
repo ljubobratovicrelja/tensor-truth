@@ -1,15 +1,15 @@
-# Tensor-Truth: Claude Context Document
+# Tensor-Truth: AI Agent Context Document
 
-**Last Updated**: 2025-12-17
+**Last Updated**: 2025-12-17 (Emoji policy added, emojis removed from headers)
 **Version**: 0.1.9 (PDF Ingestion Feature)
 **Python**: 3.11+
 
 ---
 
-## ⚠️ CRITICAL INSTRUCTIONS FOR CLAUDE ⚠️
+## CRITICAL INSTRUCTIONS FOR AI AGENTS
 
 ### Document Reading Protocol
-**WHEN INSTRUCTED TO "READ CLAUDE.MD" WITH NO FURTHER CONTEXT:**
+**WHEN INSTRUCTED TO "READ .agent/context.md" WITH NO FURTHER CONTEXT:**
 - Assume you've been initialized to perform a specific task within this project
 - Parse the document silently to understand the architecture and context
 - **Do NOT provide a comprehensive response** explaining your understanding
@@ -17,7 +17,7 @@
 
 ### Document Maintenance Protocol
 **WHENEVER YOU COMPLETE A CODING TASK IN THIS PROJECT:**
-1. **Before ending the conversation**, review this CLAUDE.md document
+1. **Before ending the conversation**, review this context document
 2. **Identify any sections** that are now outdated or deprecated due to your changes
 3. **Update this document** to reflect:
    - New file structures or architectures
@@ -34,12 +34,30 @@
 - Technical documentation in markdown format
 - API documentation
 - User guides or tutorials
-- Any other .md files besides CLAUDE.md
+- Any other .md files besides this context document
 
-**ONLY update CLAUDE.md** as part of your regular workflow to keep it accurate.
+**ONLY update .agent/context.md** as part of your regular workflow to keep it accurate.
+
+### Emoji Usage Policy
+**DO NOT use emojis in code, logs, or comments unless explicitly instructed or functionally required.**
+
+Acceptable emoji usage (functional only):
+- UI elements where emojis serve a functional purpose (e.g., star icon for favorite toggle in `app.py`)
+- User-facing status indicators with semantic meaning (e.g., status icons in session PDF upload UI: uploading, processing, indexed, error)
+
+Prohibited emoji usage:
+- Log messages (use plain text: "INFO", "ERROR", "WARNING")
+- Code comments (describe functionality in words)
+- Docstrings
+- Console output from CLI tools
+- Error messages
+- Debug output
+- Aesthetic decoration in any code context
+
+**Rationale**: Emojis add visual noise, can cause encoding issues, and don't improve code clarity or functionality. They should only appear when they serve a specific user-facing feature requirement.
 
 ### Code Quality Workflow (MANDATORY END-OF-RESPONSE CHECKLIST)
-**⚠️ CRITICAL: AT THE END OF EVERY RESPONSE WHERE YOU EDIT CODE ⚠️**
+**CRITICAL: AT THE END OF EVERY RESPONSE WHERE YOU EDIT CODE**
 
 This is a **mandatory 3-step process** that MUST be completed before you finish your response:
 
@@ -376,7 +394,7 @@ tensor-truth-docs --type papers --category dl_foundations --converter marker
 
 **Paper Categories** (8 total): dl_foundations, vision_2d_generative, 3d_reconstruction_rendering, linear_algebra_books, calculus_books, numerical_optimization_books, machine_learning_books, deep_learning_books
 
-### 7. User Data Directory (`~/.tensortruth/`)
+### 9. User Data Directory (`~/.tensortruth/`)
 **Structure**:
 ```
 ~/.tensortruth/
