@@ -45,8 +45,16 @@
    python scripts/format.py <file1> <file2> ...
    ```
 2. This runs `isort` (import sorting) and `black` (code formatting)
-3. **Do this BEFORE committing** or marking work as complete
-4. Applies to all `.py` files in `src/`, `tests/`, and `scripts/`
+3. **Then run flake8** to check for code quality issues:
+   ```bash
+   python -m flake8 <file1> <file2> ...
+   ```
+4. **Address all flake8 issues** before proceeding:
+   - Fix unused imports, undefined names, syntax errors
+   - Fix line length issues (max 100 chars, some exceptions allowed)
+   - Fix complexity warnings where reasonable
+5. **Do this BEFORE committing** or marking work as complete
+6. Applies to all `.py` files in `src/`, `tests/`, and `scripts/`
 
 ### Testing Protocol
 **WHENEVER YOU CREATE VALID UNITS OF CODE:**
@@ -72,6 +80,11 @@
    pytest tests/unit/test_<your_module>.py -v
    pytest tests/integration/test_<your_feature>.py -v
    ```
+5. **CRITICAL: Fix ALL failing tests before marking work complete**:
+   - If tests fail, debug and fix the code or the tests
+   - Do NOT leave failing tests in the codebase
+   - If a test is too complex to fix immediately, mark it with `@pytest.mark.skip` and create a TODO
+   - Run tests multiple times to ensure they pass consistently
 
 **When to write tests:**
 - Always for new modules/classes

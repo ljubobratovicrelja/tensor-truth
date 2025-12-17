@@ -1,7 +1,6 @@
 """Unit tests for PDF handler."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -105,8 +104,17 @@ class TestUploadPDF:
         assert pdf_path.exists()
         assert pdf_path.read_bytes() == b"fake pdf content"
 
-    def test_extracts_file_size(self, pdf_handler, mock_uploaded_file):
+    @patch.object(PDFHandler, "get_pdf_metadata")
+    def test_extracts_file_size(
+        self, mock_get_metadata, pdf_handler, mock_uploaded_file
+    ):
         """Should extract file size metadata."""
+        # Mock metadata extraction to return valid data
+        mock_get_metadata.return_value = {
+            "file_size": len(b"fake pdf content"),
+            "page_count": 1,
+        }
+
         metadata = pdf_handler.upload_pdf(mock_uploaded_file)
 
         assert "file_size" in metadata
@@ -222,10 +230,14 @@ class TestDeletePDF:
         pdf_handler.delete_pdf(pdf_id)
         assert not pdf_path.exists()
 
+    @patch.object(PDFHandler, "get_pdf_metadata")
     @patch("tensortruth.pdf_handler.convert_with_marker")
-    def test_deletes_markdown_file(self, mock_marker, pdf_handler, mock_uploaded_file):
+    def test_deletes_markdown_file(
+        self, mock_marker, mock_get_metadata, pdf_handler, mock_uploaded_file
+    ):
         """Should delete corresponding markdown file."""
         mock_marker.return_value = "Content"
+        mock_get_metadata.return_value = {"file_size": 100, "page_count": 1}
 
         # Upload and convert
         metadata = pdf_handler.upload_pdf(mock_uploaded_file)

@@ -100,9 +100,15 @@ class PDFHandler:
         Raises:
             Exception if conversion fails with both methods
         """
-        pdf_id = pdf_path.stem.split("_")[
-            0
-        ]  # Extract pdf_xyz from pdf_xyz_filename.pdf
+        # Extract pdf_abc123 from pdf_abc123_filename.pdf
+        # Handle both uploaded PDFs (pdf_{uuid}_filename) and direct PDFs (filename)
+        stem_parts = pdf_path.stem.split("_")
+        if len(stem_parts) >= 2 and stem_parts[0] == "pdf":
+            # Uploaded PDF format: pdf_abc123_filename
+            pdf_id = f"{stem_parts[0]}_{stem_parts[1]}"
+        else:
+            # Direct PDF or unknown format: use full stem
+            pdf_id = pdf_path.stem
         md_filename = f"{pdf_id}.md"
         md_path = self.markdown_dir / md_filename
 

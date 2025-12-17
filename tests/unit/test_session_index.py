@@ -1,8 +1,7 @@
 """Unit tests for session index builder."""
 
 import shutil
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -113,16 +112,22 @@ class TestIndexExists:
 class TestBuildIndex:
     """Test index building."""
 
+    @patch("tensortruth.session_index.StorageContext")
     @patch("tensortruth.session_index.VectorStoreIndex")
     @patch("tensortruth.session_index.get_embed_model")
     @patch("tensortruth.session_index.chromadb.PersistentClient")
+    @patch("tensortruth.session_index.get_leaf_nodes")
+    @patch("tensortruth.session_index.HierarchicalNodeParser")
     @patch("tensortruth.session_index.SimpleDirectoryReader")
     def test_loads_markdown_files(
         self,
         mock_reader,
+        mock_parser,
+        mock_get_leaf,
         mock_chroma,
         mock_embed,
         mock_index,
+        mock_storage,
         session_builder,
         sample_markdown_files,
     ):
@@ -131,28 +136,39 @@ class TestBuildIndex:
         mock_docs = [Mock(text=f"doc {i}") for i in range(len(sample_markdown_files))]
         mock_reader.return_value.load_data.return_value = mock_docs
 
+        # Mock node parsing
+        mock_parser_instance = Mock()
+        mock_parser_instance.get_nodes_from_documents.return_value = [Mock()]
+        mock_parser.from_defaults.return_value = mock_parser_instance
+        mock_get_leaf.return_value = [Mock()]
+
         # Mock the rest of the pipeline
         mock_embed.return_value = Mock()
         mock_chroma.return_value = Mock()
         mock_index.return_value = Mock()
+        mock_storage.from_defaults.return_value = Mock()
 
         session_builder.build_index(sample_markdown_files)
 
         # Should have created reader for each file
         assert mock_reader.call_count == len(sample_markdown_files)
 
+    @patch("tensortruth.session_index.StorageContext")
     @patch("tensortruth.session_index.VectorStoreIndex")
     @patch("tensortruth.session_index.get_embed_model")
     @patch("tensortruth.session_index.chromadb.PersistentClient")
+    @patch("tensortruth.session_index.get_leaf_nodes")
     @patch("tensortruth.session_index.HierarchicalNodeParser")
     @patch("tensortruth.session_index.SimpleDirectoryReader")
     def test_uses_hierarchical_chunking(
         self,
         mock_reader,
         mock_parser,
+        mock_get_leaf,
         mock_chroma,
         mock_embed,
         mock_index,
+        mock_storage,
         session_builder,
         sample_markdown_files,
     ):
@@ -161,27 +177,43 @@ class TestBuildIndex:
         mock_parser_instance = Mock()
         mock_parser_instance.get_nodes_from_documents.return_value = [Mock()]
         mock_parser.from_defaults.return_value = mock_parser_instance
+        mock_get_leaf.return_value = [Mock()]
+        mock_storage.from_defaults.return_value = Mock()
 
         session_builder.build_index(sample_markdown_files, chunk_sizes=[2048, 512, 128])
 
         mock_parser.from_defaults.assert_called_once_with(chunk_sizes=[2048, 512, 128])
 
+    @patch("tensortruth.session_index.StorageContext")
     @patch("tensortruth.session_index.VectorStoreIndex")
     @patch("tensortruth.session_index.get_embed_model")
     @patch("tensortruth.session_index.chromadb.PersistentClient")
+    @patch("tensortruth.session_index.get_leaf_nodes")
+    @patch("tensortruth.session_index.HierarchicalNodeParser")
     @patch("tensortruth.session_index.SimpleDirectoryReader")
     def test_creates_chroma_db(
         self,
         mock_reader,
+        mock_parser,
+        mock_get_leaf,
         mock_chroma,
         mock_embed,
         mock_index,
+        mock_storage,
         session_builder,
         sample_markdown_files,
         temp_session_dirs,
     ):
         """Should create ChromaDB in session index directory."""
         mock_reader.return_value.load_data.return_value = [Mock(text="content")]
+
+        # Mock node parsing
+        mock_parser_instance = Mock()
+        mock_parser_instance.get_nodes_from_documents.return_value = [Mock()]
+        mock_parser.from_defaults.return_value = mock_parser_instance
+        mock_get_leaf.return_value = [Mock()]
+        mock_storage.from_defaults.return_value = Mock()
+
         mock_embed.return_value = Mock()
 
         session_builder.build_index(sample_markdown_files)
@@ -194,21 +226,35 @@ class TestBuildIndex:
         with pytest.raises(ValueError, match="No markdown files found"):
             session_builder.build_index([])
 
+    @patch("tensortruth.session_index.StorageContext")
     @patch("tensortruth.session_index.VectorStoreIndex")
     @patch("tensortruth.session_index.get_embed_model")
     @patch("tensortruth.session_index.chromadb.PersistentClient")
+    @patch("tensortruth.session_index.get_leaf_nodes")
+    @patch("tensortruth.session_index.HierarchicalNodeParser")
     @patch("tensortruth.session_index.SimpleDirectoryReader")
     def test_cleans_existing_index(
         self,
         mock_reader,
+        mock_parser,
+        mock_get_leaf,
         mock_chroma,
         mock_embed,
         mock_index,
+        mock_storage,
         session_builder,
         sample_markdown_files,
     ):
         """Should remove old index before building new one."""
         mock_reader.return_value.load_data.return_value = [Mock(text="content")]
+
+        # Mock node parsing
+        mock_parser_instance = Mock()
+        mock_parser_instance.get_nodes_from_documents.return_value = [Mock()]
+        mock_parser.from_defaults.return_value = mock_parser_instance
+        mock_get_leaf.return_value = [Mock()]
+        mock_storage.from_defaults.return_value = Mock()
+
         mock_embed.return_value = Mock()
 
         # Create fake old index files
@@ -224,8 +270,10 @@ class TestBuildIndex:
     def test_uses_default_chunk_sizes(self, session_builder, sample_markdown_files):
         """Should use default chunk sizes if none provided."""
         with (
+            patch("tensortruth.session_index.StorageContext") as mock_storage,
             patch("tensortruth.session_index.HierarchicalNodeParser") as mock_parser,
             patch("tensortruth.session_index.SimpleDirectoryReader") as mock_reader,
+            patch("tensortruth.session_index.get_leaf_nodes") as mock_get_leaf,
             patch("tensortruth.session_index.VectorStoreIndex"),
             patch("tensortruth.session_index.get_embed_model"),
             patch("tensortruth.session_index.chromadb.PersistentClient"),
@@ -235,6 +283,8 @@ class TestBuildIndex:
             mock_parser_instance = Mock()
             mock_parser_instance.get_nodes_from_documents.return_value = [Mock()]
             mock_parser.from_defaults.return_value = mock_parser_instance
+            mock_get_leaf.return_value = [Mock()]
+            mock_storage.from_defaults.return_value = Mock()
 
             session_builder.build_index(sample_markdown_files)
 
