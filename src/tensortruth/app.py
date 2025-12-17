@@ -43,6 +43,115 @@ from tensortruth.app_utils import (
 from tensortruth.app_utils.session import update_title_async
 from tensortruth.core.ollama import get_ollama_url
 
+
+# --- PDF HELPER FUNCTIONS ---
+def process_pdf_upload(uploaded_file, session_id: str, sessions_file: str):
+    """Handle PDF upload: save, convert, index, update session."""
+    from datetime import datetime
+
+    from tensortruth.app_utils.paths import get_session_dir
+    from tensortruth.pdf_handler import PDFHandler
+    from tensortruth.session_index import SessionIndexBuilder
+
+    session = st.session_state.chat_data["sessions"][session_id]
+
+    # Create PDF handler
+    handler = PDFHandler(get_session_dir(session_id))
+
+    # Save PDF and get metadata
+    with st.spinner(f"Uploading {uploaded_file.name}..."):
+        pdf_metadata = handler.upload_pdf(uploaded_file)
+
+    # Add to session with "processing" status
+    if "pdf_documents" not in session:
+        session["pdf_documents"] = []
+
+    session["pdf_documents"].append(
+        {
+            "id": pdf_metadata["id"],
+            "filename": uploaded_file.name,
+            "uploaded_at": str(datetime.now()),
+            "file_size": pdf_metadata["file_size"],
+            "page_count": pdf_metadata.get("page_count", 0),
+            "status": "processing",
+            "error_message": None,
+        }
+    )
+    save_sessions(sessions_file)
+
+    # Convert to markdown (with progress spinner)
+    try:
+        with st.spinner(f"Converting {uploaded_file.name} (this may take a while)..."):
+            markdown_path = handler.convert_pdf_to_markdown(pdf_metadata["path"])
+
+        # Build/rebuild index
+        builder = SessionIndexBuilder(session_id)
+        with st.spinner("Indexing document..."):
+            markdown_files = handler.get_all_markdown_files()
+            builder.build_index(markdown_files)
+
+        # Update status to "indexed"
+        for doc in session["pdf_documents"]:
+            if doc["id"] == pdf_metadata["id"]:
+                doc["status"] = "indexed"
+        session["has_temp_index"] = True
+        save_sessions(sessions_file)
+
+        # Invalidate engine cache to reload with new index
+        st.session_state.loaded_config = None
+
+        st.success(f"✅ {uploaded_file.name} indexed successfully!")
+
+    except Exception as e:
+        # Update status to "error"
+        for doc in session["pdf_documents"]:
+            if doc["id"] == pdf_metadata["id"]:
+                doc["status"] = "error"
+                doc["error_message"] = str(e)
+        save_sessions(sessions_file)
+        st.error(f"Failed to process PDF: {str(e)}")
+
+
+def delete_pdf_from_session(pdf_id: str, session_id: str, sessions_file: str):
+    """Delete PDF and rebuild index."""
+    from tensortruth.app_utils.paths import get_session_dir
+    from tensortruth.pdf_handler import PDFHandler
+    from tensortruth.session_index import SessionIndexBuilder
+
+    session = st.session_state.chat_data["sessions"][session_id]
+
+    # Remove from session data
+    pdf_docs = session.get("pdf_documents", [])
+    session["pdf_documents"] = [doc for doc in pdf_docs if doc["id"] != pdf_id]
+
+    # Delete PDF and markdown
+    handler = PDFHandler(get_session_dir(session_id))
+    handler.delete_pdf(pdf_id)
+
+    # Rebuild index if any PDFs remain, otherwise delete index
+    builder = SessionIndexBuilder(session_id)
+    if session["pdf_documents"]:
+        try:
+            markdown_files = handler.get_all_markdown_files()
+            if markdown_files:
+                builder.build_index(markdown_files)
+            else:
+                builder.delete_index()
+                session["has_temp_index"] = False
+        except Exception as e:
+            st.warning(f"Failed to rebuild index: {e}")
+            builder.delete_index()
+            session["has_temp_index"] = False
+    else:
+        builder.delete_index()
+        session["has_temp_index"] = False
+
+    save_sessions(sessions_file)
+
+    # Invalidate engine cache
+    st.session_state.loaded_config = None
+
+
 # --- CONFIG ---
 # Use platform-specific user data directory (~/.tensortruth)
 SESSIONS_FILE = get_sessions_file()
@@ -121,6 +230,51 @@ with st.sidebar:
 
     st.divider()
 
+    # PDF Upload Section (Chat Mode Only)
+    if st.session_state.mode == "chat" and st.session_state.chat_data.get("current_id"):
+        curr_id = st.session_state.chat_data["current_id"]
+        curr_sess = st.session_state.chat_data["sessions"][curr_id]
+
+        st.markdown("**📄 Session Documents**")
+        pdf_docs = curr_sess.get("pdf_documents", [])
+
+        if pdf_docs:
+            for doc in pdf_docs:
+                status_icons = {
+                    "uploading": "⏳",
+                    "processing": "🔄",
+                    "indexed": "✅",
+                    "error": "❌",
+                }
+                status_icon = status_icons.get(doc["status"], "❓")
+
+                col1, col2 = st.columns([0.8, 0.2])
+                with col1:
+                    st.caption(f"{status_icon} {doc['filename']}")
+                    if doc.get("error_message"):
+                        st.caption(f"⚠️ {doc['error_message']}", help="Error details")
+                with col2:
+                    if st.button("🗑️", key=f"del_pdf_{doc['id']}", help="Remove PDF"):
+                        delete_pdf_from_session(doc["id"], curr_id, SESSIONS_FILE)
+                        st.rerun()
+        else:
+            st.caption("No documents uploaded")
+
+        # Upload widget
+        uploaded_file = st.file_uploader(
+            "Upload PDF",
+            type=["pdf"],
+            key="pdf_uploader",
+            label_visibility="collapsed",
+            help="Upload a PDF document to query alongside knowledge bases",
+        )
+
+        if uploaded_file:
+            process_pdf_upload(uploaded_file, curr_id, SESSIONS_FILE)
+            st.rerun()
+
+        st.divider()
+
     if st.session_state.mode == "chat" and st.session_state.chat_data.get("current_id"):
         curr_id = st.session_state.chat_data["current_id"]
         curr_sess = st.session_state.chat_data["sessions"][curr_id]
@@ -170,14 +324,15 @@ if st.session_state.get("show_delete_confirm", False):
                 st.rerun()
         with col2:
             if st.button("Delete", type="primary", use_container_width=True):
+                from app_utils.session import delete_session
+
                 curr_id = st.session_state.chat_data["current_id"]
-                del st.session_state.chat_data["sessions"][curr_id]
+                delete_session(curr_id, SESSIONS_FILE)
                 st.session_state.chat_data["current_id"] = None
                 st.session_state.mode = "setup"
                 free_memory()
                 st.session_state.loaded_config = None
                 st.session_state.show_delete_confirm = False
-                save_sessions(SESSIONS_FILE)
                 st.rerun()
 
     confirm_delete()
@@ -637,17 +792,18 @@ elif st.session_state.mode == "chat":
     if "engine_load_error" not in st.session_state:
         st.session_state.engine_load_error = None
 
-    # Determine target configuration
+    # Determine target configuration (include session index flag)
     target_tuple = tuple(sorted(modules)) if modules else None
     param_items = sorted([(k, v) for k, v in params.items()])
     param_hash = frozenset(param_items)
-    target_config = (target_tuple, param_hash) if target_tuple else None
+    has_pdf_index = session.get("has_temp_index", False)
+    target_config = (target_tuple, param_hash, has_pdf_index) if target_tuple else None
 
     current_config = st.session_state.get("loaded_config")
     engine = st.session_state.get("engine")
 
     # Check if we need to load/reload the engine
-    needs_loading = modules and (current_config != target_config)
+    needs_loading = (modules or has_pdf_index) and (current_config != target_config)
 
     # Background engine loading with threading
     if needs_loading and not st.session_state.engine_loading:
@@ -711,11 +867,20 @@ elif st.session_state.mode == "chat":
                 if current_config is not None:
                     free_memory()
 
+                # Check for session index
+                from tensortruth.app_utils.paths import get_session_index_dir
+
+                session_index_path = None
+                if session.get("has_temp_index", False):
+                    index_path = get_session_index_dir(current_id)
+                    if os.path.exists(str(index_path)):
+                        session_index_path = str(index_path)
+
                 # Call the actual engine loading function directly (bypass UI parts)
                 from tensortruth import load_engine_for_modules
 
                 loaded_engine = load_engine_for_modules(
-                    modules, params, preserved_history
+                    modules, params, preserved_history, session_index_path
                 )
                 # Store in shared dict (not session_state directly)
                 load_result["engine"] = loaded_engine

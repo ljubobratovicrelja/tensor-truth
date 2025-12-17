@@ -72,3 +72,21 @@ def rename_session(new_title, sessions_file: str):
         st.session_state.chat_data["sessions"][current_id]["title"] = new_title
         save_sessions(sessions_file)
         st.rerun()
+
+
+def delete_session(session_id: str, sessions_file: str):
+    """Delete a session and all associated files (PDFs, markdown, indexes)."""
+    import shutil
+
+    from .paths import get_session_dir
+
+    # Delete from session data
+    if session_id in st.session_state.chat_data["sessions"]:
+        del st.session_state.chat_data["sessions"][session_id]
+
+    # Delete session directory (PDFs + markdown + index)
+    session_dir = get_session_dir(session_id)
+    if session_dir.exists():
+        shutil.rmtree(session_dir)
+
+    save_sessions(sessions_file)

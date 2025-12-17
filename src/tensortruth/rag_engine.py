@@ -231,10 +231,13 @@ class MultiIndexRetriever(BaseRetriever):
 
 
 def load_engine_for_modules(
-    selected_modules, engine_params=None, preserved_chat_history=None
+    selected_modules,
+    engine_params=None,
+    preserved_chat_history=None,
+    session_index_path=None,
 ):
-    if not selected_modules:
-        raise ValueError("No modules selected!")
+    if not selected_modules and not session_index_path:
+        raise ValueError("No modules or session index selected!")
 
     if engine_params is None:
         engine_params = {}
@@ -277,6 +280,29 @@ def load_engine_for_modules(
         base = index.as_retriever(similarity_top_k=similarity_top_k)
         am_retriever = AutoMergingRetriever(base, index.storage_context, verbose=False)
         active_retrievers.append(am_retriever)
+
+    # Load session-specific PDF index if provided
+    if session_index_path and os.path.exists(session_index_path):
+        print(f"--- LOADING SESSION INDEX: {session_index_path} ---")
+        try:
+            db = chromadb.PersistentClient(path=session_index_path)
+            collection = db.get_or_create_collection("data")
+            vector_store = ChromaVectorStore(chroma_collection=collection)
+
+            storage_context = StorageContext.from_defaults(
+                persist_dir=session_index_path, vector_store=vector_store
+            )
+
+            index = load_index_from_storage(storage_context, embed_model=embed_model)
+
+            base = index.as_retriever(similarity_top_k=similarity_top_k)
+            am_retriever = AutoMergingRetriever(
+                base, index.storage_context, verbose=False
+            )
+            active_retrievers.append(am_retriever)
+            print(f"✅ Session index loaded successfully")
+        except Exception as e:
+            print(f"⚠️ Failed to load session index: {e}")
 
     if not active_retrievers:
         raise FileNotFoundError("No valid indices loaded.")
