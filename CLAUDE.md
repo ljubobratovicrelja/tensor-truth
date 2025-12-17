@@ -38,6 +38,48 @@
 
 **ONLY update CLAUDE.md** as part of your regular workflow to keep it accurate.
 
+### Code Formatting Protocol
+**AFTER CREATING OR MODIFYING CODE FILES:**
+1. **Always run the formatter** on new or modified files:
+   ```bash
+   python scripts/format.py <file1> <file2> ...
+   ```
+2. This runs `isort` (import sorting) and `black` (code formatting)
+3. **Do this BEFORE committing** or marking work as complete
+4. Applies to all `.py` files in `src/`, `tests/`, and `scripts/`
+
+### Testing Protocol
+**WHENEVER YOU CREATE VALID UNITS OF CODE:**
+1. **Unit Tests**: Create tests for individual functions/classes
+   - Location: `tests/unit/test_<module_name>.py`
+   - Test all public methods, edge cases, error handling
+   - Use mocks for external dependencies (file I/O, API calls, databases)
+   - Example: `test_pdf_handler.py` for `pdf_handler.py`
+
+2. **Integration Tests**: Create tests for complex systems with multiple components
+   - Location: `tests/integration/test_<feature_name>.py`
+   - Test end-to-end workflows
+   - Use `@pytest.mark.integration` marker
+   - Example: `test_pdf_ingestion_pipeline.py` for PDF upload → convert → index flow
+
+3. **Test Coverage**:
+   - Aim for >80% coverage on new code
+   - Test both success and failure paths
+   - Include edge cases (empty inputs, corrupted data, etc.)
+
+4. **Run Tests Before Completing**:
+   ```bash
+   pytest tests/unit/test_<your_module>.py -v
+   pytest tests/integration/test_<your_feature>.py -v
+   ```
+
+**When to write tests:**
+- Always for new modules/classes
+- Always for complex logic or algorithms
+- Always for data processing pipelines
+- Always for user-facing features
+- Skip only for trivial helpers or one-off scripts
+
 ---
 
 ## Project Overview
