@@ -69,14 +69,14 @@ class SessionIndexBuilder:
 
         Args:
             markdown_files: List of markdown file paths (if None, uses all in session markdown dir)
-            chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 128])
+            chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256])
 
         Raises:
             ValueError: If no markdown files found
             Exception: If indexing fails
         """
         if chunk_sizes is None:
-            chunk_sizes = [2048, 512, 128]
+            chunk_sizes = [2048, 512, 256]
 
         # Get markdown files
         if markdown_files is None:
@@ -155,8 +155,17 @@ class SessionIndexBuilder:
                             # Cache the metadata
                             self._update_metadata_cache(pdf_id, metadata)
 
-                        # Inject metadata into document
-                        doc.metadata.update(metadata)
+                        # Inject only essential metadata fields to avoid chunk size issues
+                        # (LlamaIndex includes metadata in chunk context)
+                        essential_fields = [
+                            "display_name",
+                            "authors",
+                            "source_url",
+                            "doc_type",
+                        ]
+                        for field in essential_fields:
+                            if field in metadata:
+                                doc.metadata[field] = metadata[field]
 
                     except Exception as e:
                         logger.warning(
@@ -165,7 +174,7 @@ class SessionIndexBuilder:
                         # Continue with default metadata
 
                 logger.info(
-                    f"✓ Metadata extraction complete for {len(documents)} documents"
+                    f">> Metadata extraction complete for {len(documents)} documents"
                 )
 
             except Exception as e:
@@ -216,7 +225,7 @@ class SessionIndexBuilder:
         Rebuild index from all markdown files in session directory.
 
         Args:
-            chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 128])
+            chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256])
         """
         logger.info(f"Rebuilding index for session {self.session_id}")
         self.build_index(markdown_files=None, chunk_sizes=chunk_sizes)
