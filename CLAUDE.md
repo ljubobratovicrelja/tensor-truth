@@ -160,6 +160,41 @@ tensor-truth/
 - **black, isort, flake8, mypy**: Code quality
 - **hypothesis**: Property-based testing
 
+## Dependency Organization
+
+As of v0.1.9, dependencies are organized to support the session PDF upload feature in the main app:
+
+### Core Dependencies (pip install tensor-truth)
+Includes everything needed to run the main Streamlit app with full functionality:
+- RAG pipeline (LlamaIndex, ChromaDB, embeddings, rerankers)
+- Web UI (Streamlit, utilities)
+- **PDF processing** (pymupdf4llm, marker-pdf, tqdm) - Required for session PDF uploads
+- Torch, sentence-transformers, and other ML libraries
+
+### Optional Dependencies
+**`[docs]` extra** - For doc/paper scraping commands:
+```bash
+pip install tensor-truth[docs]
+```
+Adds:
+- `beautifulsoup4`, `markdownify`, `sphobjinv` (Sphinx doc scraping)
+- `arxiv` (ArXiv paper fetching)
+
+Enables:
+- `tensor-truth-docs` (scrape library documentation)
+- `tensor-truth-papers` (fetch ArXiv papers)
+
+**`[dev]` extra** - For development:
+```bash
+pip install tensor-truth[dev]
+```
+Includes `[docs]` plus testing and code quality tools (pytest, black, isort, flake8, mypy, hypothesis)
+
+### Important Notes
+- **PDF dependencies are NOT optional** - `pymupdf4llm` and `marker-pdf` are in core dependencies because the session PDF upload feature is part of the main app UI
+- The `tensor-truth-build` command works without extras (uses core dependencies only)
+- ArXiv fetching (`tensor-truth-papers`) requires `[docs]` extra
+
 ## Key Files Deep Dive
 
 ### 1. `app.py` (~1208 lines) - Streamlit UI Controller
@@ -257,7 +292,7 @@ tensor-truth-build --chunk-sizes 4096 1024 256
 **Commands**:
 - `tensor-truth` → Launch Streamlit app
 - `tensor-truth-docs` → Scrape library docs (requires `[docs]` extra)
-- `tensor-truth-papers` → Fetch ArXiv papers (requires `[papers]` extra)
+- `tensor-truth-papers` → Fetch ArXiv papers (requires `[docs]` extra)
 - `tensor-truth-build` → Build vector indexes
 
 **Pattern**: Lazy imports to avoid loading heavy dependencies when not needed
@@ -612,7 +647,7 @@ tests/
 
 ### Dockerfile Strategy
 - **Base**: `pytorch/pytorch:2.9.0-cuda12.8-cudnn9-runtime` (Python 3.11.4)
-- **Install**: `pip install tensor-truth` (no dev/utils extras)
+- **Install**: `pip install tensor-truth` (no dev/docs extras needed for basic usage)
 - **Volume**: `/root/.tensortruth` (sessions, presets, indexes)
 - **Port**: 8501 (Streamlit default)
 - **Env**: `OLLAMA_HOST=http://host.docker.internal:11434`
@@ -753,7 +788,7 @@ TOKEN_POLL_INTERVAL_MS = 50
 
 ### 5. Pre-Built Indexes from GDrive
 - First-run auto-download (~500MB tar.gz)
-- Manual build requires `[docs]` or `[papers]` extras
+- Manual build requires `[docs]` extra for scraping tools
 - Index format tied to LlamaIndex version (breaking changes possible)
 
 ### 6. Streamlit as UI Framework
