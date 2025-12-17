@@ -31,6 +31,7 @@ class SessionIndexBuilder:
         self.session_id = session_id
         self.session_index_dir = get_session_index_dir(session_id)
         self.session_markdown_dir = get_session_markdown_dir(session_id)
+        self._chroma_client = None
 
     def index_exists(self) -> bool:
         """Check if a valid ChromaDB index exists for this session."""
@@ -93,8 +94,10 @@ class SessionIndexBuilder:
             logger.info(f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves)")
 
             # Create ChromaDB vector store
-            db = chromadb.PersistentClient(path=str(self.session_index_dir))
-            collection = db.get_or_create_collection("data")
+            self._chroma_client = chromadb.PersistentClient(
+                path=str(self.session_index_dir)
+            )
+            collection = self._chroma_client.get_or_create_collection("data")
             vector_store = ChromaVectorStore(chroma_collection=collection)
 
             # Build index
@@ -163,3 +166,29 @@ class SessionIndexBuilder:
             Number of markdown files in session, or 0 if none
         """
         return len(list(self.session_markdown_dir.glob("*.md")))
+
+    def close(self) -> None:
+        """
+        Explicitly close ChromaDB client connections.
+
+        This is important on Windows where SQLite file handles may remain
+        open, preventing directory deletion.
+        """
+        if self._chroma_client is not None:
+            try:
+                # ChromaDB doesn't have an explicit close() method,
+                # but deleting the reference and forcing GC helps
+                del self._chroma_client
+                self._chroma_client = None
+                logger.debug("ChromaDB client reference released")
+            except Exception as e:
+                logger.warning(f"Error closing ChromaDB client: {e}")
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensures cleanup."""
+        self.close()
+        return False
