@@ -69,7 +69,7 @@ More content about neural networks.
 class TestConfigBasedRebuilding:
     """Integration tests for config-based category rebuilding."""
 
-    @patch("tensortruth.fetch_paper.fetch_and_convert_paper")
+    @patch("tensortruth.fetch_sources.fetch_arxiv_paper")
     def test_rebuild_category_from_config(
         self, mock_fetch, sample_papers_config, temp_dir
     ):

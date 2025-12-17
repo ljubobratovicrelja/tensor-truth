@@ -118,18 +118,19 @@ tensor-truth/
 ├── src/tensortruth/
 │   ├── app.py                 # Streamlit UI (main entry point)
 │   ├── rag_engine.py          # Core RAG logic (retriever, prompts, engine loading)
-│   ├── cli.py                 # CLI routing (tensor-truth, tensor-truth-docs, etc.)
+│   ├── cli.py                 # CLI routing (tensor-truth, tensor-truth-docs, tensor-truth-build)
 │   ├── build_db.py            # Vector index builder (ChromaDB + hierarchical nodes)
-│   ├── scrape_docs.py         # Sphinx/Doxygen doc scraper
-│   ├── fetch_paper.py         # ArXiv + PDF fetcher
-│   ├── pdf_handler.py         # Session PDF upload/conversion handler (NEW v0.1.9)
-│   ├── session_index.py       # Session-scoped vector index builder (NEW v0.1.9)
-│   ├── utils.py               # LaTeX conversion, markdown export, thinking parser
+│   ├── fetch_sources.py       # Unified source fetching (libraries, papers) (NEW v0.1.10)
+│   ├── pdf_handler.py         # Session PDF upload/conversion handler (v0.1.9)
+│   ├── session_index.py       # Session-scoped vector index builder (v0.1.9)
+│   ├── utils/                 # Utility modules (NEW v0.1.10)
+│   │   ├── __init__.py        # Re-exports for backward compatibility
+│   │   ├── chat.py            # LaTeX conversion, markdown export, thinking parser
+│   │   └── pdf.py             # PDF processing utilities
 │   ├── core/                  # System utilities (VRAM, Ollama API, device detection)
 │   └── app_utils/             # Streamlit helpers (commands, presets, sessions, config)
 ├── config/
-│   ├── api.json               # Library doc scraping configs (PyTorch, NumPy, etc.)
-│   └── papers.json            # ArXiv paper fetching configs
+│   └── sources.json           # Unified config: libraries + papers (NEW v0.1.10)
 ├── tests/                     # Pytest suite (unit, integration)
 ├── pyproject.toml             # Package definition
 └── ~/.tensortruth/            # User data dir (sessions, presets, indexes, config)
@@ -162,7 +163,7 @@ tensor-truth/
 
 ## Dependency Organization
 
-As of v0.1.9, dependencies are organized to support the session PDF upload feature in the main app:
+As of v0.1.10, dependencies are organized to support both the main app and unified CLI tools:
 
 ### Core Dependencies (pip install tensor-truth)
 Includes everything needed to run the main Streamlit app with full functionality:
@@ -172,17 +173,17 @@ Includes everything needed to run the main Streamlit app with full functionality
 - Torch, sentence-transformers, and other ML libraries
 
 ### Optional Dependencies
-**`[docs]` extra** - For doc/paper scraping commands:
+**`[docs]` extra** - For unified source fetching (libraries + papers):
 ```bash
 pip install tensor-truth[docs]
 ```
 Adds:
-- `beautifulsoup4`, `markdownify`, `sphobjinv` (Sphinx doc scraping)
+- `beautifulsoup4`, `markdownify`, `sphobjinv` (Sphinx/Doxygen doc scraping)
 - `arxiv` (ArXiv paper fetching)
 
 Enables:
-- `tensor-truth-docs` (scrape library documentation)
-- `tensor-truth-papers` (fetch ArXiv papers)
+- `tensor-truth-docs --type library <name>` (scrape library documentation)
+- `tensor-truth-docs --type papers --category <cat>` (fetch ArXiv papers)
 
 **`[dev]` extra** - For development:
 ```bash
@@ -193,7 +194,7 @@ Includes `[docs]` plus testing and code quality tools (pytest, black, isort, fla
 ### Important Notes
 - **PDF dependencies are NOT optional** - `pymupdf4llm` and `marker-pdf` are in core dependencies because the session PDF upload feature is part of the main app UI
 - The `tensor-truth-build` command works without extras (uses core dependencies only)
-- ArXiv fetching (`tensor-truth-papers`) requires `[docs]` extra
+- The unified `tensor-truth-docs` command requires `[docs]` extra for both library and paper fetching
 
 ## Key Files Deep Dive
 
@@ -286,34 +287,94 @@ tensor-truth-build --all
 tensor-truth-build --chunk-sizes 4096 1024 256
 ```
 
-### 5. `cli.py` (~80 lines) - CLI Router
+### 5. `cli.py` (~65 lines) - CLI Router
 **Purpose**: Entry points for all CLI commands
 
 **Commands**:
 - `tensor-truth` → Launch Streamlit app
-- `tensor-truth-docs` → Scrape library docs (requires `[docs]` extra)
-- `tensor-truth-papers` → Fetch ArXiv papers (requires `[docs]` extra)
+- `tensor-truth-docs` → Unified source fetching (libraries + papers) (requires `[docs]` extra)
 - `tensor-truth-build` → Build vector indexes
 
 **Pattern**: Lazy imports to avoid loading heavy dependencies when not needed
 
-### 6. `config/api.json` - Library Doc Configs
-**Purpose**: Scraping targets for technical documentation
+### 6. `fetch_sources.py` (~700 lines) - Unified Source Fetching
+**Purpose**: Unified CLI for fetching both library documentation and ArXiv papers
 
-**Structure** (per library):
+**Key Functions**:
+- `scrape_library(library_name, config, ...)` - Scrape Sphinx/Doxygen docs
+- `fetch_arxiv_paper(arxiv_id, output_dir, converter)` - Fetch single ArXiv paper
+- `fetch_paper_category(category_name, category_config, ...)` - Fetch entire paper category
+- `list_sources(config)` - List all available libraries and paper categories
+
+**Usage Examples**:
+```bash
+# List all sources
+tensor-truth-docs --list
+
+# Fetch library docs (backward compatible positional args)
+tensor-truth-docs pytorch numpy
+
+# Fetch library docs (explicit type)
+tensor-truth-docs --type library pytorch
+
+# Fetch papers in a category
+tensor-truth-docs --type papers --category dl_foundations
+
+# Fetch specific papers
+tensor-truth-docs --type papers --category dl_foundations --ids 1706.03762 1810.04805
+
+# Use marker converter for better math
+tensor-truth-docs --type papers --category dl_foundations --converter marker
+```
+
+### 7. `utils/` Module - Utility Functions
+**Purpose**: Organized utility functions for PDF processing and chat utilities
+
+**Structure**:
+- `utils/__init__.py` - Re-exports for backward compatibility
+- `utils/chat.py` - Chat/thinking/LaTeX utilities
+- `utils/pdf.py` - PDF processing (conversion, TOC extraction, splitting)
+
+**Key Functions**:
+- `utils.pdf.convert_pdf_to_markdown()` - PDF → Markdown with pymupdf4llm or marker
+- `utils.pdf.convert_with_marker()` - GPU-accelerated PDF conversion (better math)
+- `utils.pdf.post_process_math()` - Unicode → LaTeX symbol conversion
+- `utils.pdf.clean_filename()` - Sanitize filenames for filesystem
+- `utils.pdf.get_pdf_page_count()` - Extract page count from PDF
+- `utils.chat.parse_thinking_response()` - Extract <thought> tags from LLM output
+- `utils.chat.convert_latex_delimiters()` - \[...\] → $$...$$ for Streamlit
+- `utils.chat.convert_chat_to_markdown()` - Export chat history to markdown file
+
+### 8. `config/sources.json` - Unified Source Configs
+**Purpose**: Unified configuration for all documentation sources (libraries + papers)
+
+**Structure**:
 ```json
 {
-  "pytorch": {
-    "version": "2.9",
-    "doc_type": "sphinx",
-    "doc_root": "https://pytorch.org/docs/stable/",
-    "inventory_url": "https://pytorch.org/docs/stable/objects.inv",
-    "selector": "div[role='main']"
+  "libraries": {
+    "pytorch": {
+      "type": "sphinx",
+      "version": "2.9",
+      "doc_root": "https://pytorch.org/docs/stable/",
+      "inventory_url": "https://pytorch.org/docs/stable/objects.inv",
+      "selector": "div[role='main']"
+    }
+  },
+  "papers": {
+    "dl_foundations": {
+      "type": "arxiv",
+      "description": "Deep Learning Foundations...",
+      "items": [
+        {"title": "...", "arxiv_id": "1512.03385", "url": "..."}
+      ]
+    }
   }
 }
 ```
 
 **Supported Libraries** (16 total): PyTorch, NumPy, SciPy, Matplotlib, Pandas, Scikit-learn, Seaborn, Requests, Flask, Django, TensorFlow, Transformers, Pillow, SQLAlchemy, NetworkX, OpenCV
+
+**Paper Categories** (8 total): dl_foundations, vision_2d_generative, 3d_reconstruction_rendering, linear_algebra_books, calculus_books, numerical_optimization_books, machine_learning_books, deep_learning_books
 
 ### 7. User Data Directory (`~/.tensortruth/`)
 **Structure**:
@@ -570,10 +631,16 @@ tests/
 ## Common Development Tasks
 
 ### Adding a New Library to Index
-1. Add entry to `config/api.json` (Sphinx) or implement custom scraper
-2. Run `tensor-truth-docs <library_name>`
+1. Add entry to `config/sources.json` under `"libraries"` (Sphinx/Doxygen) or implement custom scraper
+2. Run `tensor-truth-docs --type library <library_name>` (or just `tensor-truth-docs <library_name>`)
 3. Run `tensor-truth-build --modules <library_name>`
 4. Restart app, module appears in multiselect
+
+### Adding a New Paper Category
+1. Add entry to `config/sources.json` under `"papers"` with `"type": "arxiv"`
+2. Run `tensor-truth-docs --type papers --category <category_name>`
+3. Run `tensor-truth-build --modules <category_name>`
+4. Restart app, category appears in multiselect
 
 ### Implementing a New Command
 1. Create `Command` subclass in `app_utils/commands.py`
@@ -671,7 +738,18 @@ docker run -d --name tensor-truth --gpus all -p 8501:8501 -v ~/.tensortruth:/roo
 
 ## Version History (Key Changes)
 
-### 0.1.9 (Current)
+### 0.1.10 (Current)
+- **CLI Unification**: Merged `tensor-truth-papers` into `tensor-truth-docs` command
+- **Module Reorganization**: Created `utils/` package (chat.py, pdf.py modules)
+- **Unified Config**: `sources.json` replaces `api.json` + `papers.json`
+- **Breaking Changes**:
+  - Removed `tensor-truth-papers` CLI command (use `tensor-truth-docs --type papers` instead)
+  - Removed `fetch_paper.py` (logic moved to `fetch_sources.py` + `utils/pdf.py`)
+  - Removed `scrape_docs.py` (replaced by `fetch_sources.py`)
+  - Removed `utils.py` (replaced by `utils/` module)
+- Simplified dependency structure (single `[docs]` extra for both libraries and papers)
+
+### 0.1.9
 - **Session-scoped PDF ingestion**: Upload PDFs in chat mode, converted with marker-pdf
 - **Temporary vector indexes**: Per-session ChromaDB indexes for uploaded PDFs
 - **Parallel retrieval**: Queries fetch from both permanent knowledge bases + session PDFs
@@ -713,10 +791,10 @@ docker run -d --name tensor-truth --gpus all -p 8501:8501 -v ~/.tensortruth:/roo
 | Ollama API | `core/ollama.py` | - |
 | System Utils | `core/system.py` | - |
 | Indexing | `build_db.py` | - |
-| Doc Scraping | `scrape_docs.py` | `config/api.json` |
-| Paper Fetching | `fetch_paper.py` | `config/papers.json` |
+| Source Fetching (libraries + papers) | `fetch_sources.py` | `config/sources.json` |
 | CLI Routing | `cli.py` | - |
-| Utils | `utils.py` (LaTeX, markdown export) | - |
+| PDF Processing | `utils/pdf.py` | - |
+| Chat Utilities | `utils/chat.py` | - |
 
 ## Critical Constants & Globals
 

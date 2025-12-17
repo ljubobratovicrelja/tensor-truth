@@ -7,7 +7,7 @@ from typing import Optional
 
 import pymupdf as fitz
 
-from .fetch_paper import convert_pdf_to_markdown, convert_with_marker
+from .utils.pdf import convert_pdf_to_markdown, convert_with_marker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

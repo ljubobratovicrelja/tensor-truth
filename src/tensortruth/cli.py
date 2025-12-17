@@ -46,26 +46,15 @@ def main():
     sys.exit(st_cli.main())
 
 
-def fetch_paper():
-    """Entry point for paper fetching tool."""
+def scrape_docs():
+    """Entry point for unified source fetching tool."""
     try:
-        from tensortruth.fetch_paper import main as fetch_main
+        from tensortruth.fetch_sources import main as fetch_main
     except ImportError as e:
-        _missing_imports_message("tensor-truth-papers", "docs", e)
+        _missing_imports_message("tensor-truth-docs", "docs", e)
         sys.exit(1)
 
     sys.exit(fetch_main())
-
-
-def scrape_docs():
-    """Entry point for documentation scraping tool."""
-    try:
-        from tensortruth.scrape_docs import main as scrape_main
-    except ImportError as e:
-        _missing_imports_message("tensor-truth-scrape", "docs", e)
-        sys.exit(1)
-
-    sys.exit(scrape_main())
 
 
 def build_db():
