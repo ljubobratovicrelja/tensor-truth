@@ -82,7 +82,8 @@ def process_pdf_upload(uploaded_file, session_id: str, sessions_file: str):
     # Convert to markdown (with progress spinner)
     try:
         with st.spinner(f"Converting {uploaded_file.name} (this may take a while)..."):
-            markdown_path = handler.convert_pdf_to_markdown(pdf_metadata["path"])
+            # TODO: investigate
+            _ = handler.convert_pdf_to_markdown(pdf_metadata["path"])
 
         # Build/rebuild index
         builder = SessionIndexBuilder(session_id)

@@ -112,6 +112,7 @@ class TestIndexExists:
 class TestBuildIndex:
     """Test index building."""
 
+    @patch("tensortruth.session_index.TensorTruthConfig._detect_default_device")
     @patch("tensortruth.session_index.StorageContext")
     @patch("tensortruth.session_index.VectorStoreIndex")
     @patch("tensortruth.session_index.get_embed_model")
@@ -128,10 +129,14 @@ class TestBuildIndex:
         mock_embed,
         mock_index,
         mock_storage,
+        mock_detect_device,
         session_builder,
         sample_markdown_files,
     ):
         """Should load all markdown files."""
+        # Mock device detection
+        mock_detect_device.return_value = "cpu"
+
         # Mock document loading
         mock_docs = [Mock(text=f"doc {i}") for i in range(len(sample_markdown_files))]
         mock_reader.return_value.load_data.return_value = mock_docs
@@ -153,6 +158,7 @@ class TestBuildIndex:
         # Should have created reader for each file
         assert mock_reader.call_count == len(sample_markdown_files)
 
+    @patch("tensortruth.session_index.TensorTruthConfig._detect_default_device")
     @patch("tensortruth.session_index.StorageContext")
     @patch("tensortruth.session_index.VectorStoreIndex")
     @patch("tensortruth.session_index.get_embed_model")
@@ -169,10 +175,12 @@ class TestBuildIndex:
         mock_embed,
         mock_index,
         mock_storage,
+        mock_detect_device,
         session_builder,
         sample_markdown_files,
     ):
         """Should use HierarchicalNodeParser with correct chunk sizes."""
+        mock_detect_device.return_value = "cpu"
         mock_reader.return_value.load_data.return_value = [Mock(text="content")]
         mock_parser_instance = Mock()
         mock_parser_instance.get_nodes_from_documents.return_value = [Mock()]
@@ -184,6 +192,7 @@ class TestBuildIndex:
 
         mock_parser.from_defaults.assert_called_once_with(chunk_sizes=[2048, 512, 128])
 
+    @patch("tensortruth.session_index.TensorTruthConfig._detect_default_device")
     @patch("tensortruth.session_index.StorageContext")
     @patch("tensortruth.session_index.VectorStoreIndex")
     @patch("tensortruth.session_index.get_embed_model")
@@ -200,11 +209,13 @@ class TestBuildIndex:
         mock_embed,
         mock_index,
         mock_storage,
+        mock_detect_device,
         session_builder,
         sample_markdown_files,
         temp_session_dirs,
     ):
         """Should create ChromaDB in session index directory."""
+        mock_detect_device.return_value = "cpu"
         mock_reader.return_value.load_data.return_value = [Mock(text="content")]
 
         # Mock node parsing
@@ -226,6 +237,7 @@ class TestBuildIndex:
         with pytest.raises(ValueError, match="No markdown files found"):
             session_builder.build_index([])
 
+    @patch("tensortruth.session_index.TensorTruthConfig._detect_default_device")
     @patch("tensortruth.session_index.StorageContext")
     @patch("tensortruth.session_index.VectorStoreIndex")
     @patch("tensortruth.session_index.get_embed_model")
@@ -242,10 +254,12 @@ class TestBuildIndex:
         mock_embed,
         mock_index,
         mock_storage,
+        mock_detect_device,
         session_builder,
         sample_markdown_files,
     ):
         """Should remove old index before building new one."""
+        mock_detect_device.return_value = "cpu"
         mock_reader.return_value.load_data.return_value = [Mock(text="content")]
 
         # Mock node parsing
@@ -270,6 +284,9 @@ class TestBuildIndex:
     def test_uses_default_chunk_sizes(self, session_builder, sample_markdown_files):
         """Should use default chunk sizes if none provided."""
         with (
+            patch(
+                "tensortruth.session_index.TensorTruthConfig._detect_default_device"
+            ) as mock_detect,
             patch("tensortruth.session_index.StorageContext") as mock_storage,
             patch("tensortruth.session_index.HierarchicalNodeParser") as mock_parser,
             patch("tensortruth.session_index.SimpleDirectoryReader") as mock_reader,
@@ -278,7 +295,7 @@ class TestBuildIndex:
             patch("tensortruth.session_index.get_embed_model"),
             patch("tensortruth.session_index.chromadb.PersistentClient"),
         ):
-
+            mock_detect.return_value = "cpu"
             mock_reader.return_value.load_data.return_value = [Mock(text="content")]
             mock_parser_instance = Mock()
             mock_parser_instance.get_nodes_from_documents.return_value = [Mock()]

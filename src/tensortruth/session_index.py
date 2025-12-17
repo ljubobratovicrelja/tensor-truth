@@ -10,6 +10,7 @@ from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreI
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
+from .app_utils.config_schema import TensorTruthConfig
 from .app_utils.paths import get_session_index_dir, get_session_markdown_dir
 from .rag_engine import get_embed_model
 
@@ -101,7 +102,8 @@ class SessionIndexBuilder:
             storage_context.docstore.add_documents(nodes)
 
             logger.info("Embedding documents (this may take a while)...")
-            embed_model = get_embed_model()
+            device = TensorTruthConfig._detect_default_device()
+            embed_model = get_embed_model(device=device)
             VectorStoreIndex(
                 leaf_nodes,
                 storage_context=storage_context,

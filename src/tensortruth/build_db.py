@@ -9,6 +9,7 @@ from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreI
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
+from tensortruth.app_utils.config_schema import TensorTruthConfig
 from tensortruth.rag_engine import get_base_index_dir, get_embed_model
 
 # Source directory is in the current working directory (where docs are placed)
@@ -61,11 +62,12 @@ def build_module(module_name, chunk_sizes=[2048, 512, 128]):
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     storage_context.docstore.add_documents(nodes)
 
-    print("Embedding (GPU)...")
+    device = TensorTruthConfig._detect_default_device()
+    print(f"Embedding on {device.upper()}...")
     VectorStoreIndex(
         leaf_nodes,
         storage_context=storage_context,
-        embed_model=get_embed_model(),
+        embed_model=get_embed_model(device=device),
         show_progress=True,
     )
 

@@ -70,6 +70,7 @@ def mock_uploaded_pdf(tmp_path, sample_pdf_content):
 class TestPDFUploadToIndex:
     """Test complete pipeline from upload to indexed."""
 
+    @patch("tensortruth.session_index.TensorTruthConfig._detect_default_device")
     @patch("tensortruth.pdf_handler.convert_with_marker")
     @patch("tensortruth.session_index.get_embed_model")
     @patch("tensortruth.session_index.VectorStoreIndex")
@@ -78,11 +79,13 @@ class TestPDFUploadToIndex:
         mock_index,
         mock_embed,
         mock_marker,
+        mock_detect_device,
         integration_session_dir,
         mock_uploaded_pdf,
     ):
         """Test complete flow: upload → marker conversion → indexing."""
         # Setup mocks
+        mock_detect_device.return_value = "cpu"
         mock_marker.return_value = "# Research Paper\n\nThis is a test paper about AI."
         mock_embed.return_value = Mock()
         mock_index_instance = Mock()
@@ -123,6 +126,7 @@ class TestPDFUploadToIndex:
         # Verify embedding was called
         assert mock_embed.called
 
+    @patch("tensortruth.session_index.TensorTruthConfig._detect_default_device")
     @patch("tensortruth.pdf_handler.convert_pdf_to_markdown")
     @patch("tensortruth.pdf_handler.convert_with_marker")
     @patch("tensortruth.session_index.get_embed_model")
@@ -133,11 +137,13 @@ class TestPDFUploadToIndex:
         mock_embed,
         mock_marker,
         mock_pymupdf,
+        mock_detect_device,
         integration_session_dir,
         mock_uploaded_pdf,
     ):
         """Test fallback when marker-pdf fails."""
         # Marker fails
+        mock_detect_device.return_value = "cpu"
         mock_marker.side_effect = Exception("Marker conversion failed")
         # PyMuPDF succeeds
         mock_pymupdf.return_value = "# Fallback Content\n\nConverted with pymupdf"
@@ -159,6 +165,7 @@ class TestPDFUploadToIndex:
 class TestMultiplePDFHandling:
     """Test handling multiple PDFs in a session."""
 
+    @patch("tensortruth.session_index.TensorTruthConfig._detect_default_device")
     @patch("tensortruth.pdf_handler.convert_with_marker")
     @patch("tensortruth.session_index.get_embed_model")
     @patch("tensortruth.session_index.VectorStoreIndex")
@@ -167,10 +174,12 @@ class TestMultiplePDFHandling:
         mock_index,
         mock_embed,
         mock_marker,
+        mock_detect_device,
         integration_session_dir,
         sample_pdf_content,
     ):
         """Test uploading and indexing multiple PDFs."""
+        mock_detect_device.return_value = "cpu"
         mock_marker.return_value = "# Paper Content"
         mock_embed.return_value = Mock()
 
@@ -214,6 +223,7 @@ class TestMultiplePDFHandling:
 class TestPDFDeletionAndRebuild:
     """Test PDF deletion and index rebuilding."""
 
+    @patch("tensortruth.session_index.TensorTruthConfig._detect_default_device")
     @patch("tensortruth.pdf_handler.convert_with_marker")
     @patch("tensortruth.session_index.get_embed_model")
     @patch("tensortruth.session_index.VectorStoreIndex")
@@ -222,10 +232,12 @@ class TestPDFDeletionAndRebuild:
         mock_index,
         mock_embed,
         mock_marker,
+        mock_detect_device,
         integration_session_dir,
         mock_uploaded_pdf,
     ):
         """Test deleting a PDF and rebuilding index."""
+        mock_detect_device.return_value = "cpu"
         mock_marker.return_value = "# Content"
         mock_embed.return_value = Mock()
 
@@ -273,6 +285,7 @@ class TestPDFDeletionAndRebuild:
 class TestSessionCleanup:
     """Test complete session cleanup."""
 
+    @patch("tensortruth.session_index.TensorTruthConfig._detect_default_device")
     @patch("tensortruth.pdf_handler.convert_with_marker")
     @patch("tensortruth.session_index.get_embed_model")
     @patch("tensortruth.session_index.VectorStoreIndex")
@@ -281,10 +294,12 @@ class TestSessionCleanup:
         mock_index,
         mock_embed,
         mock_marker,
+        mock_detect_device,
         integration_session_dir,
         mock_uploaded_pdf,
     ):
         """Test that deleting session removes all artifacts."""
+        mock_detect_device.return_value = "cpu"
         mock_marker.return_value = "# Content"
         mock_embed.return_value = Mock()
 
@@ -324,6 +339,7 @@ class TestSessionCleanup:
 class TestIndexPersistence:
     """Test index persistence across sessions."""
 
+    @patch("tensortruth.session_index.TensorTruthConfig._detect_default_device")
     @patch("tensortruth.pdf_handler.convert_with_marker")
     @patch("tensortruth.session_index.get_embed_model")
     @patch("tensortruth.session_index.VectorStoreIndex")
@@ -332,10 +348,12 @@ class TestIndexPersistence:
         mock_index,
         mock_embed,
         mock_marker,
+        mock_detect_device,
         integration_session_dir,
         mock_uploaded_pdf,
     ):
         """Test that index can be built, persisted, and checked for existence."""
+        mock_detect_device.return_value = "cpu"
         mock_marker.return_value = "# Content"
         mock_embed.return_value = Mock()
 

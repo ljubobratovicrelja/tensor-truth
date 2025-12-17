@@ -300,9 +300,9 @@ def load_engine_for_modules(
                 base, index.storage_context, verbose=False
             )
             active_retrievers.append(am_retriever)
-            print(f"✅ Session index loaded successfully")
+            print("Session index loaded successfully")
         except Exception as e:
-            print(f"⚠️ Failed to load session index: {e}")
+            print(f"Failed to load session index: {e}")
 
     if not active_retrievers:
         raise FileNotFoundError("No valid indices loaded.")
