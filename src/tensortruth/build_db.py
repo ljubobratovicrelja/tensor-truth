@@ -1,8 +1,10 @@
 import argparse
+import json
 import logging
 import os
 import shutil
 import sys
+from pathlib import Path
 
 import chromadb
 from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreIndex
@@ -10,7 +12,9 @@ from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from tensortruth.app_utils.config_schema import TensorTruthConfig
+from tensortruth.core.ollama import get_ollama_url
 from tensortruth.rag_engine import get_base_index_dir, get_embed_model
+from tensortruth.utils.metadata import extract_document_metadata
 
 # Source directory is in the current working directory (where docs are placed)
 SOURCE_DIR = "./library_docs"
@@ -21,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("BUILDER")
 
 
-def build_module(module_name, chunk_sizes=[2048, 512, 128]):
+def build_module(module_name, chunk_sizes=[2048, 512, 128], extract_metadata=True):
 
     source_dir = os.path.join(SOURCE_DIR, module_name)
     persist_dir = os.path.join(BASE_INDEX_DIR, module_name)
@@ -45,6 +49,46 @@ def build_module(module_name, chunk_sizes=[2048, 512, 128]):
     ).load_data()
 
     print(f"Loaded {len(documents)} documents.")
+
+    # 2a. Extract Metadata (NEW)
+    if extract_metadata:
+        print("Extracting document metadata...")
+
+        # Load sources.json config
+        sources_config = None
+        sources_path = Path("config/sources.json")
+        if sources_path.exists():
+            with open(sources_path, "r", encoding="utf-8") as f:
+                sources_config = json.load(f)
+
+        # Get Ollama URL for LLM fallback
+        ollama_url = get_ollama_url()
+
+        # Extract metadata for each document
+        for i, doc in enumerate(documents):
+            file_path = Path(doc.metadata.get("file_path", ""))
+
+            try:
+                metadata = extract_document_metadata(
+                    doc=doc,
+                    file_path=file_path,
+                    module_name=module_name,
+                    sources_config=sources_config,
+                    ollama_url=ollama_url,
+                    use_llm_fallback=True,
+                )
+
+                # Inject enriched metadata into document
+                doc.metadata.update(metadata)
+
+                if (i + 1) % 10 == 0 or (i + 1) == len(documents):
+                    print(f"  Processed {i + 1}/{len(documents)} documents...")
+
+            except Exception as e:
+                logger.warning(f"Failed to extract metadata for {file_path.name}: {e}")
+                # Continue with default metadata
+
+        print(f"✓ Metadata extraction complete for {len(documents)} documents")
 
     # 3. Parse
     node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
@@ -92,6 +136,11 @@ def main():
         default=[2048, 512, 128],
         help="Chunk sizes for hierarchical parsing",
     )
+    parser.add_argument(
+        "--no-extract-metadata",
+        action="store_true",
+        help="Skip metadata extraction (faster but less informative citations)",
+    )
 
     args = parser.parse_args()
 
@@ -119,7 +168,9 @@ def main():
         print("=" * 60)
         print()
 
-        build_module(module, args.chunk_sizes)
+        build_module(
+            module, args.chunk_sizes, extract_metadata=not args.no_extract_metadata
+        )
 
         print()
         print("=" * 60)

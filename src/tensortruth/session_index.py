@@ -3,7 +3,7 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import chromadb
 from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreIndex
@@ -12,7 +12,9 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from .app_utils.config_schema import TensorTruthConfig
 from .app_utils.paths import get_session_index_dir, get_session_markdown_dir
+from .core.ollama import get_ollama_url
 from .rag_engine import get_embed_model
+from .utils.metadata import extract_document_metadata
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,17 +23,37 @@ logger = logging.getLogger(__name__)
 class SessionIndexBuilder:
     """Builds and manages session-specific vector indexes for uploaded PDFs."""
 
-    def __init__(self, session_id: str):
+    def __init__(
+        self, session_id: str, metadata_cache: Optional[Dict[str, Dict]] = None
+    ):
         """
         Initialize session index builder.
 
         Args:
             session_id: Session identifier (e.g., "sess_abc123")
+            metadata_cache: Optional pre-loaded metadata cache from session JSON
         """
         self.session_id = session_id
         self.session_index_dir = get_session_index_dir(session_id)
         self.session_markdown_dir = get_session_markdown_dir(session_id)
+        self.metadata_cache = metadata_cache or {}
         self._chroma_client = None
+
+    def _extract_pdf_id_from_filename(self, filename: str) -> str:
+        """Extract PDF ID from markdown filename (e.g., 'pdf_abc123.md' -> 'pdf_abc123')."""
+        return Path(filename).stem
+
+    def _get_cached_metadata(self, pdf_id: str) -> Optional[Dict]:
+        """Get cached metadata for a PDF from the cache."""
+        return self.metadata_cache.get(pdf_id)
+
+    def _update_metadata_cache(self, pdf_id: str, metadata: Dict) -> None:
+        """Update the metadata cache for a PDF."""
+        self.metadata_cache[pdf_id] = metadata
+
+    def get_metadata_cache(self) -> Dict[str, Dict]:
+        """Get the complete metadata cache (for saving to session JSON)."""
+        return self.metadata_cache
 
     def index_exists(self) -> bool:
         """Check if a valid ChromaDB index exists for this session."""
@@ -86,6 +108,50 @@ class SessionIndexBuilder:
                 raise ValueError("No documents loaded from markdown files")
 
             logger.info(f"Loaded {len(documents)} documents")
+
+            # Extract metadata for each document
+            logger.info("Extracting metadata from uploaded PDFs...")
+            ollama_url = get_ollama_url()
+
+            for i, doc in enumerate(documents):
+                file_path = Path(doc.metadata.get("file_path", ""))
+                pdf_id = self._extract_pdf_id_from_filename(file_path.name)
+
+                try:
+                    # Check cache first
+                    cached_metadata = self._get_cached_metadata(pdf_id)
+
+                    if cached_metadata:
+                        logger.info(f"  Using cached metadata for {pdf_id}")
+                        metadata = cached_metadata
+                    else:
+                        # Extract with LLM (uploaded PDFs rarely have explicit metadata)
+                        logger.info(f"  Extracting metadata for {pdf_id} with LLM...")
+                        metadata = extract_document_metadata(
+                            doc=doc,
+                            file_path=file_path,
+                            module_name=None,
+                            sources_config=None,
+                            ollama_url=ollama_url,
+                            use_llm_fallback=True,
+                        )
+
+                        # Force doc_type to uploaded_pdf
+                        metadata["doc_type"] = "uploaded_pdf"
+
+                        # Cache the metadata
+                        self._update_metadata_cache(pdf_id, metadata)
+
+                    # Inject metadata into document
+                    doc.metadata.update(metadata)
+
+                except Exception as e:
+                    logger.warning(f"Failed to extract metadata for {pdf_id}: {e}")
+                    # Continue with default metadata
+
+            logger.info(
+                f"✓ Metadata extraction complete for {len(documents)} documents"
+            )
 
             # Parse with hierarchical chunking
             node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
