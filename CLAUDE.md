@@ -38,26 +38,47 @@
 
 **ONLY update CLAUDE.md** as part of your regular workflow to keep it accurate.
 
-### Code Formatting Protocol
-**AFTER CREATING OR MODIFYING CODE FILES:**
-1. **Always run the formatter** on new or modified files:
-   ```bash
-   python scripts/format.py <file1> <file2> ...
-   ```
-2. This runs `isort` (import sorting) and `black` (code formatting)
-3. **Then run flake8** to check for code quality issues:
-   ```bash
-   python -m flake8 <file1> <file2> ...
-   ```
-4. **Address all flake8 issues** before proceeding:
-   - Fix unused imports, undefined names, syntax errors
-   - Fix line length issues (max 100 chars, some exceptions allowed)
-   - Fix complexity warnings where reasonable
-5. **Do this BEFORE committing** or marking work as complete
-6. Applies to all `.py` files in `src/`, `tests/`, and `scripts/`
+### Code Quality Workflow (MANDATORY END-OF-RESPONSE CHECKLIST)
+**⚠️ CRITICAL: AT THE END OF EVERY RESPONSE WHERE YOU EDIT CODE ⚠️**
 
-### Testing Protocol
-**WHENEVER YOU CREATE VALID UNITS OF CODE:**
+This is a **mandatory 3-step process** that MUST be completed before you finish your response:
+
+#### Step 1: Format Code
+```bash
+python scripts/format.py <file1> <file2> ...
+```
+- Runs `isort` (import sorting) and `black` (code formatting)
+- Run on ALL files you created or modified in this response
+
+#### Step 2: Run flake8
+```bash
+python -m flake8 <file1> <file2> ...
+```
+- **Fix ALL flake8 issues** that appear:
+  - Unused imports, undefined names, syntax errors
+  - Line length issues (max 100 chars, some exceptions allowed)
+  - Complexity warnings where reasonable
+- Re-run flake8 until there are **zero issues**
+
+#### Step 3: Run Tests
+```bash
+pytest tests/unit/test_<your_module>.py -v
+pytest tests/integration/test_<your_feature>.py -v
+```
+- **Fix ALL failing tests** before completing your response
+- If tests fail, debug and fix the code or the tests
+- Do NOT leave failing tests in the codebase
+- Run tests multiple times to ensure they pass consistently
+
+**YOU MUST COMPLETE ALL 3 STEPS IN ORDER BEFORE ENDING YOUR RESPONSE.**
+
+If you skip any step, you have not followed the protocol correctly. This applies to all `.py` files in `src/`, `tests/`, and `scripts/`.
+
+---
+
+### Testing Protocol (When Writing New Code)
+**WHENEVER YOU CREATE NEW CODE FILES:**
+
 1. **Unit Tests**: Create tests for individual functions/classes
    - Location: `tests/unit/test_<module_name>.py`
    - Test all public methods, edge cases, error handling
@@ -74,17 +95,6 @@
    - Aim for >80% coverage on new code
    - Test both success and failure paths
    - Include edge cases (empty inputs, corrupted data, etc.)
-
-4. **Run Tests Before Completing**:
-   ```bash
-   pytest tests/unit/test_<your_module>.py -v
-   pytest tests/integration/test_<your_feature>.py -v
-   ```
-5. **CRITICAL: Fix ALL failing tests before marking work complete**:
-   - If tests fail, debug and fix the code or the tests
-   - Do NOT leave failing tests in the codebase
-   - If a test is too complex to fix immediately, mark it with `@pytest.mark.skip` and create a TODO
-   - Run tests multiple times to ensure they pass consistently
 
 **When to write tests:**
 - Always for new modules/classes
