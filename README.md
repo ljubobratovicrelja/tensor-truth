@@ -82,7 +82,7 @@ All user data (chat history, presets, indexes) is stored in `~/.tensortruth` on 
 
 Pre-built indexes download automatically to this directory on startup. If Google Drive rate limits prevent auto-download, manually fetch [indexes.tar](https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing) and extract to `~/.tensortruth/indexes`.
 
-For index contents, see [config/api.json](config/api.json) and [config/papers.json](config/papers.json). These are curated lists of useful libraries and research papers. Fork and customize as needed.
+For index contents, see [config/sources.json](config/sources.json). This is a curated list of useful libraries and research papers. Fork and customize as needed.
 
 ## Requirements
 
@@ -113,24 +113,24 @@ DeepSeek-R1 models include chain-of-thought reasoning. Coder-V2 variants are opt
 
 ## Building Your Own Indexes
 
-Pre-built indexes cover common libraries, but you can create custom knowledge bases:
+Pre-built indexes cover common libraries, but you can create custom knowledge bases.
 
 **Scrape Documentation:**
 ```bash
-tensor-truth-docs --list          # Show available libraries
-tensor-truth-docs pytorch         # Scrape PyTorch docs
-```
-
-**Fetch Research Papers:**
-```bash
-tensor-truth-papers --config ./config/papers.json --category your_category --ids 2301.12345
-tensor-truth-papers --rebuild your_category
+tensor-truth-docs --list                                    # Show all available sources
+tensor-truth-docs pytorch numpy                             # Scrape library docs
+tensor-truth-docs --type papers --category dl_foundations   # Fetch paper category
+tensor-truth-docs --type papers --category ml --ids 1706.03762 1810.04805  # Specific papers
 ```
 
 **Build Vector Index:**
 ```bash
 tensor-truth-build --modules module_name
 ```
+
+**Session PDFs:**
+
+Upload PDFs directly in the web UI to create per-session indexes. For now only standard PDF files are supported, but more formats may be added later.
 
 ## Configuration
 
