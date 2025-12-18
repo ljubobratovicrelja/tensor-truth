@@ -310,8 +310,14 @@ with st.sidebar:
             mods = curr_sess.get("modules", [])
             if not mods:
                 st.caption("*None*")
-            for m in mods:
-                st.code(m, language="text")
+            else:
+                # Get display names for active modules
+                available_mods_tuples = get_available_modules(INDEX_DIR)
+                module_to_display = {mod: disp for mod, disp in available_mods_tuples}
+
+                for m in mods:
+                    display_name = module_to_display.get(m, m)
+                    st.caption(f"• {display_name}")
 
             md_data = convert_chat_to_markdown(curr_sess)
             st.download_button(
@@ -345,7 +351,7 @@ if st.session_state.get("show_delete_confirm", False):
                 st.rerun()
         with col2:
             if st.button("Delete", type="primary", use_container_width=True):
-                from app_utils.session import delete_session
+                from tensortruth.app_utils.session import delete_session
 
                 curr_id = st.session_state.chat_data["current_id"]
                 delete_session(curr_id, SESSIONS_FILE)
@@ -423,7 +429,12 @@ if st.session_state.get("show_no_rag_warning", False):
 if st.session_state.mode == "setup":
     with st.container():
         # 1. Fetch Data
-        available_mods = get_available_modules(INDEX_DIR)
+        available_mods_tuples = get_available_modules(INDEX_DIR)
+        # Create mappings for display name <-> module name
+        module_to_display = {mod: disp for mod, disp in available_mods_tuples}
+        display_to_module = {disp: mod for mod, disp in available_mods_tuples}
+        available_mods = [mod for mod, _ in available_mods_tuples]
+
         available_models = get_ollama_models()
         system_devices = get_system_devices()
         presets = load_presets(PRESETS_FILE)
@@ -567,9 +578,28 @@ if st.session_state.mode == "setup":
             with st.form("launch_form"):
                 # --- SELECTION AREA ---
                 st.subheader("1. Knowledge Base")
-                selected_mods = st.multiselect(
-                    "Active Indices:", available_mods, key="setup_mods"
+                # Get display names for current selection
+                available_display_names = [
+                    module_to_display[mod] for mod in available_mods
+                ]
+                current_display_selection = [
+                    module_to_display[mod]
+                    for mod in st.session_state.get("setup_mods", [])
+                    if mod in module_to_display
+                ]
+
+                selected_display_names = st.multiselect(
+                    "Active Indices:",
+                    available_display_names,
+                    default=current_display_selection,
                 )
+
+                # Convert back to module names
+                selected_mods = [
+                    display_to_module[disp] for disp in selected_display_names
+                ]
+                # Update session state with module names
+                st.session_state.setup_mods = selected_mods
 
                 st.subheader("2. Model Selection")
 
@@ -981,11 +1011,8 @@ elif st.session_state.mode == "chat":
                             }
                             icon = icon_map.get(doc_type, "📄")
 
-                            # Format display with authors if available
-                            if authors:
-                                label = f"{display_name} - {authors}"
-                            else:
-                                label = display_name
+                            # Use display_name as-is (it already includes authors for books)
+                            label = display_name
 
                             # Render with optional link
                             if source_url:
@@ -1059,7 +1086,8 @@ elif st.session_state.mode == "chat":
         # 1. COMMAND PROCESSING
         if prompt.startswith("/"):
             # Process command (returns immediately with response message)
-            available_mods = get_available_modules(INDEX_DIR)
+            available_mods_tuples = get_available_modules(INDEX_DIR)
+            available_mods = [mod for mod, _ in available_mods_tuples]
             is_cmd, response, state_modifier = process_command(
                 prompt, session, available_mods
             )
@@ -1311,11 +1339,8 @@ elif st.session_state.mode == "chat":
                                     }
                                     icon = icon_map.get(doc_type, "📄")
 
-                                    # Format display with authors if available
-                                    if authors:
-                                        label = f"{display_name} - {authors}"
-                                    else:
-                                        label = display_name
+                                    # Use display_name as-is (it already includes authors for books)
+                                    label = display_name
 
                                     # Render with optional link
                                     if source_url:

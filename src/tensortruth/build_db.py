@@ -57,6 +57,10 @@ def build_module(module_name, chunk_sizes=[2048, 512, 256], extract_metadata=Tru
 
     print(f"Loaded {len(documents)} documents.")
 
+    if len(documents) == 0:
+        print(f"[WARNING] No documents found in {source_dir}. Skipping module.")
+        return
+
     # 2a. Extract Metadata (NEW)
     if extract_metadata:
         print("Extracting document metadata...")
@@ -73,7 +77,7 @@ def build_module(module_name, chunk_sizes=[2048, 512, 256], extract_metadata=Tru
 
         # Book metadata cache (keyed by book directory)
         book_metadata_cache = {}
-        is_book_module = "_books" in module_name.lower()
+        is_book_module = module_name.startswith("book_")
 
         # Extract metadata for each document
         for i, doc in enumerate(documents):
@@ -84,17 +88,8 @@ def build_module(module_name, chunk_sizes=[2048, 512, 256], extract_metadata=Tru
                 if is_book_module:
                     book_dir = file_path.parent
 
-                    # Try to extract book identifier from markdown filename
-                    # Pattern: "Title__Authors__ChapterNum_ChapterName.md"
-                    # Extract title and authors from filename
-                    filename_parts = file_path.stem.split("__")
-
-                    if len(filename_parts) >= 2:
-                        # Use first two parts as book identifier (title + authors)
-                        book_key = "__".join(filename_parts[:2])
-                    else:
-                        # Fallback: use parent directory
-                        book_key = str(book_dir)
+                    # Use book directory as cache key
+                    book_key = str(book_dir)
 
                     # Check if we've already extracted metadata for this book
                     if book_key not in book_metadata_cache:
@@ -102,65 +97,67 @@ def build_module(module_name, chunk_sizes=[2048, 512, 256], extract_metadata=Tru
                         pdf_files = list(book_dir.glob("*.pdf"))
 
                         if pdf_files:
+                            pdf_path = pdf_files[0]
                             # Try PDF metadata first
-                            pdf_metadata = extract_pdf_metadata(pdf_files[0])
-                            if pdf_metadata:
-                                print(
-                                    f"  Extracted from PDF: "
-                                    f"{pdf_metadata.get('title')} - "
-                                    f"{pdf_metadata.get('authors')}"
-                                )
+                            pdf_metadata = extract_pdf_metadata(pdf_path)
+                            has_title = pdf_metadata and pdf_metadata.get("title")
+                            has_authors = pdf_metadata and pdf_metadata.get("authors")
+                            if has_title and has_authors:
+                                print("  Extracted from PDF metadata:")
+                                print(f"  Title: {pdf_metadata.get('title')}")
+                                print(f"  Author(s): {pdf_metadata.get('authors')}")
                                 book_metadata_cache[book_key] = pdf_metadata
                             else:
-                                # Fallback: parse markdown filename
+                                # Fallback: parse PDF filename
+                                pdf_stem = pdf_path.stem
+                                # Remove trailing underscores and split by __
+                                pdf_stem = pdf_stem.rstrip("_")
+                                filename_parts = pdf_stem.split("__")
+
                                 print(
-                                    f"  Extracting metadata from filename: "
-                                    f"{book_key}..."
+                                    f"  Extracting metadata from PDF filename: "
+                                    f"{pdf_path.name}"
                                 )
                                 if len(filename_parts) >= 2:
                                     title = filename_parts[0].replace("_", " ").strip()
+                                    # Join all remaining parts as authors
                                     authors = ", ".join(
                                         part.replace("_", " ").strip()
                                         for part in filename_parts[1:]
-                                        if part.strip() and not part[0].isdigit()
+                                        if part.strip()
                                     )
                                     book_metadata_cache[book_key] = {
                                         "title": title,
                                         "authors": authors if authors else None,
                                     }
-                                    print(f"  Extracted: {title} - {authors}")
+                                    print(f"  Title: {title}")
+                                    print(
+                                        f"  Author(s): {authors if authors else 'N/A'}"
+                                    )
                                 else:
-                                    # LLM fallback
+                                    # LLM fallback on first chapter
+                                    print("  Using LLM to extract metadata...")
                                     book_metadata_cache[book_key] = (
                                         extract_metadata_with_llm(
                                             doc, file_path, ollama_url
                                         )
                                     )
                         else:
-                            # No PDF: parse markdown filename
-                            print(f"  No PDF, using filename: {book_key}...")
-                            if len(filename_parts) >= 2:
-                                title = filename_parts[0].replace("_", " ").strip()
-                                authors = ", ".join(
-                                    part.replace("_", " ").strip()
-                                    for part in filename_parts[1:]
-                                    if part.strip() and not part[0].isdigit()
-                                )
-                                book_metadata_cache[book_key] = {
-                                    "title": title,
-                                    "authors": authors if authors else None,
-                                }
-                                print(f"  Extracted: {title} - {authors}")
-                            else:
-                                book_metadata_cache[book_key] = (
-                                    extract_metadata_with_llm(
-                                        doc, file_path, ollama_url
-                                    )
-                                )
+                            # No PDF: use LLM on first chapter
+                            print("  No PDF found, using LLM to extract metadata...")
+                            book_metadata_cache[book_key] = extract_metadata_with_llm(
+                                doc, file_path, ollama_url
+                            )
 
                     # Apply cached book metadata to this chapter
                     metadata = book_metadata_cache[book_key].copy()
                     metadata["doc_type"] = "book"
+
+                    # Add source URL from config if available
+                    if sources_config and module_name:
+                        book_config = sources_config.get("sources", {}).get(module_name)
+                        if book_config and "source" in book_config:
+                            metadata["source_url"] = book_config["source"]
 
                     # Build display name with chapter info if available
                     # Look for chapter numbers in format: __##_ChapterName
@@ -187,13 +184,20 @@ def build_module(module_name, chunk_sizes=[2048, 512, 256], extract_metadata=Tru
 
                 else:
                     # Regular document extraction (papers, library docs)
+                    # Disable LLM for library docs (API documentation)
+                    is_library_doc = not (
+                        "papers" in module_name.lower()
+                        or "dl_foundations" in module_name.lower()
+                        or "3d_reconstruction" in module_name.lower()
+                        or "vision_" in module_name.lower()
+                    )
                     metadata = extract_document_metadata(
                         doc=doc,
                         file_path=file_path,
                         module_name=module_name,
                         sources_config=sources_config,
                         ollama_url=ollama_url,
-                        use_llm_fallback=True,
+                        use_llm_fallback=not is_library_doc,
                     )
 
                 # Inject only essential metadata fields to avoid chunk size issues

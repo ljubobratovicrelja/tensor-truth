@@ -9,6 +9,64 @@ from typing import List
 import torch
 
 
+def get_module_display_name(index_dir: str, module_name: str) -> tuple[str, str, str]:
+    """Extract display_name and category from module's ChromaDB index.
+
+    Args:
+        index_dir: Base index directory
+        module_name: Module folder name
+
+    Returns:
+        Tuple of (display_name, doc_type, category_prefix) where:
+        - display_name: Human-readable name
+        - doc_type: Type from metadata (book, paper, library_doc, etc.)
+        - category_prefix: Formatted prefix for grouping (e.g., "📚 Books")
+    """
+    try:
+        import re
+
+        # Disable ChromaDB telemetry to suppress info messages
+        os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
+        import chromadb
+
+        index_path = os.path.join(index_dir, module_name)
+        client = chromadb.PersistentClient(path=index_path)
+
+        # Try to get the collection (LlamaIndex uses 'data')
+        collection = client.get_collection("data")
+
+        # Peek at first document to get display_name and doc_type
+        results = collection.peek(limit=1)
+        if results["metadatas"] and len(results["metadatas"]) > 0:
+            metadata = results["metadatas"][0]
+            display_name = metadata.get("display_name")
+            doc_type = metadata.get("doc_type", "unknown")
+
+            if display_name:
+                # Remove chapter info like "Ch.01", "Ch.1-3", etc.
+                # Pattern: "Ch." followed by numbers/dashes and a separator
+                display_name = re.sub(r"\s+Ch\.\s*[\d\-]+\s*-\s*", " - ", display_name)
+
+                # Determine category prefix based on doc_type
+                category_map = {
+                    "book": ("📚 Books", 1),
+                    "paper": ("📄 Papers", 2),
+                    "library_doc": ("📦 Libraries", 3),
+                }
+                category_prefix, sort_order = category_map.get(
+                    doc_type, ("📁 Other", 4)
+                )
+
+                return display_name, doc_type, category_prefix, sort_order
+    except Exception:
+        # ChromaDB read failed, use module_name as fallback
+        pass
+
+    # Fallback: use raw module_name with unknown category
+    return module_name, "unknown", "📁 Other", 4
+
+
 def _download_and_extract_indexes(user_dir: str, gdrive_link: str):
     tarball_path = os.path.join(user_dir, "indexes.tar")
 
@@ -96,12 +154,35 @@ def download_indexes_with_ui(user_dir: str, gdrive_link: str):
 
 
 def get_available_modules(index_dir: str):
-    """Get list of available index modules."""
+    """Get list of available modules with categorized display names.
+
+    Returns:
+        List of tuples: [(module_name, formatted_display_name), ...]
+        where formatted_display_name includes category prefix for grouping
+    """
     if not os.path.exists(index_dir):
         return []
-    return sorted(
+
+    # Get current list of module directories
+    module_dirs = sorted(
         [d for d in os.listdir(index_dir) if os.path.isdir(os.path.join(index_dir, d))]
     )
+
+    # For each module, get display name and category from ChromaDB metadata
+    results = []
+    for module_name in module_dirs:
+        display_name, doc_type, category_prefix, sort_order = get_module_display_name(
+            index_dir, module_name
+        )
+        # Format: "📚 Books › Linear Algebra - Cherney"
+        formatted_name = f"{category_prefix} › {display_name}"
+        results.append((module_name, formatted_name, sort_order))
+
+    # Sort by category first (sort_order), then by display name
+    results.sort(key=lambda x: (x[2], x[1]))
+
+    # Return just module_name and formatted_name (drop sort_order)
+    return [(mod, name) for mod, name, _ in results]
 
 
 # Cache decorator will be applied by Streamlit app if streamlit is available

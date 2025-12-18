@@ -146,11 +146,12 @@ CUSTOM_CONDENSE_PROMPT_TEMPLATE = (
 
 def get_embed_model(device="cuda"):
     print(f"Loading Embedder on: {device.upper()}")
+    batch_size = 128 if device == "cuda" else 16
     return HuggingFaceEmbedding(
         model_name="BAAI/bge-m3",
         device=device,
         model_kwargs={"trust_remote_code": True},
-        embed_batch_size=16,
+        embed_batch_size=batch_size,
     )
 
 

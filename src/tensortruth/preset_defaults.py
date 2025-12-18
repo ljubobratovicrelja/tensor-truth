@@ -34,8 +34,8 @@ def get_default_presets():
             "favorite": True,
             "favorite_order": 0,
             "modules": [
-                "deep_learning_books",
-                "machine_learning_books",
+                "book_deep_learning_goodfellow",
+                "book_dive_deep_learning_zhang",
                 "dl_foundations",
             ],
             "model_preference": "reasoning",
@@ -51,7 +51,7 @@ def get_default_presets():
             "favorite_order": 1,
             "modules": [
                 "pytorch_2.9",
-                "deep_learning_books",
+                "book_dive_deep_learning_zhang",
                 "matplotlib_3.10",
                 "dl_foundations",
             ],
@@ -68,7 +68,11 @@ def get_default_presets():
         },
         "Math Foundations": {
             "description": "Learn linear algebra and calculus with rigorous explanations",
-            "modules": ["linear_algebra_books", "calculus_books"],
+            "modules": [
+                "book_linear_algebra_cherney",
+                "book_linear_algebra_axler",
+                "book_diff_equations_trench",
+            ],
             "model_preference": "reasoning",
             "reranker_model": "BAAI/bge-reranker-v2-m3",
             "context_window": 8192,
@@ -83,9 +87,9 @@ def get_default_presets():
         "ML Theory": {
             "description": "Study machine learning theory with mathematical foundations",
             "modules": [
-                "machine_learning_books",
-                "linear_algebra_books",
-                "numerical_optimization_books",
+                "book_mathematics_ml_deisenroth",
+                "book_linear_algebra_cherney",
+                "book_convex_optimization_boyd",
             ],
             "model_preference": "reasoning",
             "reranker_model": "BAAI/bge-reranker-v2-m3",
@@ -152,7 +156,8 @@ def get_default_presets():
             "description": "Explore 3D reconstruction and rendering with math",
             "modules": [
                 "3d_reconstruction_rendering",
-                "linear_algebra_books",
+                "book_linear_algebra_cherney",
+                "book_linear_algebra_axler",
                 "pytorch_2.9",
             ],
             "model_preference": "reasoning",
@@ -171,7 +176,8 @@ def get_default_presets():
             "modules": [
                 "vision_2d_generative",
                 "dl_foundations",
-                "deep_learning_books",
+                "book_deep_learning_goodfellow",
+                "book_dive_deep_learning_zhang",
                 "pytorch_2.9",
             ],
             "model_preference": "reasoning",
@@ -223,8 +229,8 @@ def get_default_presets():
             "modules": [
                 "numpy_2.3",
                 "scipy_1.15",
-                "calculus_books",
-                "numerical_optimization_books",
+                "book_diff_equations_trench",
+                "book_convex_optimization_boyd",
             ],
             "model_preference": "reasoning",
             "reranker_model": "BAAI/bge-reranker-v2-m3",
@@ -240,9 +246,10 @@ def get_default_presets():
         "Optimization Expert": {
             "description": "Master optimization from classical methods to deep learning",
             "modules": [
-                "numerical_optimization_books",
-                "calculus_books",
-                "linear_algebra_books",
+                "book_convex_optimization_boyd",
+                "book_diff_equations_trench",
+                "book_linear_algebra_cherney",
+                "book_linear_algebra_axler",
                 "dl_foundations",
             ],
             "model_preference": "reasoning",
@@ -258,7 +265,11 @@ def get_default_presets():
         },
         "Linear Algebra": {
             "description": "Learn linear algebra theory with NumPy implementations",
-            "modules": ["linear_algebra_books", "numpy_2.3"],
+            "modules": [
+                "book_linear_algebra_cherney",
+                "book_linear_algebra_axler",
+                "numpy_2.3",
+            ],
             "model_preference": "lightweight",
             "reranker_model": "BAAI/bge-reranker-v2-m3",
             "context_window": 4096,
@@ -268,20 +279,6 @@ def get_default_presets():
             "system_prompt": (
                 "Teach linear algebra concepts clearly. Connect abstract "
                 "theory to concrete NumPy operations.",
-            ),
-        },
-        "Quick Calc Helper": {
-            "description": "Solve calculus and algebra problems step-by-step",
-            "modules": ["calculus_books", "linear_algebra_books"],
-            "model_preference": "lightweight",
-            "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-            "context_window": 3072,
-            "temperature": 0.3,
-            "reranker_top_n": 3,
-            "confidence_cutoff": 0.25,
-            "system_prompt": (
-                "Solve calculus and algebra problems "
-                "step-by-step. Show all work clearly."
             ),
         },
         "Paper Reading": {
@@ -315,7 +312,11 @@ def get_default_presets():
         },
         "Fast Researcher": {
             "description": "Get quick answers to ML/DL questions with speed focus",
-            "modules": ["deep_learning_books", "machine_learning_books"],
+            "modules": [
+                "book_deep_learning_goodfellow",
+                "book_dive_deep_learning_zhang",
+                "book_mathematics_ml_deisenroth",
+            ],
             "model_preference": "lightweight",
             "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
             "context_window": 3072,

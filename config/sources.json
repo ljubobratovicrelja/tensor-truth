@@ -1,565 +1,519 @@
 {
-  "libraries": {
-    "pytorch": {
-      "type": "sphinx",
-      "version": "2.9",
-      "doc_type": "sphinx",
-      "doc_root": "https://pytorch.org/docs/stable/",
-      "inventory_url": "https://pytorch.org/docs/stable/objects.inv",
-      "selector": "div[role='main']"
+    "libraries": {
+        "pytorch": {
+            "type": "sphinx",
+            "version": "2.9",
+            "doc_type": "sphinx",
+            "doc_root": "https://pytorch.org/docs/stable/",
+            "inventory_url": "https://pytorch.org/docs/stable/objects.inv",
+            "selector": "div[role='main']"
+        },
+        "numpy": {
+            "type": "sphinx",
+            "version": "2.3",
+            "doc_type": "sphinx",
+            "doc_root": "https://numpy.org/doc/stable/",
+            "inventory_url": "https://numpy.org/doc/stable/objects.inv",
+            "selector": "article[role='main']"
+        },
+        "scipy": {
+            "type": "sphinx",
+            "version": "1.15",
+            "doc_type": "sphinx",
+            "doc_root": "https://docs.scipy.org/doc/scipy/",
+            "inventory_url": "https://docs.scipy.org/doc/scipy/objects.inv",
+            "selector": "article[role='main']"
+        },
+        "matplotlib": {
+            "type": "sphinx",
+            "version": "3.10",
+            "doc_type": "sphinx",
+            "doc_root": "https://matplotlib.org/stable/",
+            "inventory_url": "https://matplotlib.org/stable/objects.inv",
+            "selector": "div[role='main']"
+        },
+        "pandas": {
+            "type": "sphinx",
+            "version": "2.3",
+            "doc_type": "sphinx",
+            "doc_root": "https://pandas.pydata.org/docs/",
+            "inventory_url": "https://pandas.pydata.org/docs/objects.inv",
+            "selector": "article[role='main']"
+        },
+        "scikit-learn": {
+            "type": "sphinx",
+            "version": "1.8",
+            "doc_type": "sphinx",
+            "doc_root": "https://scikit-learn.org/stable/",
+            "inventory_url": "https://scikit-learn.org/stable/objects.inv",
+            "selector": "div[role='main']"
+        },
+        "seaborn": {
+            "type": "sphinx",
+            "version": "0.13",
+            "doc_type": "sphinx",
+            "doc_root": "https://seaborn.pydata.org/",
+            "inventory_url": "https://seaborn.pydata.org/objects.inv",
+            "selector": "article[role='main']"
+        },
+        "requests": {
+            "type": "sphinx",
+            "version": "2.32",
+            "doc_type": "sphinx",
+            "doc_root": "https://requests.readthedocs.io/en/stable/",
+            "inventory_url": "https://requests.readthedocs.io/en/stable/objects.inv",
+            "selector": "div[role='main']"
+        },
+        "flask": {
+            "type": "sphinx",
+            "version": "3.1",
+            "doc_type": "sphinx",
+            "doc_root": "https://flask.palletsprojects.com/en/stable/",
+            "inventory_url": "https://flask.palletsprojects.com/en/stable/objects.inv",
+            "selector": "div[role='main']"
+        },
+        "django": {
+            "type": "sphinx",
+            "version": "6.0",
+            "doc_type": "sphinx",
+            "doc_root": "https://docs.djangoproject.com/en/stable/",
+            "inventory_url": "https://docs.djangoproject.com/en/stable/_objects/",
+            "selector": "div[role='main']"
+        },
+        "transformers": {
+            "type": "sphinx",
+            "version": "4.57",
+            "doc_type": "sphinx",
+            "doc_root": "https://huggingface.co/docs/transformers/",
+            "inventory_url": "https://huggingface.co/docs/transformers/main/en/objects.inv",
+            "selector": "main"
+        },
+        "pillow": {
+            "type": "sphinx",
+            "version": "12.0",
+            "doc_type": "sphinx",
+            "doc_root": "https://pillow.readthedocs.io/en/stable/",
+            "inventory_url": "https://pillow.readthedocs.io/en/stable/objects.inv",
+            "selector": "div[role='main']"
+        },
+        "sqlalchemy": {
+            "type": "sphinx",
+            "version": "2.0",
+            "doc_type": "sphinx",
+            "doc_root": "https://docs.sqlalchemy.org/en/20/",
+            "inventory_url": "https://docs.sqlalchemy.org/en/20/objects.inv",
+            "selector": "div[role='main']"
+        },
+        "networkx": {
+            "type": "sphinx",
+            "version": "3.6",
+            "doc_type": "sphinx",
+            "doc_root": "https://networkx.org/documentation/stable/",
+            "inventory_url": "https://networkx.org/documentation/stable/objects.inv",
+            "selector": "div[role='main']"
+        },
+        "opencv": {
+            "type": "doxygen",
+            "version": "4.12",
+            "doc_type": "doxygen",
+            "doc_root": "https://docs.opencv.org/4.12.0/",
+            "index_pages": ["annotated.html", "index.html"],
+            "selector": "div.contents"
+        }
     },
-    "numpy": {
-      "type": "sphinx",
-      "version": "2.3",
-      "doc_type": "sphinx",
-      "doc_root": "https://numpy.org/doc/stable/",
-      "inventory_url": "https://numpy.org/doc/stable/objects.inv",
-      "selector": "article[role='main']"
-    },
-    "scipy": {
-      "type": "sphinx",
-      "version": "1.15",
-      "doc_type": "sphinx",
-      "doc_root": "https://docs.scipy.org/doc/scipy/",
-      "inventory_url": "https://docs.scipy.org/doc/scipy/objects.inv",
-      "selector": "article[role='main']"
-    },
-    "matplotlib": {
-      "type": "sphinx",
-      "version": "3.10",
-      "doc_type": "sphinx",
-      "doc_root": "https://matplotlib.org/stable/",
-      "inventory_url": "https://matplotlib.org/stable/objects.inv",
-      "selector": "div[role='main']"
-    },
-    "pandas": {
-      "type": "sphinx",
-      "version": "2.3",
-      "doc_type": "sphinx",
-      "doc_root": "https://pandas.pydata.org/docs/",
-      "inventory_url": "https://pandas.pydata.org/docs/objects.inv",
-      "selector": "article[role='main']"
-    },
-    "scikit-learn": {
-      "type": "sphinx",
-      "version": "1.8",
-      "doc_type": "sphinx",
-      "doc_root": "https://scikit-learn.org/stable/",
-      "inventory_url": "https://scikit-learn.org/stable/objects.inv",
-      "selector": "div[role='main']"
-    },
-    "seaborn": {
-      "type": "sphinx",
-      "version": "0.13",
-      "doc_type": "sphinx",
-      "doc_root": "https://seaborn.pydata.org/",
-      "inventory_url": "https://seaborn.pydata.org/objects.inv",
-      "selector": "article[role='main']"
-    },
-    "requests": {
-      "type": "sphinx",
-      "version": "2.32",
-      "doc_type": "sphinx",
-      "doc_root": "https://requests.readthedocs.io/en/stable/",
-      "inventory_url": "https://requests.readthedocs.io/en/stable/objects.inv",
-      "selector": "div[role='main']"
-    },
-    "flask": {
-      "type": "sphinx",
-      "version": "3.1",
-      "doc_type": "sphinx",
-      "doc_root": "https://flask.palletsprojects.com/en/stable/",
-      "inventory_url": "https://flask.palletsprojects.com/en/stable/objects.inv",
-      "selector": "div[role='main']"
-    },
-    "django": {
-      "type": "sphinx",
-      "version": "6.0",
-      "doc_type": "sphinx",
-      "doc_root": "https://docs.djangoproject.com/en/stable/",
-      "inventory_url": "https://docs.djangoproject.com/en/stable/_objects/",
-      "selector": "div[role='main']"
-    },
-    "tensorflow": {
-      "type": "sphinx",
-      "version": "2.20",
-      "doc_type": "sphinx",
-      "doc_root": "https://www.tensorflow.org/api_docs/python/",
-      "inventory_url": "https://www.tensorflow.org/api_docs/python/objects.inv",
-      "selector": "article[role='article']"
-    },
-    "transformers": {
-      "type": "sphinx",
-      "version": "4.57",
-      "doc_type": "sphinx",
-      "doc_root": "https://huggingface.co/docs/transformers/",
-      "inventory_url": "https://huggingface.co/docs/transformers/main/en/objects.inv",
-      "selector": "main"
-    },
-    "pillow": {
-      "type": "sphinx",
-      "version": "12.0",
-      "doc_type": "sphinx",
-      "doc_root": "https://pillow.readthedocs.io/en/stable/",
-      "inventory_url": "https://pillow.readthedocs.io/en/stable/objects.inv",
-      "selector": "div[role='main']"
-    },
-    "sqlalchemy": {
-      "type": "sphinx",
-      "version": "2.0",
-      "doc_type": "sphinx",
-      "doc_root": "https://docs.sqlalchemy.org/en/20/",
-      "inventory_url": "https://docs.sqlalchemy.org/en/20/objects.inv",
-      "selector": "div[role='main']"
-    },
-    "networkx": {
-      "type": "sphinx",
-      "version": "3.6",
-      "doc_type": "sphinx",
-      "doc_root": "https://networkx.org/documentation/stable/",
-      "inventory_url": "https://networkx.org/documentation/stable/objects.inv",
-      "selector": "div[role='main']"
-    },
-    "opencv": {
-      "type": "doxygen",
-      "version": "4.12",
-      "doc_type": "doxygen",
-      "doc_root": "https://docs.opencv.org/4.12.0/",
-      "index_pages": [
-        "annotated.html",
-        "index.html"
-      ],
-      "selector": "div.contents"
+    "papers": {
+        "dl_foundations": {
+            "display_name": "DL Foundations & Architectures",
+            "description": "Deep Learning Foundations & Architectures - Core architectures, optimization methods, Transformers, and foundation models",
+            "items": [
+                {
+                    "title": "Deep Residual Learning for Image Recognition",
+                    "arxiv_id": "1512.03385",
+                    "url": "https://arxiv.org/abs/1512.03385"
+                },
+                {
+                    "title": "Very Deep Convolutional Networks for Large-Scale Image Recognition",
+                    "arxiv_id": "1409.1556",
+                    "url": "https://arxiv.org/abs/1409.1556"
+                },
+                {
+                    "title": "Going Deeper with Convolutions",
+                    "arxiv_id": "1409.4842",
+                    "url": "https://arxiv.org/abs/1409.4842"
+                },
+                {
+                    "title": "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift",
+                    "arxiv_id": "1502.03167",
+                    "url": "https://arxiv.org/abs/1502.03167"
+                },
+                {
+                    "title": "Adam: A Method for Stochastic Optimization",
+                    "arxiv_id": "1412.6980",
+                    "url": "https://arxiv.org/abs/1412.6980"
+                },
+                {
+                    "title": "MobileNets: Efficient Convolutional Neural Networks for Mobile Vision Applications",
+                    "arxiv_id": "1704.04861",
+                    "url": "https://arxiv.org/abs/1704.04861"
+                },
+                {
+                    "title": "EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks",
+                    "arxiv_id": "1905.11946",
+                    "url": "https://arxiv.org/abs/1905.11946"
+                },
+                {
+                    "title": "A ConvNet for the 2020s",
+                    "arxiv_id": "2201.03545",
+                    "url": "https://arxiv.org/abs/2201.03545"
+                },
+                {
+                    "title": "Attention Is All You Need",
+                    "arxiv_id": "1706.03762",
+                    "url": "https://arxiv.org/abs/1706.03762"
+                },
+                {
+                    "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+                    "arxiv_id": "1810.04805",
+                    "url": "https://arxiv.org/abs/1810.04805"
+                },
+                {
+                    "title": "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
+                    "arxiv_id": "2010.11929",
+                    "url": "https://arxiv.org/abs/2010.11929"
+                },
+                {
+                    "title": "Learning Transferable Visual Models From Natural Language Supervision",
+                    "arxiv_id": "2103.00020",
+                    "url": "https://arxiv.org/abs/2103.00020"
+                },
+                {
+                    "title": "Segment Anything",
+                    "arxiv_id": "2304.02643",
+                    "url": "https://arxiv.org/abs/2304.02643"
+                }
+            ],
+            "type": "arxiv"
+        },
+        "vision_2d_generative": {
+            "display_name": "2D Vision & Generative Models",
+            "description": "2D Vision Tasks & Generative Models - Object detection, segmentation, GANs, and diffusion models",
+            "items": [
+                {
+                    "title": "You Only Look Once: Unified, Real-Time Object Detection",
+                    "arxiv_id": "1506.02640",
+                    "url": "https://arxiv.org/abs/1506.02640"
+                },
+                {
+                    "title": "Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks",
+                    "arxiv_id": "1506.01497",
+                    "url": "https://arxiv.org/abs/1506.01497"
+                },
+                {
+                    "title": "Mask R-CNN",
+                    "arxiv_id": "1703.06870",
+                    "url": "https://arxiv.org/abs/1703.06870"
+                },
+                {
+                    "title": "YOLOv3: An Incremental Improvement",
+                    "arxiv_id": "1804.02767",
+                    "url": "https://arxiv.org/abs/1804.02767"
+                },
+                {
+                    "title": "End-to-End Object Detection with Transformers",
+                    "arxiv_id": "2005.12872",
+                    "url": "https://arxiv.org/abs/2005.12872"
+                },
+                {
+                    "title": "EfficientDet: Scalable and Efficient Object Detection",
+                    "arxiv_id": "1911.09070",
+                    "url": "https://arxiv.org/abs/1911.09070"
+                },
+                {
+                    "title": "Generative Adversarial Networks",
+                    "arxiv_id": "1406.2661",
+                    "url": "https://arxiv.org/abs/1406.2661"
+                },
+                {
+                    "title": "Image-to-Image Translation with Conditional Adversarial Networks",
+                    "arxiv_id": "1611.07004",
+                    "url": "https://arxiv.org/abs/1611.07004"
+                },
+                {
+                    "title": "Unpaired Image-to-Image Translation using Cycle-Consistent Adversarial Networks",
+                    "arxiv_id": "1703.10593",
+                    "url": "https://arxiv.org/abs/1703.10593"
+                },
+                {
+                    "title": "A Style-Based Generator Architecture for Generative Adversarial Networks",
+                    "arxiv_id": "1812.04948",
+                    "url": "https://arxiv.org/abs/1812.04948"
+                },
+                {
+                    "title": "Analyzing and Improving the Image Quality of StyleGAN",
+                    "arxiv_id": "1912.04958",
+                    "url": "https://arxiv.org/abs/1912.04958"
+                },
+                {
+                    "title": "Denoising Diffusion Probabilistic Models",
+                    "arxiv_id": "2006.11239",
+                    "url": "https://arxiv.org/abs/2006.11239"
+                },
+                {
+                    "title": "High-Resolution Image Synthesis with Latent Diffusion Models",
+                    "arxiv_id": "2112.10752",
+                    "url": "https://arxiv.org/abs/2112.10752"
+                },
+                {
+                    "title": "Hierarchical Text-Conditional Image Generation with CLIP Latents",
+                    "arxiv_id": "2204.06125",
+                    "url": "https://arxiv.org/abs/2204.06125"
+                }
+            ],
+            "type": "arxiv"
+        },
+        "3d_reconstruction_rendering": {
+            "display_name": "3D Reconstruction & Rendering",
+            "description": "3D/4D Reconstruction, Rendering & Relighting - Neural scene representations, Gaussian Splatting, dynamic scenes, and inverse rendering",
+            "items": [
+                {
+                    "title": "NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis",
+                    "arxiv_id": "2003.08934",
+                    "url": "https://arxiv.org/abs/2003.08934"
+                },
+                {
+                    "title": "Instant Neural Graphics Primitives with a Multiresolution Hash Encoding",
+                    "arxiv_id": "2201.05989",
+                    "url": "https://arxiv.org/abs/2201.05989"
+                },
+                {
+                    "title": "3D Gaussian Splatting for Real-Time Radiance Field Rendering",
+                    "arxiv_id": "2308.04079",
+                    "url": "https://arxiv.org/abs/2308.04079"
+                },
+                {
+                    "title": "Real-time Photorealistic Dynamic Scene Representation and Rendering with 4D Gaussian Splatting",
+                    "arxiv_id": "2310.08528",
+                    "url": "https://arxiv.org/abs/2310.08528"
+                },
+                {
+                    "title": "Deformable 3D Gaussians for High-Fidelity Monocular Dynamic Scene Reconstruction",
+                    "arxiv_id": "2309.13101",
+                    "url": "https://arxiv.org/abs/2309.13101"
+                },
+                {
+                    "title": "4D-Rotor Gaussian Splatting: Towards Efficient Novel View Synthesis for Dynamic Scenes",
+                    "arxiv_id": "2402.03307",
+                    "url": "https://arxiv.org/abs/2402.03307"
+                },
+                {
+                    "title": "GaussianForest: Hierarchical-Hybrid 3D Gaussian Splatting for Compressed Scene Modeling",
+                    "arxiv_id": "2406.08759",
+                    "url": "https://arxiv.org/abs/2406.08759"
+                },
+                {
+                    "title": "Relightable 3D Gaussian: Real-time Point Cloud Relighting with BRDF Decomposition and Ray Tracing",
+                    "arxiv_id": "2311.16043",
+                    "url": "https://arxiv.org/abs/2311.16043"
+                },
+                {
+                    "title": "GS-IR: 3D Gaussian Splatting for Inverse Rendering",
+                    "arxiv_id": "2311.12775",
+                    "url": "https://arxiv.org/abs/2311.12775"
+                },
+                {
+                    "title": "Relightable Gaussian Codec Avatars",
+                    "arxiv_id": "2312.03203",
+                    "url": "https://arxiv.org/abs/2312.03203"
+                },
+                {
+                    "title": "GaussianShader: 3D Gaussian Splatting with Shading Functions for Reflective Surfaces",
+                    "arxiv_id": "2311.17977",
+                    "url": "https://arxiv.org/abs/2311.17977"
+                },
+                {
+                    "title": "PBIR-GS: Physically-Based Inverse Rendering with 3D Gaussian Splatting",
+                    "arxiv_id": "2312.02121",
+                    "url": "https://arxiv.org/abs/2312.02121"
+                },
+                {
+                    "title": "Gaussian-SLAM: Photo-realistic Dense SLAM with Gaussian Splatting",
+                    "arxiv_id": "2404.03657",
+                    "url": "https://arxiv.org/abs/2404.03657"
+                }
+            ],
+            "type": "arxiv"
+        },
+        "book_linear_algebra_cherney": {
+            "type": "pdf_book",
+            "category": "linear_algebra",
+            "title": "Linear Algebra",
+            "authors": [
+                "David Cherney",
+                "Tom Denton",
+                "Rohit Thomas",
+                "Andrew Waldron"
+            ],
+            "source": "https://www.math.ucdavis.edu/~linear/linear-guest.pdf",
+            "split_method": "toc",
+            "description": "Comprehensive free textbook from UC Davis covering all standard linear algebra topics"
+        },
+        "book_linear_algebra_axler": {
+            "type": "pdf_book",
+            "category": "linear_algebra",
+            "title": "Linear Algebra Done Right",
+            "authors": ["Sheldon Axler"],
+            "source": "https://linear.axler.net/LADR4e.pdf",
+            "split_method": "toc",
+            "description": "Focuses on vector spaces and linear maps rather than matrices"
+        },
+        "book_calculus_strang": {
+            "type": "pdf_book",
+            "category": "calculus",
+            "title": "Calculus",
+            "authors": ["Gilbert Strang"],
+            "source": "https://ocw.mit.edu/ans7870/resources/Strang/Edited/Calculus/Calculus.pdf",
+            "split_method": "toc",
+            "description": "Free calculus textbook from MIT OpenCourseWare with comprehensive coverage"
+        },
+        "book_calculus_apex": {
+            "type": "pdf_book",
+            "category": "calculus",
+            "title": "APEX Calculus",
+            "authors": ["Gregory Hartman"],
+            "source": "https://www.apexcalculus.com/downloads/APEX_Calculus_Version_4.pdf",
+            "split_method": "toc",
+            "description": "Free, open-source textbook covering Calculus I, II, and III"
+        },
+        "book_vector_calculus_corral": {
+            "type": "pdf_book",
+            "category": "calculus",
+            "title": "Vector Calculus",
+            "authors": ["Michael Corral"],
+            "source": "https://www.mecmath.net/vcalc.pdf",
+            "split_method": "none",
+            "description": "Focused treatment of vector calculus and multivariable topics"
+        },
+        "book_diff_equations_trench": {
+            "type": "pdf_book",
+            "category": "calculus",
+            "title": "Elementary Differential Equations",
+            "authors": ["William F. Trench"],
+            "source": "https://digitalcommons.trinity.edu/cgi/viewcontent.cgi?article=1007&context=mono",
+            "split_method": "toc",
+            "description": "Comprehensive introduction to ordinary differential equations"
+        },
+        "book_numerical_optimization_nocedal": {
+            "type": "pdf_book",
+            "category": "numerical_optimization",
+            "title": "Numerical Optimization",
+            "authors": ["Jorge Nocedal", "Stephen Wright"],
+            "source": "https://www.csie.ntu.edu.tw/~r97002/temp/num_optimization.pdf",
+            "split_method": "manual",
+            "description": "The standard reference for numerical optimization"
+        },
+        "book_convex_optimization_boyd": {
+            "type": "pdf_book",
+            "category": "numerical_optimization",
+            "title": "Convex Optimization",
+            "authors": ["Stephen Boyd", "Lieven Vandenberghe"],
+            "source": "https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf",
+            "split_method": "toc",
+            "description": "Classic Stanford textbook on convex optimization"
+        },
+        "book_algorithms_optimization_kochenderfer": {
+            "type": "pdf_book",
+            "category": "numerical_optimization",
+            "title": "Algorithms for Optimization",
+            "authors": ["Mykel J. Kochenderfer", "Tim A. Wheeler"],
+            "source": "https://algorithmsbook.com/optimization/files/optimization.pdf",
+            "split_method": "toc",
+            "description": "Modern treatment with Julia code examples"
+        },
+        "book_numerical_linear_algebra_trefethen": {
+            "type": "pdf_book",
+            "category": "numerical_optimization",
+            "title": "Numerical Linear Algebra",
+            "authors": ["Lloyd N. Trefethen", "David Bau III"],
+            "source": "https://people.maths.ox.ac.uk/trefethen/text.html",
+            "split_method": "none",
+            "description": "Concise introduction to numerical methods for linear algebra"
+        },
+        "book_first_order_methods_beck": {
+            "type": "pdf_book",
+            "category": "numerical_optimization",
+            "title": "First-Order Methods in Optimization",
+            "authors": ["Amir Beck"],
+            "source": "https://archive.siam.org/books/mo25/mo25_ch1.pdf",
+            "split_method": "none",
+            "description": "Methods for gradient descent and related approaches"
+        },
+        "book_elements_statistical_learning_hastie": {
+            "type": "pdf_book",
+            "category": "machine_learning",
+            "title": "The Elements of Statistical Learning",
+            "authors": ["Trevor Hastie", "Robert Tibshirani", "Jerome Friedman"],
+            "source": "https://hastie.su.domains/ElemStatLearn/printings/ESLII_print12_toc.pdf",
+            "split_method": "toc",
+            "description": "Classic Stanford textbook on statistical learning"
+        },
+        "book_pattern_recognition_bishop": {
+            "type": "pdf_book",
+            "category": "machine_learning",
+            "title": "Pattern Recognition and Machine Learning",
+            "authors": ["Christopher M. Bishop"],
+            "source": "https://www.microsoft.com/en-us/research/uploads/prod/2006/01/Bishop-Pattern-Recognition-and-Machine-Learning-2006.pdf",
+            "split_method": "toc",
+            "description": "Comprehensive Bayesian approach to machine learning"
+        },
+        "book_understanding_ml_shalev": {
+            "type": "pdf_book",
+            "category": "machine_learning",
+            "title": "Understanding Machine Learning: From Theory to Algorithms",
+            "authors": ["Shai Shalev-Shwartz", "Shai Ben-David"],
+            "source": "https://www.cs.huji.ac.il/~shais/UnderstandingMachineLearning/understanding-machine-learning-theory-algorithms.pdf",
+            "split_method": "toc",
+            "description": "Theoretical foundations with focus on computational learning theory"
+        },
+        "book_mathematics_ml_deisenroth": {
+            "type": "pdf_book",
+            "category": "machine_learning",
+            "title": "Mathematics for Machine Learning",
+            "authors": ["Marc Peter Deisenroth", "A. Aldo Faisal", "Cheng Soon Ong"],
+            "source": "https://mml-book.github.io/book/mml-book.pdf",
+            "split_method": "toc",
+            "description": "Mathematical foundations for ML: linear algebra, probability, optimization"
+        },
+        "book_deep_learning_goodfellow": {
+            "type": "pdf_book",
+            "category": "deep_learning",
+            "title": "Deep Learning",
+            "authors": ["Ian Goodfellow", "Yoshua Bengio", "Aaron Courville"],
+            "source": "https://www.deeplearningbook.org/contents/TOC.html",
+            "split_method": "none",
+            "description": "The definitive deep learning textbook"
+        },
+        "book_neural_networks_nielsen": {
+            "type": "pdf_book",
+            "category": "deep_learning",
+            "title": "Neural Networks and Deep Learning",
+            "authors": ["Michael Nielsen"],
+            "source": "http://static.latexstudio.net/article/2018/0912/neuralnetworksanddeeplearning.pdf",
+            "split_method": "none",
+            "description": "Accessible introduction with interactive visualizations"
+        },
+        "book_dive_deep_learning_zhang": {
+            "type": "pdf_book",
+            "category": "deep_learning",
+            "title": "Dive into Deep Learning",
+            "authors": [
+                "Aston Zhang",
+                "Zachary C. Lipton",
+                "Mu Li",
+                "Alexander J. Smola"
+            ],
+            "source": "https://d2l.ai/d2l-en.pdf",
+            "split_method": "toc",
+            "description": "Modern interactive book with code in PyTorch, TensorFlow, and JAX"
+        }
     }
-  },
-  "papers": {
-    "dl_foundations": {
-      "description": "Deep Learning Foundations & Architectures - Core architectures, optimization methods, Transformers, and foundation models",
-      "items": [
-        {
-          "title": "Deep Residual Learning for Image Recognition",
-          "arxiv_id": "1512.03385",
-          "url": "https://arxiv.org/abs/1512.03385"
-        },
-        {
-          "title": "Very Deep Convolutional Networks for Large-Scale Image Recognition",
-          "arxiv_id": "1409.1556",
-          "url": "https://arxiv.org/abs/1409.1556"
-        },
-        {
-          "title": "Going Deeper with Convolutions",
-          "arxiv_id": "1409.4842",
-          "url": "https://arxiv.org/abs/1409.4842"
-        },
-        {
-          "title": "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift",
-          "arxiv_id": "1502.03167",
-          "url": "https://arxiv.org/abs/1502.03167"
-        },
-        {
-          "title": "Adam: A Method for Stochastic Optimization",
-          "arxiv_id": "1412.6980",
-          "url": "https://arxiv.org/abs/1412.6980"
-        },
-        {
-          "title": "MobileNets: Efficient Convolutional Neural Networks for Mobile Vision Applications",
-          "arxiv_id": "1704.04861",
-          "url": "https://arxiv.org/abs/1704.04861"
-        },
-        {
-          "title": "EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks",
-          "arxiv_id": "1905.11946",
-          "url": "https://arxiv.org/abs/1905.11946"
-        },
-        {
-          "title": "A ConvNet for the 2020s",
-          "arxiv_id": "2201.03545",
-          "url": "https://arxiv.org/abs/2201.03545"
-        },
-        {
-          "title": "Attention Is All You Need",
-          "arxiv_id": "1706.03762",
-          "url": "https://arxiv.org/abs/1706.03762"
-        },
-        {
-          "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
-          "arxiv_id": "1810.04805",
-          "url": "https://arxiv.org/abs/1810.04805"
-        },
-        {
-          "title": "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
-          "arxiv_id": "2010.11929",
-          "url": "https://arxiv.org/abs/2010.11929"
-        },
-        {
-          "title": "Learning Transferable Visual Models From Natural Language Supervision",
-          "arxiv_id": "2103.00020",
-          "url": "https://arxiv.org/abs/2103.00020"
-        },
-        {
-          "title": "Segment Anything",
-          "arxiv_id": "2304.02643",
-          "url": "https://arxiv.org/abs/2304.02643"
-        }
-      ],
-      "type": "arxiv"
-    },
-    "vision_2d_generative": {
-      "description": "2D Vision Tasks & Generative Models - Object detection, segmentation, GANs, and diffusion models",
-      "items": [
-        {
-          "title": "You Only Look Once: Unified, Real-Time Object Detection",
-          "arxiv_id": "1506.02640",
-          "url": "https://arxiv.org/abs/1506.02640"
-        },
-        {
-          "title": "Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks",
-          "arxiv_id": "1506.01497",
-          "url": "https://arxiv.org/abs/1506.01497"
-        },
-        {
-          "title": "Mask R-CNN",
-          "arxiv_id": "1703.06870",
-          "url": "https://arxiv.org/abs/1703.06870"
-        },
-        {
-          "title": "YOLOv3: An Incremental Improvement",
-          "arxiv_id": "1804.02767",
-          "url": "https://arxiv.org/abs/1804.02767"
-        },
-        {
-          "title": "End-to-End Object Detection with Transformers",
-          "arxiv_id": "2005.12872",
-          "url": "https://arxiv.org/abs/2005.12872"
-        },
-        {
-          "title": "EfficientDet: Scalable and Efficient Object Detection",
-          "arxiv_id": "1911.09070",
-          "url": "https://arxiv.org/abs/1911.09070"
-        },
-        {
-          "title": "Generative Adversarial Networks",
-          "arxiv_id": "1406.2661",
-          "url": "https://arxiv.org/abs/1406.2661"
-        },
-        {
-          "title": "Image-to-Image Translation with Conditional Adversarial Networks",
-          "arxiv_id": "1611.07004",
-          "url": "https://arxiv.org/abs/1611.07004"
-        },
-        {
-          "title": "Unpaired Image-to-Image Translation using Cycle-Consistent Adversarial Networks",
-          "arxiv_id": "1703.10593",
-          "url": "https://arxiv.org/abs/1703.10593"
-        },
-        {
-          "title": "A Style-Based Generator Architecture for Generative Adversarial Networks",
-          "arxiv_id": "1812.04948",
-          "url": "https://arxiv.org/abs/1812.04948"
-        },
-        {
-          "title": "Analyzing and Improving the Image Quality of StyleGAN",
-          "arxiv_id": "1912.04958",
-          "url": "https://arxiv.org/abs/1912.04958"
-        },
-        {
-          "title": "Denoising Diffusion Probabilistic Models",
-          "arxiv_id": "2006.11239",
-          "url": "https://arxiv.org/abs/2006.11239"
-        },
-        {
-          "title": "High-Resolution Image Synthesis with Latent Diffusion Models",
-          "arxiv_id": "2112.10752",
-          "url": "https://arxiv.org/abs/2112.10752"
-        },
-        {
-          "title": "Hierarchical Text-Conditional Image Generation with CLIP Latents",
-          "arxiv_id": "2204.06125",
-          "url": "https://arxiv.org/abs/2204.06125"
-        }
-      ],
-      "type": "arxiv"
-    },
-    "3d_reconstruction_rendering": {
-      "description": "3D/4D Reconstruction, Rendering & Relighting - Neural scene representations, Gaussian Splatting, dynamic scenes, and inverse rendering",
-      "items": [
-        {
-          "title": "NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis",
-          "arxiv_id": "2003.08934",
-          "url": "https://arxiv.org/abs/2003.08934"
-        },
-        {
-          "title": "Instant Neural Graphics Primitives with a Multiresolution Hash Encoding",
-          "arxiv_id": "2201.05989",
-          "url": "https://arxiv.org/abs/2201.05989"
-        },
-        {
-          "title": "3D Gaussian Splatting for Real-Time Radiance Field Rendering",
-          "arxiv_id": "2308.04079",
-          "url": "https://arxiv.org/abs/2308.04079"
-        },
-        {
-          "title": "Real-time Photorealistic Dynamic Scene Representation and Rendering with 4D Gaussian Splatting",
-          "arxiv_id": "2310.08528",
-          "url": "https://arxiv.org/abs/2310.08528"
-        },
-        {
-          "title": "Deformable 3D Gaussians for High-Fidelity Monocular Dynamic Scene Reconstruction",
-          "arxiv_id": "2309.13101",
-          "url": "https://arxiv.org/abs/2309.13101"
-        },
-        {
-          "title": "4D-Rotor Gaussian Splatting: Towards Efficient Novel View Synthesis for Dynamic Scenes",
-          "arxiv_id": "2402.03307",
-          "url": "https://arxiv.org/abs/2402.03307"
-        },
-        {
-          "title": "GaussianForest: Hierarchical-Hybrid 3D Gaussian Splatting for Compressed Scene Modeling",
-          "arxiv_id": "2406.08759",
-          "url": "https://arxiv.org/abs/2406.08759"
-        },
-        {
-          "title": "Relightable 3D Gaussian: Real-time Point Cloud Relighting with BRDF Decomposition and Ray Tracing",
-          "arxiv_id": "2311.16043",
-          "url": "https://arxiv.org/abs/2311.16043"
-        },
-        {
-          "title": "GS-IR: 3D Gaussian Splatting for Inverse Rendering",
-          "arxiv_id": "2311.12775",
-          "url": "https://arxiv.org/abs/2311.12775"
-        },
-        {
-          "title": "Relightable Gaussian Codec Avatars",
-          "arxiv_id": "2312.03203",
-          "url": "https://arxiv.org/abs/2312.03203"
-        },
-        {
-          "title": "GaussianShader: 3D Gaussian Splatting with Shading Functions for Reflective Surfaces",
-          "arxiv_id": "2311.17977",
-          "url": "https://arxiv.org/abs/2311.17977"
-        },
-        {
-          "title": "PBIR-GS: Physically-Based Inverse Rendering with 3D Gaussian Splatting",
-          "arxiv_id": "2312.02121",
-          "url": "https://arxiv.org/abs/2312.02121"
-        },
-        {
-          "title": "Gaussian-SLAM: Photo-realistic Dense SLAM with Gaussian Splatting",
-          "arxiv_id": "2404.03657",
-          "url": "https://arxiv.org/abs/2404.03657"
-        }
-      ],
-      "type": "arxiv"
-    },
-    "linear_algebra_books": {
-      "description": "Linear Algebra - Foundational textbooks and materials on vectors, matrices, eigenvalues, and linear transformations",
-      "items": [
-        {
-          "title": "Linear Algebra (David Cherney, Tom Denton, Rohit Thomas and Andrew Waldron, UC Davis)",
-          "source": "https://www.math.ucdavis.edu/~linear/linear-guest.pdf",
-          "split_method": "toc",
-          "notes": "Comprehensive free textbook covering all standard linear algebra topics. Used in UC Davis course."
-        },
-        {
-          "title": "Linear Algebra Done Right (Sheldon Axler, 3rd Edition)",
-          "source": "https://linear.axler.net/LADR4e.pdf",
-          "split_method": "toc",
-          "notes": "Focuses on vector spaces and linear maps rather than matrices. Freely available from author's website."
-        }
-      ],
-      "type": "pdf_books"
-    },
-    "calculus_books": {
-      "description": "Calculus & Analysis - Single and multivariable calculus, differential equations, and real analysis",
-      "items": [
-        {
-          "title": "Calculus (Gilbert Strang)",
-          "source": "https://ocw.mit.edu/ans7870/resources/Strang/Edited/Calculus/Calculus.pdf",
-          "split_method": "toc",
-          "notes": "Free calculus textbook from MIT OpenCourseWare. Comprehensive coverage of single and multivariable calculus."
-        },
-        {
-          "title": "APEX Calculus (Gregory Hartman et al.)",
-          "source": "https://www.apexcalculus.com/downloads/APEX_Calculus_Version_4.pdf",
-          "split_method": "toc",
-          "notes": "Free, open-source calculus textbook covering Calculus I, II, and III."
-        },
-        {
-          "title": "Vector Calculus (Michael Corral)",
-          "source": "https://www.mecmath.net/vcalc.pdf",
-          "split_method": "none",
-          "notes": "Focused treatment of vector calculus and multivariable topics. Shorter, more specialized text."
-        },
-        {
-          "title": "Elementary Differential Equations (William F. Trench)",
-          "source": "https://digitalcommons.trinity.edu/cgi/viewcontent.cgi?article=1007&context=mono",
-          "split_method": "toc",
-          "notes": "Comprehensive introduction to ordinary differential equations with many examples."
-        }
-      ],
-      "type": "pdf_books"
-    },
-    "numerical_optimization_books": {
-      "description": "Numerical Methods & Optimization - Algorithms for optimization, numerical linear algebra, and computational methods",
-      "items": [
-        {
-          "title": "Numerical Optimization (Nocedal & Wright, 2nd Edition)",
-          "source": "https://www.csie.ntu.edu.tw/~r97002/temp/num_optimization.pdf",
-          "split_method": "manual",
-          "chapters": [
-            {
-              "name": "1. Introduction",
-              "pages": [
-                1,
-                27
-              ]
-            },
-            {
-              "name": "2. Fundamentals of Unconstrained Optimization",
-              "pages": [
-                28,
-                52
-              ]
-            },
-            {
-              "name": "3. Line Search Methods",
-              "pages": [
-                53,
-                81
-              ]
-            },
-            {
-              "name": "4. Trust-Region Methods",
-              "pages": [
-                82,
-                103
-              ]
-            },
-            {
-              "name": "5. Conjugate Gradient Methods",
-              "pages": [
-                104,
-                139
-              ]
-            },
-            {
-              "name": "6. Quasi-Newton Methods",
-              "pages": [
-                140,
-                175
-              ]
-            },
-            {
-              "name": "7. Large-Scale Unconstrained Optimization",
-              "pages": [
-                176,
-                211
-              ]
-            },
-            {
-              "name": "8-10. Nonlinear Equations & Least Squares",
-              "pages": [
-                212,
-                289
-              ]
-            },
-            {
-              "name": "11-12. Nonlinear Constraints",
-              "pages": [
-                290,
-                395
-              ]
-            },
-            {
-              "name": "13-19. Advanced Topics",
-              "pages": [
-                396,
-                636
-              ]
-            }
-          ],
-          "notes": "The standard reference for numerical optimization. Comprehensive and rigorous."
-        },
-        {
-          "title": "Convex Optimization (Boyd & Vandenberghe)",
-          "source": "https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf",
-          "split_method": "toc",
-          "notes": "Classic Stanford textbook on convex optimization. Essential for understanding modern ML optimization."
-        },
-        {
-          "title": "Algorithms for Optimization (Kochenderfer & Wheeler)",
-          "source": "https://algorithmsbook.com/optimization/files/optimization.pdf",
-          "split_method": "toc",
-          "notes": "Modern treatment with Julia code examples. Covers gradient-free and gradient-based methods."
-        },
-        {
-          "title": "Numerical Linear Algebra (Trefethen & Bau)",
-          "source": "https://people.maths.ox.ac.uk/trefethen/text.html",
-          "split_method": "none",
-          "notes": "Concise introduction to numerical methods for linear algebra. Note: Check if PDF is available; may need to find alternative source."
-        },
-        {
-          "title": "First-Order Methods in Optimization (Beck)",
-          "source": "https://archive.siam.org/books/mo25/mo25_ch1.pdf",
-          "split_method": "none",
-          "notes": "Sample chapter on gradient descent and related methods. Highly relevant for deep learning."
-        }
-      ],
-      "type": "pdf_books"
-    },
-    "machine_learning_books": {
-      "description": "Machine Learning Theory - Foundational textbooks on statistical learning, pattern recognition, and ML theory",
-      "items": [
-        {
-          "title": "The Elements of Statistical Learning (Hastie, Tibshirani, Friedman)",
-          "source": "https://hastie.su.domains/ElemStatLearn/printings/ESLII_print12_toc.pdf",
-          "split_method": "toc",
-          "notes": "Classic Stanford textbook on statistical learning. Comprehensive coverage of traditional ML methods."
-        },
-        {
-          "title": "Pattern Recognition and Machine Learning (Bishop)",
-          "source": "https://www.microsoft.com/en-us/research/uploads/prod/2006/01/Bishop-Pattern-Recognition-and-Machine-Learning-2006.pdf",
-          "split_method": "toc",
-          "notes": "Comprehensive Bayesian approach to machine learning. Dense but authoritative."
-        },
-        {
-          "title": "Understanding Machine Learning: From Theory to Algorithms (Shalev-Shwartz & Ben-David)",
-          "source": "https://www.cs.huji.ac.il/~shais/UnderstandingMachineLearning/understanding-machine-learning-theory-algorithms.pdf",
-          "split_method": "toc",
-          "notes": "Theoretical foundations with focus on computational learning theory."
-        },
-        {
-          "title": "Mathematics for Machine Learning (Deisenroth, Faisal, Ong)",
-          "source": "https://mml-book.github.io/book/mml-book.pdf",
-          "split_method": "toc",
-          "notes": "Covers the mathematical foundations: linear algebra, analytic geometry, matrix decompositions, probability, and optimization."
-        }
-      ],
-      "type": "pdf_books"
-    },
-    "deep_learning_books": {
-      "description": "Deep Learning - Comprehensive textbooks on neural networks, deep learning architectures, and modern techniques",
-      "items": [
-        {
-          "title": "Deep Learning (Goodfellow, Bengio, Courville)",
-          "source": "https://www.deeplearningbook.org/contents/TOC.html",
-          "split_method": "none",
-          "notes": "The definitive deep learning textbook. Note: Website provides HTML; PDF may need alternative source."
-        },
-        {
-          "title": "Neural Networks and Deep Learning (Michael Nielsen)",
-          "source": "http://static.latexstudio.net/article/2018/0912/neuralnetworksanddeeplearning.pdf",
-          "split_method": "none",
-          "notes": "Accessible introduction with interactive visualizations. Great for beginners."
-        },
-        {
-          "title": "Dive into Deep Learning (Zhang et al.)",
-          "source": "https://d2l.ai/d2l-en.pdf",
-          "split_method": "toc",
-          "notes": "Modern interactive book with code in PyTorch, TensorFlow, and JAX. Regularly updated."
-        }
-      ],
-      "type": "pdf_books"
-    }
-  }
 }

@@ -305,9 +305,9 @@ class TestBuildIndex:
 
             session_builder.build_index(sample_markdown_files)
 
-            # Should use default [2048, 512, 128]
+            # Should use default [2048, 512, 256]
             mock_parser.from_defaults.assert_called_once_with(
-                chunk_sizes=[2048, 512, 128]
+                chunk_sizes=[2048, 512, 256]
             )
 
 

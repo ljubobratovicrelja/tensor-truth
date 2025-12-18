@@ -268,22 +268,66 @@ def get_source_url_for_arxiv(arxiv_id: str) -> str:
     return f"https://arxiv.org/abs/{arxiv_id}"
 
 
+def get_library_info_from_config(module_name: str, sources_config: dict) -> dict | None:
+    """Get library information from config for a module.
+
+    Args:
+        module_name: Module directory name (e.g., "pytorch_2.9")
+        sources_config: Contents of config/sources.json
+
+    Returns:
+        Dictionary with title, version, doc_root or None if not found
+    """
+    libraries = sources_config.get("libraries", {})
+
+    # Try direct match first
+    if module_name in libraries:
+        return libraries[module_name]
+
+    # Try matching by library name (extract from module_name)
+    # Pattern: libraryname_version (e.g., pytorch_2.9 -> pytorch)
+    lib_name = module_name.rsplit("_", 1)[0] if "_" in module_name else module_name
+
+    if lib_name in libraries:
+        lib_config = libraries[lib_name]
+        # Add the actual module name for reference
+        return {**lib_config, "module_name": module_name}
+
+    return None
+
+
+def get_paper_collection_info_from_config(
+    module_name: str, sources_config: dict
+) -> dict | None:
+    """Get paper collection information from config for a module.
+
+    Args:
+        module_name: Module directory name (e.g., "dl_foundations")
+        sources_config: Contents of config/sources.json
+
+    Returns:
+        Dictionary with display_name, description or None if not found
+    """
+    papers = sources_config.get("papers", {})
+
+    if module_name in papers:
+        return papers[module_name]
+
+    return None
+
+
 def get_source_url_for_library(module_name: str, sources_config: dict) -> str | None:
     """Get base documentation URL for a library module.
 
     Args:
-        module_name: Name of library/module (e.g., "pytorch")
+        module_name: Name of library/module (e.g., "pytorch_2.9")
         sources_config: Contents of config/sources.json
 
     Returns:
         Base documentation URL or None if not found
     """
-    libraries = sources_config.get("libraries", {})
-    if module_name not in libraries:
-        return None
-
-    lib_config = libraries[module_name]
-    return lib_config.get("doc_root")
+    lib_info = get_library_info_from_config(module_name, sources_config)
+    return lib_info.get("doc_root") if lib_info else None
 
 
 def format_authors(authors: str | list | None) -> str | None:
@@ -364,6 +408,17 @@ def classify_document_type(file_path: Path, module_name: str | None = None) -> s
     if re.match(r"^pdf_[a-f0-9]+", filename):
         return "uploaded_pdf"
 
+    # Check module name prefix first (most reliable indicator)
+    if module_name:
+        if module_name.startswith("book_"):
+            return "book"
+        # Paper collections have specific naming patterns
+        if any(
+            module_name.startswith(prefix)
+            for prefix in ["dl_foundations", "vision_", "3d_reconstruction"]
+        ):
+            return "paper"
+
     # Check if it's a book (common book keywords in path)
     if any(
         keyword in str(file_path).lower()
@@ -378,7 +433,7 @@ def classify_document_type(file_path: Path, module_name: str | None = None) -> s
     ):
         return "paper"
 
-    # Check if it's library documentation (has module name in path)
+    # Check if it's library documentation (has module name in path and not a paper/book)
     if module_name and module_name.lower() in str(file_path).lower():
         return "library_doc"
 
@@ -434,10 +489,35 @@ def extract_document_metadata(
         logger.info(f"No explicit metadata found, using LLM for {file_path.name}")
         llm_metadata = extract_metadata_with_llm(doc, file_path, ollama_url)
         metadata.update(llm_metadata)
-    else:
-        logger.info(f"No metadata extraction for {file_path.name}")
 
-    # Step 3: Generate derived fields
+    # Step 3: For library docs and paper collections, override with config info if available
+    if sources_config and module_name:
+        # Check if it's a paper collection first (always override for collections)
+        paper_info = get_paper_collection_info_from_config(module_name, sources_config)
+        if paper_info and paper_info.get("display_name"):
+            # Override individual paper title with collection name
+            metadata["title"] = paper_info["display_name"]
+            # Clear authors for paper collections (we don't want individual paper authors)
+            metadata["authors"] = None
+        elif not metadata.get("title"):
+            # For library docs, use config if no title extracted
+            lib_info = get_library_info_from_config(module_name, sources_config)
+            if lib_info:
+                # Use library name and version from config
+                lib_name = (
+                    module_name.rsplit("_", 1)[0] if "_" in module_name else module_name
+                )
+                version = lib_info.get("version", "")
+
+                # Create title: "Library Version" (e.g., "PyTorch 2.9")
+                title_parts = [lib_name.replace("_", " ").replace("-", " ").title()]
+                if version:
+                    title_parts.append(version)
+
+                metadata["title"] = " ".join(title_parts)
+                metadata["source_url"] = lib_info.get("doc_root")
+
+    # Step 4: Generate derived fields
     title = metadata.get("title")
     authors = metadata.get("authors")
 
@@ -455,23 +535,25 @@ def extract_document_metadata(
 
     metadata["display_name"] = display_name
 
-    # Generate source URL
-    source_url = None
-    if "arxiv_id" in metadata:
-        source_url = get_source_url_for_arxiv(metadata["arxiv_id"])
-    elif sources_config and module_name:
-        source_url = get_source_url_for_library(module_name, sources_config)
-
-    metadata["source_url"] = source_url
+    # Generate source URL if not already set
+    if not metadata.get("source_url"):
+        source_url = None
+        if "arxiv_id" in metadata:
+            source_url = get_source_url_for_arxiv(metadata["arxiv_id"])
+        elif sources_config and module_name:
+            source_url = get_source_url_for_library(module_name, sources_config)
+        metadata["source_url"] = source_url
 
     # Classify document type
     doc_type = classify_document_type(file_path, module_name)
     metadata["doc_type"] = doc_type
 
-    logger.info(
-        f"Final metadata for {file_path.name}: "
-        f"display_name={metadata['display_name']}, "
-        f"doc_type={doc_type}"
-    )
+    # Only log for non-library docs (library docs are handled via config, no need for per-file logs)
+    if doc_type != "library_doc":
+        logger.info(
+            f"Final metadata for {file_path.name}: "
+            f"display_name={metadata['display_name']}, "
+            f"doc_type={doc_type}"
+        )
 
     return metadata
