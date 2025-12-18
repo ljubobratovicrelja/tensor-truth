@@ -1,11 +1,13 @@
 """VRAM monitoring and estimation utilities."""
 
+from typing import Dict, Tuple
+
 import streamlit as st
 import torch
 
 
 @st.cache_data(ttl=2, show_spinner=False)
-def get_vram_breakdown():
+def get_vram_breakdown() -> Dict[str, float]:
     """
     Returns detailed VRAM stats:
     - total_used: What Task Manager says
@@ -49,8 +51,12 @@ def get_vram_breakdown():
 
 
 def estimate_vram_usage(
-    model_name, num_indices, context_window, rag_device, llm_device
-):
+    model_name: str,
+    num_indices: int,
+    context_window: int,
+    rag_device: str,
+    llm_device: str,
+) -> Tuple[float, Dict[str, float], float]:
     """
     Returns (predicted_total, breakdown_dict, new_session_cost)
     """

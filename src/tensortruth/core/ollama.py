@@ -2,6 +2,7 @@
 
 import logging
 import os
+from typing import Any, Dict, List
 
 import requests
 
@@ -43,7 +44,7 @@ def get_ollama_url() -> str:
     return "http://localhost:11434"
 
 
-def get_api_base():
+def get_api_base() -> str:
     """Get the base API endpoint for raw requests.
 
     Returns:
@@ -52,7 +53,7 @@ def get_api_base():
     return f"{get_ollama_url()}/api"
 
 
-def get_running_models():
+def get_running_models() -> List[Dict[str, Any]]:
     """Get list of active models with VRAM usage.
 
     Equivalent to `ollama ps` command.
@@ -80,7 +81,7 @@ def get_running_models():
     return []
 
 
-def get_available_models():
+def get_available_models() -> List[str]:
     """
     Get list of available Ollama models.
     Returns sorted list of model names, or default fallback if unavailable.
@@ -96,7 +97,7 @@ def get_available_models():
     return ["deepseek-r1:8b"]  # Default fallback
 
 
-def get_running_models_detailed():
+def get_running_models_detailed() -> List[Dict[str, Any]]:
     """
     Get detailed running model information (raw API response).
     Returns list of model dictionaries with full details.
@@ -111,7 +112,7 @@ def get_running_models_detailed():
     return []
 
 
-def stop_model(model_name):
+def stop_model(model_name: str) -> bool:
     """
     Forces a model to unload immediately by setting keep_alive to 0.
     """

@@ -3,7 +3,7 @@
 import torch
 
 
-def get_max_memory_gb():
+def get_max_memory_gb() -> float:
     """Determine maximum available memory in GB.
 
     Detection order:

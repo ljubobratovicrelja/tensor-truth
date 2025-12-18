@@ -3,7 +3,7 @@
 import logging
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import pymupdf as fitz
 
@@ -31,7 +31,7 @@ class PDFHandler:
         self.pdfs_dir.mkdir(parents=True, exist_ok=True)
         self.markdown_dir.mkdir(parents=True, exist_ok=True)
 
-    def upload_pdf(self, uploaded_file) -> dict:
+    def upload_pdf(self, uploaded_file: Any) -> Dict[str, Any]:
         """
         Save uploaded PDF to session directory.
 
@@ -59,7 +59,7 @@ class PDFHandler:
 
         return metadata
 
-    def get_pdf_metadata(self, pdf_path: Path) -> dict:
+    def get_pdf_metadata(self, pdf_path: Path) -> Dict[str, Any]:
         """
         Extract metadata from PDF file.
 
@@ -170,7 +170,7 @@ class PDFHandler:
             md_file.unlink()
             logger.info(f"Deleted markdown: {md_file}")
 
-    def get_all_markdown_files(self) -> list[Path]:
+    def get_all_markdown_files(self) -> List[Path]:
         """Get list of all markdown files in session."""
         return list(self.markdown_dir.glob("*.md"))
 

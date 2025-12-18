@@ -5,13 +5,14 @@ import json
 import os
 import uuid
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import streamlit as st
 
 from .title_generation import generate_smart_title_async
 
 
-def load_sessions(sessions_file: str):
+def load_sessions(sessions_file: str) -> Dict[str, Any]:
     """Load chat sessions from JSON file."""
     if os.path.exists(sessions_file):
         try:
@@ -22,13 +23,15 @@ def load_sessions(sessions_file: str):
     return {"current_id": None, "sessions": {}}
 
 
-def save_sessions(sessions_file: str):
+def save_sessions(sessions_file: str) -> None:
     """Save chat sessions to JSON file."""
     with open(sessions_file, "w", encoding="utf-8") as f:
         json.dump(st.session_state.chat_data, f, indent=2)
 
 
-def create_session(modules, params, sessions_file: str):
+def create_session(
+    modules: Optional[List[str]], params: Dict[str, Any], sessions_file: str
+) -> str:
     """Create a new chat session."""
     new_id = str(uuid.uuid4())
     st.session_state.chat_data["sessions"][new_id] = {
@@ -44,8 +47,12 @@ def create_session(modules, params, sessions_file: str):
 
 
 async def update_title_async(
-    session_id, text, model_name, sessions_file: str, chat_data: dict = None
-):
+    session_id: str,
+    text: str,
+    model_name: str,
+    sessions_file: str,
+    chat_data: Optional[Dict[str, Any]] = None,
+) -> None:
     """Update session title using smart title generation (async version)."""
     # Accept chat_data as parameter to avoid accessing st.session_state from background thread
     if chat_data is None:
@@ -60,12 +67,14 @@ async def update_title_async(
             json.dump(chat_data, f, indent=2)
 
 
-def update_title(session_id, text, model_name, sessions_file: str):
+def update_title(
+    session_id: str, text: str, model_name: str, sessions_file: str
+) -> None:
     """Update session title using smart title generation (sync wrapper)."""
     asyncio.run(update_title_async(session_id, text, model_name, sessions_file))
 
 
-def rename_session(new_title, sessions_file: str):
+def rename_session(new_title: str, sessions_file: str) -> None:
     """Rename the current session."""
     current_id = st.session_state.chat_data.get("current_id")
     if current_id:
@@ -74,7 +83,7 @@ def rename_session(new_title, sessions_file: str):
         st.rerun()
 
 
-def delete_session(session_id: str, sessions_file: str):
+def delete_session(session_id: str, sessions_file: str) -> None:
     """Delete a session and all associated files (PDFs, markdown, indexes)."""
     import shutil
 

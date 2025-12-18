@@ -2,6 +2,8 @@
 
 import logging
 import re
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 import pymupdf as fitz
 import pymupdf4llm
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 MARKER_CONVERTER = None
 
 
-def clean_filename(title):
+def clean_filename(title: str) -> str:
     """Sanitize title for file system.
 
     Args:
@@ -27,7 +29,7 @@ def clean_filename(title):
     return clean[:50]  # Truncate to avoid path length issues
 
 
-def download_pdf(url, output_path):
+def download_pdf(url: str, output_path: Union[str, Path]) -> bool:
     """Download PDF from URL to output path.
 
     Args:
@@ -54,7 +56,7 @@ def download_pdf(url, output_path):
         return False
 
 
-def extract_toc(pdf_path):
+def extract_toc(pdf_path: Union[str, Path]) -> List[Dict[str, Any]]:
     """Extract table of contents from PDF.
 
     Args:
@@ -84,7 +86,12 @@ def extract_toc(pdf_path):
         return []
 
 
-def split_pdf_by_pages(pdf_path, start_page, end_page, output_path):
+def split_pdf_by_pages(
+    pdf_path: Union[str, Path],
+    start_page: int,
+    end_page: int,
+    output_path: Union[str, Path],
+) -> bool:
     """Extract pages from PDF and save to new PDF.
 
     Args:
@@ -113,7 +120,7 @@ def split_pdf_by_pages(pdf_path, start_page, end_page, output_path):
         return False
 
 
-def get_pdf_page_count(pdf_path):
+def get_pdf_page_count(pdf_path: Union[str, Path]) -> int:
     """Get total number of pages in PDF.
 
     Args:
@@ -131,7 +138,9 @@ def get_pdf_page_count(pdf_path):
         return 0
 
 
-def convert_pdf_to_markdown(pdf_path, preserve_math=True, converter="pymupdf"):
+def convert_pdf_to_markdown(
+    pdf_path: Union[str, Path], preserve_math: bool = True, converter: str = "pymupdf"
+) -> str:
     """
     Convert PDF to markdown with optional better math preservation.
 
@@ -187,7 +196,7 @@ def convert_pdf_to_markdown(pdf_path, preserve_math=True, converter="pymupdf"):
         )
 
 
-def convert_with_marker(pdf_path):
+def convert_with_marker(pdf_path: Union[str, Path]) -> str:
     """Convert PDF using Marker with GPU acceleration.
 
     Falls back to pymupdf4llm if Marker is not available.
@@ -242,7 +251,7 @@ def convert_with_marker(pdf_path):
         return convert_pdf_to_markdown(pdf_path, converter="pymupdf")
 
 
-def post_process_math(md_text):
+def post_process_math(md_text: Optional[str]) -> Optional[str]:
     """Post-process markdown to improve math rendering.
 
     Converts Unicode math symbols to LaTeX equivalents.

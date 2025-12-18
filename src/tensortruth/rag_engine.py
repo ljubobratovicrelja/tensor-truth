@@ -1,6 +1,7 @@
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
+from typing import Any, Dict, List, Optional
 
 import chromadb
 from llama_index.core import (
@@ -23,7 +24,7 @@ from tensortruth.core.ollama import get_ollama_url
 _BASE_INDEX_DIR_CACHE = None
 
 
-def get_base_index_dir():
+def get_base_index_dir() -> str:
     """
     Get the base index directory, preferring user data dir if available.
 
@@ -144,7 +145,7 @@ CUSTOM_CONDENSE_PROMPT_TEMPLATE = (
 )
 
 
-def get_embed_model(device="cuda"):
+def get_embed_model(device: str = "cuda") -> HuggingFaceEmbedding:
     """Load HuggingFace embedding model.
 
     Args:
@@ -163,7 +164,7 @@ def get_embed_model(device="cuda"):
     )
 
 
-def get_llm(params):
+def get_llm(params: Dict[str, Any]) -> Ollama:
     """Initialize Ollama LLM with configuration parameters.
 
     Args:
@@ -198,7 +199,9 @@ def get_llm(params):
     )
 
 
-def get_reranker(params, device="cuda"):
+def get_reranker(
+    params: Dict[str, Any], device: str = "cuda"
+) -> SentenceTransformerRerank:
     """Initialize cross-encoder reranker model.
 
     Args:
@@ -222,7 +225,13 @@ class MultiIndexRetriever(BaseRetriever):
     Combines results from multiple index retrievers using concurrent execution.
     """
 
-    def __init__(self, retrievers, max_workers=None, enable_cache=True, cache_size=128):
+    def __init__(
+        self,
+        retrievers: List[BaseRetriever],
+        max_workers: Optional[int] = None,
+        enable_cache: bool = True,
+        cache_size: int = 128,
+    ) -> None:
         """Initialize multi-index retriever.
 
         Args:
@@ -284,11 +293,11 @@ class MultiIndexRetriever(BaseRetriever):
 
 
 def load_engine_for_modules(
-    selected_modules,
-    engine_params=None,
-    preserved_chat_history=None,
-    session_index_path=None,
-):
+    selected_modules: List[str],
+    engine_params: Optional[Dict[str, Any]] = None,
+    preserved_chat_history: Optional[List] = None,
+    session_index_path: Optional[str] = None,
+) -> CondensePlusContextChatEngine:
     """Load RAG chat engine with selected module indexes.
 
     Args:

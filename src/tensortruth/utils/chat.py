@@ -1,9 +1,10 @@
 """Chat-related utility functions for Tensor-Truth."""
 
 import re
+from typing import Dict, Optional, Tuple
 
 
-def parse_thinking_response(raw_text):
+def parse_thinking_response(raw_text: Optional[str]) -> Tuple[Optional[str], str]:
     """Split response into thought and answer sections.
 
     Handles standard <thought>...</thought> tags and common malformations.
@@ -36,7 +37,7 @@ def parse_thinking_response(raw_text):
     return None, raw_text
 
 
-def convert_latex_delimiters(text):
+def convert_latex_delimiters(text: Optional[str]) -> Optional[str]:
     r"""
     Converts LaTeX math delimiters from standard LaTeX format to Streamlit format.
 
@@ -63,7 +64,7 @@ def convert_latex_delimiters(text):
     return text
 
 
-def convert_chat_to_markdown(session):
+def convert_chat_to_markdown(session: Dict) -> str:
     """
     Converts session JSON to clean Markdown.
     """

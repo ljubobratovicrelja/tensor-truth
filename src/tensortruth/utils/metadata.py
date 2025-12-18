@@ -13,7 +13,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Union
 
 import requests
 from llama_index.core.schema import Document
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 
-def extract_yaml_header_metadata(content: str) -> dict[str, Any] | None:
+def extract_yaml_header_metadata(content: str) -> Optional[Dict[str, Any]]:
     """Extract metadata from YAML-like header in markdown files.
 
     Looks for headers in format:
@@ -72,7 +72,7 @@ def extract_yaml_header_metadata(content: str) -> dict[str, Any] | None:
     return metadata
 
 
-def extract_pdf_metadata(file_path: Path) -> dict[str, Any] | None:
+def extract_pdf_metadata(file_path: Path) -> Optional[Dict[str, Any]]:
     """Extract metadata from PDF file info dict.
 
     Uses PyMuPDF to read PDF metadata (Title, Author, Subject, etc.)
@@ -121,7 +121,9 @@ def extract_pdf_metadata(file_path: Path) -> dict[str, Any] | None:
         return None
 
 
-def extract_explicit_metadata(doc: Document, file_path: Path) -> dict[str, Any] | None:
+def extract_explicit_metadata(
+    doc: Document, file_path: Path
+) -> Optional[Dict[str, Any]]:
     """Extract metadata from explicit sources (YAML headers, PDF metadata).
 
     Tries YAML header first (for markdown), then PDF metadata.
@@ -159,7 +161,7 @@ def extract_metadata_with_llm(
     ollama_url: str,
     model: str = "qwen2.5:0.5b",
     max_chars: int = 2000,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Use LLM to extract title and authors from document content.
 
     Args:
@@ -232,7 +234,7 @@ JSON response:"""
         return {"title": None, "authors": None}
 
 
-def _parse_llm_json_response(response: str) -> dict[str, Any]:
+def _parse_llm_json_response(response: str) -> Dict[str, Any]:
     """Parse JSON from LLM response with error handling.
 
     Args:
@@ -277,7 +279,9 @@ def get_source_url_for_arxiv(arxiv_id: str) -> str:
     return f"https://arxiv.org/abs/{arxiv_id}"
 
 
-def get_library_info_from_config(module_name: str, sources_config: dict) -> dict | None:
+def get_library_info_from_config(
+    module_name: str, sources_config: Dict
+) -> Optional[Dict]:
     """Get library information from config for a module.
 
     Args:
@@ -306,8 +310,8 @@ def get_library_info_from_config(module_name: str, sources_config: dict) -> dict
 
 
 def get_paper_collection_info_from_config(
-    module_name: str, sources_config: dict
-) -> dict | None:
+    module_name: str, sources_config: Dict
+) -> Optional[Dict]:
     """Get paper collection information from config for a module.
 
     Args:
@@ -325,7 +329,7 @@ def get_paper_collection_info_from_config(
     return None
 
 
-def get_source_url_for_library(module_name: str, sources_config: dict) -> str | None:
+def get_source_url_for_library(module_name: str, sources_config: Dict) -> Optional[str]:
     """Get base documentation URL for a library module.
 
     Args:
@@ -339,7 +343,7 @@ def get_source_url_for_library(module_name: str, sources_config: dict) -> str | 
     return lib_info.get("doc_root") if lib_info else None
 
 
-def format_authors(authors: str | list | None) -> str | None:
+def format_authors(authors: Union[str, List, None]) -> Optional[str]:
     """Format authors for display.
 
     Converts to "LastName et al." format if more than 3 authors.
@@ -380,7 +384,7 @@ def format_authors(authors: str | list | None) -> str | None:
         return f"{last_name} et al."
 
 
-def create_display_name(title: str | None, authors: str | None = None) -> str:
+def create_display_name(title: Optional[str], authors: Optional[str] = None) -> str:
     """Create pretty display name for citation.
 
     Format: "Title - Authors" or "Title" if no authors.
@@ -401,7 +405,7 @@ def create_display_name(title: str | None, authors: str | None = None) -> str:
         return title
 
 
-def classify_document_type(file_path: Path, module_name: str | None = None) -> str:
+def classify_document_type(file_path: Path, module_name: Optional[str] = None) -> str:
     """Classify document type based on path and module.
 
     Args:
@@ -458,11 +462,11 @@ def classify_document_type(file_path: Path, module_name: str | None = None) -> s
 def extract_document_metadata(
     doc: Document,
     file_path: Path,
-    module_name: str | None = None,
-    sources_config: dict | None = None,
-    ollama_url: str | None = None,
+    module_name: Optional[str] = None,
+    sources_config: Optional[Dict] = None,
+    ollama_url: Optional[str] = None,
     use_llm_fallback: bool = True,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Extract comprehensive metadata from a document.
 
     This is the main entry point for metadata extraction.
