@@ -55,6 +55,16 @@ def process_pdf_upload(uploaded_file, session_id: str, sessions_file: str):
 
     session = st.session_state.chat_data["sessions"][session_id]
 
+    # Check if this file is already being processed or has been processed
+    if "pdf_documents" not in session:
+        session["pdf_documents"] = []
+
+    # Check for duplicate by filename
+    for doc in session["pdf_documents"]:
+        if doc["filename"] == uploaded_file.name:
+            # File already exists, skip processing
+            return
+
     # Create PDF handler
     handler = PDFHandler(get_session_dir(session_id))
 
@@ -63,9 +73,6 @@ def process_pdf_upload(uploaded_file, session_id: str, sessions_file: str):
         pdf_metadata = handler.upload_pdf(uploaded_file)
 
     # Add to session with "processing" status
-    if "pdf_documents" not in session:
-        session["pdf_documents"] = []
-
     session["pdf_documents"].append(
         {
             "id": pdf_metadata["id"],
@@ -290,9 +297,19 @@ with st.sidebar:
             help="Upload a PDF document to query alongside knowledge bases",
         )
 
+        # Track processed files to avoid reprocessing on rerun
+        if "processed_pdfs" not in st.session_state:
+            st.session_state.processed_pdfs = set()
+
         if uploaded_file:
-            process_pdf_upload(uploaded_file, curr_id, SESSIONS_FILE)
-            st.rerun()
+            # Create a unique identifier for this file (name + size)
+            file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+
+            # Only process if not already processed in this session state
+            if file_id not in st.session_state.processed_pdfs:
+                process_pdf_upload(uploaded_file, curr_id, SESSIONS_FILE)
+                st.session_state.processed_pdfs.add(file_id)
+                st.rerun()
 
         st.divider()
 

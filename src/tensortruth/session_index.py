@@ -1,5 +1,6 @@
 """Session-specific vector index builder for uploaded PDFs."""
 
+import gc
 import logging
 import shutil
 from pathlib import Path
@@ -10,7 +11,6 @@ from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreI
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from .app_utils.config_schema import TensorTruthConfig
 from .app_utils.paths import get_session_index_dir, get_session_markdown_dir
 from .core.ollama import get_ollama_url
 from .rag_engine import get_embed_model
@@ -200,21 +200,33 @@ class SessionIndexBuilder:
             storage_context = StorageContext.from_defaults(vector_store=vector_store)
             storage_context.docstore.add_documents(nodes)
 
-            logger.info("Embedding documents (this may take a while)...")
-            device = TensorTruthConfig._detect_default_device()
-            embed_model = get_embed_model(device=device)
-            VectorStoreIndex(
-                leaf_nodes,
-                storage_context=storage_context,
-                embed_model=embed_model,
-                show_progress=True,
-            )
+            # Force CPU for session indexing to avoid VRAM overflow
+            # (LLM is likely already loaded in Ollama, taking most VRAM)
+            logger.info("Embedding documents on CPU (this may take a while)...")
+            embed_model = get_embed_model(device="cpu")
 
-            # Persist to disk
-            storage_context.persist(persist_dir=str(self.session_index_dir))
-            logger.info(
-                f"✅ Session index built successfully: {self.session_index_dir}"
-            )
+            try:
+                VectorStoreIndex(
+                    leaf_nodes,
+                    storage_context=storage_context,
+                    embed_model=embed_model,
+                    show_progress=True,
+                )
+
+                # Persist to disk
+                storage_context.persist(persist_dir=str(self.session_index_dir))
+                logger.info(
+                    f"✅ Session index built successfully: {self.session_index_dir}"
+                )
+            finally:
+                # Clean up embedding model and intermediate objects from memory
+                # This is important as these objects are only needed during indexing
+                del embed_model
+                del leaf_nodes
+                del nodes
+                del documents
+                gc.collect()
+                logger.info("Cleaned up indexing objects from memory")
 
         except Exception as e:
             logger.error(f"Failed to build session index: {e}")
