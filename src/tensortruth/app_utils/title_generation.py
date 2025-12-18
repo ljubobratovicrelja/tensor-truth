@@ -63,10 +63,11 @@ async def generate_smart_title_async(text, model_name="qwen2.5:0.5b", keep_alive
         return (text[:30] + "..") if len(text) > 30 else text
 
     try:
-        # Prompt designed to minimize fluff
+        # Prompt designed to minimize fluff and prevent markdown
         prompt = (
             f"Summarize this query into a concise 3-5 word title. "
-            f"Return ONLY the title text, no quotes. Query: {text}"
+            f"Return ONLY plain text, no markdown formatting, no quotes, no punctuation. "
+            f"Query: {text}"
         )
 
         payload = {
@@ -90,13 +91,21 @@ async def generate_smart_title_async(text, model_name="qwen2.5:0.5b", keep_alive
                     data = await resp.json()
                     response = data.get("response", "")
 
-                    # Final cleanup
+                    # Final cleanup - remove quotes, markdown, newlines, etc.
                     title = (
                         response.replace('"', "")
                         .replace("'", "")
                         .replace(".", "")
+                        .replace("#", "")  # Remove markdown headers
+                        .replace("*", "")  # Remove markdown bold/italic
+                        .replace("_", "")  # Remove markdown italic
+                        .replace("\n", " ")  # Replace newlines with space
+                        .replace("\r", " ")  # Replace carriage returns
                         .strip()
                     )
+                    # Collapse multiple spaces
+                    while "  " in title:
+                        title = title.replace("  ", " ")
                     if title:
                         logger.debug(f"Title generation success: '{title}'")
                         return title
