@@ -1,7 +1,7 @@
 # Tensor-Truth: AI Agent Context Document
 
-**Last Updated**: 2025-12-17 (Emoji policy added, emojis removed from headers)
-**Version**: 0.1.9 (PDF Ingestion Feature)
+**Last Updated**: 2025-12-19 (Context refresh for v0.1.10)
+**Version**: 0.1.10 (Code Cleanup & Documentation)
 **Python**: 3.11+
 
 ---
@@ -138,20 +138,15 @@ tensor-truth/
 │   ├── rag_engine.py          # Core RAG logic (retriever, prompts, engine loading)
 │   ├── cli.py                 # CLI routing (tensor-truth, tensor-truth-docs, tensor-truth-build)
 │   ├── build_db.py            # Vector index builder (ChromaDB + hierarchical nodes)
-│   ├── fetch_sources.py       # Unified source fetching (libraries, papers) (NEW v0.1.10)
-│   ├── pdf_handler.py         # Session PDF upload/conversion handler (v0.1.9)
-│   ├── session_index.py       # Session-scoped vector index builder (v0.1.9)
-│   ├── utils/                 # Utility modules (NEW v0.1.10)
-│   │   ├── __init__.py        # Re-exports for backward compatibility
-│   │   ├── chat.py            # LaTeX conversion, markdown export, thinking parser
-│   │   └── pdf.py             # PDF processing utilities
-│   ├── core/                  # System utilities (VRAM, Ollama API, device detection)
+│   ├── fetch_sources.py       # Unified source fetching (libraries + papers)
+│   ├── pdf_handler.py         # Session PDF upload/conversion (v0.1.9)
+│   ├── session_index.py       # Session vector index builder (v0.1.9)
+│   ├── utils/                 # Utilities (v0.1.10: chat, pdf, metadata)
+│   ├── core/                  # System utils (VRAM, Ollama, device detection)
 │   └── app_utils/             # Streamlit helpers (commands, presets, sessions, config)
-├── config/
-│   └── sources.json           # Unified config: libraries + papers (NEW v0.1.10)
+├── config/sources.json        # Unified config: libraries + papers (v0.1.10)
 ├── tests/                     # Pytest suite (unit, integration)
-├── pyproject.toml             # Package definition
-└── ~/.tensortruth/            # User data dir (sessions, presets, indexes, config)
+└── ~/.tensortruth/            # User data (sessions, presets, indexes, config)
 ```
 
 ## Technology Stack
@@ -210,9 +205,9 @@ pip install tensor-truth[dev]
 Includes `[docs]` plus testing and code quality tools (pytest, black, isort, flake8, mypy, hypothesis)
 
 ### Important Notes
-- **PDF dependencies are NOT optional** - `pymupdf4llm` and `marker-pdf` are in core dependencies because the session PDF upload feature is part of the main app UI
-- The `tensor-truth-build` command works without extras (uses core dependencies only)
-- The unified `tensor-truth-docs` command requires `[docs]` extra for both library and paper fetching
+- **PDF dependencies are in core** - `pymupdf4llm` and `marker-pdf` included (session PDF upload feature)
+- `tensor-truth-build` works without extras (uses core dependencies only)
+- Unified `tensor-truth-docs` requires `[docs]` extra for both library and paper fetching
 
 ## Key Files Deep Dive
 
@@ -345,23 +340,47 @@ tensor-truth-docs --type papers --category dl_foundations --ids 1706.03762 1810.
 tensor-truth-docs --type papers --category dl_foundations --converter marker
 ```
 
-### 7. `utils/` Module - Utility Functions
-**Purpose**: Organized utility functions for PDF processing and chat utilities
+### 7. `utils/` Module - Utility Functions (NEW in v0.1.10)
+**Purpose**: Organized utility functions for PDF processing, chat utilities, and metadata extraction
 
 **Structure**:
 - `utils/__init__.py` - Re-exports for backward compatibility
 - `utils/chat.py` - Chat/thinking/LaTeX utilities
 - `utils/pdf.py` - PDF processing (conversion, TOC extraction, splitting)
+- `utils/metadata.py` - Document metadata extraction (LLM + explicit)
 
 **Key Functions**:
-- `utils.pdf.convert_pdf_to_markdown()` - PDF → Markdown with pymupdf4llm or marker
-- `utils.pdf.convert_with_marker()` - GPU-accelerated PDF conversion (better math)
-- `utils.pdf.post_process_math()` - Unicode → LaTeX symbol conversion
-- `utils.pdf.clean_filename()` - Sanitize filenames for filesystem
-- `utils.pdf.get_pdf_page_count()` - Extract page count from PDF
-- `utils.chat.parse_thinking_response()` - Extract <thought> tags from LLM output
-- `utils.chat.convert_latex_delimiters()` - \[...\] → $$...$$ for Streamlit
-- `utils.chat.convert_chat_to_markdown()` - Export chat history to markdown file
+
+**PDF Processing** (`utils/pdf.py`):
+- `convert_pdf_to_markdown()` - PDF → Markdown with pymupdf4llm or marker
+- `convert_with_marker()` - GPU-accelerated PDF conversion (better math)
+- `post_process_math()` - Unicode → LaTeX symbol conversion
+- `clean_filename()` - Sanitize filenames for filesystem
+- `get_pdf_page_count()` - Extract page count from PDF
+
+**Chat Utilities** (`utils/chat.py`):
+- `parse_thinking_response()` - Extract <thought> tags from LLM output
+- `convert_latex_delimiters()` - \[...\] → $$...$$ for Streamlit
+- `convert_chat_to_markdown()` - Export chat history to markdown file
+
+**Metadata Extraction** (`utils/metadata.py`):
+- `extract_document_metadata()` - Main orchestrator for metadata extraction
+- `extract_yaml_header_metadata()` - Parse YAML headers from markdown (# Title:, # Authors:)
+- `extract_pdf_metadata()` - Extract from PDF metadata dict (PyMuPDF)
+- `extract_metadata_with_llm()` - LLM-based fallback (uses qwen2.5:0.5b)
+- `classify_document_type()` - Classify as paper, book, library_doc, uploaded_pdf
+- `format_authors()` - Smart author formatting (et al. for >3 authors)
+- `create_display_name()` - Generate "Title - Authors" citation string
+
+**Metadata Extraction Strategy**:
+1. **Explicit First**: YAML headers (markdown) or PDF metadata dict
+2. **LLM Fallback**: If no explicit metadata and `use_llm_fallback=True`
+3. **Graceful Degradation**: Filename as display_name if all else fails
+
+**Use Cases**:
+- Session PDF indexing: Extract title/authors from uploaded papers
+- Build-time indexing: Enrich book chapters with shared metadata
+- Source citations: Display pretty names in RAG responses
 
 ### 8. `config/sources.json` - Unified Source Configs
 **Purpose**: Unified configuration for all documentation sources (libraries + papers)
@@ -399,63 +418,37 @@ tensor-truth-docs --type papers --category dl_foundations --converter marker
 ```
 ~/.tensortruth/
 ├── chat_sessions.json      # Chat history (messages, params, modules, PDFs)
-├── presets.json            # Saved configurations (favorites, descriptions)
-├── config.yaml             # Global settings (Ollama URL, etc.)
-├── indexes/                # Permanent vector databases (knowledge bases)
-│   ├── pytorch/            # ChromaDB instance
-│   │   ├── chroma.sqlite3
-│   │   ├── docstore.json
-│   │   └── ...
-│   └── numpy/
-└── sessions/               # Per-session data (PDFs, temp indexes)
+├── presets.json            # Saved configurations
+├── config.yaml             # Global settings (Ollama URL)
+├── indexes/                # Permanent vector databases
+│   └── pytorch/            # ChromaDB instance (chroma.sqlite3, docstore.json)
+└── sessions/               # Per-session data
     └── sess_abc123/
-        ├── pdfs/           # Uploaded PDF files
-        │   ├── pdf_xyz_attention.pdf
-        │   └── pdf_def_bert.pdf
-        ├── markdown/       # Converted markdown (for inspection/reindex)
-        │   ├── pdf_xyz.md
-        │   └── pdf_def.md
-        └── index/          # Session-specific ChromaDB vector index
-            ├── chroma.sqlite3
-            ├── docstore.json
-            └── ...
+        ├── pdfs/           # Uploaded PDFs
+        ├── markdown/       # Converted markdown
+        └── index/          # Session-specific ChromaDB
 ```
 
-**Sessions Structure** (example):
+**Sessions Structure** (key fields):
 ```json
 {
-  "current_id": "sess_123",
   "sessions": {
     "sess_123": {
-      "title": "PyTorch Autograd Deep Dive",
+      "title": "PyTorch Autograd",
       "modules": ["pytorch"],
-      "params": {
-        "model": "deepseek-r1:8b",
-        "temperature": 0.3,
-        "context_window": 4096,
-        "reranker_model": "BAAI/bge-reranker-v2-m3",
-        "reranker_top_n": 3,
-        "confidence_cutoff": 0.3,
-        "rag_device": "mps",
-        "llm_device": "gpu",
-        "system_prompt": ""
-      },
+      "params": { /* model, temperature, etc. */ },
       "pdf_documents": [
         {
           "id": "pdf_xyz",
           "filename": "attention.pdf",
-          "uploaded_at": "2025-12-17 12:34:56",
-          "file_size": 524288,
-          "page_count": 12,
           "status": "indexed",
-          "error_message": null
+          "display_name": "Attention Is All You Need - Vaswani et al.",
+          /* page_count, file_size, uploaded_at, etc. */
         }
       ],
+      "pdf_metadata_cache": { /* extracted metadata by PDF ID */ },
       "has_temp_index": true,
-      "messages": [
-        {"role": "user", "content": "Explain autograd.Function"},
-        {"role": "assistant", "content": "...", "sources": [...], "time_taken": 2.3}
-      ]
+      "messages": [ /* chat history */ ]
     }
   }
 }
@@ -488,10 +481,19 @@ tensor-truth-docs --type papers --category dl_foundations --converter marker
 - `get_all_markdown_files()` → lists all session markdowns for indexing
 
 **2. SessionIndexBuilder** ([session_index.py](src/tensortruth/session_index.py)):
-- `build_index(markdown_files)` → creates ChromaDB index with same logic as build_db.py
+- `__init__(session_id, metadata_cache)` → initializes with optional metadata cache
+- `build_index(markdown_files)` → creates ChromaDB index with metadata extraction
 - `rebuild_index()` → reindexes after PDF deletion
 - `delete_index()` → cleanup on session delete or last PDF removal
 - `index_exists()` → checks for valid ChromaDB
+- `get_metadata_cache()` → retrieves extracted metadata for persistence
+- `close()` → explicitly releases ChromaDB connections (important on Windows)
+
+**Metadata Extraction in Session Indexing**:
+- Extracts title/authors from uploaded PDFs using LLM (qwen2.5:0.5b)
+- Caches metadata per PDF ID to avoid re-extraction on rebuild
+- Injects essential fields (display_name, authors, source_url, doc_type) into chunks
+- Forces CPU embedding to avoid VRAM overflow (LLM already loaded)
 
 **3. RAG Engine Integration** ([rag_engine.py](src/tensortruth/rag_engine.py:233-303)):
 - `load_engine_for_modules(..., session_index_path=None)` → new optional parameter
@@ -538,6 +540,7 @@ tensor-truth-docs --type papers --category dl_foundations --converter marker
 - Session PDFs appear in sources with 📄 icon (vs 📚 for knowledge bases)
 - Parallel retrieval across permanent + session indexes
 - Same reranking and confidence logic applies
+- Metadata (title, authors) displayed in citations if extracted successfully
 
 ### Limitations & Design Decisions
 
@@ -550,6 +553,63 @@ tensor-truth-docs --type papers --category dl_foundations --converter marker
 **Rebuild on Delete**: Removing a PDF triggers full index rebuild (acceptable for 3-5 papers).
 
 **No Page-Level Citations**: Sources show filename, not specific page numbers.
+
+## Document Metadata Extraction System (v0.1.9+)
+
+**Purpose**: Extract rich metadata (title, authors, URL) from documents for enhanced citation display in RAG responses.
+
+**Architecture** ([utils/metadata.py](src/tensortruth/utils/metadata.py)):
+
+**Extraction Strategy** (in order of priority):
+1. **Explicit Metadata** (fastest, most reliable):
+   - YAML headers in markdown: `# Title:`, `# Authors:`, `# Year:`, `# ArXiv ID:`
+   - PDF metadata dict: Title, Author, CreationDate (PyMuPDF)
+2. **LLM Extraction** (fallback, requires Ollama):
+   - Uses `qwen2.5:0.5b` to extract from first 2000 chars
+   - JSON prompt with strict format validation
+3. **Filename Fallback** (last resort):
+   - Sanitized filename as display_name
+
+**Key Functions**:
+- `extract_document_metadata()` - Main orchestrator, returns full metadata dict
+- `extract_yaml_header_metadata()` - Parse markdown headers
+- `extract_pdf_metadata()` - Extract from PDF info dict
+- `extract_metadata_with_llm()` - LLM-based extraction with retry logic
+- `classify_document_type()` - Returns: `paper`, `book`, `library_doc`, `uploaded_pdf`
+- `format_authors()` - Smart formatting: "Doe et al." for >3 authors
+- `create_display_name()` - Generate citation string: "Title - Authors"
+
+**Usage Contexts**:
+1. **Session PDF Indexing** (session_index.py:138-172):
+   - Extract metadata from uploaded PDFs
+   - Cache per PDF ID to avoid re-extraction on rebuild
+   - Inject into chunk metadata for RAG retrieval
+2. **Build-Time Indexing** (build_db.py:98-181):
+   - Extract book metadata from PDF or first chapter
+   - Share metadata across all chapters of same book
+   - Override with config for library docs and paper collections
+3. **Source Citations** (app.py:1000+):
+   - Display pretty names in RAG response sources
+   - Show author information when available
+
+**Metadata Fields**:
+```python
+{
+    "title": str,           # Document title
+    "authors": str,         # Formatted author string
+    "display_name": str,    # "Title - Authors" for UI
+    "source_url": str,      # URL to original source
+    "doc_type": str,        # paper|book|library_doc|uploaded_pdf
+    "arxiv_id": str,        # ArXiv ID if applicable (optional)
+    "year": str,            # Publication year (optional)
+}
+```
+
+**Performance Considerations**:
+- YAML/PDF extraction: <1ms per document
+- LLM extraction: ~500-1000ms per document (depends on Ollama load)
+- Caching prevents duplicate extractions on rebuild
+- Metadata stored in session JSON for session PDFs
 
 ## RAG Pipeline Flow
 
@@ -648,130 +708,84 @@ tests/
 
 ## Common Development Tasks
 
-### Adding a New Library to Index
-1. Add entry to `config/sources.json` under `"libraries"` (Sphinx/Doxygen) or implement custom scraper
-2. Run `tensor-truth-docs --type library <library_name>` (or just `tensor-truth-docs <library_name>`)
-3. Run `tensor-truth-build --modules <library_name>`
+### Adding New Library/Paper Category
+1. Add entry to `config/sources.json` (under `"libraries"` or `"papers"`)
+2. Run `tensor-truth-docs --type library <name>` or `tensor-truth-docs --type papers --category <cat>`
+3. Run `tensor-truth-build --modules <name>`
 4. Restart app, module appears in multiselect
 
-### Adding a New Paper Category
-1. Add entry to `config/sources.json` under `"papers"` with `"type": "arxiv"`
-2. Run `tensor-truth-docs --type papers --category <category_name>`
-3. Run `tensor-truth-build --modules <category_name>`
-4. Restart app, category appears in multiselect
-
-### Implementing a New Command
+### Implementing New Command
 1. Create `Command` subclass in `app_utils/commands.py`
-2. Register in `_registry` (bottom of file)
-3. Add to `CommandRegistry.get_help_text()`
-4. Test via `/help` in chat
+2. Register in `_registry`, add to `CommandRegistry.get_help_text()`
 
 ### Changing Chunking Strategy
-1. Edit `build_db.py:23` (default `chunk_sizes=[2048, 512, 128]`)
-2. Rebuild affected indexes with `--chunk-sizes` flag
-3. For custom logic: Modify `HierarchicalNodeParser` call
+1. Edit `build_db.py` default `chunk_sizes=[2048, 512, 128]`
+2. Rebuild with `tensor-truth-build --chunk-sizes <sizes>`
 
 ### Debugging RAG Retrieval
-1. Enable `verbose=True` in `rag_engine.py:308` (`CondensePlusContextChatEngine`)
+1. Enable `verbose=True` in `rag_engine.py:308`
 2. Check node metadata: `node.metadata['file_name']`, `node.score`
-3. Inspect `context_nodes` in `app.py:916` (pre-rerank) and `app.py:1064` (post-rerank)
+3. Inspect `context_nodes` in app.py (pre/post-rerank)
 
 ### Custom Prompts
-- Edit `CUSTOM_CONTEXT_PROMPT_TEMPLATE` in `rag_engine.py:51-74`
-- For low-confidence variant: `CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE` (Lines 76-97)
-- For no-sources fallback: `CUSTOM_CONTEXT_PROMPT_NO_SOURCES` (Lines 100-118)
+Edit templates in `rag_engine.py:51-144`:
+- `CUSTOM_CONTEXT_PROMPT_TEMPLATE` (normal RAG)
+- `CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE` (soft warning)
+- `CUSTOM_CONTEXT_PROMPT_NO_SOURCES` (fallback)
 
-## Performance Characteristics
+## Performance & Scaling
 
-### Latency Breakdown (Typical Query on M1 Max)
-- **Retrieval** (MultiIndexRetriever): 0.5-1.5s (depends on # of indexes)
-- **Reranking** (BGE-v2-m3): 0.2-0.5s
-- **LLM First Token** (DeepSeek-R1:8b): 1-2s
-- **Total to First Token**: ~2-4s
-- **Streaming**: 20-40 tokens/sec
+**Typical Query Latency** (M1 Max, DeepSeek-R1:8b):
+- Retrieval: 0.5-1.5s | Reranking: 0.2-0.5s | LLM First Token: 1-2s
+- **Total to First Token**: ~2-4s | Streaming: 20-40 tokens/sec
 
-### Memory Usage
-- **Embedder (BAAI/bge-m3)**: ~1.2GB VRAM
-- **Reranker (BGE-v2-m3)**: ~800MB VRAM
-- **LLM (DeepSeek-R1:8b)**: ~5-6GB VRAM/RAM
-- **ChromaDB Index**: ~100-500MB per library (in-memory)
+**Memory Usage**:
+- Embedder: ~1.2GB | Reranker: ~800MB | LLM: ~5-6GB | ChromaDB: ~100-500MB per index
 
-### Scaling Limits
-- **Max Indexes**: No hard limit, but retrieval latency scales linearly
-- **Max Messages**: ChatMemoryBuffer truncates to 3000 tokens (~2-4 turns)
-- **Max Nodes**: `similarity_top_k` * num_indexes (e.g., 6 * 5 = 30 pre-rerank)
+**Scaling Limits**:
+- Max indexes: No hard limit (retrieval latency scales linearly)
+- Max messages: Truncates to 3000 tokens (~2-4 turns)
+- Max nodes: `similarity_top_k` * num_indexes (e.g., 6 * 5 = 30 pre-rerank)
 
-## Edge Cases & Gotchas
+## Edge Cases & Troubleshooting
 
-### 1. Engine Loading Race Condition
-**Issue**: User sends query before engine finishes loading
-**Fix**: `app.py:807-827` waits for `engine_load_event` with 60s timeout
+**Engine Loading Race**: User queries before engine finishes → 60s timeout wait (app.py:807-827)
 
-### 2. Empty Retrieval Results
-**Issue**: Query matches nothing (rare with reranker's soft scoring)
-**Fix**: `app.py:955-981` injects synthetic warning node with score=0.0
+**Empty Retrieval**: Query matches nothing → synthetic warning node injected (app.py:955-981)
 
-### 3. Ollama Connection Failure
-**Issue**: Ollama not running or wrong URL
-**Symptoms**: Engine load error, LLM timeout
-**Fix**: Check `get_ollama_url()` via `/list`, update in Connection Settings
+**Ollama Connection Failure**: Check `get_ollama_url()` via `/list`, update in Connection Settings
 
-### 4. VRAM OOM on GPU
-**Issue**: Embedder + Reranker + LLM exceed VRAM
-**Fix**: `/device rag cpu` to offload pipeline, or `/device llm cpu` for LLM
+**VRAM OOM**: `/device rag cpu` to offload pipeline, or `/device llm cpu` for LLM
 
-### 5. Index Corruption
-**Issue**: ChromaDB errors, missing files
-**Fix**: Delete `~/.tensortruth/indexes/{module}/`, rebuild with `tensor-truth-build`
+**Index Corruption**: Delete `~/.tensortruth/indexes/{module}/`, rebuild with `tensor-truth-build`
 
-### 6. Streamlit Session State Desync
-**Issue**: `st.rerun()` races, widget state mismatch
-**Fix**: Use `skip_last_message_render` flag (app.py:743-746) to prevent double-render
+**Streamlit State Desync**: Use `skip_last_message_render` flag to prevent double-render (app.py:743-746)
 
-## Docker Deployment
-
-### Dockerfile Strategy
-- **Base**: `pytorch/pytorch:2.9.0-cuda12.8-cudnn9-runtime` (Python 3.11.4)
-- **Install**: `pip install tensor-truth` (no dev/docs extras needed for basic usage)
-- **Volume**: `/root/.tensortruth` (sessions, presets, indexes)
-- **Port**: 8501 (Streamlit default)
-- **Env**: `OLLAMA_HOST=http://host.docker.internal:11434`
-
-### Running
-```bash
-docker run -d \
-  --name tensor-truth \
-  --gpus all \
-  -p 8501:8501 \
-  -v ~/.tensortruth:/root/.tensortruth \
-  -e OLLAMA_HOST=http://host.docker.internal:11434 \
-  ljubobratovicrelja/tensor-truth:latest
-```
-
-### Building Locally
-```bash
-docker build -t tensor-truth .
-docker run -d --name tensor-truth --gpus all -p 8501:8501 -v ~/.tensortruth:/root/.tensortruth tensor-truth
-```
+**Common Symptoms**:
+- "No models found" → Ollama not running (`ollama serve`)
+- Engine timeout (60s) → Reduce active indexes or move to CPU
+- Low-confidence warnings → Lower threshold (`/conf 0.1`) or verify index contents
+- Slow first token (>10s) → Preload model (`ollama run <model>`) or use smaller model
+- Index not in multiselect → Check directory exists, verify `chroma.sqlite3` present
 
 ## Version History (Key Changes)
 
 ### 0.1.10 (Current)
-- **CLI Unification**: Merged `tensor-truth-papers` into `tensor-truth-docs` command
-- **Module Reorganization**: Created `utils/` package (chat.py, pdf.py modules)
-- **Unified Config**: `sources.json` replaces `api.json` + `papers.json`
-- **Breaking Changes**:
-  - Removed `tensor-truth-papers` CLI command (use `tensor-truth-docs --type papers` instead)
-  - Removed `fetch_paper.py` (logic moved to `fetch_sources.py` + `utils/pdf.py`)
-  - Removed `scrape_docs.py` (replaced by `fetch_sources.py`)
-  - Removed `utils.py` (replaced by `utils/` module)
-- Simplified dependency structure (single `[docs]` extra for both libraries and papers)
+- **Code cleanup**: Formatting, linting, type hints
+- **Documentation updates**: Enhanced inline docs, context.md refresh
+- **No functional changes**: Pure maintenance release
 
 ### 0.1.9
 - **Session-scoped PDF ingestion**: Upload PDFs in chat mode, converted with marker-pdf
 - **Temporary vector indexes**: Per-session ChromaDB indexes for uploaded PDFs
 - **Parallel retrieval**: Queries fetch from both permanent knowledge bases + session PDFs
-- New files: `pdf_handler.py`, `session_index.py`
+- **Metadata extraction**: LLM-based title/author extraction for uploaded PDFs (new `utils/metadata.py` module)
+- **Metadata caching**: Avoid re-extraction on index rebuild
+- **CLI Unification**: Merged `tensor-truth-papers` into `tensor-truth-docs` command
+- **Module Reorganization**: Created `utils/` package (chat.py, pdf.py, metadata.py modules)
+- **Unified Config**: `sources.json` replaces `api.json` + `papers.json`
+- **Breaking Changes**: Removed `tensor-truth-papers` CLI, `fetch_paper.py`, `scrape_docs.py`, `utils.py`
+- New files: `pdf_handler.py`, `session_index.py`, `fetch_sources.py`, `utils/` module
 - Extended `load_engine_for_modules()` with `session_index_path` parameter
 - Session cleanup now removes PDFs, markdown, and indexes
 
@@ -811,8 +825,9 @@ docker run -d --name tensor-truth --gpus all -p 8501:8501 -v ~/.tensortruth:/roo
 | Indexing | `build_db.py` | - |
 | Source Fetching (libraries + papers) | `fetch_sources.py` | `config/sources.json` |
 | CLI Routing | `cli.py` | - |
-| PDF Processing | `utils/pdf.py` | - |
 | Chat Utilities | `utils/chat.py` | - |
+| PDF Processing | `utils/pdf.py` | - |
+| Metadata Extraction | `utils/metadata.py` | - |
 
 ## Critical Constants & Globals
 
@@ -862,128 +877,55 @@ TOKEN_POLL_INTERVAL_MS = 50
 
 ## Important Assumptions & Design Decisions
 
-### 1. Single-Process Isolation
-- ChromaDB uses `PersistentClient` (not server mode)
-- No concurrent writes to same index
-- Safe for single-user local deployment
+**Single-Process ChromaDB**: PersistentClient (not server mode), no concurrent writes, safe for single-user local deployment
 
-### 2. No Authentication/Multi-User
-- Streamlit runs without auth
-- Docker deployment assumes trusted local network
-- Sessions stored in plaintext JSON
+**No Authentication**: Streamlit without auth, assumes trusted local network, sessions in plaintext JSON
 
-### 3. Ollama as LLM Backend
-- No OpenAI/Anthropic API integration
-- Assumes Ollama server is running and accessible
-- Model availability checked via `/api/tags` endpoint
+**Ollama as LLM Backend**: No OpenAI/Anthropic integration, assumes Ollama server running
 
-### 4. GPU Optional But Recommended
-- CPU fallback for all components
-- Embedder/Reranker can run on CPU (slower but functional)
-- LLM on CPU is very slow (not recommended for >3B models)
+**GPU Optional**: CPU fallback for all components (slower but functional, LLM on CPU not recommended for >3B models)
 
-### 5. Pre-Built Indexes from GDrive
-- First-run auto-download (~500MB tar.gz)
-- Manual build requires `[docs]` extra for scraping tools
-- Index format tied to LlamaIndex version (breaking changes possible)
+**Pre-Built Indexes**: First-run auto-download from GDrive (~500MB), manual build requires `[docs]` extra
 
-### 6. Streamlit as UI Framework
-- Stateful session management via `st.session_state`
-- Reruns entire script on interaction (optimized with caching)
-- Threading for background tasks (not asyncio)
+**Streamlit UI**: Stateful via `st.session_state`, reruns on interaction, threading for background tasks (not asyncio)
 
-### 7. Markdown/HTML as Index Source
-- Docs converted to Markdown before indexing
-- HTML preserved for Doxygen (OpenCV)
-- PDFs supported via `pymupdf4llm` or `marker-pdf`
+**Markdown/HTML Sources**: Docs converted to Markdown before indexing, HTML preserved for Doxygen, PDFs via pymupdf4llm/marker
 
-## Troubleshooting Guide
+## Docker Deployment
 
-### Symptom: "No models found in Ollama"
-**Cause**: Ollama not running or wrong URL
-**Fix**:
-1. `ollama serve` (start server)
-2. Check URL in Connection Settings (app.py:576-604)
-3. Test: `curl http://localhost:11434/api/tags`
+**Base**: `pytorch/pytorch:2.9.0-cuda12.8-cudnn9-runtime` | **Port**: 8501 | **Volume**: `/root/.tensortruth`
 
-### Symptom: Engine load timeout (60s)
-**Cause**: Large indexes, slow CPU, VRAM bottleneck
-**Fix**:
-1. `/device rag cpu` (if GPU VRAM full)
-2. Reduce active indexes (`/unload <name>`)
-3. Check `ollama ps` for running models
+**Run**:
+```bash
+docker run -d --name tensor-truth --gpus all -p 8501:8501 \
+  -v ~/.tensortruth:/root/.tensortruth \
+  -e OLLAMA_HOST=http://host.docker.internal:11434 \
+  ljubobratovicrelja/tensor-truth:latest
+```
 
-### Symptom: Low-confidence warnings on every query
-**Cause**: Threshold too high, index mismatch
-**Fix**:
-1. `/conf 0.1` (lower threshold)
-2. Check index contents (may be wrong library)
-3. Verify embedder consistency (rebuild if migrated from old version)
-
-### Symptom: Slow first token (>10s)
-**Cause**: Ollama model not preloaded, CPU inference
-**Fix**:
-1. `ollama run <model>` (preload model)
-2. `/device llm gpu` (if on CPU)
-3. Use smaller model (e.g., `deepseek-r1:1.5b`)
-
-### Symptom: Chat history not preserved after reload
-**Cause**: By design (only last 4 messages preserved)
-**Fix**: Expected behavior, full history in `sessions.json`
-
-### Symptom: Index not appearing in multiselect
-**Cause**: Directory missing, ChromaDB corruption
-**Fix**:
-1. Check `~/.tensortruth/indexes/` for subdirectory
-2. Verify `chroma.sqlite3` exists
-3. Rebuild: `tensor-truth-build --modules <name>`
-
-## Future Considerations (Not Implemented)
-
-- **Multi-Index Metadata Filtering**: Filter by library/category before retrieval
-- **Hybrid Search**: BM25 + dense retrieval fusion
-- **Re-Ranking Cascade**: Multiple reranker stages
-- **Query Expansion**: Synonyms, acronyms
-- **Citation Links**: Deep links to source docs
-- **Auto-Update Indexes**: Periodic doc refresh
-- **API Server Mode**: REST API for programmatic access
-- **Multi-User Sessions**: Separate session storage per user
+**Build locally**: `docker build -t tensor-truth .`
 
 ---
 
-## Quick Start Checklist for New Contributors
+## Quick Start for Contributors
 
-1. **Environment Setup**:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate
-   pip install -e ".[dev]"  # Editable install with all extras
-   ```
+```bash
+# Setup
+python -m venv venv && source venv/bin/activate
+pip install -e ".[dev]"
 
-2. **Run Tests**:
-   ```bash
-   pytest -v --cov=src/tensortruth
-   ```
+# Test & Run
+pytest -v --cov=src/tensortruth
+ollama serve  # separate terminal
+tensor-truth
 
-3. **Launch App**:
-   ```bash
-   ollama serve  # In separate terminal
-   tensor-truth
-   ```
+# Build custom index
+mkdir -p library_docs/mylib  # Add .md/.html files
+tensor-truth-build --modules mylib
 
-4. **Build Custom Index**:
-   ```bash
-   mkdir -p library_docs/mylib
-   # Add .md or .html files
-   tensor-truth-build --modules mylib
-   ```
-
-5. **Code Style**:
-   ```bash
-   black src/ tests/
-   isort src/ tests/
-   flake8 src/ tests/
-   ```
+# Code style
+black src/ tests/ && isort src/ tests/ && flake8 src/ tests/
+```
 
 ---
 
