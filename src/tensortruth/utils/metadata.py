@@ -215,11 +215,20 @@ JSON response:"""
         # Parse JSON from LLM output
         metadata = _parse_llm_json_response(llm_output)
 
-        logger.info(f"LLM extracted metadata: {metadata}")
+        if metadata.get("title"):
+            logger.info(
+                f"LLM extracted metadata: title='{metadata['title']}', "
+                f"authors='{metadata.get('authors')}'"
+            )
+        else:
+            logger.warning(
+                f"LLM extraction returned no title for {file_path.name}. "
+                f"Raw LLM output: {llm_output[:200]}"
+            )
         return metadata
 
     except Exception as e:
-        logger.warning(f"LLM metadata extraction failed: {e}")
+        logger.warning(f"LLM metadata extraction failed for {file_path.name}: {e}")
         return {"title": None, "authors": None}
 
 
@@ -531,6 +540,10 @@ def extract_document_metadata(
         display_name = create_display_name(title, metadata.get("authors"))
     else:
         # Fallback to filename without extension
+        logger.warning(
+            f"No title found for {file_path.name}, using filename as display name. "
+            f"Metadata extraction may have failed."
+        )
         display_name = file_path.stem.replace("_", " ")
 
     metadata["display_name"] = display_name

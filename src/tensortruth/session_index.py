@@ -224,7 +224,8 @@ class SessionIndexBuilder:
                 del embed_model
                 del leaf_nodes
                 del nodes
-                del documents
+                # Note: Don't delete documents as they may still be referenced
+                # by the persisted index or needed for subsequent operations
                 gc.collect()
                 logger.info("Cleaned up indexing objects from memory")
 
