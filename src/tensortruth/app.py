@@ -63,7 +63,7 @@ PRESETS_FILE = get_presets_file()
 USER_DIR = get_user_data_dir()
 INDEX_DIR = get_indexes_dir()
 GDRIVE_LINK = (
-    "https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing"
+    "https://drive.google.com/file/d/12wZsBwrywl9nXOCLr50lpWB2SiFdu1XB/view?usp=sharing"
 )
 MAX_VRAM_GB = get_max_memory_gb()
 
