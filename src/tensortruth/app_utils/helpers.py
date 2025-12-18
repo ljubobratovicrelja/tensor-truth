@@ -68,6 +68,19 @@ def get_module_display_name(index_dir: str, module_name: str) -> tuple[str, str,
 
 
 def _download_and_extract_indexes(user_dir: str, gdrive_link: str):
+    """Download and extract indexes from Google Drive.
+
+    Args:
+        user_dir: User data directory path
+        gdrive_link: Google Drive download link
+
+    Returns:
+        True if successful
+
+    Raises:
+        ImportError: If gdown is not installed
+        Exception: If download or extraction fails
+    """
     tarball_path = os.path.join(user_dir, "indexes.tar")
 
     try:

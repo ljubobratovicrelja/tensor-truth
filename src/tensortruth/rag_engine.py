@@ -145,6 +145,14 @@ CUSTOM_CONDENSE_PROMPT_TEMPLATE = (
 
 
 def get_embed_model(device="cuda"):
+    """Load HuggingFace embedding model.
+
+    Args:
+        device: Device to load model on ('cuda' or 'cpu')
+
+    Returns:
+        HuggingFaceEmbedding instance
+    """
     print(f"Loading Embedder on: {device.upper()}")
     batch_size = 128 if device == "cuda" else 16
     return HuggingFaceEmbedding(
@@ -156,6 +164,14 @@ def get_embed_model(device="cuda"):
 
 
 def get_llm(params):
+    """Initialize Ollama LLM with configuration parameters.
+
+    Args:
+        params: Dictionary with model configuration
+
+    Returns:
+        Ollama LLM instance
+    """
     model_name = params.get("model", "deepseek-r1:14b")
     user_system_prompt = params.get("system_prompt", "").strip()
     device_mode = params.get("llm_device", "gpu")  # 'gpu' or 'cpu'
@@ -183,6 +199,15 @@ def get_llm(params):
 
 
 def get_reranker(params, device="cuda"):
+    """Initialize cross-encoder reranker model.
+
+    Args:
+        params: Dictionary with reranker configuration
+        device: Device to load model on ('cuda' or 'cpu')
+
+    Returns:
+        SentenceTransformerRerank instance
+    """
     # Default to the high-precision BGE-M3 v2 if not specified
     model = params.get("reranker_model", "BAAI/bge-reranker-v2-m3")
     top_n = params.get("reranker_top_n", 3)
@@ -192,7 +217,20 @@ def get_reranker(params, device="cuda"):
 
 
 class MultiIndexRetriever(BaseRetriever):
+    """Retriever that queries multiple vector indexes in parallel.
+
+    Combines results from multiple index retrievers using concurrent execution.
+    """
+
     def __init__(self, retrievers, max_workers=None, enable_cache=True, cache_size=128):
+        """Initialize multi-index retriever.
+
+        Args:
+            retrievers: List of retriever instances
+            max_workers: Maximum parallel workers (default: min(len(retrievers), 8))
+            enable_cache: Whether to cache retrieval results
+            cache_size: LRU cache size
+        """
         self.retrievers = retrievers
         self.max_workers = max_workers or min(len(retrievers), 8)
         self.enable_cache = enable_cache
@@ -205,7 +243,14 @@ class MultiIndexRetriever(BaseRetriever):
             self._retrieve_cached = self._retrieve_impl
 
     def _retrieve_impl(self, query_text: str):
-        """Actual retrieval implementation that can be cached."""
+        """Actual retrieval implementation that can be cached.
+
+        Args:
+            query_text: Query string
+
+        Returns:
+            List of retrieved nodes from all indexes
+        """
         # Recreate QueryBundle from cached query text
         query_bundle = QueryBundle(query_str=query_text)
         combined_nodes = []
@@ -227,7 +272,14 @@ class MultiIndexRetriever(BaseRetriever):
         return combined_nodes
 
     def _retrieve(self, query_bundle: QueryBundle):
-        """Public retrieve method that leverages caching."""
+        """Public retrieve method that leverages caching.
+
+        Args:
+            query_bundle: Query bundle with query string and embeddings
+
+        Returns:
+            List of retrieved nodes
+        """
         return self._retrieve_cached(query_bundle.query_str)
 
 
@@ -237,6 +289,21 @@ def load_engine_for_modules(
     preserved_chat_history=None,
     session_index_path=None,
 ):
+    """Load RAG chat engine with selected module indexes.
+
+    Args:
+        selected_modules: List of module names to load
+        engine_params: Engine configuration parameters
+        preserved_chat_history: Chat history to restore
+        session_index_path: Optional session-specific index path
+
+    Returns:
+        Configured CondensePlusContextChatEngine instance
+
+    Raises:
+        ValueError: If no modules or session index selected
+        FileNotFoundError: If no valid indices loaded
+    """
     if not selected_modules and not session_index_path:
         raise ValueError("No modules or session index selected!")
 

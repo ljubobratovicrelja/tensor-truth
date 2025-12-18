@@ -15,13 +15,28 @@ MARKER_CONVERTER = None
 
 
 def clean_filename(title):
-    """Sanitize title for file system."""
+    """Sanitize title for file system.
+
+    Args:
+        title: Original title string
+
+    Returns:
+        Sanitized filename (max 50 characters)
+    """
     clean = re.sub(r"[^a-zA-Z0-9]", "_", title)
     return clean[:50]  # Truncate to avoid path length issues
 
 
 def download_pdf(url, output_path):
-    """Download PDF from URL to output_path."""
+    """Download PDF from URL to output path.
+
+    Args:
+        url: PDF URL
+        output_path: Destination file path
+
+    Returns:
+        True if successful, False otherwise
+    """
     logger.info(f"Downloading PDF from {url}")
 
     try:
@@ -40,9 +55,13 @@ def download_pdf(url, output_path):
 
 
 def extract_toc(pdf_path):
-    """
-    Extract Table of Contents from PDF.
-    Returns list of dicts: [{'title': str, 'page': int}, ...]
+    """Extract table of contents from PDF.
+
+    Args:
+        pdf_path: Path to PDF file
+
+    Returns:
+        List of dicts with 'title' and 'page' keys (top-level chapters only)
     """
     try:
         doc = fitz.open(pdf_path)
@@ -66,9 +85,16 @@ def extract_toc(pdf_path):
 
 
 def split_pdf_by_pages(pdf_path, start_page, end_page, output_path):
-    """
-    Extract pages from PDF and save to new PDF.
-    Pages are 1-indexed (as humans count them).
+    """Extract pages from PDF and save to new PDF.
+
+    Args:
+        pdf_path: Source PDF path
+        start_page: Start page number (1-indexed)
+        end_page: End page number (1-indexed, inclusive)
+        output_path: Destination PDF path
+
+    Returns:
+        True if successful, False otherwise
     """
     try:
         doc = fitz.open(pdf_path)
@@ -88,7 +114,14 @@ def split_pdf_by_pages(pdf_path, start_page, end_page, output_path):
 
 
 def get_pdf_page_count(pdf_path):
-    """Get total number of pages in PDF."""
+    """Get total number of pages in PDF.
+
+    Args:
+        pdf_path: Path to PDF file
+
+    Returns:
+        Page count (0 on error)
+    """
     try:
         doc = fitz.open(pdf_path)
         count = doc.page_count
@@ -155,8 +188,15 @@ def convert_pdf_to_markdown(pdf_path, preserve_math=True, converter="pymupdf"):
 
 
 def convert_with_marker(pdf_path):
-    """
-    Convert PDF using Marker with GPU acceleration.
+    """Convert PDF using Marker with GPU acceleration.
+
+    Falls back to pymupdf4llm if Marker is not available.
+
+    Args:
+        pdf_path: Path to PDF file
+
+    Returns:
+        Markdown text
     """
     global MARKER_CONVERTER
 
@@ -203,10 +243,15 @@ def convert_with_marker(pdf_path):
 
 
 def post_process_math(md_text):
-    """
-    Post-process markdown to improve math rendering for ChromaDB/RAG.
+    """Post-process markdown to improve math rendering.
 
-    Converts Unicode math symbols to LaTeX equivalents and wraps in $ delimiters.
+    Converts Unicode math symbols to LaTeX equivalents.
+
+    Args:
+        md_text: Markdown text
+
+    Returns:
+        Processed markdown with LaTeX math symbols
     """
     if not md_text:
         return md_text

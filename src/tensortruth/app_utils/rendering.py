@@ -95,15 +95,17 @@ def render_source_expander(sources_or_nodes, is_nodes: bool = False):
 
 
 def render_message_metadata(message: dict, params: dict, modules: list) -> str:
-    """Generate metadata caption for a message (time + status indicators).
+    """Generate metadata caption for a message.
+
+    Shows time and status indicators (PDF mode, soft fallback).
 
     Args:
-        message: Message dict from session history
-        params: Session parameters dict
+        message: Message dictionary from session history
+        params: Session parameters dictionary
         modules: List of active module names
 
     Returns:
-        Formatted caption string
+        Formatted metadata string
     """
     if "time_taken" not in message:
         return ""

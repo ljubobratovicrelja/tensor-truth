@@ -15,8 +15,14 @@ ALLOWED_RERANKER_MODELS = [
 def _normalize_preset(preset: dict) -> dict:
     """Normalize preset values to match UI constraints.
 
-    This ensures manually edited presets don't break the UI.
-    Modifies the preset in-place and returns it.
+    Ensures manually edited presets don't break the UI.
+    Modifies the preset in-place.
+
+    Args:
+        preset: Preset configuration dictionary
+
+    Returns:
+        Normalized preset dictionary (same reference)
     """
     # Normalize context_window to nearest allowed value
     if "context_window" in preset:
@@ -64,8 +70,14 @@ def _normalize_preset(preset: dict) -> dict:
 def load_presets(presets_file: str):
     """Load presets from JSON file.
 
-    If the file doesn't exist, generates it from defaults.
+    Generates from defaults if file doesn't exist.
     Automatically normalizes all presets to match UI constraints.
+
+    Args:
+        presets_file: Path to presets JSON file
+
+    Returns:
+        Dictionary of preset configurations
     """
     # Try to ensure presets exist (generates from defaults if missing)
     try:
@@ -92,6 +104,11 @@ def save_preset(name, config, presets_file: str):
     """Save a preset configuration.
 
     Normalizes the config before saving to ensure consistency.
+
+    Args:
+        name: Preset name
+        config: Configuration dictionary
+        presets_file: Path to presets JSON file
     """
     presets = load_presets(presets_file)
     # Normalize the config before saving

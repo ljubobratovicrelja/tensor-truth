@@ -4,11 +4,15 @@ import torch
 
 
 def get_max_memory_gb():
-    """
-    Dynamically determines maximum available memory in GB.
-    - Mac (Apple Silicon): Uses unified memory (total system RAM)
-    - Windows/Linux with CUDA: Uses GPU VRAM
+    """Determine maximum available memory in GB.
+
+    Detection order:
+    - Mac (Apple Silicon): Unified memory (total system RAM)
+    - Windows/Linux with CUDA: GPU VRAM
     - Fallback: CPU RAM
+
+    Returns:
+        Maximum memory in gigabytes
     """
     # Check if CUDA is available (Windows/Linux with NVIDIA GPU)
     if torch.cuda.is_available():

@@ -1,3 +1,8 @@
+"""Documentation and paper fetching utilities.
+
+Handles scraping of library documentation (Sphinx/Doxygen) and ArXiv papers.
+"""
+
 import argparse
 import json
 import logging
@@ -31,7 +36,14 @@ logging.basicConfig(level=logging.INFO)
 
 
 def load_config(config_path=DEFAULT_CONFIG):
-    """Load unified sources configuration (libraries + papers)."""
+    """Load unified sources configuration.
+
+    Args:
+        config_path: Path to JSON configuration file
+
+    Returns:
+        Dictionary with 'libraries' and 'papers' sections
+    """
     if not os.path.exists(config_path):
         logging.error(f"Config file not found: {config_path}")
         return {"libraries": {}, "papers": {}}
@@ -53,7 +65,14 @@ def load_config(config_path=DEFAULT_CONFIG):
 
 
 def fetch_inventory(config):
-    """Downloads and decodes the Sphinx objects.inv file."""
+    """Download and decode Sphinx objects.inv file.
+
+    Args:
+        config: Library configuration dictionary
+
+    Returns:
+        List of unique API page URLs
+    """
     print(f"Fetching inventory from {config['inventory_url']}...")
     try:
         inv = soi.Inventory(url=config["inventory_url"])
@@ -83,7 +102,14 @@ def fetch_inventory(config):
 
 
 def fetch_doxygen_urls(config):
-    """Extracts documentation URLs from Doxygen index pages."""
+    """Extract documentation URLs from Doxygen index pages.
+
+    Args:
+        config: Library configuration dictionary
+
+    Returns:
+        List of unique Doxygen documentation page URLs
+    """
     doc_root = config["doc_root"]
     index_pages = config.get("index_pages", ["annotated.html", "modules.html"])
 
@@ -138,9 +164,16 @@ def fetch_doxygen_urls(config):
 
 
 def clean_doxygen_html(soup):
-    """
-    Aggressively clean Doxygen HTML to remove noise while preserving semantic content.
-    Focuses on keeping: class/function signatures, descriptions, parameters, code blocks.
+    """Aggressively clean Doxygen HTML to remove noise.
+
+    Focuses on keeping class/function signatures, descriptions, parameters,
+    and code blocks while removing diagrams, navigation, and visual elements.
+
+    Args:
+        soup: BeautifulSoup object
+
+    Returns:
+        Cleaned BeautifulSoup object
     """
     # 1. Remove all visual-only elements (diagrams, images, iframes)
     for tag in soup.find_all(["iframe", "img", "svg"]):
@@ -232,7 +265,15 @@ def clean_doxygen_html(soup):
 
 
 def url_to_filename(url, doc_root):
-    """Clean filename generation."""
+    """Generate clean filename from URL.
+
+    Args:
+        url: Source URL
+        doc_root: Base documentation URL
+
+    Returns:
+        Sanitized filename with .md extension
+    """
     # Remove the base URL
     rel_path = url.replace(doc_root, "").strip("/")
     # Replace slashes/dots with underscores
@@ -244,9 +285,18 @@ def url_to_filename(url, doc_root):
 def process_url(
     url, config, output_dir, output_format="markdown", enable_cleanup=False, min_size=0
 ):
-    """
-    Download and convert a single URL to markdown or save as HTML, with optional
-    cleanup and size filtering.
+    """Download and convert single URL to markdown or HTML.
+
+    Args:
+        url: URL to process
+        config: Library configuration dictionary
+        output_dir: Output directory path
+        output_format: Output format ('markdown' or 'html')
+        enable_cleanup: Enable aggressive HTML cleanup
+        min_size: Minimum file size in characters (skip smaller files)
+
+    Returns:
+        True if successful, 'skipped' if filtered, False on error
     """
     try:
         resp = requests.get(url, timeout=10)

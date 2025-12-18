@@ -1,3 +1,8 @@
+"""Vector database building utilities for Tensor-Truth.
+
+Builds hierarchical vector indexes from markdown documentation.
+"""
+
 import argparse
 import json
 import logging
@@ -33,6 +38,16 @@ logger = logging.getLogger("BUILDER")
 
 
 def build_module(module_name, chunk_sizes=[2048, 512, 256], extract_metadata=True):
+    """Build vector index for a documentation module.
+
+    Args:
+        module_name: Name of module subdirectory in SOURCE_DIR
+        chunk_sizes: Hierarchical chunk sizes for document parsing
+        extract_metadata: Whether to extract document metadata
+
+    Returns:
+        None
+    """
 
     source_dir = os.path.join(SOURCE_DIR, module_name)
     persist_dir = os.path.join(BASE_INDEX_DIR, module_name)

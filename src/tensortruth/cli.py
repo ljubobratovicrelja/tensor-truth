@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""
-Command-line interface for Tensor-Truth.
+"""Command-line interface for Tensor-Truth.
+
 Unified CLI for managing documentation, papers, databases, and the web interface.
 """
 
@@ -9,8 +9,12 @@ from pathlib import Path
 
 
 def _missing_imports_message(tool, package, error):
-    """
-    Print a standardized message for missing dependencies for docs and papers scraping tools.
+    """Print standardized message for missing dependencies.
+
+    Args:
+        tool: Name of the CLI tool
+        package: Package name to install
+        error: The import error that occurred
     """
     print(
         (

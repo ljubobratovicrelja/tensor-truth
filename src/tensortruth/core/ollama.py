@@ -12,11 +12,15 @@ OLLAMA_API_BASE = "http://localhost:11434/api"
 
 
 def get_ollama_url() -> str:
-    """
-    Get Ollama base URL with precedence:
+    """Get Ollama base URL with precedence.
+
+    Priority:
     1. Environment variable (OLLAMA_HOST)
     2. Config file
     3. Default (http://localhost:11434)
+
+    Returns:
+        Ollama base URL string
     """
     # 1. Check Environment Variable (highest priority)
     env_host = os.environ.get("OLLAMA_HOST")
@@ -40,13 +44,21 @@ def get_ollama_url() -> str:
 
 
 def get_api_base():
-    """Get the base API endpoint for raw requests."""
+    """Get the base API endpoint for raw requests.
+
+    Returns:
+        API base URL string
+    """
     return f"{get_ollama_url()}/api"
 
 
 def get_running_models():
-    """
-    Equivalent to `ollama ps`. Returns list of active models with VRAM usage.
+    """Get list of active models with VRAM usage.
+
+    Equivalent to `ollama ps` command.
+
+    Returns:
+        List of running model dictionaries
     """
     try:
         response = requests.get(f"{get_api_base()}/ps", timeout=2)

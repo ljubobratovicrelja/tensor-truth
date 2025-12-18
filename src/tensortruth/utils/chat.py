@@ -4,9 +4,15 @@ import re
 
 
 def parse_thinking_response(raw_text):
-    """
-    Splits the raw response into (Thought, Answer).
-    Handles standard tags <thought>...</thought> and common malformations.
+    """Split response into thought and answer sections.
+
+    Handles standard <thought>...</thought> tags and common malformations.
+
+    Args:
+        raw_text: Raw model response text
+
+    Returns:
+        Tuple of (thought, answer) where thought may be None
     """
     if not raw_text:
         return None, ""
