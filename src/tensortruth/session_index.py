@@ -1,6 +1,5 @@
 """Session-specific vector index builder for uploaded PDFs."""
 
-import gc
 import logging
 import shutil
 from pathlib import Path
@@ -205,29 +204,18 @@ class SessionIndexBuilder:
             logger.info("Embedding documents on CPU (this may take a while)...")
             embed_model = get_embed_model(device="cpu")
 
-            try:
-                VectorStoreIndex(
-                    leaf_nodes,
-                    storage_context=storage_context,
-                    embed_model=embed_model,
-                    show_progress=True,
-                )
+            VectorStoreIndex(
+                leaf_nodes,
+                storage_context=storage_context,
+                embed_model=embed_model,
+                show_progress=True,
+            )
 
-                # Persist to disk
-                storage_context.persist(persist_dir=str(self.session_index_dir))
-                logger.info(
-                    f"✅ Session index built successfully: {self.session_index_dir}"
-                )
-            finally:
-                # Clean up embedding model and intermediate objects from memory
-                # This is important as these objects are only needed during indexing
-                del embed_model
-                del leaf_nodes
-                del nodes
-                # Note: Don't delete documents as they may still be referenced
-                # by the persisted index or needed for subsequent operations
-                gc.collect()
-                logger.info("Cleaned up indexing objects from memory")
+            # Persist to disk
+            storage_context.persist(persist_dir=str(self.session_index_dir))
+            logger.info(
+                f"✅ Session index built successfully: {self.session_index_dir}"
+            )
 
         except Exception as e:
             logger.error(f"Failed to build session index: {e}")

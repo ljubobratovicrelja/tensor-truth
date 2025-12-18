@@ -68,3 +68,31 @@ def update_config(**kwargs):
                 setattr(config.rag, attr_name, value)
 
     save_config(config)
+
+
+def compute_config_hash(modules: list, params: dict, has_pdf_index: bool = False):
+    """Compute a hashable configuration tuple for cache invalidation.
+
+    This creates a stable hash of the current engine configuration to detect
+    when the engine needs to be reloaded.
+
+    Args:
+        modules: List of active module names
+        params: Session parameters dict
+        has_pdf_index: Whether session has a temporary PDF index
+
+    Returns:
+        Tuple suitable for comparison (modules_tuple, params_frozenset, pdf_flag)
+    """
+    # Sort modules for consistent ordering
+    modules_tuple = tuple(sorted(modules)) if modules else None
+
+    # Convert params dict to sorted frozenset for hashing
+    param_items = sorted([(k, v) for k, v in params.items()])
+    param_hash = frozenset(param_items)
+
+    # Return complete config tuple (None if no modules and no PDF index)
+    if modules_tuple or has_pdf_index:
+        return (modules_tuple, param_hash, has_pdf_index)
+    else:
+        return None
