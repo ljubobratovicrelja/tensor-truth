@@ -138,6 +138,62 @@ def get_pdf_page_count(pdf_path: Union[str, Path]) -> int:
         return 0
 
 
+def pdf_has_extractable_text(
+    pdf_path: Union[str, Path], sample_pages: int = 3, min_text_ratio: float = 0.1
+) -> bool:
+    """Check if PDF has extractable text or is mostly images/scanned.
+
+    Args:
+        pdf_path: Path to PDF file
+        sample_pages: Number of pages to sample (from start)
+        min_text_ratio: Minimum ratio of text chars to total chars
+
+    Returns:
+        True if PDF has extractable text, False if mostly images/scanned
+    """
+    try:
+        doc = fitz.open(pdf_path)
+        total_chars = 0
+        total_text_chars = 0
+
+        # Sample first N pages
+        pages_to_check = min(sample_pages, doc.page_count)
+
+        for page_num in range(pages_to_check):
+            page = doc[page_num]
+            text = page.get_text()
+
+            # Count total characters (excluding whitespace)
+            text_chars = len([c for c in text if not c.isspace()])
+            total_text_chars += text_chars
+
+            # Estimate total content (text + image area)
+            # Images take up space, so we use page dimensions as proxy
+            page_area = page.rect.width * page.rect.height
+            total_chars += max(text_chars, page_area / 100)
+
+        doc.close()
+
+        # If we have very little text, it's likely a scanned PDF
+        if total_chars == 0:
+            return False
+
+        text_ratio = total_text_chars / total_chars
+        has_text = text_ratio >= min_text_ratio
+
+        logger.info(
+            f"PDF text detection: {total_text_chars} text chars, "
+            f"ratio={text_ratio:.2f}, has_text={has_text}"
+        )
+
+        return has_text
+
+    except Exception as e:
+        logger.warning(f"Failed to detect PDF text content: {e}")
+        # On error, assume it needs marker (safer fallback)
+        return False
+
+
 def convert_pdf_to_markdown(
     pdf_path: Union[str, Path], preserve_math: bool = True, converter: str = "pymupdf"
 ) -> str:

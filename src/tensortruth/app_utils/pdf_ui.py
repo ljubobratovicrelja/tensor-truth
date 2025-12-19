@@ -50,18 +50,41 @@ def process_pdf_upload(uploaded_file, session_id: str, sessions_file: str):
     )
     save_sessions(sessions_file)
 
-    # Convert to markdown
+    # Auto-detect: use direct PDF indexing if text is extractable, else convert to markdown
     try:
-        with st.spinner(f"Converting {uploaded_file.name} (this may take a while)..."):
-            _ = handler.convert_pdf_to_markdown(pdf_metadata["path"])
+        from tensortruth.utils.pdf import pdf_has_extractable_text
 
-        # Build/rebuild index with metadata extraction
-        metadata_cache = session.get("pdf_metadata_cache", {})
-        builder = SessionIndexBuilder(session_id, metadata_cache=metadata_cache)
+        # Check if PDF has extractable text
+        has_text = pdf_has_extractable_text(pdf_metadata["path"])
 
-        with st.spinner("Indexing document..."):
-            markdown_files = handler.get_all_markdown_files()
-            builder.build_index(markdown_files)
+        if has_text:
+            # Fast path: index PDF directly without markdown conversion
+            st.info(
+                f"📄 {uploaded_file.name} has extractable text - using fast indexing"
+            )
+
+            metadata_cache = session.get("pdf_metadata_cache", {})
+            builder = SessionIndexBuilder(session_id, metadata_cache=metadata_cache)
+
+            with st.spinner("Indexing document..."):
+                pdf_files = handler.get_all_pdf_files()
+                builder.build_index_from_pdfs(pdf_files)
+        else:
+            # Slow path: scanned PDF or image-heavy, use marker for better quality
+            st.warning(
+                f"📸 {uploaded_file.name} appears to be scanned - "
+                f"using high-quality OCR (this may take a while)"
+            )
+
+            with st.spinner(f"Converting {uploaded_file.name} with OCR..."):
+                _ = handler.convert_pdf_to_markdown(pdf_metadata["path"])
+
+            metadata_cache = session.get("pdf_metadata_cache", {})
+            builder = SessionIndexBuilder(session_id, metadata_cache=metadata_cache)
+
+            with st.spinner("Indexing document..."):
+                markdown_files = handler.get_all_markdown_files()
+                builder.build_index(markdown_files)
 
         # Save updated metadata cache
         session["pdf_metadata_cache"] = builder.get_metadata_cache()
@@ -71,8 +94,8 @@ def process_pdf_upload(uploaded_file, session_id: str, sessions_file: str):
             if doc["id"] == pdf_metadata["id"]:
                 doc["status"] = "indexed"
 
-                # Add extracted metadata
-                pdf_meta = metadata_cache.get(pdf_metadata["id"], {})
+                # Add extracted metadata from updated cache
+                pdf_meta = session["pdf_metadata_cache"].get(pdf_metadata["id"], {})
                 if pdf_meta:
                     doc["display_name"] = pdf_meta.get("display_name")
                     doc["authors"] = pdf_meta.get("authors")
@@ -121,11 +144,20 @@ def delete_pdf_from_session(pdf_id: str, session_id: str, sessions_file: str):
 
     if session["pdf_documents"]:
         try:
+            # Try PDF-first approach (check if we have PDFs in pdfs dir)
+            pdf_files = handler.get_all_pdf_files()
             markdown_files = handler.get_all_markdown_files()
-            if markdown_files:
+
+            if pdf_files:
+                # Use direct PDF indexing
+                builder.build_index_from_pdfs(pdf_files)
+                session["pdf_metadata_cache"] = builder.get_metadata_cache()
+            elif markdown_files:
+                # Fall back to markdown indexing
                 builder.build_index(markdown_files)
                 session["pdf_metadata_cache"] = builder.get_metadata_cache()
             else:
+                # No files found, delete index
                 builder.delete_index()
                 session["has_temp_index"] = False
         except Exception as e:

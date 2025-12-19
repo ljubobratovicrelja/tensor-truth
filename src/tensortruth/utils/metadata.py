@@ -77,11 +77,16 @@ def extract_pdf_metadata(file_path: Path) -> Optional[Dict[str, Any]]:
 
     Uses PyMuPDF to read PDF metadata (Title, Author, Subject, etc.)
 
+    NOTE: This only extracts year from creation date. Title and authors
+    are NOT extracted from embedded metadata because they are often
+    incorrect (e.g., publisher names instead of authors, journal names
+    in titles). Use LLM extraction for title/authors instead.
+
     Args:
         file_path: Path to PDF file
 
     Returns:
-        Dictionary with extracted metadata or None if extraction fails
+        Dictionary with extracted metadata (only year) or None if extraction fails
     """
     try:
         import pymupdf
@@ -94,26 +99,19 @@ def extract_pdf_metadata(file_path: Path) -> Optional[Dict[str, Any]]:
 
         metadata = {}
 
-        # Extract title
-        if pdf_metadata.get("title"):
-            metadata["title"] = pdf_metadata["title"]
-
-        # Extract author
-        if pdf_metadata.get("author"):
-            metadata["authors"] = pdf_metadata["author"]
-
-        # Extract year from creation date if available
+        # Only extract year from creation date (reliable)
+        # Do NOT extract title/authors from embedded metadata (often wrong)
         if pdf_metadata.get("creationDate"):
             date_match = re.search(r"D:(\d{4})", pdf_metadata["creationDate"])
             if date_match:
                 metadata["year"] = date_match.group(1)
+                logger.info(f"Extracted year from PDF metadata: {metadata['year']}")
 
         doc.close()
 
         if not metadata:
             return None
 
-        logger.info(f"Extracted PDF metadata: {metadata}")
         return metadata
 
     except Exception as e:
@@ -159,8 +157,8 @@ def extract_metadata_with_llm(
     doc: Document,
     file_path: Path,
     ollama_url: str,
-    model: str = "qwen2.5:0.5b",
-    max_chars: int = 2000,
+    model: str = "qwen2.5-coder:7b",
+    max_chars: int = 3000,
 ) -> Dict[str, Any]:
     """Use LLM to extract title and authors from document content.
 
@@ -181,12 +179,34 @@ def extract_metadata_with_llm(
     prompt = f"""You are a document metadata extractor. Extract the title and \
 authors from the following document excerpt.
 
-Rules:
-1. Title: The main title of the document (paper, book chapter, article)
-2. Authors: All authors, comma-separated. If more than 3 authors, use "FirstAuthor et al."
-3. Return ONLY valid JSON with no additional text
-4. If you cannot find a clear title, use null
-5. If you cannot find authors, use null
+CRITICAL RULES:
+1. Title: Extract the COMPLETE main paper/article/chapter title
+   - Titles may span multiple lines - combine them into one string
+   - Ignore journal names that appear before the title
+   - Example: If you see "IEEE Transactions..." followed by
+     "Three-Dimensional Location\nof Circular Features",
+     the title is "Three-Dimensional Location of Circular Features"
+2. Authors: Extract ONLY the individual person names who WROTE the document
+   - DO NOT extract journal names (e.g., "IEEE Transactions", "Nature")
+   - DO NOT extract publisher names (e.g., "Springer", "ACM", "IEEE")
+   - DO NOT extract conference names (e.g., "CVPR", "NeurIPS")
+   - DO NOT extract institution names (e.g., "MIT", "Stanford")
+   - Authors are PEOPLE with first and last names (e.g., "John Smith, Jane Doe")
+   - Ignore titles like "Member, IEEE" or "Fellow, IEEE" - those are not author names
+3. If more than 4 authors, list all of them (do not use "et al." - we'll format that later)
+4. Return ONLY valid JSON with no additional text
+5. If you cannot find a clear title or authors, use null
+
+Examples of CORRECT extraction:
+- Title spanning lines: "Three-Dimensional Location Estimation of Circular
+  Features for Machine Vision"
+- Authors: "Reza Safaee-Rad, Ivo Tchoukanov, Kenneth Carless Smith,
+  Bensiyon Benhabib"
+
+Examples of INCORRECT author extraction (DO NOT DO THIS):
+- "IEEE Transactions on Robotics" ✗ (this is a journal)
+- "Springer-Verlag" ✗ (this is a publisher)
+- "Member, IEEE" ✗ (this is a title, not an author)
 
 Return format (JSON only):
 {{
@@ -243,12 +263,23 @@ def _parse_llm_json_response(response: str) -> Dict[str, Any]:
     Returns:
         Dictionary with title and authors (may be None)
     """
+    # Remove markdown code blocks if present
+    cleaned = response.strip()
+    if cleaned.startswith("```"):
+        # Remove opening ```json or ``` and closing ```
+        lines = cleaned.split("\n")
+        if lines[0].startswith("```"):
+            lines = lines[1:]  # Remove first line
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]  # Remove last line
+        cleaned = "\n".join(lines)
+
     try:
         # Try direct JSON parse
-        return json.loads(response)
+        return json.loads(cleaned)
     except json.JSONDecodeError:
-        # Try to extract JSON block with regex
-        match = re.search(r"\{[^}]+\}", response, re.DOTALL)
+        # Try to extract JSON object with balanced braces
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group())
@@ -387,7 +418,7 @@ def format_authors(authors: Union[str, List, None]) -> Optional[str]:
 def create_display_name(title: Optional[str], authors: Optional[str] = None) -> str:
     """Create pretty display name for citation.
 
-    Format: "Title - Authors" or "Title" if no authors.
+    Format: "Title, Authors" or "Title" if no authors.
 
     Args:
         title: Document title
@@ -400,7 +431,7 @@ def create_display_name(title: Optional[str], authors: Optional[str] = None) -> 
         return "Unknown Document"
 
     if authors:
-        return f"{title} - {authors}"
+        return f"{title}, {authors}"
     else:
         return title
 
@@ -491,17 +522,29 @@ def extract_document_metadata(
     """
     metadata = {}
 
-    # Step 1: Try explicit extraction
+    # Step 1: Try explicit extraction (YAML headers or PDF metadata)
     explicit_metadata = extract_explicit_metadata(doc, file_path)
 
-    if explicit_metadata:
+    # Check if we have both title AND authors from explicit sources
+    has_complete_metadata = (
+        explicit_metadata
+        and explicit_metadata.get("title")
+        and explicit_metadata.get("authors")
+    )
+
+    if has_complete_metadata:
         metadata.update(explicit_metadata)
         logger.info(f"Using explicit metadata for {file_path.name}")
     elif use_llm_fallback and ollama_url:
-        # Step 2: Fallback to LLM extraction
-        logger.info(f"No explicit metadata found, using LLM for {file_path.name}")
+        # Step 2: Fallback to LLM extraction if metadata incomplete
+        logger.info(
+            f"Incomplete or no explicit metadata, using LLM for {file_path.name}"
+        )
         llm_metadata = extract_metadata_with_llm(doc, file_path, ollama_url)
-        metadata.update(llm_metadata)
+        # Merge: LLM metadata + any year from explicit metadata
+        if explicit_metadata:
+            metadata.update(explicit_metadata)  # Keep year if extracted
+        metadata.update(llm_metadata)  # Add/override with LLM results
 
     # Step 3: For library docs and paper collections, override with config info if available
     if sources_config and module_name:

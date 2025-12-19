@@ -174,6 +174,10 @@ class PDFHandler:
         """Get list of all markdown files in session."""
         return list(self.markdown_dir.glob("*.md"))
 
+    def get_all_pdf_files(self) -> List[Path]:
+        """Get list of all PDF files in session."""
+        return list(self.pdfs_dir.glob("pdf_*.pdf"))
+
     def get_pdf_count(self) -> int:
         """Get number of PDFs in session."""
-        return len(list(self.pdfs_dir.glob("pdf_*.pdf")))
+        return len(self.get_all_pdf_files())

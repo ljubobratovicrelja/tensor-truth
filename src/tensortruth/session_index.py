@@ -60,6 +60,181 @@ class SessionIndexBuilder:
         docstore = self.session_index_dir / "docstore.json"
         return chroma_db.exists() and docstore.exists()
 
+    def build_index_from_pdfs(
+        self, pdf_files: List[Path], chunk_sizes: List[int] = None
+    ) -> None:
+        """
+        Build ChromaDB vector index directly from PDF files (fast path).
+
+        Args:
+            pdf_files: List of PDF file paths
+            chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256])
+
+        Raises:
+            ValueError: If no PDF files provided
+            Exception: If indexing fails
+        """
+        if chunk_sizes is None:
+            chunk_sizes = [2048, 512, 256]
+
+        if not pdf_files:
+            raise ValueError("No PDF files provided")
+
+        logger.info(
+            f"Building index from {len(pdf_files)} PDFs (direct mode, no markdown)"
+        )
+
+        try:
+            # Clean existing index if present
+            if self.session_index_dir.exists():
+                logger.info(f"Removing old index: {self.session_index_dir}")
+                shutil.rmtree(self.session_index_dir)
+            self.session_index_dir.mkdir(parents=True, exist_ok=True)
+
+            # Load PDFs directly
+            from llama_index.readers.file import PDFReader
+
+            reader = PDFReader()
+            documents = []
+
+            for pdf_file in pdf_files:
+                logger.info(f"Loading PDF: {pdf_file.name}")
+                docs = reader.load_data(str(pdf_file))
+
+                # Set file_path metadata for each document (needed for metadata extraction)
+                for doc in docs:
+                    doc.metadata["file_path"] = str(pdf_file)
+                    doc.metadata["file_name"] = pdf_file.name
+
+                documents.extend(docs)
+
+            if not documents:
+                raise ValueError("No documents loaded from PDFs")
+
+            logger.info(f"Loaded {len(documents)} documents from PDFs")
+
+            # Extract metadata (same as markdown path)
+            self._extract_and_inject_metadata(documents)
+
+            # Build index (same as markdown path)
+            self._build_vector_index(documents, chunk_sizes)
+
+        except Exception as e:
+            logger.error(f"Failed to build index from PDFs: {e}")
+            raise
+
+    def _extract_and_inject_metadata(self, documents: List) -> None:
+        """Extract and inject metadata into documents.
+
+        Args:
+            documents: List of LlamaIndex Document objects
+        """
+        logger.info("Extracting metadata from uploaded PDFs...")
+
+        try:
+            ollama_url = get_ollama_url()
+
+            for i, doc in enumerate(documents):
+                try:
+                    # Get file_path from metadata
+                    file_path_str = doc.metadata.get("file_path", "")
+                    if not file_path_str or not isinstance(file_path_str, str):
+                        logger.debug(
+                            f"Skipping metadata extraction for document {i} "
+                            "(no valid file_path)"
+                        )
+                        continue
+
+                    file_path = Path(file_path_str)
+                    pdf_id = self._extract_pdf_id_from_filename(file_path.name)
+
+                    # Check cache first
+                    cached_metadata = self._get_cached_metadata(pdf_id)
+
+                    if cached_metadata:
+                        logger.info(f"  Using cached metadata for {pdf_id}")
+                        metadata = cached_metadata
+                    else:
+                        # Always use LLM extraction for uploaded PDFs
+                        # (embedded PDF metadata is often incorrect - publishers
+                        # instead of authors, journal names in titles, etc.)
+                        logger.info(f"  Extracting metadata for {pdf_id} with LLM...")
+                        metadata = extract_document_metadata(
+                            doc=doc,
+                            file_path=file_path,
+                            module_name=None,
+                            sources_config=None,
+                            ollama_url=ollama_url,
+                            use_llm_fallback=True,
+                        )
+
+                        # Force doc_type to uploaded_pdf
+                        metadata["doc_type"] = "uploaded_pdf"
+
+                        # Cache the metadata
+                        self._update_metadata_cache(pdf_id, metadata)
+
+                    # Inject essential metadata fields
+                    essential_fields = [
+                        "display_name",
+                        "authors",
+                        "source_url",
+                        "doc_type",
+                    ]
+                    for field in essential_fields:
+                        if field in metadata:
+                            doc.metadata[field] = metadata[field]
+
+                except Exception as e:
+                    logger.warning(f"Failed to extract metadata for document {i}: {e}")
+
+            logger.info(
+                f">> Metadata extraction complete for {len(documents)} documents"
+            )
+
+        except Exception as e:
+            logger.warning(f"Metadata extraction unavailable: {e}")
+            logger.info("Continuing index build without metadata enrichment")
+
+    def _build_vector_index(self, documents: List, chunk_sizes: List[int]) -> None:
+        """Build the vector index from documents.
+
+        Args:
+            documents: List of LlamaIndex Document objects
+            chunk_sizes: Hierarchical chunk sizes
+        """
+        # Parse with hierarchical chunking
+        node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
+        nodes = node_parser.get_nodes_from_documents(documents)
+        leaf_nodes = get_leaf_nodes(nodes)
+        logger.info(f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves)")
+
+        # Create ChromaDB vector store
+        self._chroma_client = chromadb.PersistentClient(
+            path=str(self.session_index_dir)
+        )
+        collection = self._chroma_client.get_or_create_collection("data")
+        vector_store = ChromaVectorStore(chroma_collection=collection)
+
+        # Build index
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
+        storage_context.docstore.add_documents(nodes)
+
+        # Force CPU for session indexing
+        logger.info("Embedding documents on CPU (this may take a while)...")
+        embed_model = get_embed_model(device="cpu")
+
+        VectorStoreIndex(
+            leaf_nodes,
+            storage_context=storage_context,
+            embed_model=embed_model,
+            show_progress=True,
+        )
+
+        # Persist to disk
+        storage_context.persist(persist_dir=str(self.session_index_dir))
+        logger.info(f"✅ Session index built successfully: {self.session_index_dir}")
+
     def build_index(
         self, markdown_files: Optional[List[Path]] = None, chunk_sizes: List[int] = None
     ) -> None:
@@ -108,114 +283,11 @@ class SessionIndexBuilder:
 
             logger.info(f"Loaded {len(documents)} documents")
 
-            # Extract metadata for each document
-            logger.info("Extracting metadata from uploaded PDFs...")
+            # Extract and inject metadata
+            self._extract_and_inject_metadata(documents)
 
-            try:
-                ollama_url = get_ollama_url()
-
-                for i, doc in enumerate(documents):
-                    try:
-                        # Get file_path from metadata
-                        file_path_str = doc.metadata.get("file_path", "")
-                        if not file_path_str or not isinstance(file_path_str, str):
-                            logger.debug(
-                                f"Skipping metadata extraction for document {i} "
-                                "(no valid file_path)"
-                            )
-                            continue
-
-                        file_path = Path(file_path_str)
-                        pdf_id = self._extract_pdf_id_from_filename(file_path.name)
-
-                        # Check cache first
-                        cached_metadata = self._get_cached_metadata(pdf_id)
-
-                        if cached_metadata:
-                            logger.info(f"  Using cached metadata for {pdf_id}")
-                            metadata = cached_metadata
-                        else:
-                            # Extract with LLM (uploaded PDFs rarely have explicit metadata)
-                            logger.info(
-                                f"  Extracting metadata for {pdf_id} with LLM..."
-                            )
-                            metadata = extract_document_metadata(
-                                doc=doc,
-                                file_path=file_path,
-                                module_name=None,
-                                sources_config=None,
-                                ollama_url=ollama_url,
-                                use_llm_fallback=True,
-                            )
-
-                            # Force doc_type to uploaded_pdf
-                            metadata["doc_type"] = "uploaded_pdf"
-
-                            # Cache the metadata
-                            self._update_metadata_cache(pdf_id, metadata)
-
-                        # Inject only essential metadata fields to avoid chunk size issues
-                        # (LlamaIndex includes metadata in chunk context)
-                        essential_fields = [
-                            "display_name",
-                            "authors",
-                            "source_url",
-                            "doc_type",
-                        ]
-                        for field in essential_fields:
-                            if field in metadata:
-                                doc.metadata[field] = metadata[field]
-
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to extract metadata for document {i}: {e}"
-                        )
-                        # Continue with default metadata
-
-                logger.info(
-                    f">> Metadata extraction complete for {len(documents)} documents"
-                )
-
-            except Exception as e:
-                # If metadata extraction completely fails (e.g., Ollama not available),
-                # continue without metadata
-                logger.warning(f"Metadata extraction unavailable: {e}")
-                logger.info("Continuing index build without metadata enrichment")
-
-            # Parse with hierarchical chunking
-            node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
-            nodes = node_parser.get_nodes_from_documents(documents)
-            leaf_nodes = get_leaf_nodes(nodes)
-            logger.info(f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves)")
-
-            # Create ChromaDB vector store
-            self._chroma_client = chromadb.PersistentClient(
-                path=str(self.session_index_dir)
-            )
-            collection = self._chroma_client.get_or_create_collection("data")
-            vector_store = ChromaVectorStore(chroma_collection=collection)
-
-            # Build index
-            storage_context = StorageContext.from_defaults(vector_store=vector_store)
-            storage_context.docstore.add_documents(nodes)
-
-            # Force CPU for session indexing to avoid VRAM overflow
-            # (LLM is likely already loaded in Ollama, taking most VRAM)
-            logger.info("Embedding documents on CPU (this may take a while)...")
-            embed_model = get_embed_model(device="cpu")
-
-            VectorStoreIndex(
-                leaf_nodes,
-                storage_context=storage_context,
-                embed_model=embed_model,
-                show_progress=True,
-            )
-
-            # Persist to disk
-            storage_context.persist(persist_dir=str(self.session_index_dir))
-            logger.info(
-                f"✅ Session index built successfully: {self.session_index_dir}"
-            )
+            # Build vector index
+            self._build_vector_index(documents, chunk_sizes)
 
         except Exception as e:
             logger.error(f"Failed to build session index: {e}")

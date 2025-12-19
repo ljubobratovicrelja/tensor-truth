@@ -311,7 +311,7 @@ def test_format_authors_list_input():
 def test_create_display_name_with_authors():
     """Test display name creation with authors."""
     result = create_display_name("Test Paper", "Doe et al.")
-    assert result == "Test Paper - Doe et al."
+    assert result == "Test Paper, Doe et al."
 
 
 def test_create_display_name_without_authors():
@@ -382,7 +382,7 @@ Content here...
         doc, file_path, module_name="papers", use_llm_fallback=False
     )
 
-    assert result["display_name"] == "Test Paper - John Doe, Jane Smith"
+    assert result["display_name"] == "Test Paper, John Doe, Jane Smith"
     assert result["authors"] == "John Doe, Jane Smith"
     assert result["source_url"] == "https://arxiv.org/abs/1234.5678"
     assert result["doc_type"] == "paper"
@@ -461,7 +461,7 @@ def test_extract_document_metadata_with_library_url():
         use_llm_fallback=False,
     )
 
-    assert result["display_name"] == "PyTorch Neural Networks - PyTorch Team"
+    assert result["display_name"] == "PyTorch Neural Networks, PyTorch Team"
     assert result["source_url"] == "https://pytorch.org/docs/stable/"
 
 
@@ -496,6 +496,6 @@ Abstract..."""
             use_llm_fallback=True,
         )
 
-    assert result["display_name"] == "Attention Is All You Need - Vaswani et al."
+    assert result["display_name"] == "Attention Is All You Need, Vaswani et al."
     assert result["doc_type"] == "uploaded_pdf"
     assert result["source_url"] is None  # No URL for uploaded PDFs
