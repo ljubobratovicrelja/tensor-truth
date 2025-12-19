@@ -8,6 +8,8 @@
 
 A local RAG pipeline for reducing hallucinations in LLMs by indexing technical documentation and research papers. Built for personal use on local hardware, shared here in case others find it useful. Web UI is built with Streamlit, with high level of configurability for the pipeline.
 
+> **Note:** For the moment, this is very much a hobby project. The app has no authentication or multi-user support and is designed to run locally on your own machine. If there's interest in production-ready deployment features, I can add them (feel free to make a request via issues).
+
 ## What It Does
 
 Indexes technical documentation and research papers into vector databases, then uses retrieval-augmented generation to ground LLM responses in source material. Uses hierarchical node parsing with auto-merging retrieval and cross-encoder reranking to balance accuracy and context window constraints.
@@ -52,7 +54,8 @@ On first launch, pre-built indexes will auto-download from Google Drive (takes a
 
 For easier deployment without managing virtual environments or CUDA installations, a pre-built Docker image is available. This approach is useful if you want to avoid setting up PyTorch with CUDA manually, though you still need a machine with NVIDIA GPU and drivers installed.
 
-**Pull and run from Docker Hub:**
+
+**Quick start - Pull and run from Docker Hub:**
 ```bash
 docker run -d \
   --name tensor-truth \
@@ -62,19 +65,8 @@ docker run -d \
   -e OLLAMA_HOST=http://host.docker.internal:11434 \
   ljubobratovicrelja/tensor-truth:latest
 ```
+**See [DOCKER.md](DOCKER.md) for complete Docker documentation, troubleshooting, and advanced usage.**
 
-Access the app at `http://localhost:8501`. The `-v` flag mounts your local data directory for persistence across container restarts. Change the port mapping with `-p HOST_PORT:8501` if needed (e.g., `-p 8080:8501` to serve on port 8080).
-
-If Ollama runs on a different host or port, override the `OLLAMA_HOST` environment variable:
-```bash
--e OLLAMA_HOST=http://192.168.1.50:11434
-```
-
-**Build locally (optional):**
-```bash
-docker build -t tensor-truth .
-docker run -d --name tensor-truth --gpus all -p 8501:8501 -v ~/.tensortruth:/root/.tensortruth tensor-truth
-```
 
 ## Data Storage
 
@@ -90,26 +82,30 @@ Tested on:
 - MacBook M1 Max (32GB unified memory)
 - Desktop with RTX 3090 Ti (24GB VRAM)
 
-Minimum recommended: 16GB RAM, Python 3.11+. GPU optional but significantly faster.
+If you encounter memory issues, consider running smaller models. Also keep track of what models are loaded in Ollama, as they consume GPU VRAM, and tend to stuck in memory until Ollama is restarted.
+
 
 ### Recommended Models
 
-Any Ollama model works, but these are tested:
+Any Ollama model works, but I recommend these for best balance of performance and capability with RAG:
 
 **General Purpose:**
 ```bash
 ollama pull deepseek-r1:8b     # Balanced
-ollama pull deepseek-r1:14b    # High quality
-ollama pull deepseek-r1:32b    # Best quality (24GB+)
+ollama pull deepseek-r1:14b    # More capable
 ```
+Note that, even though pure Ollama can run deepseek-r1:32b, with RAG workflow it is likely to struggle on 24GB 3090 for e.g.
 
 **Code/Technical Docs:**
-```bash
-ollama pull deepseek-coder-v2:16b
-ollama pull deepseek-coder-v2
-```
 
-DeepSeek-R1 models include chain-of-thought reasoning. Coder-V2 variants are optimized for technical content and work particularly well with programming documentation.
+For coding, deepseek-coder-v2 is a strong choice:
+```bash
+ollama pull deepseek-coder-v2:16b 
+```
+Or, the smaller qwen2.5-coder, holds up well with API docs on coding aid.
+```bash
+ollama pull qwen2.5-coder:7b 
+````
 
 ## Building Your Own Indexes
 
@@ -158,7 +154,7 @@ The source code of `tensor-truth` is licensed under the MIT License. This covers
 **2. Third-Party Content:**
 This tool is designed to fetch and index publicly available technical documentation, research papers (via ArXiv), and educational textbooks.
 - **I do not own the rights to the indexed content.** All PDF files, textbooks, and research papers fetched by this tool remain the intellectual property of their respective authors and publishers.
-- **Source Links:** The configuration files (`config/papers.json`, etc.) point exclusively to official sources, author-hosted pages, or open-access repositories (like ArXiv).
+- **Source Links:** The configuration files (`config/sources.json`, etc.) point exclusively to official sources, author-hosted pages, or open-access repositories (like ArXiv).
 - **Usage:** This tool is intended for **personal, non-commercial research and educational use**.
 
 **3. Takedown Request:**
