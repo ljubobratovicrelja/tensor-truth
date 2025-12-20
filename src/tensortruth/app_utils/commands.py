@@ -91,7 +91,10 @@ class ListCommand(Command):
             f"**Context Window:** `{current_params.get('context_window', 4096)}`"
         )
         lines.append(
-            f"**Confidence Cutoff:** `{current_params.get('confidence_cutoff', 0.3)}`"
+            f"**Confidence Warning:** `{current_params.get('confidence_cutoff', 0.3)}`"
+        )
+        lines.append(
+            f"**Confidence Cutoff (Hard):** `{current_params.get('confidence_cutoff_hard', 0.0)}`"
         )
 
         # Hardware Allocation Section
@@ -301,37 +304,62 @@ class ReloadCommand(Command):
 
 
 class ConfCommand(Command):
-    """Command to set confidence cutoff."""
+    """Command to set confidence warning threshold and hard cutoff."""
 
     def __init__(self):
         super().__init__(
             name="conf",
             aliases=["confidence"],
-            usage="/conf <0.0-1.0> - Set the confidence score cutoff for retrieval",
+            usage=(
+                "/conf <warning> [hard] - "
+                "Set confidence warning threshold and optional hard cutoff"
+            ),
         )
 
     def execute(
         self, args: List[str], session: dict, available_mods: List[str]
     ) -> CommandResult:
         if not args:
-            return True, " Usage: `/conf <value>` (e.g. 0.2)", None
+            return (
+                True,
+                " Usage: `/conf <warning> [hard]` (e.g. `/conf 0.3 0.15`)",
+                None,
+            )
 
         try:
-            new_conf = float(args[0])
-            if 0.0 <= new_conf <= 1.0:
+            new_warning = float(args[0])
+            if not (0.0 <= new_warning <= 1.0):
+                return True, "Warning threshold must be between 0.0 and 1.0.", None
+
+            # Optional hard cutoff parameter
+            new_hard = None
+            if len(args) > 1:
+                new_hard = float(args[1])
+                if not (0.0 <= new_hard <= 1.0):
+                    return True, "Hard cutoff must be between 0.0 and 1.0.", None
+                if new_hard > new_warning:
+                    return True, "Hard cutoff must be <= warning threshold.", None
+
+            # Build response message
+            if new_hard is not None:
                 response = (
-                    f"**Confidence Cutoff:** Set to `{new_conf}`. Engine restarting..."
+                    f"**Confidence Warning:** Set to `{new_warning}`\n"
+                    f"**Confidence Cutoff (Hard):** Set to `{new_hard}`\n"
+                    "Engine restarting..."
                 )
-
-                def update_confidence():
-                    session["params"]["confidence_cutoff"] = new_conf
-                    st.session_state.loaded_config = None
-
-                return True, response, update_confidence
             else:
-                return True, "Value must be between 0.0 and 1.0.", None
+                response = f"**Confidence Warning:** Set to `{new_warning}`. Engine restarting..."
+
+            def update_confidence():
+                session["params"]["confidence_cutoff"] = new_warning
+                if new_hard is not None:
+                    session["params"]["confidence_cutoff_hard"] = new_hard
+                st.session_state.loaded_config = None
+
+            return True, response, update_confidence
+
         except ValueError:
-            return True, "Invalid number. Example: `/conf 0.3`", None
+            return True, "Invalid number. Example: `/conf 0.3 0.15`", None
 
 
 class DeviceCommand(Command):
@@ -425,7 +453,7 @@ class CommandRegistry:
             "- **/reload** - Flush VRAM and restart engine",
             "- **/device rag <cpu|cuda|mps>** - Move RAG pipeline to specific hardware",
             "- **/device llm <cpu|gpu>** - Move LLM to specific hardware",
-            "- **/conf <0.0-1.0>** - Set confidence score cutoff",
+            "- **/conf <warning> [hard]** - Set confidence warning and optional hard cutoff",
             "- **/help** - Show command help",
         ]
         return "\n".join(lines)

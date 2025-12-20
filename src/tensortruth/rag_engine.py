@@ -12,7 +12,10 @@ from llama_index.core import (
 )
 from llama_index.core.chat_engine import CondensePlusContextChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
-from llama_index.core.postprocessor import SentenceTransformerRerank
+from llama_index.core.postprocessor import (
+    SentenceTransformerRerank,
+    SimilarityPostprocessor,
+)
 from llama_index.core.retrievers import AutoMergingRetriever, BaseRetriever
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.ollama import Ollama
@@ -396,10 +399,23 @@ def load_engine_for_modules(
 
     llm = get_llm(engine_params)
 
-    # Pass device to reranker
-    # Note: similarity_cutoff is no longer used as a hard filter here
-    # Instead, it's used in the app layer to show soft warnings when confidence is low
-    node_postprocessors = [get_reranker(engine_params, device=rag_device)]
+    # Build node postprocessors chain
+    # Order: Reranker first, then hard cutoff filter on reranked scores
+    node_postprocessors = []
+
+    # Add reranker first
+    node_postprocessors.append(get_reranker(engine_params, device=rag_device))
+
+    # Add hard cutoff filter AFTER reranking (filters on final cross-encoder scores)
+    confidence_cutoff_hard = engine_params.get("confidence_cutoff_hard", 0.0)
+    if confidence_cutoff_hard > 0.0:
+        print(
+            f"--- HARD CUTOFF: Filtering reranked nodes below "
+            f"{confidence_cutoff_hard} ---"
+        )
+        node_postprocessors.append(
+            SimilarityPostprocessor(similarity_cutoff=confidence_cutoff_hard)
+        )
 
     chat_engine = CondensePlusContextChatEngine.from_defaults(
         retriever=composite_retriever,

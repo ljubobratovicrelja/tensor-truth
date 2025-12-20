@@ -194,11 +194,12 @@ def quick_launch_preset(name, available_mods, presets_file: str, sessions_file: 
     params = {
         "model": preset.get("model", "deepseek-r1:8b"),
         "temperature": preset.get("temperature", 0.3),
-        "context_window": preset.get("context_window", 4096),
+        "context_window": preset.get("context_window", 16384),
         "system_prompt": preset.get("system_prompt", ""),
         "reranker_model": preset.get("reranker_model", "BAAI/bge-reranker-v2-m3"),
         "reranker_top_n": preset.get("reranker_top_n", 3),
         "confidence_cutoff": preset.get("confidence_cutoff", 0.3),
+        "confidence_cutoff_hard": preset.get("confidence_cutoff_hard", 0.1),
         "rag_device": preset.get("rag_device", "cpu"),
         "llm_device": preset.get("llm_device", "gpu"),
     }
@@ -266,6 +267,8 @@ def apply_preset(
         st.session_state.setup_top_n = p["reranker_top_n"]
     if "confidence_cutoff" in p:
         st.session_state.setup_conf = p["confidence_cutoff"]
+    if "confidence_cutoff_hard" in p:
+        st.session_state.setup_conf_cutoff_hard = p["confidence_cutoff_hard"]
     if "system_prompt" in p:
         st.session_state.setup_sys_prompt = p["system_prompt"]
 

@@ -44,6 +44,7 @@ def get_default_presets():
             "temperature": 0.6,
             "reranker_top_n": 5,
             "confidence_cutoff": 0.0,
+            "confidence_cutoff_hard": 0.0,
         },
         "DL Coder": {
             "description": "Write deep learning code with PyTorch and API documentation",
@@ -61,6 +62,7 @@ def get_default_presets():
             "temperature": 0.1,
             "reranker_top_n": 3,
             "confidence_cutoff": 0.3,
+            "confidence_cutoff_hard": 0.15,
             "system_prompt": (
                 "Focus on producing working code with proper PyTorch idioms. "
                 "Reference the indexed documentation for API correctness."
@@ -79,6 +81,7 @@ def get_default_presets():
             "temperature": 0.4,
             "reranker_top_n": 4,
             "confidence_cutoff": 0.2,
+            "confidence_cutoff_hard": 0.1,
             "system_prompt": (
                 "Provide rigorous mathematical explanations. "
                 "Use LaTeX for all equations."
@@ -97,6 +100,7 @@ def get_default_presets():
             "temperature": 0.5,
             "reranker_top_n": 5,
             "confidence_cutoff": 0.1,
+            "confidence_cutoff_hard": 0.05,
             "system_prompt": (
                 "Connect theoretical concepts across optimization, algebra, "
                 "and learning theory. Cite specific theorems and proofs when relevant."
@@ -113,6 +117,7 @@ def get_default_presets():
             "temperature": 0.1,
             "reranker_top_n": 3,
             "confidence_cutoff": 0.35,
+            "confidence_cutoff_hard": 0.2,
             "system_prompt": (
                 "Write efficient, idiomatic PyTorch code. Prioritize API "
                 "documentation accuracy."
@@ -133,6 +138,7 @@ def get_default_presets():
             "temperature": 0.4,
             "reranker_top_n": 4,
             "confidence_cutoff": 0.2,
+            "confidence_cutoff_hard": 0.1,
             "system_prompt": (
                 "Integrate classical CV techniques with modern DL approaches. "
                 "Reference both traditional and neural methods."
@@ -147,6 +153,7 @@ def get_default_presets():
             "temperature": 0.1,
             "reranker_top_n": 3,
             "confidence_cutoff": 0.3,
+            "confidence_cutoff_hard": 0.15,
             "system_prompt": (
                 "Implement computer vision pipelines. Combine OpenCV "
                 "preprocessing with PyTorch models efficiently."
@@ -166,6 +173,7 @@ def get_default_presets():
             "temperature": 0.5,
             "reranker_top_n": 5,
             "confidence_cutoff": 0.15,
+            "confidence_cutoff_hard": 0.07,
             "system_prompt": (
                 "Explain 3D reconstruction and rendering techniques with "
                 "mathematical rigor. Connect theory to implementation.",
@@ -186,6 +194,7 @@ def get_default_presets():
             "temperature": 0.5,
             "reranker_top_n": 5,
             "confidence_cutoff": 0.2,
+            "confidence_cutoff_hard": 0.1,
             "system_prompt": (
                 "Discuss GANs, diffusion models, and other generative approaches. "
                 "Balance theory with practical architectures.",
@@ -200,6 +209,7 @@ def get_default_presets():
             "temperature": 0.4,
             "reranker_top_n": 4,
             "confidence_cutoff": 0.25,
+            "confidence_cutoff_hard": 0.12,
             "system_prompt": (
                 "Reference HuggingFace Transformers API and attention mechanisms. "
                 "Connect architecture papers to library usage."
@@ -219,6 +229,7 @@ def get_default_presets():
             "temperature": 0.2,
             "reranker_top_n": 3,
             "confidence_cutoff": 0.3,
+            "confidence_cutoff_hard": 0.15,
             "system_prompt": (
                 "Write data analysis code. Focus on pandas operations, "
                 "visualization, and classical ML workflows."
@@ -238,6 +249,7 @@ def get_default_presets():
             "temperature": 0.3,
             "reranker_top_n": 4,
             "confidence_cutoff": 0.25,
+            "confidence_cutoff_hard": 0.12,
             "system_prompt": (
                 "Implement numerical algorithms correctly. Connect "
                 "mathematical theory to NumPy/SciPy implementations."
@@ -258,6 +270,7 @@ def get_default_presets():
             "temperature": 0.5,
             "reranker_top_n": 5,
             "confidence_cutoff": 0.1,
+            "confidence_cutoff_hard": 0.05,
             "system_prompt": (
                 "Explain optimization algorithms from first principles. Cover both "
                 "classical numerical methods and modern DL optimizers."
@@ -276,6 +289,7 @@ def get_default_presets():
             "temperature": 0.4,
             "reranker_top_n": 4,
             "confidence_cutoff": 0.2,
+            "confidence_cutoff_hard": 0.1,
             "system_prompt": (
                 "Teach linear algebra concepts clearly. Connect abstract "
                 "theory to concrete NumPy operations.",
@@ -294,6 +308,7 @@ def get_default_presets():
             "temperature": 0.6,
             "reranker_top_n": 6,
             "confidence_cutoff": 0.1,
+            "confidence_cutoff_hard": 0.05,
             "system_prompt": (
                 "Analyze research papers in depth. Explain methods, "
                 "compare approaches, and discuss limitations.",
@@ -308,6 +323,7 @@ def get_default_presets():
             "temperature": 0.1,
             "reranker_top_n": 2,
             "confidence_cutoff": 0.35,
+            "confidence_cutoff_hard": 0.2,
             "system_prompt": "Write concise, correct code. Minimize VRAM usage.",
         },
         "Fast Researcher": {
@@ -323,6 +339,7 @@ def get_default_presets():
             "temperature": 0.5,
             "reranker_top_n": 3,
             "confidence_cutoff": 0.15,
+            "confidence_cutoff_hard": 0.07,
             "system_prompt": (
                 "Answer ML/DL questions quickly. "
                 "Prioritize speed over exhaustive detail."

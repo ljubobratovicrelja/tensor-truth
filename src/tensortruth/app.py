@@ -333,6 +333,19 @@ if st.session_state.mode == "setup":
                         ),
                     )
 
+                conf_cutoff_hard = st.slider(
+                    "Confidence Cutoff (Hard Filter)",
+                    0.0,
+                    1.0,
+                    step=0.05,
+                    key="setup_conf_cutoff_hard",
+                    help=(
+                        "Hard cutoff - all sources with reranked scores below "
+                        "this threshold will be filtered out after reranking. "
+                        "Should be lower than the warning threshold."
+                    ),
+                )
+
                 sys_prompt = st.text_area(
                     "System Instructions:",
                     height=68,
@@ -378,6 +391,7 @@ if st.session_state.mode == "setup":
                         "reranker_model": reranker_model,
                         "reranker_top_n": top_n,
                         "confidence_cutoff": conf,
+                        "confidence_cutoff_hard": conf_cutoff_hard,
                         "rag_device": rag_device,
                         "llm_device": llm_device,
                     }
@@ -392,6 +406,7 @@ if st.session_state.mode == "setup":
                             "reranker_model": reranker_model,
                             "reranker_top_n": top_n,
                             "confidence_cutoff": conf,
+                            "confidence_cutoff_hard": conf_cutoff_hard,
                             "rag_device": rag_device,
                             "llm_device": llm_device,
                         }
@@ -421,6 +436,7 @@ if st.session_state.mode == "setup":
                         "temperature": st.session_state.setup_temp,
                         "reranker_top_n": st.session_state.setup_top_n,
                         "confidence_cutoff": st.session_state.setup_conf,
+                        "confidence_cutoff_hard": st.session_state.setup_conf_cutoff_hard,
                         "system_prompt": st.session_state.setup_sys_prompt,
                         "rag_device": st.session_state.setup_rag_device,
                         "llm_device": st.session_state.setup_llm_device,
@@ -487,6 +503,7 @@ elif st.session_state.mode == "chat":
             "temperature": 0.3,
             "context_window": 4096,
             "confidence_cutoff": 0.2,
+            "confidence_cutoff_hard": 0.0,
         },
     )
 

@@ -20,6 +20,7 @@ class UIConfig:
     default_reranker: str = "BAAI/bge-reranker-v2-m3"
     default_top_n: int = 3
     default_confidence_threshold: float = 0.3
+    default_confidence_cutoff_hard: float = 0.1
 
 
 @dataclass

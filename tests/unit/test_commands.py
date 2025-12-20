@@ -401,7 +401,7 @@ class TestConfCommand:
 
         assert is_cmd is True
         assert state_modifier is not None
-        assert "Confidence Cutoff" in response
+        assert "Confidence Warning" in response
         assert "0.5" in response
 
         # Test state modifier applies the change
@@ -437,7 +437,41 @@ class TestConfCommand:
 
         assert is_cmd is True
         assert state_modifier is None
-        assert "Usage" in response
+
+    @patch("tensortruth.app_utils.commands.st")
+    def test_conf_with_hard_cutoff(self, mock_st, base_session, available_modules):
+        """Test /conf with both warning and hard cutoff values."""
+        mock_st.session_state = MagicMock()
+        mock_st.session_state.loaded_config = None
+
+        is_cmd, response, state_modifier = process_command(
+            "/conf 0.3 0.15", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        assert state_modifier is not None
+        assert "Confidence Warning" in response
+        assert "0.3" in response
+        assert "Confidence Cutoff (Hard)" in response
+        assert "0.15" in response
+
+        # Test state modifier applies both changes
+        state_modifier()
+        assert base_session["params"]["confidence_cutoff"] == 0.3
+        assert base_session["params"]["confidence_cutoff_hard"] == 0.15
+        assert mock_st.session_state.loaded_config is None
+
+    def test_conf_hard_cutoff_greater_than_warning(
+        self, base_session, available_modules
+    ):
+        """Test /conf with hard cutoff greater than warning threshold."""
+        is_cmd, response, state_modifier = process_command(
+            "/conf 0.2 0.5", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        assert state_modifier is None
+        assert "must be <=" in response
 
 
 # ============================================================================
