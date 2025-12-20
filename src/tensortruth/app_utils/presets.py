@@ -4,7 +4,7 @@ import json
 import os
 
 # UI constraints - these define the valid values for preset parameters
-ALLOWED_CONTEXT_WINDOWS = [2048, 4096, 8192, 16384, 32768]
+ALLOWED_CONTEXT_WINDOWS = [2048, 4096, 8192, 16384, 32768, 65536, 131072]
 ALLOWED_RERANKER_MODELS = [
     "BAAI/bge-reranker-v2-m3",
     "BAAI/bge-reranker-base",

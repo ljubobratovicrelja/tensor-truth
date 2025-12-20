@@ -290,7 +290,7 @@ if st.session_state.mode == "setup":
                 with context_win_col:
                     ctx = st.select_slider(
                         "Context Window",
-                        options=[2048, 4096, 8192, 16384, 32768],
+                        options=[2048, 4096, 8192, 16384, 32768, 65536, 131072],
                         key="setup_ctx",
                     )
 
