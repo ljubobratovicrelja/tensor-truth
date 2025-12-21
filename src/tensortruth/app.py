@@ -43,9 +43,8 @@ st.set_page_config(
 # Initialize app state (paths, constants, session data)
 init_app_state()
 
-# Load CSS
-with open(st.session_state.css_path) as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+# Apply CSS styles
+st.markdown(st.session_state.css_data, unsafe_allow_html=True)
 
 # Initialize config file with smart defaults if it doesn't exist
 if not os.path.exists(get_config_file_path()):

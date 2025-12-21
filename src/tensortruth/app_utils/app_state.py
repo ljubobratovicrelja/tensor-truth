@@ -64,6 +64,10 @@ def init_app_state():
     if "engine" not in st.session_state:
         st.session_state.engine = None
 
+    # Load CSS
+    with open(st.session_state.css_path) as f:
+        st.session_state.css_data = f"<style>{f.read()}</style>"
+
     # Mark as initialized
     st.session_state.app_initialized = True
 
