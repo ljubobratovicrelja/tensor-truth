@@ -66,6 +66,7 @@ with st.sidebar:
         st.session_state.mode = "setup"
         st.session_state.chat_data["current_id"] = None
         st.session_state.expand_config_section = False
+        st.session_state.session_parameters_initialized = False
         st.rerun()
 
     st.divider()

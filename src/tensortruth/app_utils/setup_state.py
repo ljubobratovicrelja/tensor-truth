@@ -12,8 +12,10 @@ def init_setup_defaults_from_config():
     This should be called once when entering setup mode for the first time.
     Uses config.yaml as the single source of truth for default values.
     """
-    if "setup_mods" in st.session_state:
-        # Already initialized
+    if (
+        "session_parameters_initialized" in st.session_state
+        and st.session_state.session_parameters_initialized
+    ):
         return
 
     config = load_config()
@@ -44,6 +46,8 @@ def init_setup_defaults_from_config():
     else:
         st.session_state.setup_rag_device = "cpu"
         st.session_state.setup_llm_device = "cpu"
+
+    st.session_state.session_parameters_initialized = True
 
 
 def build_params_from_session_state() -> dict:
