@@ -70,7 +70,12 @@ def update_config(**kwargs):
     save_config(config)
 
 
-def compute_config_hash(modules: list, params: dict, has_pdf_index: bool = False):
+def compute_config_hash(
+    modules: list,
+    params: dict,
+    has_pdf_index: bool = False,
+    session_id: str = None,
+):
     """Compute a hashable configuration tuple for cache invalidation.
 
     This creates a stable hash of the current engine configuration to detect
@@ -80,9 +85,10 @@ def compute_config_hash(modules: list, params: dict, has_pdf_index: bool = False
         modules: List of active module names
         params: Session parameters dict
         has_pdf_index: Whether session has a temporary PDF index
+        session_id: Current session ID to ensure engine reloads on session switch
 
     Returns:
-        Tuple suitable for comparison (modules_tuple, params_frozenset, pdf_flag)
+        Tuple suitable for comparison (modules_tuple, params_frozenset, pdf_flag, session_id)
     """
     # Sort modules for consistent ordering
     modules_tuple = tuple(sorted(modules)) if modules else None
@@ -92,7 +98,8 @@ def compute_config_hash(modules: list, params: dict, has_pdf_index: bool = False
     param_hash = frozenset(param_items)
 
     # Return complete config tuple (None if no modules and no PDF index)
+    # IMPORTANT: Include session_id to prevent session index contamination
     if modules_tuple or has_pdf_index:
-        return (modules_tuple, param_hash, has_pdf_index)
+        return (modules_tuple, param_hash, has_pdf_index, session_id)
     else:
         return None

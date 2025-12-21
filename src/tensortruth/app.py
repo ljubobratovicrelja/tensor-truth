@@ -520,7 +520,7 @@ elif st.session_state.mode == "chat":
 
     # Determine target configuration
     has_pdf_index = session.get("has_temp_index", False)
-    target_config = compute_config_hash(modules, params, has_pdf_index)
+    target_config = compute_config_hash(modules, params, has_pdf_index, current_id)
     current_config = st.session_state.get("loaded_config")
     engine = st.session_state.get("engine")
 

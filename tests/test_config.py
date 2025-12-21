@@ -7,7 +7,12 @@ from unittest.mock import Mock, patch
 import pytest
 import yaml
 
-from tensortruth.app_utils.config import load_config, save_config, update_config
+from tensortruth.app_utils.config import (
+    compute_config_hash,
+    load_config,
+    save_config,
+    update_config,
+)
 from tensortruth.app_utils.config_schema import (
     OllamaConfig,
     RAGConfig,
@@ -411,3 +416,85 @@ class TestConfigFileOperations:
         assert "timeout" in data["ollama"]
         assert "default_temperature" in data["ui"]
         assert "default_device" in data["rag"]
+
+
+class TestConfigHash:
+    """Test config hash computation for cache invalidation."""
+
+    def test_compute_config_hash_basic(self):
+        """Test basic config hash computation."""
+        modules = ["pytorch", "numpy"]
+        params = {"model": "deepseek-r1:8b", "temperature": 0.3}
+        has_pdf_index = False
+        session_id = "sess_123"
+
+        hash_val = compute_config_hash(modules, params, has_pdf_index, session_id)
+
+        # Should return a tuple
+        assert isinstance(hash_val, tuple)
+        assert len(hash_val) == 4
+
+        # Should contain sorted modules
+        assert hash_val[0] == ("numpy", "pytorch")
+        assert hash_val[2] is False
+        assert hash_val[3] == "sess_123"
+
+    def test_compute_config_hash_with_pdf_index(self):
+        """Test config hash with PDF index."""
+        modules = ["pytorch"]
+        params = {"model": "qwen", "temperature": 0.5}
+        has_pdf_index = True
+        session_id = "sess_abc"
+
+        hash_val = compute_config_hash(modules, params, has_pdf_index, session_id)
+
+        assert hash_val[2] is True
+        assert hash_val[3] == "sess_abc"
+
+    def test_compute_config_hash_different_sessions(self):
+        """Test that different session IDs produce different hashes."""
+        modules = []
+        params = {"model": "qwen"}
+        has_pdf_index = True
+
+        hash1 = compute_config_hash(modules, params, has_pdf_index, "sess_abc")
+        hash2 = compute_config_hash(modules, params, has_pdf_index, "sess_xyz")
+
+        # Should be different due to session_id
+        assert hash1 != hash2
+        assert hash1[3] == "sess_abc"
+        assert hash2[3] == "sess_xyz"
+
+    def test_compute_config_hash_no_modules_no_pdf(self):
+        """Test that hash is None when no modules and no PDF index."""
+        modules = []
+        params = {"model": "qwen"}
+        has_pdf_index = False
+        session_id = "sess_123"
+
+        hash_val = compute_config_hash(modules, params, has_pdf_index, session_id)
+
+        # Should return None
+        assert hash_val is None
+
+    def test_compute_config_hash_module_order_invariant(self):
+        """Test that module order doesn't affect hash."""
+        params = {"model": "qwen"}
+        session_id = "sess_123"
+
+        hash1 = compute_config_hash(["pytorch", "numpy"], params, False, session_id)
+        hash2 = compute_config_hash(["numpy", "pytorch"], params, False, session_id)
+
+        # Should be identical (modules are sorted)
+        assert hash1 == hash2
+
+    def test_compute_config_hash_param_changes(self):
+        """Test that parameter changes produce different hashes."""
+        modules = ["pytorch"]
+        session_id = "sess_123"
+
+        hash1 = compute_config_hash(modules, {"temperature": 0.3}, False, session_id)
+        hash2 = compute_config_hash(modules, {"temperature": 0.5}, False, session_id)
+
+        # Should be different
+        assert hash1 != hash2
