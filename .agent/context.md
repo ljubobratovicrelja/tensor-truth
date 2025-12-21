@@ -670,7 +670,7 @@ Execute query
 |-----------|---------|-------|-------|
 | `model` | `deepseek-r1:8b` | Any Ollama model | Tested: DeepSeek-R1 (8b/14b/32b), Coder-V2 |
 | `temperature` | `0.3` | 0.0-1.0 | Lower = more deterministic |
-| `context_window` | `4096` | 2048-32768 | Must match model's context limit |
+| `context_window` | `16384` | 2048-32768 | Must match model's context limit |
 | `reranker_model` | `BAAI/bge-reranker-v2-m3` | BGE models | v2-m3 (best), base, MiniLM-L6 |
 | `reranker_top_n` | `3` | 1-20 | Final nodes sent to LLM |
 | `confidence_cutoff` | `0.3` | 0.0-1.0 | Soft warning threshold (not a filter) |

@@ -46,7 +46,7 @@ class TestConfigSchema:
         """Test UIConfig default values."""
         config = UIConfig()
         assert config.default_temperature == 0.3
-        assert config.default_context_window == 4096
+        assert config.default_context_window == 16384
         assert config.default_reranker == "BAAI/bge-reranker-v2-m3"
         assert config.default_top_n == 3
         assert config.default_confidence_threshold == 0.3
