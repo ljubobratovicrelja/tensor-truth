@@ -111,13 +111,20 @@ def render_message_metadata(message: dict, params: dict, modules: list) -> str:
         return ""
 
     time_str = f"⏱️ {message['time_taken']:.2f}s"
+    has_sources = "sources" in message and message.get("sources")
 
     # Check different response types
-    if message.get("low_confidence", False):
+    if message.get("low_confidence", False) and not has_sources and modules:
+        # Low confidence with no sources in RAG mode
+        return f"{time_str} | ⚠️ No Sources"
+    elif message.get("low_confidence", False):
+        # Low confidence with sources
         return f"{time_str} | ⚠️ Low Confidence"
-    elif message["role"] == "assistant" and (
-        "sources" not in message or not message.get("sources")
-    ):
+    elif message["role"] == "assistant" and not has_sources and modules:
+        # Has modules but no sources = RAG failure
+        return f"{time_str} | ⚠️ No Sources"
+    elif message["role"] == "assistant" and not modules:
+        # No modules = No RAG mode
         return f"{time_str} | 🔴 No RAG"
     else:
         return time_str
@@ -147,11 +154,15 @@ def render_message_footer(
 
     with meta_cols[1]:
         if time_taken is not None:
-            if low_confidence:
+            if low_confidence and not sources_or_nodes and modules:
+                # Low confidence with no sources in RAG mode
+                st.caption(f"⏱️ {time_taken:.2f}s | ⚠️ No Sources")
+            elif low_confidence:
+                # Low confidence with sources
                 st.caption(f"⏱️ {time_taken:.2f}s | ⚠️ Low Confidence")
             elif not sources_or_nodes and modules:
-                # Has modules but no sources = RAG failure
-                st.caption(f"⏱️ {time_taken:.2f}s")
+                # Has modules but no sources = RAG failure (not low confidence mode)
+                st.caption(f"⏱️ {time_taken:.2f}s | ⚠️ No Sources")
             elif not modules:
                 # No modules = No RAG mode
                 st.caption(f"⏱️ {time_taken:.2f}s | 🔴 No RAG")

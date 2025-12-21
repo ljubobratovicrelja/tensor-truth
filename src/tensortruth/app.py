@@ -706,6 +706,7 @@ elif st.session_state.mode == "chat":
 
                     # Check confidence threshold
                     low_confidence_warning = False
+                    has_real_sources = True  # Track if we have actual retrieved sources
                     confidence_threshold = params.get("confidence_cutoff", 0.0)
 
                     if (
@@ -749,6 +750,7 @@ elif st.session_state.mode == "chat":
                         )
                         context_nodes = [warning_node]
                         low_confidence_warning = True
+                        has_real_sources = False  # No real sources, just synthetic node
 
                         synthesizer._context_prompt_template = (
                             CUSTOM_CONTEXT_PROMPT_NO_SOURCES
@@ -764,15 +766,16 @@ elif st.session_state.mode == "chat":
 
                     elapsed = time.time() - start_time
 
-                    # Extract source metadata
+                    # Extract source metadata (only for real sources)
                     source_data = []
-                    for node in context_nodes:
-                        metadata = extract_source_metadata(node, is_node=True)
-                        source_data.append(metadata)
+                    if has_real_sources:
+                        for node in context_nodes:
+                            metadata = extract_source_metadata(node, is_node=True)
+                            source_data.append(metadata)
 
-                    # Render footer
+                    # Render footer (only show sources if we have real ones)
                     render_message_footer(
-                        sources_or_nodes=context_nodes,
+                        sources_or_nodes=context_nodes if has_real_sources else None,
                         is_nodes=True,
                         time_taken=elapsed,
                         low_confidence=low_confidence_warning,
