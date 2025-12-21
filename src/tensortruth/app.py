@@ -10,6 +10,7 @@ import streamlit as st
 
 from tensortruth import convert_chat_to_markdown, get_max_memory_gb
 from tensortruth.app_utils import (
+    build_params_from_session_state,
     create_session,
     download_indexes_with_ui,
     free_memory,
@@ -20,9 +21,11 @@ from tensortruth.app_utils import (
     get_ollama_models,
     get_presets_file,
     get_random_rag_processing_message,
+    get_session_params_with_defaults,
     get_sessions_file,
     get_system_devices,
     get_user_data_dir,
+    init_setup_defaults_from_config,
     load_config,
     load_presets,
     load_sessions,
@@ -216,38 +219,16 @@ if st.session_state.mode == "setup":
         system_devices = get_system_devices()
         presets = load_presets(PRESETS_FILE)
 
-        default_model_idx = 0
-        for i, m in enumerate(available_models):
-            if "deepseek-r1:8b" in m:
-                default_model_idx = i
+        # Initialize setup defaults from config on first run
+        init_setup_defaults_from_config()
 
-        # Initialize widget state if new
-        if "setup_init" not in st.session_state:
-            try:
-                cpu_index = system_devices.index("cpu")
-            except ValueError:
-                cpu_index = 0
-
-            st.session_state.setup_mods = []
-            st.session_state.setup_model = (
-                available_models[default_model_idx] if available_models else None
-            )
-            st.session_state.setup_reranker = "BAAI/bge-reranker-v2-m3"
-            st.session_state.setup_ctx = 4096
-            st.session_state.setup_temp = 0.3
-            st.session_state.setup_top_n = 3
-            st.session_state.setup_conf = 0.3
-            st.session_state.setup_sys_prompt = ""
-
-            # Smart device defaults
-            if "mps" in system_devices:
-                st.session_state.setup_rag_device = "mps"
-                st.session_state.setup_llm_device = "gpu"
-            else:
-                st.session_state.setup_rag_device = "cpu"
-                st.session_state.setup_llm_device = "gpu"
-
-            st.session_state.setup_init = True
+        # Set default model if not already set
+        if st.session_state.setup_model is None and available_models:
+            default_model_idx = 0
+            for i, m in enumerate(available_models):
+                if "deepseek-r1:8b" in m:
+                    default_model_idx = i
+            st.session_state.setup_model = available_models[default_model_idx]
 
         st.markdown("### Start a New Research Session")
 
@@ -295,30 +276,25 @@ if st.session_state.mode == "setup":
 
                 with model_col:
                     if available_models:
-                        selected_model = st.selectbox(
-                            "LLM:", available_models, key="setup_model"
-                        )
+                        st.selectbox("LLM:", available_models, key="setup_model")
                     else:
                         st.error("No models found in Ollama.")
-                        selected_model = "None"
 
                 with context_win_col:
-                    ctx = st.select_slider(
+                    st.select_slider(
                         "Context Window",
                         options=[2048, 4096, 8192, 16384, 32768, 65536, 131072],
                         key="setup_ctx",
                     )
 
                 with temperature_col:
-                    temp = st.slider(
-                        "Temperature", 0.0, 1.0, step=0.1, key="setup_temp"
-                    )
+                    st.slider("Temperature", 0.0, 1.0, step=0.1, key="setup_temp")
 
                 st.subheader("3. RAG Parameters")
 
                 rerank_col, top_n_col, conf_col = st.columns(3)
                 with rerank_col:
-                    reranker_model = st.selectbox(
+                    st.selectbox(
                         "Reranker",
                         options=[
                             "BAAI/bge-reranker-v2-m3",
@@ -328,7 +304,7 @@ if st.session_state.mode == "setup":
                         key="setup_reranker",
                     )
                 with top_n_col:
-                    top_n = st.number_input(
+                    st.number_input(
                         "Top N (Final Context)",
                         min_value=1,
                         max_value=20,
@@ -336,7 +312,7 @@ if st.session_state.mode == "setup":
                     )
 
                 with conf_col:
-                    conf = st.slider(
+                    st.slider(
                         "Confidence Warning Threshold",
                         0.0,
                         1.0,
@@ -348,7 +324,7 @@ if st.session_state.mode == "setup":
                         ),
                     )
 
-                conf_cutoff_hard = st.slider(
+                st.slider(
                     "Confidence Cutoff (Hard Filter)",
                     0.0,
                     1.0,
@@ -361,7 +337,7 @@ if st.session_state.mode == "setup":
                     ),
                 )
 
-                sys_prompt = st.text_area(
+                st.text_area(
                     "System Instructions:",
                     height=68,
                     placeholder="Optional...",
@@ -372,7 +348,7 @@ if st.session_state.mode == "setup":
                 h1, h2 = st.columns(2)
 
                 with h1:
-                    rag_device = st.selectbox(
+                    st.selectbox(
                         "Pipeline Device (Embed/Rerank)",
                         options=system_devices,
                         help=(
@@ -382,7 +358,7 @@ if st.session_state.mode == "setup":
                         key="setup_rag_device",
                     )
                 with h2:
-                    llm_device = st.selectbox(
+                    st.selectbox(
                         "Model Device (Ollama)",
                         options=["gpu", "cpu"],
                         help="Force Ollama to run on CPU to save VRAM for other tasks.",
@@ -396,35 +372,15 @@ if st.session_state.mode == "setup":
                 )
 
             if submitted_start:
+                # Build params from session_state
+                params = build_params_from_session_state()
+
                 if not selected_mods:
                     st.session_state.show_no_rag_warning = True
-                    st.session_state.pending_params = {
-                        "model": selected_model,
-                        "temperature": temp,
-                        "context_window": ctx,
-                        "system_prompt": sys_prompt,
-                        "reranker_model": reranker_model,
-                        "reranker_top_n": top_n,
-                        "confidence_cutoff": conf,
-                        "confidence_cutoff_hard": conf_cutoff_hard,
-                        "rag_device": rag_device,
-                        "llm_device": llm_device,
-                    }
+                    st.session_state.pending_params = params
                     st.rerun()
                 else:
                     with st.spinner("Creating session..."):
-                        params = {
-                            "model": selected_model,
-                            "temperature": temp,
-                            "context_window": ctx,
-                            "system_prompt": sys_prompt,
-                            "reranker_model": reranker_model,
-                            "reranker_top_n": top_n,
-                            "confidence_cutoff": conf,
-                            "confidence_cutoff_hard": conf_cutoff_hard,
-                            "rag_device": rag_device,
-                            "llm_device": llm_device,
-                        }
                         create_session(selected_mods, params, SESSIONS_FILE)
                         st.session_state.mode = "chat"
                         st.session_state.sidebar_state = "collapsed"
@@ -443,22 +399,12 @@ if st.session_state.mode == "setup":
 
             if st.button("Save Preset", use_container_width=True, type="primary"):
                 if new_preset_name:
-                    config_to_save = {
-                        "modules": st.session_state.setup_mods,
-                        "model": st.session_state.setup_model,
-                        "reranker_model": st.session_state.setup_reranker,
-                        "context_window": st.session_state.setup_ctx,
-                        "temperature": st.session_state.setup_temp,
-                        "reranker_top_n": st.session_state.setup_top_n,
-                        "confidence_cutoff": st.session_state.setup_conf,
-                        "confidence_cutoff_hard": st.session_state.setup_conf_cutoff_hard,
-                        "system_prompt": st.session_state.setup_sys_prompt,
-                        "rag_device": st.session_state.setup_rag_device,
-                        "llm_device": st.session_state.setup_llm_device,
-                    }
+                    # Build preset config from session_state
+                    preset_config = build_params_from_session_state()
+                    preset_config["modules"] = st.session_state.setup_mods
 
                     if new_preset_description:
-                        config_to_save["description"] = new_preset_description
+                        preset_config["description"] = new_preset_description
 
                     if mark_as_favorite:
                         all_presets = load_presets(PRESETS_FILE)
@@ -468,10 +414,10 @@ if st.session_state.mode == "setup":
                                 order = preset.get("favorite_order", 0)
                                 if order > max_order:
                                     max_order = order
-                        config_to_save["favorite"] = True
-                        config_to_save["favorite_order"] = max_order + 1
+                        preset_config["favorite"] = True
+                        preset_config["favorite_order"] = max_order + 1
 
-                    save_preset(new_preset_name, config_to_save, PRESETS_FILE)
+                    save_preset(new_preset_name, preset_config, PRESETS_FILE)
                     st.success(f"Saved: {new_preset_name}")
                     time.sleep(1)
                     st.rerun()
@@ -511,16 +457,8 @@ elif st.session_state.mode == "chat":
 
     session = st.session_state.chat_data["sessions"][current_id]
     modules = session.get("modules", [])
-    params = session.get(
-        "params",
-        {
-            "model": "deepseek-r1:8b",
-            "temperature": 0.3,
-            "context_window": 4096,
-            "confidence_cutoff": 0.2,
-            "confidence_cutoff_hard": 0.0,
-        },
-    )
+    # Get params with config defaults as fallback
+    params = get_session_params_with_defaults(session.get("params", {}))
 
     st.title(session.get("title", "Untitled"))
     st.caption(f"🤖 {params.get('model', 'Unknown')}")
