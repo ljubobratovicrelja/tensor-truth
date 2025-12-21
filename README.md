@@ -72,7 +72,7 @@ docker run -d \
 
 All user data (chat history, presets, indexes) is stored in `~/.tensortruth` on macOS/Linux or `%USERPROFILE%\.tensortruth` on Windows. This keeps your working directory clean while maintaining persistent state across sessions.
 
-Pre-built indexes download automatically to this directory on startup. If Google Drive rate limits prevent auto-download, manually fetch [indexes.tar](https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view?usp=sharing) and extract to `~/.tensortruth/indexes`.
+Pre-built indexes download automatically to this directory on startup. If Google Drive rate limits prevent auto-download, manually fetch [indexes.tar](https://drive.google.com/file/d/12wZsBwrywl9nXOCLr50lpWB2SiFdu1XB/view?usp=sharing) and extract to `~/.tensortruth/indexes`.
 
 For index contents, see [config/sources.json](config/sources.json). This is a curated list of useful libraries and research papers. Fork and customize as needed.
 

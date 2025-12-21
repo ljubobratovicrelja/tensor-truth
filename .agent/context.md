@@ -848,7 +848,7 @@ PRESETS_FILE = ~/.tensortruth/presets.json
 CONFIG_FILE = ~/.tensortruth/config.json
 
 # GDrive index download
-GDRIVE_LINK = https://drive.google.com/file/d/1jILgN1ADgDgUt5EzkUnFMI8xwY2M_XTu/view
+GDRIVE_LINK = https://drive.google.com/file/d/12wZsBwrywl9nXOCLr50lpWB2SiFdu1XB/view?usp=sharing
 
 # Default embedder
 EMBED_MODEL = "BAAI/bge-m3"
