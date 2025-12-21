@@ -128,18 +128,6 @@ tensor-truth-build --modules module_name
 
 Upload PDFs directly in the web UI to create per-session indexes. For now only standard PDF files are supported, but more formats may be added later.
 
-## Configuration
-
-This system is configured for personal research workflows with these assumptions:
-
-- ChromaDB for vector storage (persistent, single-process)
-- HuggingFace sentence-transformers for embeddings
-- BGE cross-encoder models for reranking
-- Ollama for local LLM inference
-- All processing runs locally
-
-If you need different chunking strategies or retrieval parameters, you'll need to modify the source files. The current setup is tuned for technical documentation and research papers.
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
