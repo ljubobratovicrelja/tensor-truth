@@ -151,16 +151,31 @@ with st.sidebar:
 
             st.caption("Active Indices:")
             mods = curr_sess.get("modules", [])
-            if not mods:
+            pdf_docs = curr_sess.get("pdf_documents", [])
+            has_any_indices = bool(mods) or bool(pdf_docs)
+
+            if not has_any_indices:
                 st.caption("*None*")
             else:
-                # Get display names for active modules
-                available_mods_tuples = get_available_modules(INDEX_DIR)
-                module_to_display = {mod: disp for mod, disp in available_mods_tuples}
+                # Show permanent knowledge base modules
+                if mods:
+                    available_mods_tuples = get_available_modules(INDEX_DIR)
+                    module_to_display = {
+                        mod: disp for mod, disp in available_mods_tuples
+                    }
 
-                for m in mods:
-                    display_name = module_to_display.get(m, m)
-                    st.caption(f"• {display_name}")
+                    for m in mods:
+                        display_name = module_to_display.get(m, m)
+                        st.caption(f"📚 {display_name}")
+
+                # Show session PDF documents
+                if pdf_docs:
+                    indexed_pdfs = [
+                        pdf for pdf in pdf_docs if pdf.get("status") == "indexed"
+                    ]
+                    for pdf in indexed_pdfs:
+                        display_name = pdf.get("display_name", pdf.get("filename"))
+                        st.caption(f"📄 {display_name}")
 
             md_data = convert_chat_to_markdown(curr_sess)
             st.download_button(
@@ -574,7 +589,7 @@ elif st.session_state.mode == "chat":
     if st.session_state.engine_load_error:
         st.error(f"Failed to load engine: {st.session_state.engine_load_error}")
         engine = None
-    elif not modules:
+    elif not modules and not has_pdf_index:
         st.info(
             "💬 Simple LLM mode (No RAG) - Use `/load <name>` to attach a knowledge base."
         )
@@ -587,7 +602,7 @@ elif st.session_state.mode == "chat":
         st.session_state.skip_last_message_render = False
 
     for msg in messages_to_render:
-        render_chat_message(msg, params, modules)
+        render_chat_message(msg, params, modules, has_pdf_index)
 
     # Get user input
     prompt = st.chat_input("Ask or type /cmd...")
@@ -780,6 +795,7 @@ elif st.session_state.mode == "chat":
                         time_taken=elapsed,
                         low_confidence=low_confidence_warning,
                         modules=modules,
+                        has_pdf_index=has_pdf_index,
                     )
 
                     # Update engine memory

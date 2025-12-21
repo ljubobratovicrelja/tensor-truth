@@ -94,7 +94,9 @@ def render_source_expander(sources_or_nodes, is_nodes: bool = False):
             render_source_item(metadata)
 
 
-def render_message_metadata(message: dict, params: dict, modules: list) -> str:
+def render_message_metadata(
+    message: dict, params: dict, modules: list, has_pdf_index: bool = False
+) -> str:
     """Generate metadata caption for a message.
 
     Shows time and status indicators (PDF mode, soft fallback).
@@ -103,6 +105,7 @@ def render_message_metadata(message: dict, params: dict, modules: list) -> str:
         message: Message dictionary from session history
         params: Session parameters dictionary
         modules: List of active module names
+        has_pdf_index: Whether session has PDF documents indexed
 
     Returns:
         Formatted metadata string
@@ -112,19 +115,20 @@ def render_message_metadata(message: dict, params: dict, modules: list) -> str:
 
     time_str = f"⏱️ {message['time_taken']:.2f}s"
     has_sources = "sources" in message and message.get("sources")
+    has_rag = bool(modules) or has_pdf_index
 
     # Check different response types
-    if message.get("low_confidence", False) and not has_sources and modules:
+    if message.get("low_confidence", False) and not has_sources and has_rag:
         # Low confidence with no sources in RAG mode
         return f"{time_str} | ⚠️ No Sources"
     elif message.get("low_confidence", False):
         # Low confidence with sources
         return f"{time_str} | ⚠️ Low Confidence"
-    elif message["role"] == "assistant" and not has_sources and modules:
-        # Has modules but no sources = RAG failure
+    elif message["role"] == "assistant" and not has_sources and has_rag:
+        # Has RAG but no sources = RAG failure
         return f"{time_str} | ⚠️ No Sources"
-    elif message["role"] == "assistant" and not modules:
-        # No modules = No RAG mode
+    elif message["role"] == "assistant" and not has_rag:
+        # No RAG mode
         return f"{time_str} | 🔴 No RAG"
     else:
         return time_str
@@ -136,6 +140,7 @@ def render_message_footer(
     time_taken: float = None,
     low_confidence: bool = False,
     modules: list = None,
+    has_pdf_index: bool = False,
 ):
     """Render the footer section of a message with sources and metadata.
 
@@ -145,8 +150,10 @@ def render_message_footer(
         time_taken: Time in seconds (optional)
         low_confidence: Whether this is a low confidence response
         modules: List of active module names (for determining No RAG mode)
+        has_pdf_index: Whether session has PDF documents indexed
     """
     meta_cols = st.columns([3, 1])
+    has_rag = bool(modules) or has_pdf_index
 
     with meta_cols[0]:
         if sources_or_nodes:
@@ -154,17 +161,17 @@ def render_message_footer(
 
     with meta_cols[1]:
         if time_taken is not None:
-            if low_confidence and not sources_or_nodes and modules:
+            if low_confidence and not sources_or_nodes and has_rag:
                 # Low confidence with no sources in RAG mode
                 st.caption(f"⏱️ {time_taken:.2f}s | ⚠️ No Sources")
             elif low_confidence:
                 # Low confidence with sources
                 st.caption(f"⏱️ {time_taken:.2f}s | ⚠️ Low Confidence")
-            elif not sources_or_nodes and modules:
-                # Has modules but no sources = RAG failure (not low confidence mode)
+            elif not sources_or_nodes and has_rag:
+                # Has RAG but no sources = RAG failure (not low confidence mode)
                 st.caption(f"⏱️ {time_taken:.2f}s | ⚠️ No Sources")
-            elif not modules:
-                # No modules = No RAG mode
+            elif not has_rag:
+                # No RAG mode
                 st.caption(f"⏱️ {time_taken:.2f}s | 🔴 No RAG")
             else:
                 st.caption(f"⏱️ {time_taken:.2f}s")
@@ -195,19 +202,23 @@ def render_low_confidence_warning(
         )
 
 
-def render_chat_message(message: dict, params: dict, modules: list):
+def render_chat_message(
+    message: dict, params: dict, modules: list, has_pdf_index: bool = False
+):
     """Render a complete chat message with content, sources, and metadata.
 
     Args:
         message: Message dict from session history
         params: Session parameters dict
         modules: List of active module names
+        has_pdf_index: Whether session has PDF documents indexed
     """
     avatar = ":material/settings:" if message["role"] == "command" else None
+    has_rag = bool(modules) or has_pdf_index
 
     with st.chat_message(message["role"], avatar=avatar):
         # Show low confidence warning BEFORE content
-        if message.get("low_confidence", False) and modules:
+        if message.get("low_confidence", False) and has_rag:
             confidence_threshold = params.get("confidence_cutoff", 0.0)
 
             if message.get("sources") and len(message["sources"]) > 0:
@@ -231,6 +242,6 @@ def render_chat_message(message: dict, params: dict, modules: list):
             if "sources" in message and message["sources"]:
                 render_source_expander(message["sources"], is_nodes=False)
         with meta_cols[1]:
-            caption = render_message_metadata(message, params, modules)
+            caption = render_message_metadata(message, params, modules, has_pdf_index)
             if caption:
                 st.caption(caption)
