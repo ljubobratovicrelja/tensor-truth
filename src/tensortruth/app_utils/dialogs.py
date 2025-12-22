@@ -36,6 +36,7 @@ def show_delete_session_dialog(sessions_file: str):
                 free_memory()
                 st.session_state.loaded_config = None
                 st.session_state.show_delete_confirm = False
+                st.session_state.session_parameters_initialized = False
                 st.rerun()
 
     confirm_delete()
