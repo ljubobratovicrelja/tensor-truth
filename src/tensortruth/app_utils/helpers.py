@@ -120,9 +120,8 @@ def download_and_extract_indexes(
 
         return True
 
-    except Exception as e:
-        raise e
     finally:
+
         # Clean up the downloaded tarball file.
         if tarball_path is not None and tarball_path.exists():
             tarball_path.unlink()
