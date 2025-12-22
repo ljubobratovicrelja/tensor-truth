@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tensor-truth"
-version = "0.1.12"
+version = "0.1.13"
 description = "Local RAG pipeline for fixing LLM hallucinations using high-precision documentation indexing."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,7 +19,7 @@ dependencies = [
     # Narrowing these specific libraries prevents the massive backtracking
     "transformers>=4.40.0,<4.47.0",
     "tokenizers>=0.19.0,<0.21.0",
-    "huggingface-hub[inference]>=0.23.0,<1.0.0",
+    "huggingface-hub[hf_xet,inference]>=0.23.0,<1.0.0",
     "sentence-transformers>=3.0.0",
     "llama_parse>=0.5.0,<0.6.55",
     "llama_cloud_services>=0.6.0,<0.6.55",
