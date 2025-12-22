@@ -123,11 +123,11 @@ def download_and_extract_indexes(
     except Exception as e:
         raise e
     finally:
-        # Remove the tarball after successful extraction.
-        if tarball_path.exists():
+        # Clean up the downloaded tarball file.
+        if tarball_path is not None and tarball_path.exists():
             tarball_path.unlink()
 
-        # Remove Hugging Face cache directory.
+        # ... and the Hugging Face cache directory.
         hf_cache_dir = user_dir / ".cache"
         if hf_cache_dir.exists() and hf_cache_dir.is_dir():
             shutil.rmtree(hf_cache_dir)
