@@ -103,17 +103,6 @@ def download_and_extract_indexes(
     tarball_path: Optional[Path] = None
     HF_REPO_TYPE = "dataset"
 
-    def cleanup():
-        hf_cache_dir = user_dir / ".cache"
-
-        # Remove the tarball after successful extraction.
-        if tarball_path.exists():
-            tarball_path.unlink()
-
-        # Remove Hugging Face cache directory.
-        if hf_cache_dir.exists() and hf_cache_dir.is_dir():
-            shutil.rmtree(hf_cache_dir)
-
     try:
         downloaded_file = hf_hub_download(
             repo_id=repo_id,
@@ -129,13 +118,19 @@ def download_and_extract_indexes(
         with tarfile.open(tarball_path, "r:") as tar:
             tar.extractall(path=user_dir)
 
-        cleanup()
-
         return True
 
     except Exception as e:
-        cleanup()
         raise e
+    finally:
+        # Remove the tarball after successful extraction.
+        if tarball_path.exists():
+            tarball_path.unlink()
+
+        # Remove Hugging Face cache directory.
+        hf_cache_dir = user_dir / ".cache"
+        if hf_cache_dir.exists() and hf_cache_dir.is_dir():
+            shutil.rmtree(hf_cache_dir)
 
 
 def get_random_generating_message():
