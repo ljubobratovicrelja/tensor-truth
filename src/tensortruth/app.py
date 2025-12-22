@@ -56,10 +56,10 @@ st.markdown(st.session_state.css_data, unsafe_allow_html=True)
 # Initialize config file with smart defaults if it doesn't exist
 # (This is now handled by init_app_state which loads and caches the config)
 
-# Download indexes from Google Drive if directory is empty or missing
+# Download indexes if directory is empty or missing
 index_dir = st.session_state.index_dir
 if not index_dir.exists() or not any(index_dir.iterdir()):
-    download_indexes_with_ui(st.session_state.user_dir, st.session_state.gdrive_link)
+    download_indexes_with_ui(st.session_state.user_dir)
 
 # ==========================================
 # SIDEBAR

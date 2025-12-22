@@ -5,9 +5,13 @@ import os
 import tarfile
 import time
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 import torch
+
+# Constants for the Tensor Truth Indexes
+HF_REPO_ID = "ljubobratovicrelja/tensor-truth-indexes"
+HF_FILENAME = "indexes_v0.1.12.tar"
 
 
 def get_module_display_name(
@@ -70,49 +74,61 @@ def get_module_display_name(
     return module_name, "unknown", "📁 Other", 4
 
 
-def _download_and_extract_indexes(user_dir: Union[str, Path], gdrive_link: str):
-    """Download and extract indexes from Google Drive.
+def download_and_extract_indexes(
+    user_dir: Union[str, Path],
+    repo_id: str = HF_REPO_ID,
+    filename: str = HF_FILENAME,
+) -> bool:
+    """
+    Downloads and extracts index files from a Hugging Face repository.
 
     Args:
-        user_dir: User data directory path (str or Path)
-        gdrive_link: Google Drive download link
+        user_dir: The local directory where the indexes should be extracted.
+        repo_id: The Hugging Face repository ID (e.g., 'username/repo-name').
+        filename: The specific tarball filename to download.
 
     Returns:
-        True if successful
+        True if the download and extraction were successful.
 
     Raises:
-        ImportError: If gdown is not installed
-        Exception: If download or extraction fails
+        Exception: If the download or extraction process fails.
     """
+    import shutil
+
+    from huggingface_hub import hf_hub_download
+
     user_dir = Path(user_dir)
-    tarball_path = user_dir / "indexes.tar"
+    user_dir.mkdir(parents=True, exist_ok=True)
+
+    tarball_path: Optional[Path] = None
+    HF_REPO_TYPE = "dataset"
 
     try:
-        # Check if gdown is available
-        try:
-            import gdown
-        except ImportError:
-            raise ImportError(
-                "gdown library not installed. Install with: pip install gdown"
-            )
+        downloaded_file = hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            repo_type=HF_REPO_TYPE,
+            local_dir=user_dir,
+        )
 
-        # Download using gdown (handles Google Drive's quirks automatically)
-        gdown.download(gdrive_link, str(tarball_path), quiet=False, fuzzy=True)
+        tarball_path = Path(downloaded_file)
 
-        # Extract tarball to user directory (tar already contains indexes/ folder)
+        # Extracting the tarball.
         with tarfile.open(tarball_path, "r:") as tar:
             tar.extractall(path=user_dir)
 
-        # Clean up tarball
-        tarball_path.unlink()
-
         return True
 
-    except Exception as e:
-        # Clean up partial download
-        if tarball_path.exists():
+    finally:
+
+        # Clean up the downloaded tarball file.
+        if tarball_path is not None and tarball_path.exists():
             tarball_path.unlink()
-        raise e
+
+        # ... and the Hugging Face cache directory.
+        hf_cache_dir = user_dir / ".cache"
+        if hf_cache_dir.exists() and hf_cache_dir.is_dir():
+            shutil.rmtree(hf_cache_dir)
 
 
 def get_random_generating_message():
@@ -151,7 +167,11 @@ def get_random_rag_processing_message():
     return messages[int(time.time()) % len(messages)]
 
 
-def download_indexes_with_ui(user_dir: Union[str, Path], gdrive_link: str):
+def download_indexes_with_ui(
+    user_dir: Union[str, Path],
+    repo_id: str = HF_REPO_ID,
+    filename: str = HF_FILENAME,
+):
     """
     Wrapper for download_and_extract_indexes that provides Streamlit UI feedback.
     """
@@ -159,15 +179,17 @@ def download_indexes_with_ui(user_dir: Union[str, Path], gdrive_link: str):
 
     try:
         with st.spinner(
-            "📥 Downloading indexes from Google Drive (this may take a few minutes)..."
+            "📥 Downloading indexes from HuggingFace Hub (this may take a few minutes)..."
         ):
-            success = _download_and_extract_indexes(user_dir, gdrive_link)
+            success = download_and_extract_indexes(
+                user_dir, repo_id=repo_id, filename=filename
+            )
             if success:
                 st.success("✅ Indexes downloaded and extracted successfully!")
-    except ImportError as e:
-        st.warning(f"⚠️ {str(e)}")
     except Exception as e:
         st.error(f"❌ Error downloading/extracting indexes: {e}")
+        hf_link = f"https://huggingface.co/datasets/{repo_id}/blob/main/{filename}"
+        st.info(f"Try fetching manually from: {hf_link}, and storing in: {user_dir}")
 
 
 def get_available_modules(index_dir: Union[str, Path]):

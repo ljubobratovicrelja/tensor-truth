@@ -43,10 +43,6 @@ def init_app_state():
     st.session_state.config = load_config()
 
     # Constants
-    st.session_state.gdrive_link = (
-        "https://drive.google.com/file/d/"
-        "12wZsBwrywl9nXOCLr50lpWB2SiFdu1XB/view?usp=sharing"
-    )
     st.session_state.max_vram_gb = get_max_memory_gb()
 
     # Media paths
