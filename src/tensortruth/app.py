@@ -8,6 +8,13 @@ import streamlit as st
 
 from tensortruth import convert_chat_to_markdown
 from tensortruth.app_utils.app_state import init_app_state
+from tensortruth.app_utils.dialog_manager import (
+    init_dialog_state,
+    open_delete_dialog,
+    show_delete_dialog,
+    show_no_rag_dialog,
+    show_preset_delete_dialog,
+)
 from tensortruth.app_utils.dialogs import (
     show_delete_preset_dialog,
     show_delete_session_dialog,
@@ -39,6 +46,9 @@ st.set_page_config(
 
 # Initialize app state (paths, constants, session data)
 init_app_state()
+
+# Initialize dialog state flags
+init_dialog_state()
 
 # Apply CSS styles
 st.markdown(st.session_state.css_data, unsafe_allow_html=True)
@@ -116,7 +126,7 @@ with st.sidebar:
 
                     for m in mods:
                         display_name = module_to_display.get(m, m)
-                        st.caption(f"📚 {display_name}")
+                        st.caption(f"{display_name}")
 
                 # Show session PDF documents
                 if pdf_docs:
@@ -137,20 +147,20 @@ with st.sidebar:
             )
 
             if st.button("Delete Chat", use_container_width=True):
-                st.session_state.show_delete_confirm = True
+                open_delete_dialog()
                 st.rerun()
 
 # ==========================================
 # DIALOG HANDLERS
 # ==========================================
 
-if st.session_state.get("show_delete_confirm", False):
+if show_delete_dialog():
     show_delete_session_dialog(st.session_state.sessions_file)
 
-if st.session_state.get("show_preset_delete_confirm", False):
+if show_preset_delete_dialog():
     show_delete_preset_dialog(st.session_state.presets_file)
 
-if st.session_state.get("show_no_rag_warning", False):
+if show_no_rag_dialog():
     show_no_rag_warning_dialog(st.session_state.sessions_file)
 
 # ==========================================

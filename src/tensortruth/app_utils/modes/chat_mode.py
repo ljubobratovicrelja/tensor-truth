@@ -33,10 +33,6 @@ from ..commands import process_command
 
 def render_chat_mode():
     """Render the chat mode UI for conversation."""
-    # Get paths from session state
-    sessions_file = st.session_state.sessions_file
-    index_dir = st.session_state.index_dir
-
     current_id = st.session_state.chat_data.get("current_id")
     if not current_id:
         st.session_state.mode = "setup"
@@ -178,7 +174,7 @@ def render_chat_mode():
 
         # COMMAND PROCESSING
         if prompt.startswith("/"):
-            available_mods_tuples = get_available_modules(index_dir)
+            available_mods_tuples = get_available_modules(st.session_state.index_dir)
             available_mods = [mod for mod, _ in available_mods_tuples]
             is_cmd, response, state_modifier = process_command(
                 prompt, session, available_mods
@@ -190,7 +186,7 @@ def render_chat_mode():
                 with st.chat_message("command", avatar=":material/settings:"):
                     st.markdown(response)
 
-                save_sessions(sessions_file)
+                save_sessions(st.session_state.sessions_file)
 
                 if state_modifier is not None:
                     with st.spinner("⚙️ Applying changes..."):
@@ -200,7 +196,7 @@ def render_chat_mode():
 
         # STANDARD CHAT PROCESSING
         session["messages"].append({"role": "user", "content": prompt})
-        save_sessions(sessions_file)
+        save_sessions(st.session_state.sessions_file)
 
         # Update title in background
         def run_async_in_thread(coro):
@@ -225,7 +221,7 @@ def render_chat_mode():
                     current_id,
                     prompt,
                     params.get("model"),
-                    sessions_file,
+                    st.session_state.sessions_file,
                     chat_data=chat_data_snapshot,
                 )
 
@@ -346,7 +342,7 @@ def render_chat_mode():
                         }
                     )
 
-                    save_sessions(sessions_file)
+                    save_sessions(st.session_state.sessions_file)
                     st.rerun()
 
                 except Exception as e:
@@ -383,7 +379,7 @@ def render_chat_mode():
                         }
                     )
 
-                    save_sessions(sessions_file)
+                    save_sessions(st.session_state.sessions_file)
                     st.rerun()
 
                 except Exception as e:

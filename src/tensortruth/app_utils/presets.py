@@ -236,36 +236,47 @@ def quick_launch_preset(
     return True, None
 
 
-def apply_preset(
+def build_preset_config(
     name,
     available_mods,
     available_models,
     available_devices,
     presets_file: Union[str, Path],
 ):
-    """Apply a preset configuration to session state.
+    """Build preset configuration with validation and fallbacks.
 
+    Returns a dict of validated preset values that can be applied to session state.
     Gracefully handles missing models by attempting to resolve a suitable alternative.
-    """
-    import streamlit as st
 
+    Args:
+        name: Preset name
+        available_mods: List of available module names
+        available_models: List of available model names
+        available_devices: List of available devices
+        presets_file: Path to presets file (str or Path)
+
+    Returns:
+        dict: Configuration dict with keys like 'setup_mods', 'setup_model', etc.
+              Returns None if preset doesn't exist.
+              Also includes a 'warnings' key with list of warning messages.
+    """
     presets = load_presets(presets_file)
     if name not in presets:
-        return
+        return None
 
     p = presets[name]
-
-    # Update Session State Keys directly - only if present in preset
+    config = {}
+    warnings = []
 
     # 1. Modules
     if "modules" in p:
         valid_mods = [m for m in p["modules"] if m in available_mods]
-        st.session_state.setup_mods = valid_mods
+        config["setup_mods"] = valid_mods
 
     # 2. Model - with fallback to model preference resolution
     if "model" in p:
         if p["model"] in available_models:
-            st.session_state.setup_model = p["model"]
+            config["setup_model"] = p["model"]
         else:
             # Model not available - try to resolve from preference if it exists
             try:
@@ -280,8 +291,8 @@ def apply_preset(
                         defaults[name], available_models
                     )
                     if fallback:
-                        st.session_state.setup_model = fallback
-                        st.warning(
+                        config["setup_model"] = fallback
+                        warnings.append(
                             f"Model '{p['model']}' not available. Using '{fallback}' instead."
                         )
             except Exception:
@@ -289,23 +300,63 @@ def apply_preset(
 
     # 3. Parameters - already normalized by load_presets()
     if "reranker_model" in p:
-        st.session_state.setup_reranker = p["reranker_model"]
+        config["setup_reranker"] = p["reranker_model"]
     if "context_window" in p:
-        st.session_state.setup_ctx = p["context_window"]
+        config["setup_ctx"] = p["context_window"]
     if "temperature" in p:
-        st.session_state.setup_temp = p["temperature"]
+        config["setup_temp"] = p["temperature"]
     if "reranker_top_n" in p:
-        st.session_state.setup_top_n = p["reranker_top_n"]
+        config["setup_top_n"] = p["reranker_top_n"]
     if "confidence_cutoff" in p:
-        st.session_state.setup_conf = p["confidence_cutoff"]
+        config["setup_conf"] = p["confidence_cutoff"]
     if "confidence_cutoff_hard" in p:
-        st.session_state.setup_conf_cutoff_hard = p["confidence_cutoff_hard"]
+        config["setup_conf_cutoff_hard"] = p["confidence_cutoff_hard"]
     if "system_prompt" in p:
-        st.session_state.setup_sys_prompt = p["system_prompt"]
+        config["setup_sys_prompt"] = p["system_prompt"]
 
-    # 4. Devices - only update if present in preset and valid
+    # 4. Devices - only include if present in preset and valid
     if "rag_device" in p and p["rag_device"] in available_devices:
-        st.session_state.setup_rag_device = p["rag_device"]
+        config["setup_rag_device"] = p["rag_device"]
 
     if "llm_device" in p and p["llm_device"] in ["cpu", "gpu"]:
-        st.session_state.setup_llm_device = p["llm_device"]
+        config["setup_llm_device"] = p["llm_device"]
+
+    config["warnings"] = warnings
+    return config
+
+
+def apply_preset(
+    name,
+    available_mods,
+    available_models,
+    available_devices,
+    presets_file: Union[str, Path],
+):
+    """Apply a preset configuration to session state.
+
+    Gracefully handles missing models by attempting to resolve a suitable alternative.
+
+    Args:
+        name: Preset name
+        available_mods: List of available module names
+        available_models: List of available model names
+        available_devices: List of available devices
+        presets_file: Path to presets file (str or Path)
+    """
+    import streamlit as st
+
+    config = build_preset_config(
+        name, available_mods, available_models, available_devices, presets_file
+    )
+
+    if config is None:
+        return
+
+    # Apply config to session state
+    warnings = config.pop("warnings", [])
+    for key, value in config.items():
+        setattr(st.session_state, key, value)
+
+    # Show warnings if any
+    for warning in warnings:
+        st.warning(warning)

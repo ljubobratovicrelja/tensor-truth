@@ -7,6 +7,7 @@ import streamlit as st
 from tensortruth.core.ollama import get_ollama_url
 
 from ..config import update_config
+from ..dialog_manager import open_no_rag_dialog
 from ..helpers import get_available_modules, get_ollama_models, get_system_devices
 from ..presets import get_favorites, load_presets, save_preset
 from ..presets_ui import render_favorite_preset_cards, render_presets_manager
@@ -19,21 +20,16 @@ from ..setup_state import (
 
 def render_setup_mode():
     """Render the setup mode UI for creating new sessions."""
-    # Get paths from session state
-    sessions_file = st.session_state.sessions_file
-    presets_file = st.session_state.presets_file
-    index_dir = st.session_state.index_dir
-
     with st.container():
         # Fetch data
-        available_mods_tuples = get_available_modules(index_dir)
+        available_mods_tuples = get_available_modules(st.session_state.index_dir)
         module_to_display = {mod: disp for mod, disp in available_mods_tuples}
         display_to_module = {disp: mod for mod, disp in available_mods_tuples}
         available_mods = [mod for mod, _ in available_mods_tuples]
 
         available_models = get_ollama_models()
         system_devices = get_system_devices()
-        presets = load_presets(presets_file)
+        presets = load_presets(st.session_state.presets_file)
 
         # Initialize setup defaults from config on first run
         init_setup_defaults_from_config()
@@ -49,16 +45,23 @@ def render_setup_mode():
         st.markdown("### Start a New Research Session")
 
         # Quick launch favorites
-        favorites = get_favorites(presets_file)
+        favorites = get_favorites(st.session_state.presets_file)
         if favorites:
             render_favorite_preset_cards(
-                favorites, available_mods, presets_file, sessions_file
+                favorites,
+                available_mods,
+                st.session_state.presets_file,
+                st.session_state.sessions_file,
             )
 
         # All presets manager
         if presets:
             render_presets_manager(
-                presets, available_mods, available_models, system_devices, presets_file
+                presets,
+                available_mods,
+                available_models,
+                system_devices,
+                st.session_state.presets_file,
             )
 
         # Manual configuration
@@ -192,12 +195,14 @@ def render_setup_mode():
                 params = build_params_from_session_state()
 
                 if not selected_mods:
-                    st.session_state.show_no_rag_warning = True
+                    open_no_rag_dialog()
                     st.session_state.pending_params = params
                     st.rerun()
                 else:
                     with st.spinner("Creating session..."):
-                        create_session(selected_mods, params, sessions_file)
+                        create_session(
+                            selected_mods, params, st.session_state.sessions_file
+                        )
                         st.session_state.mode = "chat"
                         st.session_state.sidebar_state = "collapsed"
                     st.rerun()
@@ -223,7 +228,7 @@ def render_setup_mode():
                         preset_config["description"] = new_preset_description
 
                     if mark_as_favorite:
-                        all_presets = load_presets(presets_file)
+                        all_presets = load_presets(st.session_state.presets_file)
                         max_order = -1
                         for preset in all_presets.values():
                             if preset.get("favorite", False):
@@ -233,7 +238,9 @@ def render_setup_mode():
                         preset_config["favorite"] = True
                         preset_config["favorite_order"] = max_order + 1
 
-                    save_preset(new_preset_name, preset_config, presets_file)
+                    save_preset(
+                        new_preset_name, preset_config, st.session_state.presets_file
+                    )
                     st.success(f"Saved: {new_preset_name}")
                     time.sleep(1)
                     st.rerun()

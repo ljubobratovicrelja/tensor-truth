@@ -248,12 +248,27 @@ def get_system_devices():
     return devices
 
 
-def free_memory():
-    """Free GPU/MPS memory by clearing caches."""
-    import streamlit as st
+def free_memory(engine=None):
+    """Free GPU/MPS memory by clearing caches.
 
-    if "engine" in st.session_state:
-        del st.session_state["engine"]
+    Args:
+        engine: Optional engine reference to delete. If None, will try to clean
+                up from st.session_state if streamlit is available.
+    """
+    # If engine provided, delete it
+    if engine is not None:
+        del engine
+
+    # Also try to clean up from streamlit session_state if available
+    try:
+        import streamlit as st
+
+        if "engine" in st.session_state:
+            del st.session_state["engine"]
+    except (ImportError, AttributeError):
+        # Streamlit not available or session_state not initialized
+        pass
+
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
