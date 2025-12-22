@@ -109,7 +109,6 @@ def download_and_extract_indexes(
             filename=filename,
             repo_type=HF_REPO_TYPE,
             local_dir=user_dir,
-            local_dir_use_symlinks=False,
         )
 
         tarball_path = Path(downloaded_file)
