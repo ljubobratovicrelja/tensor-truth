@@ -47,7 +47,6 @@ dependencies = [
     # --- Utilities ---
     "requests", # Ollama API & downloads
     "aiohttp",  # Async HTTP for better UI responsiveness
-    "gdown",    # Google Drive index downloads
 
     # --- PDF Processing (session documents) ---
     "pymupdf4llm", # PDF to markdown conversion (required for session PDFs)
