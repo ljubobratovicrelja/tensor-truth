@@ -4,12 +4,15 @@ import gc
 import os
 import tarfile
 import time
-from typing import List
+from pathlib import Path
+from typing import List, Union
 
 import torch
 
 
-def get_module_display_name(index_dir: str, module_name: str) -> tuple[str, str, str]:
+def get_module_display_name(
+    index_dir: Union[str, Path], module_name: str
+) -> tuple[str, str, str]:
     """Extract display_name and category from module's ChromaDB index.
 
     Args:
@@ -30,7 +33,7 @@ def get_module_display_name(index_dir: str, module_name: str) -> tuple[str, str,
 
         import chromadb
 
-        index_path = os.path.join(index_dir, module_name)
+        index_path = Path(index_dir) / module_name
         client = chromadb.PersistentClient(path=index_path)
 
         # Try to get the collection (LlamaIndex uses 'data')
@@ -67,11 +70,11 @@ def get_module_display_name(index_dir: str, module_name: str) -> tuple[str, str,
     return module_name, "unknown", "📁 Other", 4
 
 
-def _download_and_extract_indexes(user_dir: str, gdrive_link: str):
+def _download_and_extract_indexes(user_dir: Union[str, Path], gdrive_link: str):
     """Download and extract indexes from Google Drive.
 
     Args:
-        user_dir: User data directory path
+        user_dir: User data directory path (str or Path)
         gdrive_link: Google Drive download link
 
     Returns:
@@ -81,7 +84,8 @@ def _download_and_extract_indexes(user_dir: str, gdrive_link: str):
         ImportError: If gdown is not installed
         Exception: If download or extraction fails
     """
-    tarball_path = os.path.join(user_dir, "indexes.tar")
+    user_dir = Path(user_dir)
+    tarball_path = user_dir / "indexes.tar"
 
     try:
         # Check if gdown is available
@@ -93,21 +97,21 @@ def _download_and_extract_indexes(user_dir: str, gdrive_link: str):
             )
 
         # Download using gdown (handles Google Drive's quirks automatically)
-        gdown.download(gdrive_link, tarball_path, quiet=False, fuzzy=True)
+        gdown.download(gdrive_link, str(tarball_path), quiet=False, fuzzy=True)
 
         # Extract tarball to user directory (tar already contains indexes/ folder)
         with tarfile.open(tarball_path, "r:") as tar:
             tar.extractall(path=user_dir)
 
         # Clean up tarball
-        os.remove(tarball_path)
+        tarball_path.unlink()
 
         return True
 
     except Exception as e:
         # Clean up partial download
-        if os.path.exists(tarball_path):
-            os.remove(tarball_path)
+        if tarball_path.exists():
+            tarball_path.unlink()
         raise e
 
 
@@ -147,7 +151,7 @@ def get_random_rag_processing_message():
     return messages[int(time.time()) % len(messages)]
 
 
-def download_indexes_with_ui(user_dir: str, gdrive_link: str):
+def download_indexes_with_ui(user_dir: Union[str, Path], gdrive_link: str):
     """
     Wrapper for download_and_extract_indexes that provides Streamlit UI feedback.
     """
@@ -166,20 +170,22 @@ def download_indexes_with_ui(user_dir: str, gdrive_link: str):
         st.error(f"❌ Error downloading/extracting indexes: {e}")
 
 
-def get_available_modules(index_dir: str):
+def get_available_modules(index_dir: Union[str, Path]):
     """Get list of available modules with categorized display names.
+
+    Args:
+        index_dir: Base index directory (str or Path)
 
     Returns:
         List of tuples: [(module_name, formatted_display_name), ...]
         where formatted_display_name includes category prefix for grouping
     """
-    if not os.path.exists(index_dir):
+    index_dir = Path(index_dir)
+    if not index_dir.exists():
         return []
 
     # Get current list of module directories
-    module_dirs = sorted(
-        [d for d in os.listdir(index_dir) if os.path.isdir(os.path.join(index_dir, d))]
-    )
+    module_dirs = sorted([d.name for d in index_dir.iterdir() if d.is_dir()])
 
     # For each module, get display name and category from ChromaDB metadata
     results = []

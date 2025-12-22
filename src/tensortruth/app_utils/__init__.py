@@ -1,12 +1,6 @@
 """App utilities for Streamlit interface."""
 
-from .app_state import (
-    get_indexes_dir_path,
-    get_presets_file_path,
-    get_sessions_file_path,
-    get_user_data_dir_path,
-    init_app_state,
-)
+from .app_state import init_app_state
 from .commands import process_command
 from .config import get_config_file_path, load_config, save_config, update_config
 from .helpers import (
@@ -54,10 +48,6 @@ from .vram import estimate_vram_usage, get_vram_breakdown, render_vram_gauge
 __all__ = [
     # App State
     "init_app_state",
-    "get_sessions_file_path",
-    "get_presets_file_path",
-    "get_user_data_dir_path",
-    "get_indexes_dir_path",
     # Commands
     "process_command",
     # Helpers

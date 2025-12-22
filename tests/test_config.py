@@ -45,11 +45,11 @@ class TestConfigSchema:
     def test_ui_config_defaults(self):
         """Test UIConfig default values."""
         config = UIConfig()
-        assert config.default_temperature == 0.3
+        assert config.default_temperature == 0.1
         assert config.default_context_window == 16384
         assert config.default_reranker == "BAAI/bge-reranker-v2-m3"
-        assert config.default_top_n == 3
-        assert config.default_confidence_threshold == 0.3
+        assert config.default_top_n == 5
+        assert config.default_confidence_threshold == 0.4
 
     def test_rag_config_defaults(self):
         """Test RAGConfig default values."""
@@ -66,7 +66,7 @@ class TestConfigSchema:
         data = config.to_dict()
 
         assert data["ollama"]["base_url"] == "http://localhost:11434"
-        assert data["ui"]["default_temperature"] == 0.3
+        assert data["ui"]["default_temperature"] == 0.1
         assert data["rag"]["default_device"] == "cuda"
 
     def test_config_from_dict(self):
@@ -102,7 +102,7 @@ class TestConfigSchema:
 
         assert config.ollama.base_url == "http://custom:11434"
         assert config.ollama.timeout == 300  # Default
-        assert config.ui.default_temperature == 0.3  # Default
+        assert config.ui.default_temperature == 0.1  # Default
         assert config.rag.default_device == "cpu"  # Default
 
 
@@ -221,7 +221,7 @@ class TestConfigFileOperations:
 
         # Verify config has expected defaults
         assert config.ollama.base_url == "http://localhost:11434"
-        assert config.ui.default_temperature == 0.3
+        assert config.ui.default_temperature == 0.1
 
     def test_default_config_with_mps(self, temp_config_dir):
         """Test that default config detects MPS and saves it to file."""

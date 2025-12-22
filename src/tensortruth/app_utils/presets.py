@@ -1,7 +1,8 @@
 """Preset configuration management."""
 
 import json
-import os
+from pathlib import Path
+from typing import Union
 
 # UI constraints - these define the valid values for preset parameters
 ALLOWED_CONTEXT_WINDOWS = [2048, 4096, 8192, 16384, 32768, 65536, 131072]
@@ -67,18 +68,19 @@ def _normalize_preset(preset: dict) -> dict:
     return preset
 
 
-def load_presets(presets_file: str):
+def load_presets(presets_file: Union[str, Path]):
     """Load presets from JSON file.
 
     Generates from defaults if file doesn't exist.
     Automatically normalizes all presets to match UI constraints.
 
     Args:
-        presets_file: Path to presets JSON file
+        presets_file: Path to presets JSON file (str or Path)
 
     Returns:
         Dictionary of preset configurations
     """
+    presets_file = Path(presets_file)
     # Try to ensure presets exist (generates from defaults if missing)
     try:
         from tensortruth.preset_defaults import ensure_presets_exist
@@ -87,7 +89,7 @@ def load_presets(presets_file: str):
     except Exception:
         pass  # Continue even if generation fails
 
-    if os.path.exists(presets_file):
+    if presets_file.exists():
         try:
             with open(presets_file, "r", encoding="utf-8") as f:
                 presets = json.load(f)
@@ -100,7 +102,7 @@ def load_presets(presets_file: str):
     return {}
 
 
-def save_preset(name, config, presets_file: str):
+def save_preset(name, config, presets_file: Union[str, Path]):
     """Save a preset configuration.
 
     Normalizes the config before saving to ensure consistency.
@@ -108,8 +110,9 @@ def save_preset(name, config, presets_file: str):
     Args:
         name: Preset name
         config: Configuration dictionary
-        presets_file: Path to presets JSON file
+        presets_file: Path to presets JSON file (str or Path)
     """
+    presets_file = Path(presets_file)
     presets = load_presets(presets_file)
     # Normalize the config before saving
     presets[name] = _normalize_preset(config.copy())
@@ -117,8 +120,14 @@ def save_preset(name, config, presets_file: str):
         json.dump(presets, f, indent=2)
 
 
-def delete_preset(name, presets_file: str):
-    """Delete a preset configuration."""
+def delete_preset(name, presets_file: Union[str, Path]):
+    """Delete a preset configuration.
+
+    Args:
+        name: Preset name to delete
+        presets_file: Path to presets JSON file (str or Path)
+    """
+    presets_file = Path(presets_file)
     presets = load_presets(presets_file)
     if name in presets:
         del presets[name]
@@ -126,8 +135,14 @@ def delete_preset(name, presets_file: str):
             json.dump(presets, f, indent=2)
 
 
-def toggle_favorite(name, presets_file: str):
-    """Toggle favorite status for a preset."""
+def toggle_favorite(name, presets_file: Union[str, Path]):
+    """Toggle favorite status for a preset.
+
+    Args:
+        name: Preset name
+        presets_file: Path to presets JSON file (str or Path)
+    """
+    presets_file = Path(presets_file)
     presets = load_presets(presets_file)
     if name in presets:
         current_status = presets[name].get("favorite", False)
@@ -148,8 +163,15 @@ def toggle_favorite(name, presets_file: str):
             json.dump(presets, f, indent=2)
 
 
-def get_favorites(presets_file: str):
-    """Get all favorite presets sorted by favorite_order."""
+def get_favorites(presets_file: Union[str, Path]):
+    """Get all favorite presets sorted by favorite_order.
+
+    Args:
+        presets_file: Path to presets JSON file (str or Path)
+
+    Returns:
+        Dictionary of favorite presets sorted by order
+    """
     presets = load_presets(presets_file)
     favorites = {
         name: config
@@ -163,7 +185,12 @@ def get_favorites(presets_file: str):
     return dict(sorted_favorites)
 
 
-def quick_launch_preset(name, available_mods, presets_file: str, sessions_file: str):
+def quick_launch_preset(
+    name,
+    available_mods,
+    presets_file: Union[str, Path],
+    sessions_file: Union[str, Path],
+):
     """Quick launch a session directly from a preset.
 
     Args:
@@ -210,7 +237,11 @@ def quick_launch_preset(name, available_mods, presets_file: str, sessions_file: 
 
 
 def apply_preset(
-    name, available_mods, available_models, available_devices, presets_file: str
+    name,
+    available_mods,
+    available_models,
+    available_devices,
+    presets_file: Union[str, Path],
 ):
     """Apply a preset configuration to session state.
 

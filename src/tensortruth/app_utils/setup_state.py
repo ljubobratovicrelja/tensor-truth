@@ -2,7 +2,6 @@
 
 import streamlit as st
 
-from tensortruth.app_utils.config import load_config
 from tensortruth.app_utils.helpers import get_system_devices
 
 
@@ -18,7 +17,8 @@ def init_setup_defaults_from_config():
     ):
         return
 
-    config = load_config()
+    # Use cached config from session_state (loaded once in init_app_state)
+    config = st.session_state.config
     system_devices = get_system_devices()
 
     # Knowledge base - start with empty selection
@@ -79,7 +79,8 @@ def get_session_params_with_defaults(session_params: dict) -> dict:
     Returns:
         Complete parameters dict with defaults filled in
     """
-    config = load_config()
+    # Use cached config from session_state (loaded once in init_app_state)
+    config = st.session_state.config
 
     return {
         "model": session_params.get("model", "deepseek-r1:8b"),

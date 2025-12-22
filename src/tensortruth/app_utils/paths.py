@@ -23,21 +23,21 @@ def get_user_data_dir() -> Path:
     return data_dir
 
 
-def get_sessions_file() -> str:
+def get_sessions_file() -> Path:
     """Get the path to the chat sessions file."""
-    return str(get_user_data_dir() / "chat_sessions.json")
+    return get_user_data_dir() / "chat_sessions.json"
 
 
-def get_presets_file() -> str:
+def get_presets_file() -> Path:
     """Get the path to the presets file."""
-    return str(get_user_data_dir() / "presets.json")
+    return get_user_data_dir() / "presets.json"
 
 
-def get_indexes_dir() -> str:
+def get_indexes_dir() -> Path:
     """Get the path to the indexes directory."""
     indexes_dir = get_user_data_dir() / "indexes"
     indexes_dir.mkdir(parents=True, exist_ok=True)
-    return str(indexes_dir)
+    return indexes_dir
 
 
 def get_sessions_data_dir() -> Path:

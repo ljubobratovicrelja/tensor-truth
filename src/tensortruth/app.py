@@ -4,13 +4,10 @@ This is a thin routing layer that initializes the app and delegates
 to mode-specific modules (setup_mode, chat_mode) for rendering.
 """
 
-import os
-
 import streamlit as st
 
 from tensortruth import convert_chat_to_markdown
 from tensortruth.app_utils.app_state import init_app_state
-from tensortruth.app_utils.config import get_config_file_path, load_config
 from tensortruth.app_utils.dialogs import (
     show_delete_preset_dialog,
     show_delete_session_dialog,
@@ -47,12 +44,11 @@ init_app_state()
 st.markdown(st.session_state.css_data, unsafe_allow_html=True)
 
 # Initialize config file with smart defaults if it doesn't exist
-if not os.path.exists(get_config_file_path()):
-    _ = load_config()
+# (This is now handled by init_app_state which loads and caches the config)
 
 # Download indexes from Google Drive if directory is empty or missing
 index_dir = st.session_state.index_dir
-if not os.path.exists(index_dir) or not os.listdir(index_dir):
+if not index_dir.exists() or not any(index_dir.iterdir()):
     download_indexes_with_ui(st.session_state.user_dir, st.session_state.gdrive_link)
 
 # ==========================================
