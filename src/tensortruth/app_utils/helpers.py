@@ -188,10 +188,10 @@ def download_indexes_with_ui(
             )
             if success:
                 st.success("✅ Indexes downloaded and extracted successfully!")
-    except ImportError as e:
-        st.warning(f"⚠️ {str(e)}")
     except Exception as e:
         st.error(f"❌ Error downloading/extracting indexes: {e}")
+        hf_link = f"https://huggingface.co/datasets/{repo_id}/blob/main/{filename}"
+        st.info(f"Try fetching manually from: {hf_link}, and storing in: {user_dir}")
 
 
 def get_available_modules(index_dir: Union[str, Path]):
