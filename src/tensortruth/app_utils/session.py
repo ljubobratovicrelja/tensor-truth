@@ -25,7 +25,24 @@ def load_sessions(sessions_file: Union[str, Path]) -> Dict[str, Any]:
     if sessions_file.exists():
         try:
             with open(sessions_file, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+
+            # Backward compatibility: Add title_needs_update flag to existing sessions
+            migrated = False
+            for session in data.get("sessions", {}).values():
+                if "title_needs_update" not in session:
+                    # If title is still "New Session", flag it for update
+                    session["title_needs_update"] = (
+                        session.get("title") == "New Session"
+                    )
+                    migrated = True
+
+            # Save migrated data back to file
+            if migrated:
+                with open(sessions_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+
+            return data
         except Exception:
             pass
     return {"current_id": None, "sessions": {}}
@@ -55,6 +72,7 @@ def create_session(
         "messages": [],
         "modules": modules,
         "params": params,
+        "title_needs_update": True,  # Flag to trigger auto-title generation
     }
     st.session_state.chat_data["current_id"] = new_id
     save_sessions(sessions_file)
@@ -78,14 +96,20 @@ async def update_title_async(
         chat_data: Optional chat data (uses session_state if not provided)
     """
     sessions_file = Path(sessions_file)
+
     # Accept chat_data as parameter to avoid accessing st.session_state from background thread
     if chat_data is None:
         chat_data = st.session_state.chat_data
 
-    session = chat_data["sessions"][session_id]
-    if session.get("title") == "New Session":
+    session = chat_data["sessions"].get(session_id)
+    if not session:
+        return
+
+    # Check the flag instead of comparing string values
+    if session.get("title_needs_update", False):
         new_title = await generate_smart_title_async(text, model_name, keep_alive=1)
         session["title"] = new_title
+        session["title_needs_update"] = False  # Clear the flag
         # Write directly to file instead of using save_sessions (which accesses session_state)
         with open(sessions_file, "w", encoding="utf-8") as f:
             json.dump(chat_data, f, indent=2)

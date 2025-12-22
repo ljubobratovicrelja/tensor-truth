@@ -1,6 +1,5 @@
 """Chat mode - Main conversation interface with RAG."""
 
-import asyncio
 import os
 import threading
 import time
@@ -21,7 +20,7 @@ from tensortruth.app_utils.rendering import (
     render_low_confidence_warning,
     render_message_footer,
 )
-from tensortruth.app_utils.session import save_sessions, update_title_async
+from tensortruth.app_utils.session import save_sessions
 from tensortruth.app_utils.setup_state import get_session_params_with_defaults
 from tensortruth.app_utils.streaming import (
     stream_rag_response,
@@ -198,34 +197,8 @@ def render_chat_mode():
         session["messages"].append({"role": "user", "content": prompt})
         save_sessions(st.session_state.sessions_file)
 
-        # Update title in background
-        def run_async_in_thread(coro):
-            """Run async coroutine in a new thread with its own event loop."""
-
-            def run():
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                try:
-                    new_loop.run_until_complete(coro)
-                finally:
-                    new_loop.close()
-
-            thread = threading.Thread(target=run, daemon=True)
-            thread.start()
-
-        if session["title"] == "New Session":
-            chat_data_snapshot = st.session_state.chat_data
-
-            async def update_title_task():
-                await update_title_async(
-                    current_id,
-                    prompt,
-                    params.get("model"),
-                    st.session_state.sessions_file,
-                    chat_data=chat_data_snapshot,
-                )
-
-            run_async_in_thread(update_title_task())
+        # Check if title needs updating (avoid race conditions by doing it after response)
+        should_update_title = session.get("title_needs_update", False)
 
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -343,6 +316,19 @@ def render_chat_mode():
                     )
 
                     save_sessions(st.session_state.sessions_file)
+
+                    # Update title after successful response
+                    if should_update_title:
+                        from tensortruth.app_utils.session import update_title
+
+                        with st.spinner("Generating title..."):
+                            update_title(
+                                current_id,
+                                prompt,
+                                params.get("model"),
+                                st.session_state.sessions_file,
+                            )
+
                     st.rerun()
 
                 except Exception as e:
@@ -380,6 +366,19 @@ def render_chat_mode():
                     )
 
                     save_sessions(st.session_state.sessions_file)
+
+                    # Update title after successful response
+                    if should_update_title:
+                        from tensortruth.app_utils.session import update_title
+
+                        with st.spinner("Generating title..."):
+                            update_title(
+                                current_id,
+                                prompt,
+                                params.get("model"),
+                                st.session_state.sessions_file,
+                            )
+
                     st.rerun()
 
                 except Exception as e:
