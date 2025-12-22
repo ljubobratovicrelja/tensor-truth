@@ -51,7 +51,6 @@ class TestDownloadAndExtractIndexes:
                 filename=HF_FILENAME,
                 repo_type="dataset",
                 local_dir=tmp_path,
-                local_dir_use_symlinks=False,
             )
 
             # Verify extraction succeeded
