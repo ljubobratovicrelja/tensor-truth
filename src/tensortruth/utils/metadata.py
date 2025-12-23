@@ -360,6 +360,67 @@ def get_paper_collection_info_from_config(
     return None
 
 
+def extract_arxiv_id_from_filename(filename: str) -> Optional[str]:
+    """Extract ArXiv ID from filename.
+
+    Handles formats:
+    - 1512.03385.pdf -> 1512.03385
+    - 2103.00020.md -> 2103.00020
+
+    Args:
+        filename: Filename (with or without extension)
+
+    Returns:
+        ArXiv ID or None if not an ArXiv file
+    """
+    # Remove extension
+    stem = Path(filename).stem
+
+    # Match pattern: YYMM.NNNNN (standard ArXiv ID format)
+    match = re.match(r"^(\d{4}\.\d{5})$", stem)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def get_arxiv_metadata_from_config(
+    arxiv_id: str, module_name: str, sources_config: Dict
+) -> Optional[Dict[str, Any]]:
+    """Get ArXiv paper metadata from sources.json.
+
+    Args:
+        arxiv_id: ArXiv paper ID (e.g., "1512.03385")
+        module_name: Module/category name (e.g., "dl_foundations")
+        sources_config: Loaded sources.json config
+
+    Returns:
+        Dict with title, authors, year, source_url or None if not found
+    """
+    if not sources_config:
+        return None
+
+    papers = sources_config.get("papers", {})
+    category = papers.get(module_name)
+
+    if not category or "items" not in category:
+        return None
+
+    # Look up by arxiv ID key
+    item = category["items"].get(arxiv_id)
+
+    if not item:
+        return None
+
+    return {
+        "title": item.get("title"),
+        "authors": item.get("authors"),
+        "year": item.get("year"),
+        "source_url": item.get("url"),
+        "arxiv_id": arxiv_id,
+    }
+
+
 def get_source_url_for_library(module_name: str, sources_config: Dict) -> Optional[str]:
     """Get base documentation URL for a library module.
 
@@ -490,6 +551,156 @@ def classify_document_type(file_path: Path, module_name: Optional[str] = None) -
 # ============================================================================
 
 
+def _extract_arxiv_metadata(
+    file_path: Path, module_name: str, sources_config: Dict
+) -> Optional[Dict[str, Any]]:
+    """Extract metadata for ArXiv papers from sources.json.
+
+    Returns:
+        Metadata dict if ArXiv paper found in config, None otherwise
+    """
+    arxiv_id = extract_arxiv_id_from_filename(file_path.name)
+    if not arxiv_id:
+        return None
+
+    metadata = get_arxiv_metadata_from_config(arxiv_id, module_name, sources_config)
+    if metadata:
+        logger.info(f"Using ArXiv metadata from sources.json for {file_path.name}")
+    return metadata
+
+
+def _extract_explicit_or_llm_metadata(
+    doc: Document,
+    file_path: Path,
+    module_name: Optional[str],
+    sources_config: Optional[Dict],
+    ollama_url: Optional[str],
+    use_llm_fallback: bool,
+) -> Dict[str, Any]:
+    """Extract metadata using explicit sources (YAML/PDF) or LLM fallback.
+
+    Returns:
+        Metadata dict (may be incomplete)
+    """
+    metadata = {}
+
+    # Try explicit extraction first
+    explicit_metadata = extract_explicit_metadata(doc, file_path)
+
+    # Check if we have complete metadata from explicit sources
+    has_complete = (
+        explicit_metadata
+        and explicit_metadata.get("title")
+        and explicit_metadata.get("authors")
+    )
+
+    if has_complete:
+        metadata.update(explicit_metadata)
+        logger.info(f"Using explicit metadata for {file_path.name}")
+        return metadata
+
+    # Check if this is a paper collection (will be overridden anyway)
+    is_paper_collection = False
+    if sources_config and module_name:
+        paper_info = get_paper_collection_info_from_config(module_name, sources_config)
+        is_paper_collection = bool(paper_info and paper_info.get("display_name"))
+
+    # Use LLM fallback if enabled and not a paper collection
+    if use_llm_fallback and ollama_url and not is_paper_collection:
+        logger.info(f"Using LLM extraction for {file_path.name}")
+        llm_metadata = extract_metadata_with_llm(doc, file_path, ollama_url)
+        # Merge: keep year from explicit if available
+        if explicit_metadata:
+            metadata.update(explicit_metadata)
+        metadata.update(llm_metadata)
+    elif explicit_metadata:
+        # Just use what we got from explicit extraction (e.g., year only)
+        metadata.update(explicit_metadata)
+
+    return metadata
+
+
+def _apply_config_overrides(
+    metadata: Dict[str, Any],
+    module_name: Optional[str],
+    sources_config: Optional[Dict],
+    is_arxiv: bool,
+) -> None:
+    """Apply config-based overrides for library docs and non-ArXiv paper collections.
+
+    Modifies metadata dict in-place.
+    """
+    if not sources_config or not module_name or is_arxiv:
+        return
+
+    # Check for paper collection override
+    paper_info = get_paper_collection_info_from_config(module_name, sources_config)
+    if paper_info and paper_info.get("display_name"):
+        # Override with collection name for non-ArXiv papers
+        metadata["title"] = paper_info["display_name"]
+        metadata["authors"] = None
+        return
+
+    # Check for library doc info
+    if not metadata.get("title"):
+        lib_info = get_library_info_from_config(module_name, sources_config)
+        if lib_info:
+            lib_name = (
+                module_name.rsplit("_", 1)[0] if "_" in module_name else module_name
+            )
+            version = lib_info.get("version", "")
+            title_parts = [lib_name.replace("_", " ").replace("-", " ").title()]
+            if version:
+                title_parts.append(version)
+            metadata["title"] = " ".join(title_parts)
+            metadata["source_url"] = lib_info.get("doc_root")
+
+
+def _finalize_metadata(
+    metadata: Dict[str, Any],
+    file_path: Path,
+    module_name: Optional[str],
+    sources_config: Optional[Dict],
+) -> None:
+    """Generate derived fields (display_name, source_url, doc_type).
+
+    Modifies metadata dict in-place.
+    """
+    # Format authors
+    if metadata.get("authors"):
+        metadata["authors"] = format_authors(metadata["authors"])
+
+    # Create display name
+    title = metadata.get("title")
+    if title:
+        metadata["display_name"] = create_display_name(title, metadata.get("authors"))
+    else:
+        logger.warning(
+            f"No title found for {file_path.name}, using filename as display name"
+        )
+        metadata["display_name"] = file_path.stem.replace("_", " ")
+
+    # Generate source URL if not set
+    if not metadata.get("source_url"):
+        source_url = None
+        if "arxiv_id" in metadata:
+            source_url = get_source_url_for_arxiv(metadata["arxiv_id"])
+        elif sources_config and module_name:
+            source_url = get_source_url_for_library(module_name, sources_config)
+        metadata["source_url"] = source_url
+
+    # Classify document type
+    metadata["doc_type"] = classify_document_type(file_path, module_name)
+
+    # Log result (except for library docs to reduce noise)
+    if metadata["doc_type"] != "library_doc":
+        logger.info(
+            f"Final metadata for {file_path.name}: "
+            f"display_name={metadata['display_name']}, "
+            f"doc_type={metadata['doc_type']}"
+        )
+
+
 def extract_document_metadata(
     doc: Document,
     file_path: Path,
@@ -500,15 +711,18 @@ def extract_document_metadata(
 ) -> Dict[str, Any]:
     """Extract comprehensive metadata from a document.
 
-    This is the main entry point for metadata extraction.
-    Tries explicit extraction first, falls back to LLM if enabled.
+    Extraction strategy:
+    1. ArXiv papers: Look up in sources.json (fastest, most reliable)
+    2. Other docs: Try explicit extraction (YAML/PDF), fallback to LLM if needed
+    3. Apply config overrides for library docs and paper collections
+    4. Generate derived fields (display_name, source_url, doc_type)
 
     Args:
         doc: LlamaIndex Document object
         file_path: Path to source file
-        module_name: Name of module being indexed (for classification)
+        module_name: Name of module being indexed
         sources_config: Contents of config/sources.json
-        ollama_url: Ollama API URL (required if use_llm_fallback=True)
+        ollama_url: Ollama API URL (for LLM fallback)
         use_llm_fallback: Whether to use LLM if explicit extraction fails
 
     Returns:
@@ -518,102 +732,26 @@ def extract_document_metadata(
         - source_url: URL to original source
         - doc_type: Document classification
         - arxiv_id: ArXiv ID if applicable
-        - year: Publication year if available
+        - year: Publication year if applicable
     """
-    metadata = {}
-
-    # Step 1: Try explicit extraction (YAML headers or PDF metadata)
-    explicit_metadata = extract_explicit_metadata(doc, file_path)
-
-    # Check if we have both title AND authors from explicit sources
-    has_complete_metadata = (
-        explicit_metadata
-        and explicit_metadata.get("title")
-        and explicit_metadata.get("authors")
-    )
-
-    if has_complete_metadata:
-        metadata.update(explicit_metadata)
-        logger.info(f"Using explicit metadata for {file_path.name}")
-    elif use_llm_fallback and ollama_url:
-        # Step 2: Fallback to LLM extraction if metadata incomplete
-        logger.info(
-            f"Incomplete or no explicit metadata, using LLM for {file_path.name}"
-        )
-        llm_metadata = extract_metadata_with_llm(doc, file_path, ollama_url)
-        # Merge: LLM metadata + any year from explicit metadata
-        if explicit_metadata:
-            metadata.update(explicit_metadata)  # Keep year if extracted
-        metadata.update(llm_metadata)  # Add/override with LLM results
-
-    # Step 3: For library docs and paper collections, override with config info if available
+    # Step 1: Try ArXiv metadata from sources.json (ArXiv papers only)
     if sources_config and module_name:
-        # Check if it's a paper collection first (always override for collections)
-        paper_info = get_paper_collection_info_from_config(module_name, sources_config)
-        if paper_info and paper_info.get("display_name"):
-            # Override individual paper title with collection name
-            metadata["title"] = paper_info["display_name"]
-            # Clear authors for paper collections (we don't want individual paper authors)
-            metadata["authors"] = None
-        elif not metadata.get("title"):
-            # For library docs, use config if no title extracted
-            lib_info = get_library_info_from_config(module_name, sources_config)
-            if lib_info:
-                # Use library name and version from config
-                lib_name = (
-                    module_name.rsplit("_", 1)[0] if "_" in module_name else module_name
-                )
-                version = lib_info.get("version", "")
-
-                # Create title: "Library Version" (e.g., "PyTorch 2.9")
-                title_parts = [lib_name.replace("_", " ").replace("-", " ").title()]
-                if version:
-                    title_parts.append(version)
-
-                metadata["title"] = " ".join(title_parts)
-                metadata["source_url"] = lib_info.get("doc_root")
-
-    # Step 4: Generate derived fields
-    title = metadata.get("title")
-    authors = metadata.get("authors")
-
-    # Format authors
-    if authors:
-        formatted_authors = format_authors(authors)
-        metadata["authors"] = formatted_authors
-
-    # Create display name
-    if title:
-        display_name = create_display_name(title, metadata.get("authors"))
+        metadata = _extract_arxiv_metadata(file_path, module_name, sources_config)
+        is_arxiv = metadata is not None
     else:
-        # Fallback to filename without extension
-        logger.warning(
-            f"No title found for {file_path.name}, using filename as display name. "
-            f"Metadata extraction may have failed."
+        metadata = None
+        is_arxiv = False
+
+    # Step 2: If not ArXiv, extract using explicit sources or LLM
+    if not metadata:
+        metadata = _extract_explicit_or_llm_metadata(
+            doc, file_path, module_name, sources_config, ollama_url, use_llm_fallback
         )
-        display_name = file_path.stem.replace("_", " ")
 
-    metadata["display_name"] = display_name
+    # Step 3: Apply config overrides (library docs, non-ArXiv paper collections)
+    _apply_config_overrides(metadata, module_name, sources_config, is_arxiv)
 
-    # Generate source URL if not already set
-    if not metadata.get("source_url"):
-        source_url = None
-        if "arxiv_id" in metadata:
-            source_url = get_source_url_for_arxiv(metadata["arxiv_id"])
-        elif sources_config and module_name:
-            source_url = get_source_url_for_library(module_name, sources_config)
-        metadata["source_url"] = source_url
-
-    # Classify document type
-    doc_type = classify_document_type(file_path, module_name)
-    metadata["doc_type"] = doc_type
-
-    # Only log for non-library docs (library docs are handled via config, no need for per-file logs)
-    if doc_type != "library_doc":
-        logger.info(
-            f"Final metadata for {file_path.name}: "
-            f"display_name={metadata['display_name']}, "
-            f"doc_type={doc_type}"
-        )
+    # Step 4: Finalize (format authors, create display_name, classify doc_type)
+    _finalize_metadata(metadata, file_path, module_name, sources_config)
 
     return metadata

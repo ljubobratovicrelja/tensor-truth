@@ -5,9 +5,13 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-import pymupdf as fitz
-import pymupdf4llm
 import requests
+
+import pymupdf.layout  # isort: skip
+
+pymupdf.layout.activate()
+import pymupdf as fitz  # noqa: E402
+import pymupdf4llm  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -390,4 +394,5 @@ def post_process_math(md_text: Optional[str]) -> Optional[str]:
 
         processed_lines.append(line)
 
+    return "\n".join(processed_lines)
     return "\n".join(processed_lines)

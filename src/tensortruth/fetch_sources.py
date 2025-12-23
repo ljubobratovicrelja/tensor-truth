@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 
 from .cli_paths import get_library_docs_dir, get_sources_config_path
-from .scrapers.arxiv import ARXIV_AVAILABLE, fetch_arxiv_paper, fetch_paper_category
+from .scrapers.arxiv import fetch_arxiv_paper, fetch_paper_category
 from .scrapers.common import process_url
 from .scrapers.doxygen import fetch_doxygen_urls
 from .scrapers.sphinx import fetch_inventory
@@ -190,18 +190,22 @@ Environment Variables:
     )
 
     # Fetching options
+
     parser.add_argument(
-        "--workers",
-        type=int,
-        default=1,
-        help="Number of parallel workers (default: 1)",
+        "--output-format",
+        choices=["pdf", "markdown"],
+        default="pdf",
+        help="Output format for papers: 'pdf' (default) or 'markdown'",
     )
 
     parser.add_argument(
         "--converter",
         choices=["pymupdf", "marker"],
         default="pymupdf",
-        help="PDF converter: 'pymupdf' (fast) or 'marker' (better math)",
+        help=(
+            "Markdown converter selection. Both are AI "
+            "powered (pymupdf.layout is used)"
+        ),
     )
 
     parser.add_argument(
@@ -282,12 +286,6 @@ Environment Variables:
 
     elif args.type == "papers":
         # Paper fetching
-        if not ARXIV_AVAILABLE:
-            logger.error(
-                "arxiv package not installed. Install with: pip install tensor-truth[docs]"
-            )
-            return 1
-
         if not args.category:
             logger.error("--category required for --type papers")
             return 1
@@ -301,19 +299,59 @@ Environment Variables:
 
         category_config = config["papers"][args.category]
 
-        # If specific IDs provided, fetch only those
+        # If specific IDs provided, fetch only those and add to category
         if args.ids:
             output_dir = os.path.join(library_docs_dir, args.category)
             os.makedirs(output_dir, exist_ok=True)
+
+            # Ensure category has items dict
+            if "items" not in category_config:
+                category_config["items"] = {}
+
+            # Fetch each paper and add to category if not already present
             for arxiv_id in args.ids:
-                fetch_arxiv_paper(arxiv_id, output_dir, converter=args.converter)
+                # Check if already in category (using arxiv ID)
+                if arxiv_id not in category_config["items"]:
+                    # Fetch paper metadata from ArXiv
+                    try:
+                        import arxiv as arxiv_lib
+
+                        search = arxiv_lib.Search(id_list=[arxiv_id])
+                        paper = next(search.results())
+
+                        # Extract authors and year from ArXiv metadata
+                        authors = ", ".join([author.name for author in paper.authors])
+                        year = str(paper.published.year)
+
+                        # Add to category items dict with arxiv
+                        category_config["items"][arxiv_id] = {
+                            "title": paper.title,
+                            "arxiv_id": arxiv_id,
+                            "url": f"https://arxiv.org/abs/{arxiv_id}",
+                            "authors": authors,
+                            "year": year,
+                        }
+                        logger.info(
+                            f"Added {paper.title} by {authors} ({year}) "
+                            f"to category {args.category}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not fetch metadata for {arxiv_id}: {e}")
+
+                # Fetch the paper PDF and/or convert
+                fetch_arxiv_paper(
+                    arxiv_id,
+                    output_dir,
+                    output_format=args.output_format,
+                    converter=args.converter,
+                )
         else:
             # Fetch entire category
             fetch_paper_category(
                 args.category,
                 category_config,
                 library_docs_dir,
-                workers=args.workers,
+                output_format=args.output_format,
                 converter=args.converter,
             )
 

@@ -76,9 +76,16 @@ def build_module(
         logger.error(f"Source directory missing: {source_dir}")
         return
 
-    documents = SimpleDirectoryReader(
-        source_dir, recursive=True, required_exts=[".md", ".html"]
-    ).load_data()
+    try:
+        documents = SimpleDirectoryReader(
+            source_dir,
+            recursive=True,
+            required_exts=[".md", ".html", ".pdf"],
+            exclude_hidden=False,
+        ).load_data()
+    except Exception as e:
+        logger.error(f"Failed to load documents from {source_dir}: {e}")
+        return
 
     logger.info(f"Loaded {len(documents)} documents.")
 
@@ -86,7 +93,7 @@ def build_module(
         logger.warning(f"No documents found in {source_dir}. Skipping module.")
         return
 
-    # 2a. Extract Metadata (NEW)
+    # 2a. Extract Metadata
     if extract_metadata:
         logger.info("Extracting document metadata...")
 
@@ -104,11 +111,26 @@ def build_module(
         book_metadata_cache = {}
         is_book_module = module_name.startswith("book_")
 
+        # File-level metadata cache to avoid re-extracting for each page
+        # (SimpleDirectoryReader creates one Document per PDF page)
+        file_metadata_cache = {}
+
         # Extract metadata for each document
         for i, doc in enumerate(documents):
             file_path = Path(doc.metadata.get("file_path", ""))
 
             try:
+                # Check if we've already extracted metadata for this file
+                file_key = str(file_path)
+                if file_key in file_metadata_cache:
+                    # Reuse cached metadata (same file, different page)
+                    metadata = file_metadata_cache[file_key].copy()
+                    # Inject metadata and continue
+                    for field in ["display_name", "authors", "source_url", "doc_type"]:
+                        if field in metadata:
+                            doc.metadata[field] = metadata[field]
+                    continue
+
                 # Book chapter detection and metadata sharing
                 if is_book_module:
                     book_dir = file_path.parent
@@ -228,6 +250,9 @@ def build_module(
                         ollama_url=ollama_url,
                         use_llm_fallback=not is_library_doc,
                     )
+
+                # Cache metadata for this file to avoid re-extraction for other pages
+                file_metadata_cache[file_key] = metadata.copy()
 
                 # Inject only essential metadata fields to avoid chunk size issues
                 # (LlamaIndex includes metadata in chunk context)
