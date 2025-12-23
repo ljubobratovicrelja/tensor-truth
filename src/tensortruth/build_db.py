@@ -18,7 +18,7 @@ from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from tensortruth.app_utils.config_schema import TensorTruthConfig
-from tensortruth.app_utils.paths import (
+from tensortruth.cli_paths import (
     get_base_indexes_dir,
     get_library_docs_dir,
     get_sources_config_path,

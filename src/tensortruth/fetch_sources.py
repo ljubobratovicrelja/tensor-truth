@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from tqdm import tqdm
 
-from .app_utils.paths import get_library_docs_dir, get_sources_config_path
+from .cli_paths import get_library_docs_dir, get_sources_config_path
 from .scrapers.arxiv import ARXIV_AVAILABLE, fetch_arxiv_paper, fetch_paper_category
 from .scrapers.common import process_url
 from .scrapers.doxygen import fetch_doxygen_urls

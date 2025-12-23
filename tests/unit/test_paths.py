@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from tensortruth.app_utils.paths import (
+from tensortruth.cli_paths import (
     get_base_indexes_dir,
     get_library_docs_dir,
     get_sources_config_path,
