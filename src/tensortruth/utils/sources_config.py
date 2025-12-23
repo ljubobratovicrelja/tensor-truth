@@ -96,7 +96,7 @@ def load_config(config_path):
 
 
 def list_sources(config):
-    """List all available sources (libraries and papers)."""
+    """List all available sources (libraries, books, and papers)."""
     print("\n=== Available Libraries ===")
     if config.get("libraries"):
         for name, lib_config in sorted(config["libraries"].items()):
@@ -106,14 +106,48 @@ def list_sources(config):
     else:
         print("  (none)")
 
-    print("\n=== Available Paper Categories ===")
+    # Separate books and paper categories
+    books = {}
+    paper_categories = {}
+
     if config.get("papers"):
-        for name, cat_config in sorted(config["papers"].items()):
+        for name, cat_config in config["papers"].items():
             cat_type = cat_config.get("type", "unknown")
+            if cat_type == "pdf_book":
+                books[name] = cat_config
+            else:
+                paper_categories[name] = cat_config
+
+    print("\n=== Available Books ===")
+    if books:
+        for name, book_config in sorted(books.items()):
+            title = book_config.get("title", name)
+            authors = book_config.get("authors", [])
+            desc = book_config.get("description", "")
+
+            # Format: "Title by Author1, Author2 (item_name)"
+            if authors:
+                author_str = ", ".join(authors)
+                print(f"  • {title} by {author_str} ({name})")
+            else:
+                print(f"  • {title} ({name})")
+
+            if desc:
+                print(f"    {desc}")
+    else:
+        print("  (none)")
+
+    print("\n=== Available Paper Categories ===")
+    if paper_categories:
+        for name, cat_config in sorted(paper_categories.items()):
+            cat_type = cat_config.get("type", "unknown")
+            display_name = cat_config.get("display_name", name)
             desc = cat_config.get("description", "")
             item_count = len(cat_config.get("items", []))
-            print(f"  • {name:<30} ({cat_type}, {item_count} items)")
+
+            # Format: "Display Name (item_name, N items)"
+            print(f"  • {display_name} ({name}, {item_count} items)")
             if desc:
-                print(f"    {desc[:80]}...")
+                print(f"    {desc}")
     else:
         print("  (none)")
