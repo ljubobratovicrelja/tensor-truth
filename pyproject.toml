@@ -49,9 +49,10 @@ dependencies = [
     "aiohttp",  # Async HTTP for better UI responsiveness
 
     # --- PDF Processing (session documents) ---
-    "pymupdf4llm", # PDF to markdown conversion (required for session PDFs)
-    "marker-pdf",  # Advanced PDF conversion with math support
-    "tqdm",        # Progress bars for PDF processing
+    "pymupdf-layout", # AI-based layout analysis (import before pymupdf4llm!)
+    "pymupdf4llm",    # PDF to markdown conversion (required for session PDFs)
+    "marker-pdf",     # Advanced PDF conversion with math support
+    "tqdm",           # Progress bars for PDF processing
 ]
 
 [project.scripts]
