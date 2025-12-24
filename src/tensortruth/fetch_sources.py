@@ -216,10 +216,10 @@ Environment Variables:
     )
 
     parser.add_argument(
-        "--output-format",
+        "--format",
         choices=["pdf", "markdown"],
-        default="pdf",
-        help="Output format for papers: 'pdf' (default) or 'markdown'",
+        default="markdown",
+        help="Output format for papers: 'pdf' or 'markdown' (default)",
     )
 
     parser.add_argument(
@@ -352,7 +352,7 @@ Environment Variables:
                         category_name,
                         category_config,
                         library_docs_dir,
-                        output_format=args.output_format,
+                        output_format=args.format,
                         converter=args.converter,
                     )
 
@@ -425,7 +425,7 @@ Environment Variables:
                 fetch_arxiv_paper(
                     arxiv_id,
                     output_dir,
-                    output_format=args.output_format,
+                    output_format=args.format,
                     converter=args.converter,
                 )
         else:
@@ -435,7 +435,7 @@ Environment Variables:
                     args.category,
                     category_config,
                     library_docs_dir,
-                    output_format=args.output_format,
+                    output_format=args.format,
                     converter=args.converter,
                 )
 
