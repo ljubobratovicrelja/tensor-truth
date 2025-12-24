@@ -216,13 +216,6 @@ Environment Variables:
     )
 
     parser.add_argument(
-        "--format",
-        choices=["pdf", "markdown"],
-        default="markdown",
-        help="Output format for papers: 'pdf' or 'markdown' (default)",
-    )
-
-    parser.add_argument(
         "--converter",
         choices=["pymupdf", "marker"],
         default="pymupdf",
@@ -234,9 +227,9 @@ Environment Variables:
 
     parser.add_argument(
         "--format",
-        choices=["markdown", "html"],
+        choices=["markdown", "html", "pdf"],
         default="markdown",
-        help="Output format for library docs (default: markdown)",
+        help="Output format (default: markdown)",
     )
 
     parser.add_argument(
