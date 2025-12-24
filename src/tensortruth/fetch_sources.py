@@ -130,6 +130,10 @@ Examples:
   # Fetch books (auto-splits by TOC or page chunks)
   tensor-truth-docs --type books book_linear_algebra_cherney
   tensor-truth-docs --type books --category linear_algebra --converter marker
+  tensor-truth-docs --type books --all --converter marker
+
+  # Fetch all paper categories
+  tensor-truth-docs --type papers --all --converter marker
 
   # Customize page chunking for books without TOC
   tensor-truth-docs --type books book_deep_learning_goodfellow --pages-per-chunk 20
@@ -183,6 +187,12 @@ Environment Variables:
     parser.add_argument(
         "--category",
         help="Category name (for --type papers or --type books)",
+    )
+
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Fetch all items of the specified type (all books or all paper categories)",
     )
 
     parser.add_argument(
@@ -311,8 +321,42 @@ Environment Variables:
 
     elif args.type == "papers":
         # Paper fetching
+        if args.all:
+            # Fetch all paper categories (excluding books)
+            paper_categories = {
+                name: cfg
+                for name, cfg in config.get("papers", {}).items()
+                if cfg.get("type") != "pdf_book"
+            }
+
+            if not paper_categories:
+                logger.error("No paper categories found in config")
+                return 1
+
+            logger.info(f"Fetching all {len(paper_categories)} paper categories")
+
+            for category_name, category_config in paper_categories.items():
+                logger.info(f"\n{'=' * 60}")
+                logger.info(f"Fetching category: {category_name}")
+                logger.info(f"{'=' * 60}")
+
+                fetch_paper_category(
+                    category_name,
+                    category_config,
+                    library_docs_dir,
+                    output_format=args.output_format,
+                    converter=args.converter,
+                )
+
+                # Update sources.json
+                update_sources_config(
+                    sources_config_path, "papers", category_name, category_config
+                )
+
+            return 0
+
         if not args.category:
-            logger.error("--category required for --type papers")
+            logger.error("--category required for --type papers (or use --all)")
             return 1
 
         if args.category not in config["papers"]:
@@ -394,6 +438,40 @@ Environment Variables:
             if cfg.get("type") == "pdf_book"
         }
 
+        if args.all:
+            # Fetch all books
+            if not all_books:
+                logger.error("No books found in config")
+                return 1
+
+            logger.info(f"Fetching all {len(all_books)} books")
+
+            success_count = 0
+            for book_name, book_config in all_books.items():
+                logger.info(f"\n{'=' * 60}")
+                logger.info(f"Fetching: {book_config.get('title')}")
+                logger.info(f"{'=' * 60}")
+
+                if fetch_book(
+                    book_name,
+                    book_config,
+                    library_docs_dir,
+                    converter=args.converter,
+                    pages_per_chunk=args.pages_per_chunk,
+                ):
+                    success_count += 1
+                    # Update sources.json after each successful fetch
+                    update_sources_config(
+                        sources_config_path, "papers", book_name, book_config
+                    )
+
+            logger.info(f"\n{'=' * 60}")
+            logger.info(
+                f"Summary: Successfully fetched {success_count}/{len(all_books)} books"
+            )
+            logger.info(f"{'=' * 60}")
+            return 0
+
         if args.libraries:
             # Fetch specific books by name
             for book_name in args.libraries:
@@ -434,7 +512,9 @@ Environment Variables:
                 if cfg.get("category") == args.category:
                     update_sources_config(sources_config_path, "papers", name, cfg)
         else:
-            logger.error("Must specify book names or --category for --type books")
+            logger.error(
+                "Must specify book names, --category, or --all for --type books"
+            )
             return 1
 
     else:
