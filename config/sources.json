@@ -873,7 +873,158 @@
       "source": "https://www.math.ucdavis.edu/~linear/linear-guest.pdf",
       "split_method": "toc",
       "description": "Comprehensive free textbook from UC Davis covering all standard linear algebra topics",
-      "items": {}
+      "items": {
+        "chapter_01": {
+          "title": "What is Linear Algebra?",
+          "page_start": 9,
+          "page_end": 36,
+          "filename": "chapter_01_What_is_Linear_Algebra_.md"
+        },
+        "chapter_02": {
+          "title": "Systems of Linear Equations",
+          "page_start": 37,
+          "page_end": 70,
+          "filename": "chapter_02_Systems_of_Linear_Equations.md"
+        },
+        "chapter_03": {
+          "title": "The Simplex Method",
+          "page_start": 71,
+          "page_end": 82,
+          "filename": "chapter_03_The_Simplex_Method.md"
+        },
+        "chapter_04": {
+          "title": "Vectors in Space, n-Vectors",
+          "page_start": 83,
+          "page_end": 100,
+          "filename": "chapter_04_Vectors_in_Space__n_Vectors.md"
+        },
+        "chapter_05": {
+          "title": "Vector Spaces",
+          "page_start": 101,
+          "page_end": 110,
+          "filename": "chapter_05_Vector_Spaces.md"
+        },
+        "chapter_06": {
+          "title": "Linear Transformations",
+          "page_start": 111,
+          "page_end": 120,
+          "filename": "chapter_06_Linear_Transformations.md"
+        },
+        "chapter_07": {
+          "title": "Matrices",
+          "page_start": 121,
+          "page_end": 168,
+          "filename": "chapter_07_Matrices.md"
+        },
+        "chapter_08": {
+          "title": "Determinants",
+          "page_start": 169,
+          "page_end": 194,
+          "filename": "chapter_08_Determinants.md"
+        },
+        "chapter_09": {
+          "title": "Subspaces and Spanning Sets",
+          "page_start": 195,
+          "page_end": 202,
+          "filename": "chapter_09_Subspaces_and_Spanning_Sets.md"
+        },
+        "chapter_10": {
+          "title": "Linear Independence",
+          "page_start": 203,
+          "page_end": 212,
+          "filename": "chapter_10_Linear_Independence.md"
+        },
+        "chapter_11": {
+          "title": "Basis and Dimension",
+          "page_start": 213,
+          "page_end": 224,
+          "filename": "chapter_11_Basis_and_Dimension.md"
+        },
+        "chapter_12": {
+          "title": "Eigenvalues and Eigenvectors",
+          "page_start": 225,
+          "page_end": 240,
+          "filename": "chapter_12_Eigenvalues_and_Eigenvectors.md"
+        },
+        "chapter_13": {
+          "title": "Diagonalization",
+          "page_start": 241,
+          "page_end": 252,
+          "filename": "chapter_13_Diagonalization.md"
+        },
+        "chapter_14": {
+          "title": "Orthonormal Bases and Complements",
+          "page_start": 253,
+          "page_end": 276,
+          "filename": "chapter_14_Orthonormal_Bases_and_Complements.md"
+        },
+        "chapter_15": {
+          "title": "Diagonalizing Symmetric Matrices",
+          "page_start": 277,
+          "page_end": 284,
+          "filename": "chapter_15_Diagonalizing_Symmetric_Matrices.md"
+        },
+        "chapter_16": {
+          "title": "Kernel, Range, Nullity, Rank",
+          "page_start": 285,
+          "page_end": 302,
+          "filename": "chapter_16_Kernel__Range__Nullity__Rank.md"
+        },
+        "chapter_17": {
+          "title": "Least squares and Singular Values",
+          "page_start": 303,
+          "page_end": 314,
+          "filename": "chapter_17_Least_squares_and_Singular_Values.md"
+        },
+        "chapter_18": {
+          "title": "List of Symbols",
+          "page_start": 315,
+          "page_end": 316,
+          "filename": "chapter_18_List_of_Symbols.md"
+        },
+        "chapter_19": {
+          "title": "Fields",
+          "page_start": 317,
+          "page_end": 318,
+          "filename": "chapter_19_Fields.md"
+        },
+        "chapter_20": {
+          "title": "Online Resources",
+          "page_start": 319,
+          "page_end": 320,
+          "filename": "chapter_20_Online_Resources.md"
+        },
+        "chapter_21": {
+          "title": "Sample First Midterm",
+          "page_start": 321,
+          "page_end": 330,
+          "filename": "chapter_21_Sample_First_Midterm.md"
+        },
+        "chapter_22": {
+          "title": "Sample Second Midterm",
+          "page_start": 331,
+          "page_end": 340,
+          "filename": "chapter_22_Sample_Second_Midterm.md"
+        },
+        "chapter_23": {
+          "title": "Sample Final Exam",
+          "page_start": 341,
+          "page_end": 366,
+          "filename": "chapter_23_Sample_Final_Exam.md"
+        },
+        "chapter_24": {
+          "title": "Movie Scripts",
+          "page_start": 367,
+          "page_end": 431,
+          "filename": "chapter_24_Movie_Scripts.md"
+        },
+        "chapter_25": {
+          "title": "Index",
+          "page_start": 432,
+          "page_end": 436,
+          "filename": "chapter_25_Index.md"
+        }
+      }
     },
     "book_linear_algebra_axler": {
       "type": "pdf_book",
