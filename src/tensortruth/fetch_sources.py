@@ -304,20 +304,27 @@ Environment Variables:
 
             lib_config = config["libraries"][lib_name]
             logger.info(f"\n=== Scraping {lib_name} ===")
-            scrape_library(
-                lib_name,
-                lib_config,
-                library_docs_dir,
-                max_workers=args.workers,
-                output_format=args.format,
-                enable_cleanup=args.cleanup,
-                min_size=args.min_size,
-            )
 
-            # Auto-write to user's sources.json after successful fetch
-            update_sources_config(
-                sources_config_path, "libraries", lib_name, lib_config
-            )
+            try:
+                scrape_library(
+                    lib_name,
+                    lib_config,
+                    library_docs_dir,
+                    max_workers=args.workers,
+                    output_format=args.format,
+                    enable_cleanup=args.cleanup,
+                    min_size=args.min_size,
+                )
+
+                # Auto-write to user's sources.json after successful fetch
+                update_sources_config(
+                    sources_config_path, "libraries", lib_name, lib_config
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to scrape library {lib_name}: {e}. Continuing with next library..."
+                )
+                continue
 
     elif args.type == "papers":
         # Paper fetching
@@ -340,18 +347,25 @@ Environment Variables:
                 logger.info(f"Fetching category: {category_name}")
                 logger.info(f"{'=' * 60}")
 
-                fetch_paper_category(
-                    category_name,
-                    category_config,
-                    library_docs_dir,
-                    output_format=args.output_format,
-                    converter=args.converter,
-                )
+                try:
+                    fetch_paper_category(
+                        category_name,
+                        category_config,
+                        library_docs_dir,
+                        output_format=args.output_format,
+                        converter=args.converter,
+                    )
 
-                # Update sources.json
-                update_sources_config(
-                    sources_config_path, "papers", category_name, category_config
-                )
+                    # Update sources.json
+                    update_sources_config(
+                        sources_config_path, "papers", category_name, category_config
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to fetch paper category {category_name}: {e}. "
+                        "Continuing with next category..."
+                    )
+                    continue
 
             return 0
 
@@ -416,18 +430,22 @@ Environment Variables:
                 )
         else:
             # Fetch entire category
-            fetch_paper_category(
-                args.category,
-                category_config,
-                library_docs_dir,
-                output_format=args.output_format,
-                converter=args.converter,
-            )
+            try:
+                fetch_paper_category(
+                    args.category,
+                    category_config,
+                    library_docs_dir,
+                    output_format=args.output_format,
+                    converter=args.converter,
+                )
 
-        # Auto-write to user's sources.json after successful fetch
-        update_sources_config(
-            sources_config_path, "papers", args.category, category_config
-        )
+                # Auto-write to user's sources.json after successful fetch
+                update_sources_config(
+                    sources_config_path, "papers", args.category, category_config
+                )
+            except Exception as e:
+                logger.error(f"Failed to fetch paper category {args.category}: {e}")
+                return 1
 
     elif args.type == "books":
         # Book fetching
@@ -452,18 +470,25 @@ Environment Variables:
                 logger.info(f"Fetching: {book_config.get('title')}")
                 logger.info(f"{'=' * 60}")
 
-                if fetch_book(
-                    book_name,
-                    book_config,
-                    library_docs_dir,
-                    converter=args.converter,
-                    pages_per_chunk=args.pages_per_chunk,
-                ):
-                    success_count += 1
-                    # Update sources.json after each successful fetch
-                    update_sources_config(
-                        sources_config_path, "papers", book_name, book_config
+                try:
+                    if fetch_book(
+                        book_name,
+                        book_config,
+                        library_docs_dir,
+                        converter=args.converter,
+                        pages_per_chunk=args.pages_per_chunk,
+                    ):
+                        success_count += 1
+                        # Update sources.json after each successful fetch
+                        update_sources_config(
+                            sources_config_path, "papers", book_name, book_config
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to fetch book {book_name} ({book_config.get('title')}): {e}. "
+                        "Continuing with next book..."
                     )
+                    continue
 
             logger.info(f"\n{'=' * 60}")
             logger.info(
@@ -484,33 +509,45 @@ Environment Variables:
 
                 book_config = all_books[book_name]
                 logger.info(f"\n=== Fetching {book_name} ===")
-                fetch_book(
-                    book_name,
-                    book_config,
+
+                try:
+                    fetch_book(
+                        book_name,
+                        book_config,
+                        library_docs_dir,
+                        converter=args.converter,
+                        pages_per_chunk=args.pages_per_chunk,
+                    )
+
+                    # Update sources.json
+                    update_sources_config(
+                        sources_config_path, "papers", book_name, book_config
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to fetch book {book_name}: {e}. "
+                        "Continuing with next book..."
+                    )
+                    continue
+
+        elif args.category:
+            # Fetch all books in category
+            try:
+                fetch_book_category(
+                    args.category,
+                    config,
                     library_docs_dir,
                     converter=args.converter,
                     pages_per_chunk=args.pages_per_chunk,
                 )
 
-                # Update sources.json
-                update_sources_config(
-                    sources_config_path, "papers", book_name, book_config
-                )
-
-        elif args.category:
-            # Fetch all books in category
-            fetch_book_category(
-                args.category,
-                config,
-                library_docs_dir,
-                converter=args.converter,
-                pages_per_chunk=args.pages_per_chunk,
-            )
-
-            # Update all books in category
-            for name, cfg in all_books.items():
-                if cfg.get("category") == args.category:
-                    update_sources_config(sources_config_path, "papers", name, cfg)
+                # Update all books in category
+                for name, cfg in all_books.items():
+                    if cfg.get("category") == args.category:
+                        update_sources_config(sources_config_path, "papers", name, cfg)
+            except Exception as e:
+                logger.error(f"Failed to fetch book category {args.category}: {e}")
+                return 1
         else:
             logger.error(
                 "Must specify book names, --category, or --all for --type books"

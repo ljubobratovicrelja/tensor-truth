@@ -323,9 +323,15 @@ def fetch_book_category(
         logger.info(f"Fetching: {book_config.get('title')}")
         logger.info(f"{'=' * 60}\n")
 
-        if fetch_book(
-            book_name, book_config, output_base_dir, converter, pages_per_chunk
-        ):
-            success_count += 1
+        try:
+            if fetch_book(
+                book_name, book_config, output_base_dir, converter, pages_per_chunk
+            ):
+                success_count += 1
+        except Exception as e:
+            logger.error(
+                f"Failed to fetch book {book_name} ({book_config.get('title')}): {e}. "
+            )
+            continue
 
     logger.info(f"\n✅ Successfully fetched {success_count}/{len(books)} books")
