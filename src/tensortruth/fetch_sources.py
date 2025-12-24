@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 from .cli_paths import get_library_docs_dir, get_sources_config_path
 from .scrapers.arxiv import fetch_arxiv_paper, fetch_paper_category
+from .scrapers.book import fetch_book, fetch_book_category
 from .scrapers.common import process_url
 from .scrapers.doxygen import fetch_doxygen_urls
 from .scrapers.sphinx import fetch_inventory
@@ -126,6 +127,13 @@ Examples:
   # Fetch papers in a category
   tensor-truth-docs --type papers --category dl_foundations
 
+  # Fetch books (auto-splits by TOC or page chunks)
+  tensor-truth-docs --type books book_linear_algebra_cherney
+  tensor-truth-docs --type books --category linear_algebra --converter marker
+
+  # Customize page chunking for books without TOC
+  tensor-truth-docs --type books book_deep_learning_goodfellow --pages-per-chunk 20
+
   # Validate sources
   tensor-truth-docs --validate
 
@@ -168,13 +176,13 @@ Environment Variables:
     # Source type arguments
     parser.add_argument(
         "--type",
-        choices=["library", "papers"],
+        choices=["library", "papers", "books"],
         help="Type of source to fetch",
     )
 
     parser.add_argument(
         "--category",
-        help="Paper category name (for --type papers)",
+        help="Category name (for --type papers or --type books)",
     )
 
     parser.add_argument(
@@ -190,6 +198,12 @@ Environment Variables:
     )
 
     # Fetching options
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=MAX_WORKERS,
+        help=f"Number of parallel workers for library scraping (default: {MAX_WORKERS})",
+    )
 
     parser.add_argument(
         "--output-format",
@@ -203,8 +217,8 @@ Environment Variables:
         choices=["pymupdf", "marker"],
         default="pymupdf",
         help=(
-            "Markdown converter selection. Both are AI "
-            "powered (pymupdf.layout is used)"
+            "Markdown converter selection for papers/books. "
+            "Both are AI powered (pymupdf.layout is used)"
         ),
     )
 
@@ -227,6 +241,17 @@ Environment Variables:
         default=0,
         metavar="CHARS",
         help="Minimum file size in characters for library docs (skip smaller files)",
+    )
+
+    parser.add_argument(
+        "--pages-per-chunk",
+        type=int,
+        default=15,
+        metavar="N",
+        help=(
+            "Pages per chunk for books without TOC or with split_method='none'/'manual' "
+            "(default: 15)"
+        ),
     )
 
     args = parser.parse_args()
@@ -360,9 +385,62 @@ Environment Variables:
             sources_config_path, "papers", args.category, category_config
         )
 
+    elif args.type == "books":
+        # Book fetching
+        # Books are stored in config["papers"] with type="pdf_book"
+        all_books = {
+            name: cfg
+            for name, cfg in config.get("papers", {}).items()
+            if cfg.get("type") == "pdf_book"
+        }
+
+        if args.libraries:
+            # Fetch specific books by name
+            for book_name in args.libraries:
+                if book_name not in all_books:
+                    logger.error(
+                        f"Book '{book_name}' not found. "
+                        "Use --list to see available books."
+                    )
+                    continue
+
+                book_config = all_books[book_name]
+                logger.info(f"\n=== Fetching {book_name} ===")
+                fetch_book(
+                    book_name,
+                    book_config,
+                    library_docs_dir,
+                    converter=args.converter,
+                    pages_per_chunk=args.pages_per_chunk,
+                )
+
+                # Update sources.json
+                update_sources_config(
+                    sources_config_path, "papers", book_name, book_config
+                )
+
+        elif args.category:
+            # Fetch all books in category
+            fetch_book_category(
+                args.category,
+                config,
+                library_docs_dir,
+                converter=args.converter,
+                pages_per_chunk=args.pages_per_chunk,
+            )
+
+            # Update all books in category
+            for name, cfg in all_books.items():
+                if cfg.get("category") == args.category:
+                    update_sources_config(sources_config_path, "papers", name, cfg)
+        else:
+            logger.error("Must specify book names or --category for --type books")
+            return 1
+
     else:
         logger.error(
-            "Must specify --type library or --type papers, or provide library names directly"
+            "Must specify --type library, --type papers, or --type books, "
+            "or provide library names directly"
         )
         return 1
 

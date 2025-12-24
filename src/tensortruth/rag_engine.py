@@ -194,6 +194,7 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
         request_timeout=300.0,
         temperature=params.get("temperature", 0.3),
         context_window=params.get("context_window", 16384),
+        thinking=True,
         additional_kwargs={
             "num_ctx": params.get("context_window", 16384),
             "options": ollama_options,

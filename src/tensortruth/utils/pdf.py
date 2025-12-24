@@ -60,6 +60,58 @@ def download_pdf(url: str, output_path: Union[str, Path]) -> bool:
         return False
 
 
+def download_pdf_with_headers(url: str, output_path: Union[str, Path]) -> bool:
+    """Download PDF from URL with browser-like headers to bypass bot detection.
+
+    This alternative function adds User-Agent and other headers to mimic
+    a real browser request, which helps bypass basic bot detection on
+    some academic/research websites.
+
+    Args:
+        url: PDF URL
+        output_path: Destination file path
+
+    Returns:
+        True if successful, False otherwise
+    """
+    logger.info(f"Downloading PDF from {url} (with browser headers)")
+
+    # Browser-like headers to bypass bot detection
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;q=0.9,"
+            "image/avif,image/webp,image/apng,*/*;q=0.8"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Cache-Control": "max-age=0",
+    }
+
+    try:
+        response = requests.get(url, stream=True, timeout=60, headers=headers)
+        response.raise_for_status()
+
+        with open(output_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        logger.info(f"✅ Downloaded to {output_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to download {url}: {e}")
+        return False
+
+
 def extract_toc(pdf_path: Union[str, Path]) -> List[Dict[str, Any]]:
     """Extract table of contents from PDF.
 
@@ -131,10 +183,21 @@ def get_pdf_page_count(pdf_path: Union[str, Path]) -> int:
         pdf_path: Path to PDF file
 
     Returns:
-        Page count (0 on error)
+        Page count (0 on error or if not a PDF)
     """
     try:
         doc = fitz.open(pdf_path)
+
+        # Check if it's actually a PDF (not HTML or other format)
+        # PDF format strings can be "PDF", "PDF 1.4", "PDF 1.6", etc.
+        doc_format = doc.metadata.get("format", "").upper()
+        if doc_format and not doc_format.startswith("PDF"):
+            logger.warning(
+                f"File is not a PDF (format: {doc.metadata.get('format')}): {pdf_path}"
+            )
+            doc.close()
+            return 0
+
         count = doc.page_count
         doc.close()
         return count
