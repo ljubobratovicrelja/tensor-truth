@@ -296,20 +296,6 @@ def _parse_llm_json_response(response: str) -> Dict[str, Any]:
 # ============================================================================
 
 
-def get_source_url_for_arxiv(arxiv_id: str) -> str:
-    """Generate ArXiv URL from ID.
-
-    Handles both old (hep-th/9901001) and new (1234.5678) formats.
-
-    Args:
-        arxiv_id: ArXiv paper ID
-
-    Returns:
-        Full ArXiv URL
-    """
-    return f"https://arxiv.org/abs/{arxiv_id}"
-
-
 def _get_library_info_from_config(
     module_name: str, sources_config: Dict
 ) -> Optional[Dict]:
@@ -340,48 +326,26 @@ def _get_library_info_from_config(
     return None
 
 
-def _get_paper_collection_info_from_config(
-    module_name: str, sources_config: Dict
-) -> Optional[Dict]:
-    """Get paper collection information from config for a module.
+def _get_paper_group_metadata(module_name: str, sources_config: Dict) -> Dict[str, Any]:
+    """Get paper group metadata from sources.json.
 
     Args:
-        module_name: Module directory name (e.g., "dl_foundations")
-        sources_config: Contents of config/sources.json
+        module_name: Module/category name (e.g., "dl_foundations")
+        sources_config: Loaded sources.json config
 
     Returns:
-        Dictionary with display_name, description or None if not found
+        Dict with group_display_name and description
     """
+    if not sources_config:
+        return {}
+
     papers = sources_config.get("papers", {})
+    category = papers.get(module_name, {})
 
-    if module_name in papers:
-        return papers[module_name]
-
-    return None
-
-
-def _extract_arxiv_id_from_filename(filename: str) -> Optional[str]:
-    """Extract ArXiv ID from filename.
-
-    Handles formats:
-    - 1512.03385.pdf -> 1512.03385
-    - 2103.00020.md -> 2103.00020
-
-    Args:
-        filename: Filename (with or without extension)
-
-    Returns:
-        ArXiv ID or None if not an ArXiv file
-    """
-    # Remove extension
-    stem = Path(filename).stem
-
-    # Match pattern: YYMM.NNNNN (standard ArXiv ID format)
-    match = re.match(r"^(\d{4}\.\d{5})$", stem)
-    if match:
-        return match.group(1)
-
-    return None
+    return {
+        "group_display_name": category.get("display_name"),
+        "group_description": category.get("description"),
+    }
 
 
 def _get_arxiv_metadata_from_config(
@@ -398,13 +362,19 @@ def _get_arxiv_metadata_from_config(
         Dict with title, authors, year, source_url or None if not found
     """
     if not sources_config:
-        return None
+        raise ValueError("sources_config is required.")
 
     papers = sources_config.get("papers", {})
+
+    if not papers:
+        raise ValueError("No 'papers' section found in sources_config.")
+
     category = papers.get(module_name)
 
     if not category or "items" not in category:
-        return None
+        raise ValueError(
+            f"Module '{module_name}' not found in 'papers' section of sources_config."
+        )
 
     # Look up by arxiv ID key
     item = category["items"].get(arxiv_id)
@@ -419,22 +389,6 @@ def _get_arxiv_metadata_from_config(
         "source_url": item.get("url"),
         "arxiv_id": arxiv_id,
     }
-
-
-def _get_source_url_for_library(
-    module_name: str, sources_config: Dict
-) -> Optional[str]:
-    """Get base documentation URL for a library module.
-
-    Args:
-        module_name: Name of library/module (e.g., "pytorch_2.9")
-        sources_config: Contents of config/sources.json
-
-    Returns:
-        Base documentation URL or None if not found
-    """
-    lib_info = _get_library_info_from_config(module_name, sources_config)
-    return lib_info.get("doc_root") if lib_info else None
 
 
 def format_authors(authors: Union[str, List, None]) -> Optional[str]:
@@ -478,27 +432,6 @@ def format_authors(authors: Union[str, List, None]) -> Optional[str]:
         return f"{last_name} et al."
 
 
-def create_display_name(title: Optional[str], authors: Optional[str] = None) -> str:
-    """Create pretty display name for citation.
-
-    Format: "Title, Authors" or "Title" if no authors.
-
-    Args:
-        title: Document title
-        authors: Author string (already formatted)
-
-    Returns:
-        Display name for UI
-    """
-    if not title:
-        return "Unknown Document"
-
-    if authors:
-        return f"{title}, {authors}"
-    else:
-        return title
-
-
 # ============================================================================
 # Specialized Metadata Extraction Functions
 # ============================================================================
@@ -537,6 +470,47 @@ def get_document_type_from_config(module_name: str, sources_config: Dict) -> str
     return "paper"
 
 
+def _get_book_metadata_from_config(
+    module_name: str, sources_config: Dict
+) -> Dict[str, Any]:
+    """Get book metadata from sources.json.
+
+    Args:
+        module_name: Module name (e.g., "book_linear_algebra_cherney")
+        sources_config: Loaded sources.json config
+
+    Returns:
+        Dict with title, authors, source_url, book_display_name
+    """
+    if not sources_config:
+        raise ValueError("sources_config is required.")
+
+    book_info = sources_config.get(module_name, {})
+
+    if not book_info or book_info.get("type") != "pdf_book":
+        raise ValueError(
+            f"Book '{module_name}' not found in sources.json or is not a pdf_book type."
+        )
+
+    title = book_info.get("title")
+    authors = book_info.get("authors", [])
+
+    # Convert list to string if needed
+    if isinstance(authors, list):
+        authors = ", ".join(authors)
+
+    # Format for display
+    formatted_authors = format_authors(authors)
+    book_display_name = f"{title}, {formatted_authors}" if formatted_authors else title
+
+    return {
+        "title": title,
+        "authors": authors,
+        "source_url": book_info.get("source"),
+        "book_display_name": book_display_name,
+    }
+
+
 def extract_arxiv_metadata_from_config(
     file_path: Path, module_name: str, sources_config: Dict
 ) -> Optional[Dict[str, Any]]:
@@ -550,20 +524,27 @@ def extract_arxiv_metadata_from_config(
     Returns:
         Complete metadata dict if ArXiv ID found in config, None otherwise
     """
-    arxiv_id = _extract_arxiv_id_from_filename(file_path.name)
-    if not arxiv_id:
-        return None
+
+    arxiv_id = file_path.stem
 
     metadata = _get_arxiv_metadata_from_config(arxiv_id, module_name, sources_config)
-    if metadata:
-        logger.info(f"Using ArXiv metadata from sources.json for {file_path.name}")
-        # Format authors and create display name
-        if metadata.get("authors"):
-            metadata["authors"] = format_authors(metadata["authors"])
-        metadata["display_name"] = create_display_name(
-            metadata.get("title"), metadata.get("authors")
+
+    if not metadata:
+        raise ValueError(
+            f"ArXiv ID {arxiv_id} not found in sources.json under module {module_name}."
         )
-        metadata["doc_type"] = "paper"
+
+    title = metadata.get("title")
+    authors = format_authors(
+        metadata.get("authors")
+    )  # Converting to first author et al.
+
+    metadata["display_name"] = f"{title}, {authors}"
+    metadata["doc_type"] = "paper"
+
+    # Add group-level metadata for UI display
+    group_metadata = _get_paper_group_metadata(module_name, sources_config)
+    metadata.update(group_metadata)
 
     return metadata
 
@@ -573,106 +554,68 @@ def extract_book_metadata(
     file_path: Path,
     module_name: str,
     sources_config: Dict,
-    ollama_url: str,
     book_metadata_cache: Dict[str, Dict],
 ) -> Dict[str, Any]:
-    """Extract metadata for book chapters with caching.
+    """Extract metadata for book chapters from sources.json.
 
     Extraction strategy:
-    1. Try PDF metadata from companion PDF file
-    2. Fall back to PDF filename parsing (Title__Author format)
-    3. Fall back to LLM extraction from first chapter
+    1. Get book-level metadata from sources.json (title, authors, URL)
+    2. Extract chapter number from filename if present
+    3. Build display_name with chapter info for individual chapters
+    4. Include book_display_name for UI display (same across all chapters)
 
     Args:
-        doc: LlamaIndex Document object
+        doc: LlamaIndex Document object (unused, kept for signature compatibility)
         file_path: Path to markdown chapter file
         module_name: Module name (e.g., "book_linear_algebra_cherney")
         sources_config: Contents of config/sources.json
-        ollama_url: Ollama API URL for LLM fallback
-        book_metadata_cache: Cache dict keyed by book directory path
+        book_metadata_cache: Cache dict keyed by module name
 
     Returns:
-        Metadata dict with title, authors, display_name, doc_type, source_url
+        Metadata dict with title, authors, display_name, book_display_name, doc_type, source_url
     """
-    book_dir = file_path.parent
-    book_key = str(book_dir)
-
-    # Check cache first
-    if book_key in book_metadata_cache:
-        metadata = book_metadata_cache[book_key].copy()
+    # Check cache first (keyed by module name, not book_dir)
+    if module_name in book_metadata_cache:
+        metadata = book_metadata_cache[module_name].copy()
     else:
-        # Look for PDF in the same directory
-        pdf_files = list(book_dir.glob("*.pdf"))
-
-        if pdf_files:
-            pdf_path = pdf_files[0]
-            # Try PDF metadata first
-            pdf_metadata = extract_pdf_metadata(pdf_path)
-            has_title = pdf_metadata and pdf_metadata.get("title")
-            has_authors = pdf_metadata and pdf_metadata.get("authors")
-
-            if has_title and has_authors:
-                logger.debug(f"  Extracted from PDF metadata: {pdf_path.name}")
-                logger.debug(f"  Title: {pdf_metadata.get('title')}")
-                logger.debug(f"  Author(s): {pdf_metadata.get('authors')}")
-                metadata = pdf_metadata
-            else:
-                # Fallback: parse PDF filename (Title__Author format)
-                pdf_stem = pdf_path.stem.rstrip("_")
-                filename_parts = pdf_stem.split("__")
-
-                logger.debug(
-                    f"  Extracting metadata from PDF filename: {pdf_path.name}"
-                )
-                if len(filename_parts) >= 2:
-                    title = filename_parts[0].replace("_", " ").strip()
-                    authors = ", ".join(
-                        part.replace("_", " ").strip()
-                        for part in filename_parts[1:]
-                        if part.strip()
-                    )
-                    metadata = {
-                        "title": title,
-                        "authors": authors if authors else None,
-                    }
-                    logger.debug(f"  Title: {title}")
-                    logger.debug(f"  Author(s): {authors if authors else 'N/A'}")
-                else:
-                    # LLM fallback on first chapter
-                    logger.debug("  Using LLM to extract metadata...")
-                    metadata = extract_metadata_with_llm(doc, file_path, ollama_url)
-        else:
-            # No PDF: use LLM on first chapter
-            logger.debug("  No PDF found, using LLM to extract metadata...")
-            metadata = extract_metadata_with_llm(doc, file_path, ollama_url)
-
-        # Cache the metadata for this book
-        book_metadata_cache[book_key] = metadata.copy()
+        # Extract book metadata from sources.json
+        metadata = _get_book_metadata_from_config(module_name, sources_config)
+        logger.info(
+            f"Using book metadata from config: {metadata.get('book_display_name')}"
+        )
+        # Cache the metadata for this book module
+        book_metadata_cache[module_name] = metadata.copy()
 
     # Set doc_type
     metadata["doc_type"] = "book"
 
-    # Add source URL from config if available
-    if module_name in sources_config:
-        book_config = sources_config[module_name]
-        if "source" in book_config:
-            metadata["source_url"] = book_config["source"]
+    # Extract chapter number from filename if present
+    # Supports formats: Ch01, Ch.01, Chapter_01, __01_, etc.
+    chapter_match = re.search(
+        r"(?:ch(?:apter)?[._\s]?(\d+)|__(\d+)_)",
+        file_path.stem,
+        re.IGNORECASE,
+    )
 
-    # Build display name with chapter info if available
-    chapter_match = re.search(r"__(\d+)_", file_path.stem, re.IGNORECASE)
-    if chapter_match and metadata.get("title"):
-        chapter_num = chapter_match.group(1)
-        formatted_authors = format_authors(metadata.get("authors"))
-        if formatted_authors:
-            metadata["display_name"] = (
-                f"{metadata['title']} Ch.{chapter_num} - {formatted_authors}"
-            )
-        else:
-            metadata["display_name"] = f"{metadata['title']} Ch.{chapter_num}"
+    title = metadata.get("title")
+    authors = metadata.get("authors")
+    formatted_authors = format_authors(authors)
+
+    if chapter_match:
+        # Get chapter number from whichever group matched
+        chapter_num = chapter_match.group(1) or chapter_match.group(2)
+        # Build chapter-specific display name
+        chapter_title = f"{title} Ch.{chapter_num}"
+        metadata["display_name"] = (
+            f"{chapter_title}, {formatted_authors}"
+            if formatted_authors
+            else chapter_title
+        )
+        logger.debug(f"  Chapter {chapter_num}: {file_path.name}")
     else:
-        formatted_authors = format_authors(metadata.get("authors"))
-        metadata["display_name"] = create_display_name(
-            metadata.get("title"), formatted_authors
+        # No chapter number found, use book title as-is
+        metadata["display_name"] = (
+            f"{title}, {formatted_authors}" if formatted_authors else title
         )
 
     return metadata
@@ -721,112 +664,6 @@ def extract_library_metadata_from_config(
     }
 
 
-def extract_paper_metadata(
-    doc: Document,
-    file_path: Path,
-    module_name: Optional[str] = None,
-    sources_config: Optional[Dict] = None,
-    ollama_url: Optional[str] = None,
-    use_llm_fallback: bool = True,
-) -> Dict[str, Any]:
-    """Extract metadata for non-ArXiv papers.
-
-    Extraction strategy:
-    1. Try YAML header (for markdown files)
-    2. Try PDF metadata (for PDF files)
-    3. Optionally use LLM fallback
-    4. Apply config overrides for paper collections
-
-    Args:
-        doc: LlamaIndex Document object
-        file_path: Path to document file
-        module_name: Module name (optional, for config overrides)
-        sources_config: Contents of config/sources.json (optional)
-        ollama_url: Ollama API URL for LLM fallback (optional)
-        use_llm_fallback: Whether to use LLM if explicit extraction fails
-
-    Returns:
-        Metadata dict with title, authors, display_name, doc_type, source_url
-    """
-    metadata = {}
-
-    # Try explicit extraction first
-    explicit_metadata = extract_explicit_metadata(doc, file_path)
-
-    # Check if we have complete metadata from explicit sources
-    has_complete = (
-        explicit_metadata
-        and explicit_metadata.get("title")
-        and explicit_metadata.get("authors")
-    )
-
-    if has_complete:
-        metadata.update(explicit_metadata)
-        logger.info(f"Using explicit metadata for {file_path.name}")
-    else:
-        # Check if this is a paper collection (will be overridden anyway)
-        is_paper_collection = False
-        if sources_config and module_name:
-            paper_info = _get_paper_collection_info_from_config(
-                module_name, sources_config
-            )
-            is_paper_collection = bool(paper_info and paper_info.get("display_name"))
-
-        # Use LLM fallback if enabled and not a paper collection
-        if use_llm_fallback and ollama_url and not is_paper_collection:
-            logger.info(f"Using LLM extraction for {file_path.name}")
-            llm_metadata = extract_metadata_with_llm(doc, file_path, ollama_url)
-            # Merge: keep year from explicit if available
-            if explicit_metadata:
-                metadata.update(explicit_metadata)
-            metadata.update(llm_metadata)
-        elif explicit_metadata:
-            # Just use what we got from explicit extraction (e.g., year only)
-            metadata.update(explicit_metadata)
-
-    # Apply paper collection override if applicable
-    if sources_config and module_name:
-        paper_info = _get_paper_collection_info_from_config(module_name, sources_config)
-        if paper_info and paper_info.get("display_name"):
-            # Override with collection name for non-ArXiv papers
-            metadata["title"] = paper_info["display_name"]
-            metadata["authors"] = None
-
-    # Format authors
-    if metadata.get("authors"):
-        metadata["authors"] = format_authors(metadata["authors"])
-
-    # Create display name
-    title = metadata.get("title")
-    if title:
-        metadata["display_name"] = create_display_name(title, metadata.get("authors"))
-    else:
-        logger.warning(
-            f"No title found for {file_path.name}, using filename as display name"
-        )
-        metadata["display_name"] = file_path.stem.replace("_", " ")
-
-    # Generate source URL if not set
-    if not metadata.get("source_url"):
-        if "arxiv_id" in metadata:
-            metadata["source_url"] = get_source_url_for_arxiv(metadata["arxiv_id"])
-        elif sources_config and module_name:
-            metadata["source_url"] = _get_source_url_for_library(
-                module_name, sources_config
-            )
-
-    # Set doc_type
-    metadata["doc_type"] = "paper"
-
-    logger.info(
-        f"Final metadata for {file_path.name}: "
-        f"display_name={metadata['display_name']}, "
-        f"doc_type={metadata['doc_type']}"
-    )
-
-    return metadata
-
-
 def extract_uploaded_pdf_metadata(
     doc: Document, file_path: Path, ollama_url: str
 ) -> Dict[str, Any]:
@@ -848,21 +685,28 @@ def extract_uploaded_pdf_metadata(
     # Force doc_type to uploaded_pdf
     metadata["doc_type"] = "uploaded_pdf"
 
+    # Format title
+    if not metadata.get("title"):
+        logger.warning(f"No title found in LLM extraction for {file_path.name}.")
+        # Simply use filename as title fallback
+        metadata["title"] = file_path.stem
+
+    title = metadata["title"]
+
     # Format authors
-    if metadata.get("authors"):
-        metadata["authors"] = format_authors(metadata["authors"])
-
-    # Create display name
-    title = metadata.get("title")
-    if title:
-        metadata["display_name"] = create_display_name(title, metadata.get("authors"))
+    if not metadata.get("authors"):
+        logger.warning(f"No authors found in LLM extraction for {file_path.name}.")
+        metadata["authors"] = ""
+        formatted_authors = ""
     else:
-        logger.warning(
-            f"No title found for {file_path.name}, using filename as display name"
-        )
-        metadata["display_name"] = file_path.stem.replace("_", " ")
+        formatted_authors = format_authors(metadata["authors"])
 
-    # No source URL for uploaded PDFs
-    metadata["source_url"] = None
+    if not formatted_authors:
+        metadata["display_name"] = title
+    else:
+        metadata["display_name"] = f"{title}, {formatted_authors}"
+
+    # Add source URL as file URI
+    metadata["source_url"] = file_path.as_uri()
 
     return metadata

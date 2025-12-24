@@ -22,14 +22,12 @@ from tensortruth.cli_paths import (
     get_library_docs_dir,
     get_sources_config_path,
 )
-from tensortruth.core.ollama import get_ollama_url
 from tensortruth.fetch_sources import load_user_sources
 from tensortruth.rag_engine import get_embed_model
 from tensortruth.utils.metadata import (
     extract_arxiv_metadata_from_config,
     extract_book_metadata,
     extract_library_metadata_from_config,
-    extract_paper_metadata,
     get_document_type_from_config,
 )
 from tensortruth.utils.validation import validate_module_for_build
@@ -38,12 +36,114 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("BUILDER")
 
 
+def extract_metadata(module_name, documents):
+    """Extract metadata for a list of documents in a module."""
+
+    # 2a. Extract Metadata
+    logger.info("Extracting document metadata...")
+
+    # Load sources.json config
+    sources_config = None
+    sources_path = Path("config/sources.json")
+    if sources_path.exists():
+        with open(sources_path, "r", encoding="utf-8") as f:
+            sources_config = json.load(f)
+
+    # Get document type from config
+    doc_type = get_document_type_from_config(module_name, sources_config)
+    logger.info(f"Module '{module_name}' document type: {doc_type}")
+
+    # Book metadata cache (keyed by book directory)
+    book_metadata_cache = {}
+
+    # File-level metadata cache to avoid re-extracting for each page
+    # (SimpleDirectoryReader creates one Document per PDF page)
+    file_metadata_cache = {}
+
+    # Extract metadata for each document
+    for i, doc in enumerate(documents):
+        file_path = Path(doc.metadata.get("file_path", ""))
+
+        try:
+            # Check if we've already extracted metadata for this file
+            file_key = str(file_path)
+            if file_key in file_metadata_cache:
+                # Reuse cached metadata (same file, different page)
+                metadata = file_metadata_cache[file_key].copy()
+                # Inject metadata and continue
+                for field in [
+                    "display_name",
+                    "authors",
+                    "source_url",
+                    "doc_type",
+                    "book_display_name",
+                    "group_display_name",
+                ]:
+                    if field in metadata:
+                        doc.metadata[field] = metadata[field]
+                continue
+
+            # Extract metadata based on document type
+            if doc_type == "pdf_book":
+                # Book extraction with caching
+                metadata = extract_book_metadata(
+                    doc,
+                    file_path,
+                    module_name,
+                    sources_config,
+                    book_metadata_cache,
+                )
+            elif doc_type in ("sphinx", "doxygen"):
+                # Library documentation - extract once per module
+                if i == 0:
+                    lib_metadata = extract_library_metadata_from_config(
+                        module_name, sources_config
+                    )
+                    logger.info(
+                        f"Using library metadata: {lib_metadata['display_name']}"
+                    )
+                # Use the same metadata for all library docs
+                metadata = lib_metadata.copy()
+            elif doc_type == "arxiv":
+                # Use dedicated ArXiv extractor
+                metadata = extract_arxiv_metadata_from_config(
+                    file_path, module_name, sources_config
+                )
+            else:
+                raise ValueError(f"Unknown document type: {doc_type}")
+
+            # Cache metadata for this file to avoid re-extraction for other pages
+            file_metadata_cache[file_key] = metadata.copy()
+
+            # Inject only essential metadata fields to avoid chunk size issues
+            # (LlamaIndex includes metadata in chunk context)
+            essential_fields = [
+                "display_name",
+                "authors",
+                "source_url",
+                "doc_type",
+                "group_display_name",  # For paper groups UI display
+                "book_display_name",  # For book UI display (same across all chapters)
+            ]
+            for field in essential_fields:
+                if field in metadata:
+                    doc.metadata[field] = metadata[field]
+
+            if (i + 1) % 10 == 0 or (i + 1) == len(documents):
+                logger.info(f"  Processed {i + 1}/{len(documents)} documents...")
+
+        except Exception as e:
+            logger.warning(f"Failed to extract metadata for {file_path.name}: {e}")
+            # Continue with default metadata
+
+    logger.info(f"Metadata extraction complete for {len(documents)} documents")
+
+
 def build_module(
     module_name,
     library_docs_dir,
     indexes_dir,
     chunk_sizes=[2048, 512, 256],
-    extract_metadata=True,
 ):
     """Build vector index for a documentation module.
 
@@ -93,111 +193,7 @@ def build_module(
         return
 
     # 2a. Extract Metadata
-    if extract_metadata:
-        logger.info("Extracting document metadata...")
-
-        # Load sources.json config
-        sources_config = None
-        sources_path = Path("config/sources.json")
-        if sources_path.exists():
-            with open(sources_path, "r", encoding="utf-8") as f:
-                sources_config = json.load(f)
-
-        # Get Ollama URL for LLM fallback
-        ollama_url = get_ollama_url()
-
-        # Get document type from config
-        doc_type = get_document_type_from_config(module_name, sources_config)
-        logger.info(f"Module '{module_name}' document type: {doc_type}")
-
-        # Book metadata cache (keyed by book directory)
-        book_metadata_cache = {}
-
-        # File-level metadata cache to avoid re-extracting for each page
-        # (SimpleDirectoryReader creates one Document per PDF page)
-        file_metadata_cache = {}
-
-        # Extract metadata for each document
-        for i, doc in enumerate(documents):
-            file_path = Path(doc.metadata.get("file_path", ""))
-
-            try:
-                # Check if we've already extracted metadata for this file
-                file_key = str(file_path)
-                if file_key in file_metadata_cache:
-                    # Reuse cached metadata (same file, different page)
-                    metadata = file_metadata_cache[file_key].copy()
-                    # Inject metadata and continue
-                    for field in ["display_name", "authors", "source_url", "doc_type"]:
-                        if field in metadata:
-                            doc.metadata[field] = metadata[field]
-                    continue
-
-                # Extract metadata based on document type
-                if doc_type == "pdf_book":
-                    # Book extraction with caching
-                    metadata = extract_book_metadata(
-                        doc,
-                        file_path,
-                        module_name,
-                        sources_config,
-                        ollama_url,
-                        book_metadata_cache,
-                    )
-                elif doc_type in ("sphinx", "doxygen"):
-                    # Library documentation - extract once per module
-                    if i == 0:
-                        lib_metadata = extract_library_metadata_from_config(
-                            module_name, sources_config
-                        )
-                        logger.info(
-                            f"Using library metadata: {lib_metadata['display_name']}"
-                        )
-                    # Use the same metadata for all library docs
-                    metadata = lib_metadata.copy()
-                else:
-                    # Papers (ArXiv or regular)
-                    # Try ArXiv lookup first
-                    metadata = extract_arxiv_metadata_from_config(
-                        file_path, module_name, sources_config
-                    )
-
-                    if not metadata:
-                        # Fallback to regular paper extraction
-                        # Disable LLM for library docs (shouldn't happen, but defensive)
-                        use_llm = doc_type not in ("sphinx", "doxygen")
-                        metadata = extract_paper_metadata(
-                            doc,
-                            file_path,
-                            module_name,
-                            sources_config,
-                            ollama_url,
-                            use_llm_fallback=use_llm,
-                        )
-
-                # Cache metadata for this file to avoid re-extraction for other pages
-                file_metadata_cache[file_key] = metadata.copy()
-
-                # Inject only essential metadata fields to avoid chunk size issues
-                # (LlamaIndex includes metadata in chunk context)
-                essential_fields = [
-                    "display_name",
-                    "authors",
-                    "source_url",
-                    "doc_type",
-                ]
-                for field in essential_fields:
-                    if field in metadata:
-                        doc.metadata[field] = metadata[field]
-
-                if (i + 1) % 10 == 0 or (i + 1) == len(documents):
-                    logger.info(f"  Processed {i + 1}/{len(documents)} documents...")
-
-            except Exception as e:
-                logger.warning(f"Failed to extract metadata for {file_path.name}: {e}")
-                # Continue with default metadata
-
-        logger.info(f"Metadata extraction complete for {len(documents)} documents")
+    extract_metadata(module_name, documents)
 
     # 3. Parse
     node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
@@ -297,12 +293,6 @@ Environment Variables:
         help="Chunk sizes for hierarchical parsing (default: 2048 512 128)",
     )
 
-    parser.add_argument(
-        "--no-extract-metadata",
-        action="store_true",
-        help="Skip metadata extraction (faster but less informative citations)",
-    )
-
     args = parser.parse_args()
 
     # Resolve paths (CLI args override env vars override defaults)
@@ -370,7 +360,6 @@ Environment Variables:
             library_docs_dir,
             indexes_dir,
             args.chunk_sizes,
-            extract_metadata=not args.no_extract_metadata,
         )
 
         logger.info("")

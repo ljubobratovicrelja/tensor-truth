@@ -47,8 +47,15 @@ def get_module_display_name(
         results = collection.peek(limit=1)
         if results["metadatas"] and len(results["metadatas"]) > 0:
             metadata = results["metadatas"][0]
-            display_name = metadata.get("display_name")
             doc_type = metadata.get("doc_type", "unknown")
+
+            # Prioritize group/book display names for UI (same across all items in group/book)
+            # Otherwise use individual display_name (for libraries, uploaded PDFs)
+            display_name = (
+                metadata.get("group_display_name")  # For paper groups
+                or metadata.get("book_display_name")  # For books
+                or metadata.get("display_name")  # Fallback for individual items
+            )
 
             if display_name:
                 # Remove chapter info like "Ch.01", "Ch.1-3", etc.

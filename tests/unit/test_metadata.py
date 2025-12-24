@@ -9,7 +9,6 @@ from llama_index.core.schema import Document
 
 from tensortruth.utils.metadata import (
     _parse_llm_json_response,
-    create_display_name,
     extract_arxiv_metadata_from_config,
     extract_explicit_metadata,
     extract_metadata_with_llm,
@@ -17,7 +16,6 @@ from tensortruth.utils.metadata import (
     extract_yaml_header_metadata,
     format_authors,
     get_document_type_from_config,
-    get_source_url_for_arxiv,
 )
 
 # ============================================================================
@@ -213,17 +211,6 @@ def test_parse_llm_json_response_invalid():
 # ============================================================================
 
 
-def test_get_source_url_for_arxiv():
-    """Test ArXiv URL generation."""
-    # New format
-    url = get_source_url_for_arxiv("1706.03762")
-    assert url == "https://arxiv.org/abs/1706.03762"
-
-    # Old format
-    url = get_source_url_for_arxiv("hep-th/9901001")
-    assert url == "https://arxiv.org/abs/hep-th/9901001"
-
-
 def test_format_authors_single():
     """Test author formatting with single author."""
     result = format_authors("John Doe")
@@ -282,24 +269,6 @@ def test_format_authors_list_input():
     authors_list = ["John Doe", "Jane Smith"]
     result = format_authors(authors_list)
     assert result == "John Doe, Jane Smith"
-
-
-def test_create_display_name_with_authors():
-    """Test display name creation with authors."""
-    result = create_display_name("Test Paper", "Doe et al.")
-    assert result == "Test Paper, Doe et al."
-
-
-def test_create_display_name_without_authors():
-    """Test display name creation without authors."""
-    result = create_display_name("Test Paper")
-    assert result == "Test Paper"
-
-
-def test_create_display_name_no_title():
-    """Test display name creation with no title."""
-    result = create_display_name(None)
-    assert result == "Unknown Document"
 
 
 # ============================================================================
@@ -370,7 +339,9 @@ def test_extract_arxiv_metadata_from_config_found():
 
     assert result is not None
     assert result["title"] == "Deep Residual Learning"
-    assert result["authors"] == "He et al."  # Should be formatted
+    assert (
+        result["authors"] == "Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun"
+    )  # Should be formatted
     assert result["display_name"] == "Deep Residual Learning, He et al."
     assert result["source_url"] == "https://arxiv.org/abs/1512.03385"
     assert result["doc_type"] == "paper"
@@ -381,18 +352,27 @@ def test_extract_arxiv_metadata_from_config_not_found():
     file_path = Path("9999.99999.pdf")
     sources_config = {"papers": {"dl_foundations": {"items": {}}}}
 
-    result = extract_arxiv_metadata_from_config(
-        file_path, "dl_foundations", sources_config
-    )
-    assert result is None
+    with pytest.raises(ValueError):
+        extract_arxiv_metadata_from_config(file_path, "dl_foundations", sources_config)
 
 
 def test_extract_arxiv_metadata_from_config_invalid_filename():
     """Test with non-ArXiv filename."""
     file_path = Path("regular_paper.pdf")
-    sources_config = {"papers": {"dl_foundations": {"items": {}}}}
+    sources_config = {
+        "papers": {
+            "dl_foundations": {
+                "items": {
+                    "1512.03385": {
+                        "title": "Deep Residual Learning",
+                        "authors": "Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun",
+                        "year": "2015",
+                        "url": "https://arxiv.org/abs/1512.03385",
+                    }
+                }
+            }
+        }
+    }
 
-    result = extract_arxiv_metadata_from_config(
-        file_path, "dl_foundations", sources_config
-    )
-    assert result is None
+    with pytest.raises(ValueError):
+        extract_arxiv_metadata_from_config(file_path, "dl_foundations", sources_config)
