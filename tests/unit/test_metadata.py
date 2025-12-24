@@ -9,16 +9,15 @@ from llama_index.core.schema import Document
 
 from tensortruth.utils.metadata import (
     _parse_llm_json_response,
-    classify_document_type,
     create_display_name,
-    extract_document_metadata,
+    extract_arxiv_metadata_from_config,
     extract_explicit_metadata,
     extract_metadata_with_llm,
     extract_pdf_metadata,
     extract_yaml_header_metadata,
     format_authors,
+    get_document_type_from_config,
     get_source_url_for_arxiv,
-    get_source_url_for_library,
 )
 
 # ============================================================================
@@ -225,29 +224,6 @@ def test_get_source_url_for_arxiv():
     assert url == "https://arxiv.org/abs/hep-th/9901001"
 
 
-def test_get_source_url_for_library_found():
-    """Test library URL lookup with valid module."""
-    sources_config = {
-        "libraries": {
-            "pytorch": {
-                "doc_root": "https://pytorch.org/docs/stable/",
-                "version": "2.9",
-            }
-        }
-    }
-
-    url = get_source_url_for_library("pytorch", sources_config)
-    assert url == "https://pytorch.org/docs/stable/"
-
-
-def test_get_source_url_for_library_not_found():
-    """Test library URL lookup with invalid module."""
-    sources_config = {"libraries": {}}
-
-    url = get_source_url_for_library("nonexistent", sources_config)
-    assert url is None
-
-
 def test_format_authors_single():
     """Test author formatting with single author."""
     result = format_authors("John Doe")
@@ -326,176 +302,97 @@ def test_create_display_name_no_title():
     assert result == "Unknown Document"
 
 
-def test_classify_document_type_uploaded_pdf():
-    """Test document type classification for uploaded PDFs."""
-    file_path = Path("pdf_abc123xyz.md")
-    doc_type = classify_document_type(file_path)
-    assert doc_type == "uploaded_pdf"
-
-
-def test_classify_document_type_book():
-    """Test document type classification for books."""
-    file_path = Path("library_docs/deep_learning_books/chapter1.md")
-    doc_type = classify_document_type(file_path)
-    assert doc_type == "book"
-
-
-def test_classify_document_type_paper():
-    """Test document type classification for papers."""
-    file_path = Path("library_docs/papers/arxiv_1234.md")
-    doc_type = classify_document_type(file_path)
-    assert doc_type == "paper"
-
-
-def test_classify_document_type_library_doc():
-    """Test document type classification for library docs."""
-    file_path = Path("library_docs/pytorch_2.9/nn.md")
-    doc_type = classify_document_type(file_path, module_name="pytorch")
-    assert doc_type == "library_doc"
-
-
-def test_classify_document_type_default():
-    """Test document type classification default behavior."""
-    file_path = Path("some_random_file.md")
-    doc_type = classify_document_type(file_path)
-    assert doc_type == "paper"  # Default
-
-
 # ============================================================================
-# Test Main Extraction Orchestrator
+# Test Document Type Detection
 # ============================================================================
 
 
-def test_extract_document_metadata_with_explicit():
-    """Test full metadata extraction with explicit metadata."""
-    content = """# Title: Test Paper
-# Authors: John Doe, Jane Smith
-# Year: 2023
-# ArXiv ID: 1234.5678
+def test_get_document_type_from_config_library():
+    """Test document type detection for libraries."""
+    sources_config = {"libraries": {"pytorch": {"type": "sphinx", "version": "2.9"}}}
+    assert get_document_type_from_config("pytorch", sources_config) == "sphinx"
 
-Content here...
-"""
-    doc = Document(text=content)
-    file_path = Path("test_paper.md")
 
-    result = extract_document_metadata(
-        doc, file_path, module_name="papers", use_llm_fallback=False
+def test_get_document_type_from_config_library_with_version():
+    """Test module name with version suffix."""
+    sources_config = {"libraries": {"pytorch": {"type": "sphinx"}}}
+    # Should strip version and match
+    assert get_document_type_from_config("pytorch_2.9", sources_config) == "sphinx"
+
+
+def test_get_document_type_from_config_paper_arxiv():
+    """Test document type for ArXiv papers."""
+    sources_config = {"papers": {"dl_foundations": {"type": "arxiv", "items": {}}}}
+    assert get_document_type_from_config("dl_foundations", sources_config) == "arxiv"
+
+
+def test_get_document_type_from_config_book():
+    """Test document type for books."""
+    sources_config = {"book_linear_algebra_cherney": {"type": "pdf_book"}}
+    assert (
+        get_document_type_from_config("book_linear_algebra_cherney", sources_config)
+        == "pdf_book"
     )
 
-    assert result["display_name"] == "Test Paper, John Doe, Jane Smith"
-    assert result["authors"] == "John Doe, Jane Smith"
-    assert result["source_url"] == "https://arxiv.org/abs/1234.5678"
-    assert result["doc_type"] == "paper"
-    assert result["arxiv_id"] == "1234.5678"
-    assert result["year"] == "2023"
+
+def test_get_document_type_from_config_default():
+    """Test fallback to default."""
+    sources_config = {}
+    assert get_document_type_from_config("unknown_module", sources_config) == "paper"
 
 
-def test_extract_document_metadata_with_llm_fallback():
-    """Test full metadata extraction with LLM fallback."""
-    content = """Attention Is All You Need
-
-Ashish Vaswani, Noam Shazeer
-
-Abstract: We propose..."""
-
-    doc = Document(text=content)
-    file_path = Path("paper.md")
-
-    # Mock Ollama API response
-    mock_response = Mock()
-    mock_response.json.return_value = {
-        "response": json.dumps(
-            {
-                "title": "Attention Is All You Need",
-                "authors": "Vaswani, Shazeer",
-            }
-        )
-    }
-    mock_response.raise_for_status = Mock()
-
-    with patch("requests.post", return_value=mock_response):
-        result = extract_document_metadata(
-            doc,
-            file_path,
-            ollama_url="http://localhost:11434",
-            use_llm_fallback=True,
-        )
-
-    assert "Attention Is All You Need" in result["display_name"]
-    assert result["authors"] == "Vaswani, Shazeer"
-    assert result["doc_type"] == "paper"
+# ============================================================================
+# Test ArXiv Metadata Extraction
+# ============================================================================
 
 
-def test_extract_document_metadata_fallback_to_filename():
-    """Test metadata extraction with fallback to filename."""
-    content = "No metadata here at all."
-    doc = Document(text=content)
-    file_path = Path("My_Test_Document.md")
-
-    result = extract_document_metadata(
-        doc, file_path, use_llm_fallback=False, ollama_url=None
-    )
-
-    # Should use filename as fallback
-    assert "My Test Document" in result["display_name"]
-    assert result["source_url"] is None
-
-
-def test_extract_document_metadata_with_library_url():
-    """Test metadata extraction with library module URL."""
-    content = """# Title: PyTorch Neural Networks
-# Authors: PyTorch Team
-"""
-    doc = Document(text=content)
-    file_path = Path("pytorch_docs/nn.md")
-
+def test_extract_arxiv_metadata_from_config_found():
+    """Test ArXiv metadata extraction when paper is in config."""
+    file_path = Path("1512.03385.pdf")
     sources_config = {
-        "libraries": {"pytorch": {"doc_root": "https://pytorch.org/docs/stable/"}}
+        "papers": {
+            "dl_foundations": {
+                "items": {
+                    "1512.03385": {
+                        "title": "Deep Residual Learning",
+                        "authors": "Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun",
+                        "year": "2015",
+                        "url": "https://arxiv.org/abs/1512.03385",
+                    }
+                }
+            }
+        }
     }
 
-    result = extract_document_metadata(
-        doc,
-        file_path,
-        module_name="pytorch",
-        sources_config=sources_config,
-        use_llm_fallback=False,
+    result = extract_arxiv_metadata_from_config(
+        file_path, "dl_foundations", sources_config
     )
 
-    assert result["display_name"] == "PyTorch Neural Networks, PyTorch Team"
-    assert result["source_url"] == "https://pytorch.org/docs/stable/"
+    assert result is not None
+    assert result["title"] == "Deep Residual Learning"
+    assert result["authors"] == "He et al."  # Should be formatted
+    assert result["display_name"] == "Deep Residual Learning, He et al."
+    assert result["source_url"] == "https://arxiv.org/abs/1512.03385"
+    assert result["doc_type"] == "paper"
 
 
-def test_extract_document_metadata_uploaded_pdf():
-    """Test metadata extraction for uploaded PDF."""
-    content = """# Document: attention.pdf
-# Source: Session Upload
+def test_extract_arxiv_metadata_from_config_not_found():
+    """Test when ArXiv ID not in config."""
+    file_path = Path("9999.99999.pdf")
+    sources_config = {"papers": {"dl_foundations": {"items": {}}}}
 
-Attention Is All You Need
+    result = extract_arxiv_metadata_from_config(
+        file_path, "dl_foundations", sources_config
+    )
+    assert result is None
 
-Vaswani et al.
 
-Abstract..."""
+def test_extract_arxiv_metadata_from_config_invalid_filename():
+    """Test with non-ArXiv filename."""
+    file_path = Path("regular_paper.pdf")
+    sources_config = {"papers": {"dl_foundations": {"items": {}}}}
 
-    doc = Document(text=content)
-    file_path = Path("pdf_abc123.md")
-
-    # Mock LLM response
-    mock_response = Mock()
-    mock_response.json.return_value = {
-        "response": json.dumps(
-            {"title": "Attention Is All You Need", "authors": "Vaswani et al."}
-        )
-    }
-    mock_response.raise_for_status = Mock()
-
-    with patch("requests.post", return_value=mock_response):
-        result = extract_document_metadata(
-            doc,
-            file_path,
-            ollama_url="http://localhost:11434",
-            use_llm_fallback=True,
-        )
-
-    assert result["display_name"] == "Attention Is All You Need, Vaswani et al."
-    assert result["doc_type"] == "uploaded_pdf"
-    assert result["source_url"] is None  # No URL for uploaded PDFs
+    result = extract_arxiv_metadata_from_config(
+        file_path, "dl_foundations", sources_config
+    )
+    assert result is None

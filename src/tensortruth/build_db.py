@@ -7,7 +7,6 @@ import argparse
 import json
 import logging
 import os
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -27,11 +26,11 @@ from tensortruth.core.ollama import get_ollama_url
 from tensortruth.fetch_sources import load_user_sources
 from tensortruth.rag_engine import get_embed_model
 from tensortruth.utils.metadata import (
-    create_display_name,
-    extract_document_metadata,
-    extract_metadata_with_llm,
-    extract_pdf_metadata,
-    format_authors,
+    extract_arxiv_metadata_from_config,
+    extract_book_metadata,
+    extract_library_metadata_from_config,
+    extract_paper_metadata,
+    get_document_type_from_config,
 )
 from tensortruth.utils.validation import validate_module_for_build
 
@@ -107,9 +106,12 @@ def build_module(
         # Get Ollama URL for LLM fallback
         ollama_url = get_ollama_url()
 
+        # Get document type from config
+        doc_type = get_document_type_from_config(module_name, sources_config)
+        logger.info(f"Module '{module_name}' document type: {doc_type}")
+
         # Book metadata cache (keyed by book directory)
         book_metadata_cache = {}
-        is_book_module = module_name.startswith("book_")
 
         # File-level metadata cache to avoid re-extracting for each page
         # (SimpleDirectoryReader creates one Document per PDF page)
@@ -131,125 +133,47 @@ def build_module(
                             doc.metadata[field] = metadata[field]
                     continue
 
-                # Book chapter detection and metadata sharing
-                if is_book_module:
-                    book_dir = file_path.parent
-
-                    # Use book directory as cache key
-                    book_key = str(book_dir)
-
-                    # Check if we've already extracted metadata for this book
-                    if book_key not in book_metadata_cache:
-                        # Look for PDF in the same directory
-                        pdf_files = list(book_dir.glob("*.pdf"))
-
-                        if pdf_files:
-                            pdf_path = pdf_files[0]
-                            # Try PDF metadata first
-                            pdf_metadata = extract_pdf_metadata(pdf_path)
-                            has_title = pdf_metadata and pdf_metadata.get("title")
-                            has_authors = pdf_metadata and pdf_metadata.get("authors")
-                            if has_title and has_authors:
-                                logger.debug("  Extracted from PDF metadata:")
-                                logger.debug(f"  Title: {pdf_metadata.get('title')}")
-                                logger.debug(
-                                    f"  Author(s): {pdf_metadata.get('authors')}"
-                                )
-                                book_metadata_cache[book_key] = pdf_metadata
-                            else:
-                                # Fallback: parse PDF filename
-                                pdf_stem = pdf_path.stem
-                                # Remove trailing underscores and split by __
-                                pdf_stem = pdf_stem.rstrip("_")
-                                filename_parts = pdf_stem.split("__")
-
-                                logger.debug(
-                                    f"  Extracting metadata from PDF filename: "
-                                    f"{pdf_path.name}"
-                                )
-                                if len(filename_parts) >= 2:
-                                    title = filename_parts[0].replace("_", " ").strip()
-                                    # Join all remaining parts as authors
-                                    authors = ", ".join(
-                                        part.replace("_", " ").strip()
-                                        for part in filename_parts[1:]
-                                        if part.strip()
-                                    )
-                                    book_metadata_cache[book_key] = {
-                                        "title": title,
-                                        "authors": authors if authors else None,
-                                    }
-                                    logger.debug(f"  Title: {title}")
-                                    logger.debug(
-                                        f"  Author(s): {authors if authors else 'N/A'}"
-                                    )
-                                else:
-                                    # LLM fallback on first chapter
-                                    logger.debug("  Using LLM to extract metadata...")
-                                    book_metadata_cache[book_key] = (
-                                        extract_metadata_with_llm(
-                                            doc, file_path, ollama_url
-                                        )
-                                    )
-                        else:
-                            # No PDF: use LLM on first chapter
-                            logger.debug(
-                                "  No PDF found, using LLM to extract metadata..."
-                            )
-                            book_metadata_cache[book_key] = extract_metadata_with_llm(
-                                doc, file_path, ollama_url
-                            )
-
-                    # Apply cached book metadata to this chapter
-                    metadata = book_metadata_cache[book_key].copy()
-                    metadata["doc_type"] = "book"
-
-                    # Add source URL from config if available
-                    if sources_config and module_name:
-                        book_config = sources_config.get("sources", {}).get(module_name)
-                        if book_config and "source" in book_config:
-                            metadata["source_url"] = book_config["source"]
-
-                    # Build display name with chapter info if available
-                    # Look for chapter numbers in format: __##_ChapterName
-                    chapter_match = re.search(
-                        r"__(\d+)_", file_path.stem, re.IGNORECASE
+                # Extract metadata based on document type
+                if doc_type == "pdf_book":
+                    # Book extraction with caching
+                    metadata = extract_book_metadata(
+                        doc,
+                        file_path,
+                        module_name,
+                        sources_config,
+                        ollama_url,
+                        book_metadata_cache,
                     )
-                    if chapter_match and metadata.get("title"):
-                        chapter_num = chapter_match.group(1)
-                        formatted_authors = format_authors(metadata.get("authors"))
-                        if formatted_authors:
-                            metadata["display_name"] = (
-                                f"{metadata['title']} Ch.{chapter_num} - "
-                                f"{formatted_authors}"
-                            )
-                        else:
-                            metadata["display_name"] = (
-                                f"{metadata['title']} Ch.{chapter_num}"
-                            )
-                    else:
-                        formatted_authors = format_authors(metadata.get("authors"))
-                        metadata["display_name"] = create_display_name(
-                            metadata.get("title"), formatted_authors
+                elif doc_type in ("sphinx", "doxygen"):
+                    # Library documentation - extract once per module
+                    if i == 0:
+                        lib_metadata = extract_library_metadata_from_config(
+                            module_name, sources_config
                         )
-
+                        logger.info(
+                            f"Using library metadata: {lib_metadata['display_name']}"
+                        )
+                    # Use the same metadata for all library docs
+                    metadata = lib_metadata.copy()
                 else:
-                    # Regular document extraction (papers, library docs)
-                    # Disable LLM for library docs (API documentation)
-                    is_library_doc = not (
-                        "papers" in module_name.lower()
-                        or "dl_foundations" in module_name.lower()
-                        or "3d_reconstruction" in module_name.lower()
-                        or "vision_" in module_name.lower()
+                    # Papers (ArXiv or regular)
+                    # Try ArXiv lookup first
+                    metadata = extract_arxiv_metadata_from_config(
+                        file_path, module_name, sources_config
                     )
-                    metadata = extract_document_metadata(
-                        doc=doc,
-                        file_path=file_path,
-                        module_name=module_name,
-                        sources_config=sources_config,
-                        ollama_url=ollama_url,
-                        use_llm_fallback=not is_library_doc,
-                    )
+
+                    if not metadata:
+                        # Fallback to regular paper extraction
+                        # Disable LLM for library docs (shouldn't happen, but defensive)
+                        use_llm = doc_type not in ("sphinx", "doxygen")
+                        metadata = extract_paper_metadata(
+                            doc,
+                            file_path,
+                            module_name,
+                            sources_config,
+                            ollama_url,
+                            use_llm_fallback=use_llm,
+                        )
 
                 # Cache metadata for this file to avoid re-extraction for other pages
                 file_metadata_cache[file_key] = metadata.copy()

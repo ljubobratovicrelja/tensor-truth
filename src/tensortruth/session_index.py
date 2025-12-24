@@ -13,7 +13,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 from .app_utils.paths import get_session_index_dir, get_session_markdown_dir
 from .core.ollama import get_ollama_url
 from .rag_engine import get_embed_model
-from .utils.metadata import extract_document_metadata
+from .utils.metadata import extract_uploaded_pdf_metadata
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -159,17 +159,11 @@ class SessionIndexBuilder:
                         # (embedded PDF metadata is often incorrect - publishers
                         # instead of authors, journal names in titles, etc.)
                         logger.info(f"  Extracting metadata for {pdf_id} with LLM...")
-                        metadata = extract_document_metadata(
+                        metadata = extract_uploaded_pdf_metadata(
                             doc=doc,
                             file_path=file_path,
-                            module_name=None,
-                            sources_config=None,
                             ollama_url=ollama_url,
-                            use_llm_fallback=True,
                         )
-
-                        # Force doc_type to uploaded_pdf
-                        metadata["doc_type"] = "uploaded_pdf"
 
                         # Cache the metadata
                         self._update_metadata_cache(pdf_id, metadata)
