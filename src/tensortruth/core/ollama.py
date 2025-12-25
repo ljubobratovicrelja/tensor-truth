@@ -125,3 +125,29 @@ def stop_model(model_name: str) -> bool:
     except Exception as e:
         logger.error(f"Failed to stop {model_name}: {e}")
         return False
+
+
+def check_thinking_support(model_name: str) -> bool:
+    """Check if a model supports thinking/reasoning tokens.
+
+    This queries the Ollama API for the model's capabilities and checks
+    if "thinking" is in the capabilities list.
+
+    Args:
+        model_name: The name of the model to check
+
+    Returns:
+        True if the model supports thinking tokens, False otherwise
+    """
+    try:
+        response = requests.post(
+            f"{get_api_base()}/show", json={"model": model_name}, timeout=2
+        )
+        if response.status_code == 200:
+            data = response.json()
+            capabilities = data.get("capabilities", [])
+            return "thinking" in capabilities
+    except Exception as e:
+        logger.warning(f"Failed to check thinking support for {model_name}: {e}")
+
+    return False

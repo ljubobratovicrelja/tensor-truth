@@ -21,7 +21,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from tensortruth.core.ollama import get_ollama_url
+from tensortruth.core.ollama import check_thinking_support, get_ollama_url
 
 # --- GLOBAL CONFIG ---
 _BASE_INDEX_DIR_CACHE = None
@@ -188,11 +188,8 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
         print(f"Loading LLM {model_name} on: CPU (Forced)")
         ollama_options["num_gpu"] = 0
 
-    # Enable thinking only for models that support it
-    # Known thinking models: deepseek-r1, qwen3 (and their variants)
-    thinking_enabled = any(
-        keyword in model_name.lower() for keyword in ["deepseek-r1", "qwen3", "qwq"]
-    )
+    # Check if model supports thinking by querying Ollama API
+    thinking_enabled = check_thinking_support(model_name)
 
     return Ollama(
         model=model_name,
