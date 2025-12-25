@@ -143,6 +143,7 @@ def build_module(
     module_name,
     library_docs_dir,
     indexes_dir,
+    extensions=[".md", ".html", ".pdf"],
     chunk_sizes=[2048, 512, 256],
 ):
     """Build vector index for a documentation module.
@@ -151,6 +152,7 @@ def build_module(
         module_name: Name of module subdirectory in library_docs_dir
         library_docs_dir: Base directory containing library documentation
         indexes_dir: Base directory for vector indexes
+        extensions: List of file extensions to include
         chunk_sizes: Hierarchical chunk sizes for document parsing
         extract_metadata: Whether to extract document metadata
 
@@ -179,7 +181,7 @@ def build_module(
         documents = SimpleDirectoryReader(
             source_dir,
             recursive=True,
-            required_exts=[".md", ".html", ".pdf"],
+            required_exts=extensions,
             exclude_hidden=False,
         ).load_data()
     except Exception as e:
@@ -293,6 +295,12 @@ Environment Variables:
         help="Chunk sizes for hierarchical parsing (default: 2048 512 128)",
     )
 
+    parser.add_argument(
+        "--extensions",
+        nargs="+",
+        default=[".md", ".html", ".pdf"],
+    )
+
     args = parser.parse_args()
 
     # Resolve paths (CLI args override env vars override defaults)
@@ -359,6 +367,7 @@ Environment Variables:
             module,
             library_docs_dir,
             indexes_dir,
+            args.extensions,
             args.chunk_sizes,
         )
 
