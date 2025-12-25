@@ -74,13 +74,13 @@ def stream_response_with_spinner(
 
 
 def _stream_llm_with_thinking(
-    response_stream, thinking_placeholder, content_placeholder
+    response_stream, spinner_placeholder, content_placeholder
 ) -> Tuple[str, str]:
     """Common logic for streaming LLM responses with thinking token extraction.
 
     Args:
         response_stream: Iterator of ChatResponse chunks from LLM
-        thinking_placeholder: Streamlit placeholder for thinking display
+        spinner_placeholder: Streamlit placeholder for spinner (will be replaced by thinking if present)
         content_placeholder: Streamlit placeholder for content display
 
     Returns:
@@ -88,11 +88,17 @@ def _stream_llm_with_thinking(
     """
     thinking_accumulated = ""
     content_accumulated = ""
+    thinking_placeholder = None
 
     for chunk in response_stream:
         # Extract and display thinking delta
         thinking_delta = chunk.additional_kwargs.get("thinking_delta", None)
         if thinking_delta:
+            # First thinking token - replace spinner with thinking display
+            if thinking_placeholder is None:
+                spinner_placeholder.empty()
+                thinking_placeholder = st.empty()
+
             thinking_accumulated += thinking_delta
             thinking_placeholder.info(
                 f"**🧠 Reasoning:**\n\n{convert_latex_delimiters(thinking_accumulated)}"
@@ -123,9 +129,8 @@ def stream_rag_response(
     thinking_accumulated = ""
     error = None
 
-    thinking_placeholder = st.empty()
-    content_placeholder = st.empty()
     spinner_placeholder = st.empty()
+    content_placeholder = st.empty()
 
     try:
         with spinner_placeholder:
@@ -159,7 +164,7 @@ def stream_rag_response(
                     response_stream = synthesizer._llm.stream_chat(messages)
                     content_accumulated, thinking_accumulated = (
                         _stream_llm_with_thinking(
-                            response_stream, thinking_placeholder, content_placeholder
+                            response_stream, spinner_placeholder, content_placeholder
                         )
                     )
                 else:
@@ -199,16 +204,15 @@ def stream_simple_llm_response(
     thinking_accumulated = ""
     error = None
 
-    thinking_placeholder = st.empty()
-    content_placeholder = st.empty()
     spinner_placeholder = st.empty()
+    content_placeholder = st.empty()
 
     try:
         with spinner_placeholder:
             with st.spinner(get_random_generating_message()):
                 response_stream = llm.stream_chat(chat_history)
                 content_accumulated, thinking_accumulated = _stream_llm_with_thinking(
-                    response_stream, thinking_placeholder, content_placeholder
+                    response_stream, spinner_placeholder, content_placeholder
                 )
 
         spinner_placeholder.empty()
