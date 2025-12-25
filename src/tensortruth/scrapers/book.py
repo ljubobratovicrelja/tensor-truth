@@ -24,6 +24,7 @@ def fetch_book(
     output_base_dir: str,
     converter: str = "marker",
     pages_per_chunk: int = 15,
+    max_pages_per_chapter: int = 0,
 ) -> bool:
     """
     Fetch a book PDF, split by TOC or page chunks, and convert to markdown.
@@ -38,6 +39,8 @@ def fetch_book(
         output_base_dir: Base output directory
         converter: "marker" or "pymupdf"
         pages_per_chunk: Pages per chunk for fallback splitting (default: 15)
+        max_pages_per_chapter: If > 0, split TOC chapters larger than
+            this into sub-chunks (default: 0 = no limit)
 
     Returns:
         True if successful, False otherwise
@@ -81,7 +84,12 @@ def fetch_book(
     # Process based on split_method
     if split_method == "toc":
         success = _process_with_toc_split(
-            book_name, book_config, pdf_path, output_dir, converter
+            book_name,
+            book_config,
+            pdf_path,
+            output_dir,
+            converter,
+            max_pages_per_chapter,
         )
         # If TOC split failed, fall back to page chunks
         if not success:
@@ -103,8 +111,13 @@ def _process_with_toc_split(
     pdf_path: Path,
     output_dir: Path,
     converter: str,
+    max_pages_per_chapter: int = 0,
 ) -> bool:
-    """Split book by TOC and convert chapters."""
+    """Split book by TOC and convert chapters.
+
+    Args:
+        max_pages_per_chapter: If > 0, split chapters larger than this into sub-chunks
+    """
     logger.info("Extracting table of contents...")
     chapters = extract_toc(pdf_path)
 
@@ -129,63 +142,154 @@ def _process_with_toc_split(
         # Determine end page (start of next chapter - 1, or end of book)
         end_page = chapters[i + 1]["page"] - 1 if i < len(chapters) - 1 else total_pages
 
-        # Clean chapter title for filename
-        clean_title = clean_filename(chapter_title)
-        chapter_filename = f"chapter_{chapter_num:02d}_{clean_title}.md"
-        chapter_path = output_dir / chapter_filename
-
-        # Check if already converted
-        if chapter_path.exists():
-            logger.debug(f"Chapter {chapter_num} already exists, skipping")
-            success_count += 1
-            continue
-
-        # Split PDF chapter
-        chapter_pdf = output_dir / f"temp_chapter_{chapter_num}.pdf"
-        if not split_pdf_by_pages(pdf_path, start_page, end_page, chapter_pdf):
-            logger.warning(f"Failed to split chapter {chapter_num}, skipping")
-            continue
-
-        # Convert to markdown
-        try:
-            md_text = convert_pdf_to_markdown(
-                chapter_pdf, preserve_math=True, converter=converter
+        # Check if chapter needs to be split into sub-chunks
+        chapter_page_count = end_page - start_page + 1
+        if max_pages_per_chapter > 0 and chapter_page_count > max_pages_per_chapter:
+            # Split large chapter into sub-chunks
+            logger.info(
+                f"Chapter {chapter_num} ({chapter_page_count} pages) exceeds "
+                f"max ({max_pages_per_chapter}), splitting into sub-chunks"
             )
+            num_subchunks = (
+                chapter_page_count + max_pages_per_chapter - 1
+            ) // max_pages_per_chapter
 
-            # Add YAML header for metadata extraction
-            title = book_config.get("title")
-            authors = book_config.get("authors", [])
-            source_url = book_config.get("source")
+            for subchunk_idx in range(num_subchunks):
+                subchunk_num = subchunk_idx + 1
+                subchunk_start = start_page + (subchunk_idx * max_pages_per_chapter)
+                subchunk_end = min(subchunk_start + max_pages_per_chapter - 1, end_page)
 
-            with open(chapter_path, "w", encoding="utf-8") as f:
-                f.write(f"# Title: {chapter_title}\n")
-                f.write(f"# Book: {title}\n")
-                f.write(f"# Authors: {', '.join(authors)}\n")
-                f.write(f"# Source: {source_url}\n")
-                f.write(f"# Chapter: {chapter_num}\n")
-                f.write("\n---\n\n")
-                f.write(md_text)
+                # Clean chapter title for filename
+                clean_title = clean_filename(chapter_title)
+                subchunk_filename = (
+                    f"chapter_{chapter_num:02d}_part{subchunk_num}_{clean_title}.md"
+                )
+                subchunk_path = output_dir / subchunk_filename
 
-            # Update items dict
-            chapter_id = f"chapter_{chapter_num:02d}"
-            book_config["items"][chapter_id] = {
-                "title": chapter_title,
-                "page_start": start_page,
-                "page_end": end_page,
-                "filename": chapter_filename,
-            }
+                # Check if already converted
+                if subchunk_path.exists():
+                    logger.debug(
+                        f"Chapter {chapter_num} part {subchunk_num} already exists, skipping"
+                    )
+                    success_count += 1
+                    continue
 
-            success_count += 1
+                # Split PDF sub-chunk
+                subchunk_pdf = (
+                    output_dir / f"temp_chapter_{chapter_num}_part{subchunk_num}.pdf"
+                )
+                if not split_pdf_by_pages(
+                    pdf_path, subchunk_start, subchunk_end, subchunk_pdf
+                ):
+                    logger.warning(
+                        f"Failed to split chapter {chapter_num} part {subchunk_num}, skipping"
+                    )
+                    continue
 
-            # Clean up temp PDF
-            if chapter_pdf.exists():
-                chapter_pdf.unlink()
+                # Convert to markdown
+                try:
+                    md_text = convert_pdf_to_markdown(
+                        subchunk_pdf, preserve_math=True, converter=converter
+                    )
 
-        except Exception as e:
-            logger.error(f"Failed to convert chapter {chapter_num}: {e}")
-            if chapter_pdf.exists():
-                chapter_pdf.unlink()
-            continue
+                    # Add YAML header for metadata extraction
+                    title = book_config.get("title")
+                    authors = book_config.get("authors", [])
+                    source_url = book_config.get("source")
+
+                    with open(subchunk_path, "w", encoding="utf-8") as f:
+                        f.write(
+                            f"# Title: {chapter_title} (Part {subchunk_num}/{num_subchunks})\n"
+                        )
+                        f.write(f"# Book: {title}\n")
+                        f.write(f"# Authors: {', '.join(authors)}\n")
+                        f.write(f"# Source: {source_url}\n")
+                        f.write(f"# Chapter: {chapter_num}\n")
+                        f.write(f"# Part: {subchunk_num}/{num_subchunks}\n")
+                        f.write("\n---\n\n")
+                        f.write(md_text)
+
+                    # Update items dict
+                    subchunk_id = f"chapter_{chapter_num:02d}_part{subchunk_num}"
+                    book_config["items"][subchunk_id] = {
+                        "title": f"{chapter_title} (Part {subchunk_num}/{num_subchunks})",
+                        "page_start": subchunk_start,
+                        "page_end": subchunk_end,
+                        "filename": subchunk_filename,
+                    }
+
+                    success_count += 1
+
+                    # Clean up temp PDF
+                    if subchunk_pdf.exists():
+                        subchunk_pdf.unlink()
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to convert chapter {chapter_num} part {subchunk_num}: {e}"
+                    )
+                    if subchunk_pdf.exists():
+                        subchunk_pdf.unlink()
+                    continue
+        else:
+            # Regular single chapter conversion
+            # Clean chapter title for filename
+            clean_title = clean_filename(chapter_title)
+            chapter_filename = f"chapter_{chapter_num:02d}_{clean_title}.md"
+            chapter_path = output_dir / chapter_filename
+
+            # Check if already converted
+            if chapter_path.exists():
+                logger.debug(f"Chapter {chapter_num} already exists, skipping")
+                success_count += 1
+                continue
+
+            # Split PDF chapter
+            chapter_pdf = output_dir / f"temp_chapter_{chapter_num}.pdf"
+            if not split_pdf_by_pages(pdf_path, start_page, end_page, chapter_pdf):
+                logger.warning(f"Failed to split chapter {chapter_num}, skipping")
+                continue
+
+            # Convert to markdown
+            try:
+                md_text = convert_pdf_to_markdown(
+                    chapter_pdf, preserve_math=True, converter=converter
+                )
+
+                # Add YAML header for metadata extraction
+                title = book_config.get("title")
+                authors = book_config.get("authors", [])
+                source_url = book_config.get("source")
+
+                with open(chapter_path, "w", encoding="utf-8") as f:
+                    f.write(f"# Title: {chapter_title}\n")
+                    f.write(f"# Book: {title}\n")
+                    f.write(f"# Authors: {', '.join(authors)}\n")
+                    f.write(f"# Source: {source_url}\n")
+                    f.write(f"# Chapter: {chapter_num}\n")
+                    f.write("\n---\n\n")
+                    f.write(md_text)
+
+                # Update items dict
+                chapter_id = f"chapter_{chapter_num:02d}"
+                book_config["items"][chapter_id] = {
+                    "title": chapter_title,
+                    "page_start": start_page,
+                    "page_end": end_page,
+                    "filename": chapter_filename,
+                }
+
+                success_count += 1
+
+                # Clean up temp PDF
+                if chapter_pdf.exists():
+                    chapter_pdf.unlink()
+
+            except Exception as e:
+                logger.error(f"Failed to convert chapter {chapter_num}: {e}")
+                if chapter_pdf.exists():
+                    chapter_pdf.unlink()
+                continue
 
     logger.info(f"✅ Successfully processed {success_count}/{len(chapters)} chapters")
     return success_count > 0
@@ -291,6 +395,7 @@ def fetch_book_category(
     output_base_dir: str,
     converter: str = "marker",
     pages_per_chunk: int = 15,
+    max_pages_per_chapter: int = 0,
 ) -> None:
     """
     Fetch all books in a category.
@@ -301,6 +406,7 @@ def fetch_book_category(
         output_base_dir: Base output directory
         converter: "marker" or "pymupdf"
         pages_per_chunk: Pages per chunk for fallback splitting
+        max_pages_per_chapter: Max pages per TOC chapter before sub-splitting
     """
     # Find all books with matching category
     books = {}
@@ -325,7 +431,12 @@ def fetch_book_category(
 
         try:
             if fetch_book(
-                book_name, book_config, output_base_dir, converter, pages_per_chunk
+                book_name,
+                book_config,
+                output_base_dir,
+                converter,
+                pages_per_chunk,
+                max_pages_per_chapter,
             ):
                 success_count += 1
         except Exception as e:

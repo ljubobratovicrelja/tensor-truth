@@ -257,6 +257,17 @@ Environment Variables:
         ),
     )
 
+    parser.add_argument(
+        "--max-pages-per-chapter",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "Max pages per TOC chapter before splitting into sub-chunks. "
+            "Set to 0 for no limit (default: 0)"
+        ),
+    )
+
     args = parser.parse_args()
 
     # Resolve paths (CLI args override env vars override defaults)
@@ -470,6 +481,7 @@ Environment Variables:
                         library_docs_dir,
                         converter=args.converter,
                         pages_per_chunk=args.pages_per_chunk,
+                        max_pages_per_chapter=args.max_pages_per_chapter,
                     ):
                         success_count += 1
                         # Update sources.json after each successful fetch
@@ -510,6 +522,7 @@ Environment Variables:
                         library_docs_dir,
                         converter=args.converter,
                         pages_per_chunk=args.pages_per_chunk,
+                        max_pages_per_chapter=args.max_pages_per_chapter,
                     )
 
                     # Update sources.json
@@ -532,6 +545,7 @@ Environment Variables:
                     library_docs_dir,
                     converter=args.converter,
                     pages_per_chunk=args.pages_per_chunk,
+                    max_pages_per_chapter=args.max_pages_per_chapter,
                 )
 
                 # Update all books in category
