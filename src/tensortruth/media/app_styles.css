@@ -409,3 +409,22 @@ hr {
     border-color: var(--border-color);
     opacity: 0.5;
 }
+
+/* --- Thinking/Reasoning Content --- */
+.thinking-content {
+    font-size: 0.85rem !important;
+    line-height: 1.4 !important;
+    color: var(--text-secondary) !important;
+    background-color: var(--info-bg) !important;
+    border-left: 4px solid var(--info-border) !important;
+    border-radius: 6px !important;
+    padding: 1rem !important;
+    margin: 0.5rem 0 !important;
+}
+
+.thinking-content p,
+.thinking-content li,
+.thinking-content span {
+    font-size: 0.85rem !important;
+    line-height: 1.4 !important;
+}

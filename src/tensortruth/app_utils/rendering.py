@@ -235,8 +235,15 @@ def render_chat_message(
 
         # Render thinking if present
         if message.get("thinking"):
-            st.info(
-                f"**🧠 Reasoning:**\n\n{convert_latex_delimiters(message['thinking'])}"
+            st.markdown(
+                f"""<div class="thinking-content">
+
+**🧠 Reasoning:**
+
+{convert_latex_delimiters(message['thinking'])}
+
+</div>""",
+                unsafe_allow_html=True,
             )
 
         # Render message content

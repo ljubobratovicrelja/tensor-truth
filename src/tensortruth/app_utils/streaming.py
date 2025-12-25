@@ -100,8 +100,16 @@ def _stream_llm_with_thinking(
                 thinking_placeholder = st.empty()
 
             thinking_accumulated += thinking_delta
-            thinking_placeholder.info(
-                f"**🧠 Reasoning:**\n\n{convert_latex_delimiters(thinking_accumulated)}"
+            # Use markdown with custom CSS class for smaller font
+            thinking_placeholder.markdown(
+                f"""<div class="thinking-content">
+
+**🧠 Reasoning:**
+
+{convert_latex_delimiters(thinking_accumulated)}
+
+</div>""",
+                unsafe_allow_html=True,
             )
 
         # Extract and display content delta
