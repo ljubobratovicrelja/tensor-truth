@@ -6,6 +6,7 @@ from typing import Union
 
 # UI constraints - these define the valid values for preset parameters
 ALLOWED_CONTEXT_WINDOWS = [2048, 4096, 8192, 16384, 32768, 65536, 131072]
+ALLOWED_MAX_TOKENS = [1024, 2048, 4096, 8192, 16384]
 ALLOWED_RERANKER_MODELS = [
     "BAAI/bge-reranker-v2-m3",
     "BAAI/bge-reranker-base",
@@ -36,6 +37,13 @@ def _normalize_preset(preset: dict) -> dict:
     if "temperature" in preset:
         temp = preset["temperature"]
         preset["temperature"] = max(0.0, min(1.0, temp))
+
+    # Normalize max_tokens to nearest allowed value
+    if "max_tokens" in preset:
+        max_tok = preset["max_tokens"]
+        if max_tok not in ALLOWED_MAX_TOKENS:
+            nearest = min(ALLOWED_MAX_TOKENS, key=lambda x: abs(x - max_tok))
+            preset["max_tokens"] = nearest
 
     # Ensure reranker_top_n is within reasonable bounds [1, 20]
     if "reranker_top_n" in preset:
@@ -222,6 +230,7 @@ def quick_launch_preset(
         "model": preset.get("model", "deepseek-r1:8b"),
         "temperature": preset.get("temperature", 0.3),
         "context_window": preset.get("context_window", 16384),
+        "max_tokens": preset.get("max_tokens", 4096),
         "system_prompt": preset.get("system_prompt", ""),
         "reranker_model": preset.get("reranker_model", "BAAI/bge-reranker-v2-m3"),
         "reranker_top_n": preset.get("reranker_top_n", 3),
@@ -305,6 +314,8 @@ def build_preset_config(
         config["setup_ctx"] = p["context_window"]
     if "temperature" in p:
         config["setup_temp"] = p["temperature"]
+    if "max_tokens" in p:
+        config["setup_max_tokens"] = p["max_tokens"]
     if "reranker_top_n" in p:
         config["setup_top_n"] = p["reranker_top_n"]
     if "confidence_cutoff" in p:

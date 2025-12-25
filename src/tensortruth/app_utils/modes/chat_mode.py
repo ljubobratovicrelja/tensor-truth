@@ -348,6 +348,7 @@ def render_chat_mode():
                         params.get("model"),
                         params.get("temperature"),
                         params.get("llm_device"),
+                        params.get("max_tokens"),
                     )
 
                     # Reload if config changed or LLM doesn't exist

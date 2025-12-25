@@ -109,6 +109,14 @@ def render_setup_mode():
                 with temperature_col:
                     st.slider("Temperature", 0.0, 1.0, step=0.1, key="setup_temp")
 
+                # Max tokens for thinking models
+                st.select_slider(
+                    "Max Tokens (for thinking models)",
+                    options=[1024, 2048, 4096, 8192, 16384],
+                    key="setup_max_tokens",
+                    help="Limits total output (thinking + response) for reasoning models to prevent runaway loops",
+                )
+
                 st.subheader("3. RAG Parameters")
 
                 rerank_col, top_n_col, conf_col = st.columns(3)

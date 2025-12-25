@@ -28,6 +28,7 @@ def init_setup_defaults_from_config():
     st.session_state.setup_model = None  # Will be set from available models
     st.session_state.setup_ctx = config.ui.default_context_window
     st.session_state.setup_temp = config.ui.default_temperature
+    st.session_state.setup_max_tokens = config.ui.default_max_tokens
 
     # RAG parameters
     st.session_state.setup_reranker = config.ui.default_reranker
@@ -60,6 +61,7 @@ def build_params_from_session_state() -> dict:
         "model": st.session_state.setup_model,
         "temperature": st.session_state.setup_temp,
         "context_window": st.session_state.setup_ctx,
+        "max_tokens": st.session_state.setup_max_tokens,
         "system_prompt": st.session_state.setup_sys_prompt,
         "reranker_model": st.session_state.setup_reranker,
         "reranker_top_n": st.session_state.setup_top_n,
@@ -88,6 +90,7 @@ def get_session_params_with_defaults(session_params: dict) -> dict:
         "context_window": session_params.get(
             "context_window", config.ui.default_context_window
         ),
+        "max_tokens": session_params.get("max_tokens", config.ui.default_max_tokens),
         "confidence_cutoff": session_params.get(
             "confidence_cutoff", config.ui.default_confidence_threshold
         ),

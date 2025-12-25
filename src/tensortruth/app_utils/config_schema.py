@@ -17,6 +17,7 @@ class UIConfig:
 
     default_temperature: float = 0.1
     default_context_window: int = 16384
+    default_max_tokens: int = 4096
     default_reranker: str = "BAAI/bge-reranker-v2-m3"
     default_top_n: int = 5
     default_confidence_threshold: float = 0.4

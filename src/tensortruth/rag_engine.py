@@ -181,7 +181,7 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
     device_mode = params.get("llm_device", "gpu")  # 'gpu' or 'cpu'
 
     # Ollama specific options
-    ollama_options = {"num_predict": -1}  # Prevent truncation
+    ollama_options = {}
 
     # Force CPU if requested
     if device_mode == "cpu":
@@ -190,6 +190,16 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
 
     # Check if model supports thinking by querying Ollama API
     thinking_enabled = check_thinking_support(model_name)
+
+    # For thinking models, limit total tokens to prevent runaway reasoning
+    # For non-thinking models, use unlimited (-1) to prevent truncation
+    if thinking_enabled:
+        # Limit thinking models to ~4K tokens total (thinking + response)
+        # This prevents endless loops while allowing reasonable reasoning
+        ollama_options["num_predict"] = params.get("max_tokens", 4096)
+    else:
+        # Non-thinking models get unlimited to prevent truncation
+        ollama_options["num_predict"] = -1
 
     return Ollama(
         model=model_name,
