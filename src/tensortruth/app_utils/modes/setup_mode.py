@@ -116,7 +116,7 @@ def render_setup_mode():
                     key="setup_max_tokens",
                     help=(
                         "Limits total output (thinking + response) for "
-                        "reasoning models to prevent runaway loops",
+                        "reasoning models to prevent runaway loops"
                     ),
                 )
 
