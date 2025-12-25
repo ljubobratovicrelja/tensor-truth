@@ -1045,7 +1045,7 @@
       "authors": [
         "Gilbert Strang"
       ],
-      "source": "https://ocw.mit.edu/ans7870/resources/Strang/Edited/Calculus/Calculus.pdf",
+      "source": "https://ocw.mit.edu/courses/res-18-001-calculus-fall-2023/mitres_18_001_f17_full_book.pdf",
       "split_method": "toc",
       "description": "Free calculus textbook from MIT OpenCourseWare with comprehensive coverage",
       "items": {}
@@ -1057,7 +1057,7 @@
       "authors": [
         "Gregory Hartman"
       ],
-      "source": "https://www.apexcalculus.com/downloads/APEX_Calculus_Version_4.pdf",
+      "source": "https://commons.und.edu/cgi/viewcontent.cgi?article=1030&context=oers",
       "split_method": "toc",
       "description": "Free, open-source textbook covering Calculus I, II, and III",
       "items": {}
@@ -1069,7 +1069,7 @@
       "authors": [
         "Michael Corral"
       ],
-      "source": "https://www.mecmath.net/vcalc.pdf",
+      "source": "https://www.mecmath.net/VectorCalculus.pdf",
       "split_method": "none",
       "description": "Focused treatment of vector calculus and multivariable topics",
       "items": {}
@@ -1125,31 +1125,6 @@
       "description": "Modern treatment with Julia code examples",
       "items": {}
     },
-    "book_numerical_linear_algebra_trefethen": {
-      "type": "pdf_book",
-      "category": "numerical_optimization",
-      "title": "Numerical Linear Algebra",
-      "authors": [
-        "Lloyd N. Trefethen",
-        "David Bau III"
-      ],
-      "source": "https://people.maths.ox.ac.uk/trefethen/text.html",
-      "split_method": "none",
-      "description": "Concise introduction to numerical methods for linear algebra",
-      "items": {}
-    },
-    "book_first_order_methods_beck": {
-      "type": "pdf_book",
-      "category": "numerical_optimization",
-      "title": "First-Order Methods in Optimization",
-      "authors": [
-        "Amir Beck"
-      ],
-      "source": "https://archive.siam.org/books/mo25/mo25_ch1.pdf",
-      "split_method": "none",
-      "description": "Methods for gradient descent and related approaches",
-      "items": {}
-    },
     "book_elements_statistical_learning_hastie": {
       "type": "pdf_book",
       "category": "machine_learning",
@@ -1159,7 +1134,7 @@
         "Robert Tibshirani",
         "Jerome Friedman"
       ],
-      "source": "https://hastie.su.domains/ElemStatLearn/printings/ESLII_print12_toc.pdf",
+      "source": "https://hastie.su.domains/ElemStatLearn/printings/ESLII_print12.pdf",
       "split_method": "toc",
       "description": "Classic Stanford textbook on statistical learning",
       "items": {}
@@ -1203,20 +1178,6 @@
       "description": "Mathematical foundations for ML: linear algebra, probability, optimization",
       "items": {}
     },
-    "book_deep_learning_goodfellow": {
-      "type": "pdf_book",
-      "category": "deep_learning",
-      "title": "Deep Learning",
-      "authors": [
-        "Ian Goodfellow",
-        "Yoshua Bengio",
-        "Aaron Courville"
-      ],
-      "source": "https://www.deeplearningbook.org/contents/TOC.html",
-      "split_method": "none",
-      "description": "The definitive deep learning textbook",
-      "items": {}
-    },
     "book_neural_networks_nielsen": {
       "type": "pdf_book",
       "category": "deep_learning",
@@ -1224,7 +1185,7 @@
       "authors": [
         "Michael Nielsen"
       ],
-      "source": "http://static.latexstudio.net/article/2018/0912/neuralnetworksanddeeplearning.pdf",
+      "source": "https://jingyuexing.github.io/Ebook/Machine_Learning/Neural Networks and Deep Learning-eng.pdf",
       "split_method": "none",
       "description": "Accessible introduction with interactive visualizations",
       "items": {}
