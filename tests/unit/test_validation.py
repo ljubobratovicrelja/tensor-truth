@@ -16,7 +16,11 @@ class TestValidateModuleForBuild:
 
     def test_module_not_found_raises_error(self, temp_library_dir):
         """Test validation fails when module directory doesn't exist."""
-        sources_config = {"libraries": {}, "papers": {}}
+        sources_config = {
+            "libraries": {"nonexistent_module": {"version": "1.0"}},
+            "papers": {},
+            "books": {},
+        }
 
         with pytest.raises(ValueError) as exc_info:
             validate_module_for_build(
@@ -30,10 +34,14 @@ class TestValidateModuleForBuild:
     def test_empty_module_directory_raises_error(self, temp_library_dir):
         """Test validation fails when module directory is empty."""
         # Create empty directory
-        module_dir = temp_library_dir / "empty_module"
+        module_dir = temp_library_dir / "library_empty_module"
         module_dir.mkdir()
 
-        sources_config = {"libraries": {}, "papers": {}}
+        sources_config = {
+            "libraries": {"empty_module": {"version": "1.0"}},
+            "papers": {},
+            "books": {},
+        }
 
         with pytest.raises(ValueError) as exc_info:
             validate_module_for_build(
@@ -43,28 +51,20 @@ class TestValidateModuleForBuild:
         error_msg = str(exc_info.value)
         assert "directory is empty" in error_msg
 
-    def test_module_not_in_config_warns_but_passes(self, temp_library_dir, caplog):
-        """Test validation warns but doesn't fail when module not in config."""
-        import logging
-
+    def test_module_not_in_config_raises_error(self, temp_library_dir):
+        """Test validation fails when module not in config."""
         # Create module directory with docs
         module_dir = temp_library_dir / "undocumented_module"
         module_dir.mkdir()
         (module_dir / "doc.md").write_text("# Documentation")
 
         # Empty config (module not listed)
-        sources_config = {"libraries": {}, "papers": {}}
+        sources_config = {"libraries": {}, "papers": {}, "books": {}}
 
-        # Should not raise, but should log warning
-        with caplog.at_level(logging.WARNING):
+        with pytest.raises(ValueError) as exc_info:
             validate_module_for_build(
                 "undocumented_module", str(temp_library_dir), sources_config
             )
 
-        # Check warning was logged
-        assert any(
-            "not found in sources config" in record.message for record in caplog.records
-        )
-        assert any(
-            "Metadata may be incomplete" in record.message for record in caplog.records
-        )
+        error_msg = str(exc_info.value)
+        assert "is not found among sources" in error_msg

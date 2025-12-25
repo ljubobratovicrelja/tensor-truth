@@ -54,6 +54,7 @@ def get_module_display_name(
             display_name = (
                 metadata.get("group_display_name")  # For paper groups
                 or metadata.get("book_display_name")  # For books
+                or metadata.get("library_display_name")  # For libraries
                 or metadata.get("display_name")  # Fallback for individual items
             )
 

@@ -17,14 +17,11 @@ def load_user_sources(config_path):
     Returns:
         Dictionary with 'libraries' and 'papers' sections
     """
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load user config from {config_path}: {e}")
-            return {"libraries": {}, "papers": {}}
-    return {"libraries": {}, "papers": {}}
+    if not os.path.exists(config_path):
+        raise IOError(f"User config file not found: {config_path}")
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def update_sources_config(config_path, source_type, name, entry):

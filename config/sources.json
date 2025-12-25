@@ -1,6 +1,6 @@
 {
   "libraries": {
-    "pytorch": {
+    "pytorch_2.9": {
       "type": "sphinx",
       "version": "2.9",
       "doc_type": "sphinx",
@@ -8,7 +8,7 @@
       "inventory_url": "https://pytorch.org/docs/stable/objects.inv",
       "selector": "div[role='main']"
     },
-    "numpy": {
+    "numpy_2.3": {
       "type": "sphinx",
       "version": "2.3",
       "doc_type": "sphinx",
@@ -16,7 +16,7 @@
       "inventory_url": "https://numpy.org/doc/stable/objects.inv",
       "selector": "article[role='main']"
     },
-    "scipy": {
+    "scipy_1.15": {
       "type": "sphinx",
       "version": "1.15",
       "doc_type": "sphinx",
@@ -24,7 +24,7 @@
       "inventory_url": "https://docs.scipy.org/doc/scipy/objects.inv",
       "selector": "article[role='main']"
     },
-    "matplotlib": {
+    "matplotlib_3.10": {
       "type": "sphinx",
       "version": "3.10",
       "doc_type": "sphinx",
@@ -32,7 +32,7 @@
       "inventory_url": "https://matplotlib.org/stable/objects.inv",
       "selector": "div[role='main']"
     },
-    "pandas": {
+    "pandas_2.3": {
       "type": "sphinx",
       "version": "2.3",
       "doc_type": "sphinx",
@@ -40,7 +40,7 @@
       "inventory_url": "https://pandas.pydata.org/docs/objects.inv",
       "selector": "article[role='main']"
     },
-    "scikit-learn": {
+    "scikit-learn_1.8": {
       "type": "sphinx",
       "version": "1.8",
       "doc_type": "sphinx",
@@ -48,7 +48,7 @@
       "inventory_url": "https://scikit-learn.org/stable/objects.inv",
       "selector": "div[role='main']"
     },
-    "seaborn": {
+    "seaborn_0.13": {
       "type": "sphinx",
       "version": "0.13",
       "doc_type": "sphinx",
@@ -56,31 +56,7 @@
       "inventory_url": "https://seaborn.pydata.org/objects.inv",
       "selector": "article[role='main']"
     },
-    "requests": {
-      "type": "sphinx",
-      "version": "2.32",
-      "doc_type": "sphinx",
-      "doc_root": "https://requests.readthedocs.io/en/stable/",
-      "inventory_url": "https://requests.readthedocs.io/en/stable/objects.inv",
-      "selector": "div[role='main']"
-    },
-    "flask": {
-      "type": "sphinx",
-      "version": "3.1",
-      "doc_type": "sphinx",
-      "doc_root": "https://flask.palletsprojects.com/en/stable/",
-      "inventory_url": "https://flask.palletsprojects.com/en/stable/objects.inv",
-      "selector": "div[role='main']"
-    },
-    "django": {
-      "type": "sphinx",
-      "version": "6.0",
-      "doc_type": "sphinx",
-      "doc_root": "https://docs.djangoproject.com/en/stable/",
-      "inventory_url": "https://docs.djangoproject.com/en/stable/_objects/",
-      "selector": "div[role='main']"
-    },
-    "transformers": {
+    "transformers_4.57": {
       "type": "sphinx",
       "version": "4.57",
       "doc_type": "sphinx",
@@ -88,7 +64,7 @@
       "inventory_url": "https://huggingface.co/docs/transformers/main/en/objects.inv",
       "selector": "main"
     },
-    "pillow": {
+    "pillow_12.0": {
       "type": "sphinx",
       "version": "12.0",
       "doc_type": "sphinx",
@@ -96,23 +72,7 @@
       "inventory_url": "https://pillow.readthedocs.io/en/stable/objects.inv",
       "selector": "div[role='main']"
     },
-    "sqlalchemy": {
-      "type": "sphinx",
-      "version": "2.0",
-      "doc_type": "sphinx",
-      "doc_root": "https://docs.sqlalchemy.org/en/20/",
-      "inventory_url": "https://docs.sqlalchemy.org/en/20/objects.inv",
-      "selector": "div[role='main']"
-    },
-    "networkx": {
-      "type": "sphinx",
-      "version": "3.6",
-      "doc_type": "sphinx",
-      "doc_root": "https://networkx.org/documentation/stable/",
-      "inventory_url": "https://networkx.org/documentation/stable/objects.inv",
-      "selector": "div[role='main']"
-    },
-    "opencv": {
+    "opencv_4.12": {
       "type": "doxygen",
       "version": "4.12",
       "doc_type": "doxygen",
@@ -859,8 +819,10 @@
         }
       },
       "type": "arxiv"
-    },
-    "book_linear_algebra_cherney": {
+    }
+  },
+  "books": {
+    "linear_algebra_cherney": {
       "type": "pdf_book",
       "category": "linear_algebra",
       "title": "Linear Algebra",
@@ -1026,7 +988,7 @@
         }
       }
     },
-    "book_linear_algebra_axler": {
+    "linear_algebra_axler": {
       "type": "pdf_book",
       "category": "linear_algebra",
       "title": "Linear Algebra Done Right",
@@ -1038,7 +1000,7 @@
       "description": "Focuses on vector spaces and linear maps rather than matrices",
       "items": {}
     },
-    "book_calculus_strang": {
+    "calculus_strang": {
       "type": "pdf_book",
       "category": "calculus",
       "title": "Calculus",
@@ -1050,7 +1012,7 @@
       "description": "Free calculus textbook from MIT OpenCourseWare with comprehensive coverage",
       "items": {}
     },
-    "book_vector_calculus_corral": {
+    "vector_calculus_corral": {
       "type": "pdf_book",
       "category": "calculus",
       "title": "Vector Calculus",
@@ -1062,7 +1024,7 @@
       "description": "Focused treatment of vector calculus and multivariable topics",
       "items": {}
     },
-    "book_convex_optimization_boyd": {
+    "convex_optimization_boyd": {
       "type": "pdf_book",
       "category": "numerical_optimization",
       "title": "Convex Optimization",
@@ -1075,7 +1037,7 @@
       "description": "Classic Stanford textbook on convex optimization",
       "items": {}
     },
-    "book_pattern_recognition_bishop": {
+    "pattern_recognition_bishop": {
       "type": "pdf_book",
       "category": "machine_learning",
       "title": "Pattern Recognition and Machine Learning",
@@ -1087,7 +1049,7 @@
       "description": "Comprehensive Bayesian approach to machine learning",
       "items": {}
     },
-    "book_understanding_ml_shalev": {
+    "understanding_ml_shalev": {
       "type": "pdf_book",
       "category": "machine_learning",
       "title": "Understanding Machine Learning: From Theory to Algorithms",
@@ -1100,7 +1062,7 @@
       "description": "Theoretical foundations with focus on computational learning theory",
       "items": {}
     },
-    "book_mathematics_ml_deisenroth": {
+    "mathematics_ml_deisenroth": {
       "type": "pdf_book",
       "category": "machine_learning",
       "title": "Mathematics for Machine Learning",
@@ -1114,7 +1076,7 @@
       "description": "Mathematical foundations for ML: linear algebra, probability, optimization",
       "items": {}
     },
-    "book_neural_networks_nielsen": {
+    "neural_networks_nielsen": {
       "type": "pdf_book",
       "category": "deep_learning",
       "title": "Neural Networks and Deep Learning",
@@ -1126,7 +1088,7 @@
       "description": "Accessible introduction with interactive visualizations",
       "items": {}
     },
-    "book_dive_deep_learning_zhang": {
+    "dive_deep_learning_zhang": {
       "type": "pdf_book",
       "category": "deep_learning",
       "title": "Dive into Deep Learning",

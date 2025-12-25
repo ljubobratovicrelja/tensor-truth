@@ -21,13 +21,12 @@ class TestLoadUserSources:
     """Tests for load_user_sources function."""
 
     def test_load_invalid_json_returns_empty_config(self, tmp_path):
-        """Test loading malformed JSON returns empty structure."""
+        """Test loading malformed JSON raises JSONDecodeError."""
         config_file = tmp_path / "bad.json"
         config_file.write_text("{ invalid json content")
 
-        result = load_user_sources(str(config_file))
-
-        assert result == {"libraries": {}, "papers": {}}
+        with pytest.raises(json.JSONDecodeError):
+            load_user_sources(str(config_file))
 
 
 @pytest.mark.unit
@@ -58,6 +57,8 @@ class TestUpdateSourcesConfig:
     def test_preserves_formatting(self, tmp_path):
         """Test that JSON is written with readable formatting."""
         config_file = tmp_path / "config.json"
+        # Create initial empty config
+        config_file.write_text(json.dumps({"libraries": {}, "papers": {}, "books": {}}))
 
         lib_config = {
             "version": "2.0",
@@ -99,6 +100,8 @@ class TestSourcesConfigIntegration:
     def test_full_workflow_create_update_load(self, tmp_path):
         """Test complete workflow: create, update, and load config."""
         config_file = tmp_path / "workflow_test.json"
+        # Create initial empty config
+        config_file.write_text(json.dumps({"libraries": {}, "papers": {}, "books": {}}))
 
         # Step 1: Create initial config with one library
         lib1 = {"version": "1.0", "type": "sphinx"}

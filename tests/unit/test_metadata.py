@@ -279,35 +279,48 @@ def test_format_authors_list_input():
 def test_get_document_type_from_config_library():
     """Test document type detection for libraries."""
     sources_config = {"libraries": {"pytorch": {"type": "sphinx", "version": "2.9"}}}
-    assert get_document_type_from_config("pytorch", sources_config) == "sphinx"
+    from tensortruth.utils.metadata import DocumentType
+
+    assert (
+        get_document_type_from_config("pytorch", sources_config) == DocumentType.LIBRARY
+    )
 
 
 def test_get_document_type_from_config_library_with_version():
-    """Test module name with version suffix."""
+    """Test module name must match config key exactly (no version stripping)."""
     sources_config = {"libraries": {"pytorch": {"type": "sphinx"}}}
-    # Should strip version and match
-    assert get_document_type_from_config("pytorch_2.9", sources_config) == "sphinx"
+    # Module name must match config key exactly - version stripping not supported
+    with pytest.raises(ValueError, match="is not found among sources"):
+        get_document_type_from_config("pytorch_2.9", sources_config)
 
 
 def test_get_document_type_from_config_paper_arxiv():
     """Test document type for ArXiv papers."""
     sources_config = {"papers": {"dl_foundations": {"type": "arxiv", "items": {}}}}
-    assert get_document_type_from_config("dl_foundations", sources_config) == "arxiv"
+    from tensortruth.utils.metadata import DocumentType
+
+    assert (
+        get_document_type_from_config("dl_foundations", sources_config)
+        == DocumentType.PAPERS
+    )
 
 
 def test_get_document_type_from_config_book():
     """Test document type for books."""
-    sources_config = {"book_linear_algebra_cherney": {"type": "pdf_book"}}
+    sources_config = {"books": {"book_linear_algebra_cherney": {"type": "pdf_book"}}}
+    from tensortruth.utils.metadata import DocumentType
+
     assert (
         get_document_type_from_config("book_linear_algebra_cherney", sources_config)
-        == "pdf_book"
+        == DocumentType.BOOK
     )
 
 
 def test_get_document_type_from_config_default():
-    """Test fallback to default."""
-    sources_config = {}
-    assert get_document_type_from_config("unknown_module", sources_config) == "paper"
+    """Test raises error for unknown modules."""
+    sources_config = {"libraries": {}, "papers": {}, "books": {}}
+    with pytest.raises(ValueError, match="is not found among sources"):
+        get_document_type_from_config("unknown_module", sources_config)
 
 
 # ============================================================================

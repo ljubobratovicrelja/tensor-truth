@@ -4,7 +4,6 @@ Builds hierarchical vector indexes from markdown documentation.
 """
 
 import argparse
-import json
 import logging
 import os
 import shutil
@@ -25,9 +24,12 @@ from tensortruth.cli_paths import (
 from tensortruth.fetch_sources import load_user_sources
 from tensortruth.rag_engine import get_embed_model
 from tensortruth.utils.metadata import (
+    DocumentType,
     extract_arxiv_metadata_from_config,
-    extract_book_metadata,
+    extract_book_chapter_metadata,
     extract_library_metadata_from_config,
+    extract_library_module_metadata,
+    get_book_metadata_from_config,
     get_document_type_from_config,
 )
 from tensortruth.utils.validation import validate_module_for_build
@@ -36,95 +38,57 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("BUILDER")
 
 
-def extract_metadata(module_name, documents):
+def extract_metadata(module_name, doc_type, sources_config, documents):
     """Extract metadata for a list of documents in a module."""
 
-    # 2a. Extract Metadata
-    logger.info("Extracting document metadata...")
+    # Prepare root metadata - book info for all chunks, or library for all doc modules etc.
+    root_metadata = None
 
-    # Load sources.json config
-    sources_config = None
-    sources_path = Path("config/sources.json")
-    if sources_path.exists():
-        with open(sources_path, "r", encoding="utf-8") as f:
-            sources_config = json.load(f)
-
-    # Get document type from config
-    doc_type = get_document_type_from_config(module_name, sources_config)
-    logger.info(f"Module '{module_name}' document type: {doc_type}")
-
-    # Book metadata cache (keyed by book directory)
-    book_metadata_cache = {}
-
-    # File-level metadata cache to avoid re-extracting for each page
-    # (SimpleDirectoryReader creates one Document per PDF page)
-    file_metadata_cache = {}
+    if doc_type == DocumentType.BOOK:
+        logger.info("Using book metadata extraction with caching.")
+        root_metadata = get_book_metadata_from_config(module_name, sources_config)
+    elif doc_type == DocumentType.LIBRARY:
+        logger.info("Using library metadata extraction.")
+        root_metadata = extract_library_metadata_from_config(
+            module_name, sources_config
+        )
 
     # Extract metadata for each document
     for i, doc in enumerate(documents):
         file_path = Path(doc.metadata.get("file_path", ""))
-
         try:
-            # Check if we've already extracted metadata for this file
-            file_key = str(file_path)
-            if file_key in file_metadata_cache:
-                # Reuse cached metadata (same file, different page)
-                metadata = file_metadata_cache[file_key].copy()
-                # Inject metadata and continue
-                for field in [
-                    "display_name",
-                    "authors",
-                    "source_url",
-                    "doc_type",
-                    "book_display_name",
-                    "group_display_name",
-                ]:
-                    if field in metadata:
-                        doc.metadata[field] = metadata[field]
-                continue
-
             # Extract metadata based on document type
-            if doc_type == "pdf_book":
+            if doc_type == DocumentType.BOOK:
                 # Book extraction with caching
-                metadata = extract_book_metadata(
-                    doc,
+                metadata = extract_book_chapter_metadata(
                     file_path,
-                    module_name,
-                    sources_config,
-                    book_metadata_cache,
+                    root_metadata,
                 )
-            elif doc_type in ("sphinx", "doxygen"):
-                # Library documentation - extract once per module
-                if i == 0:
-                    lib_metadata = extract_library_metadata_from_config(
-                        module_name, sources_config
-                    )
-                    logger.info(
-                        f"Using library metadata: {lib_metadata['display_name']}"
-                    )
-                # Use the same metadata for all library docs
-                metadata = lib_metadata.copy()
-            elif doc_type == "arxiv":
-                # Use dedicated ArXiv extractor
+            elif doc_type == DocumentType.LIBRARY:
+                # Library module extraction, handles per-module URL and display name.
+                metadata = extract_library_module_metadata(file_path, root_metadata)
+            elif doc_type == DocumentType.PAPERS:
+                # Per paper display name, authors, URL etc.
                 metadata = extract_arxiv_metadata_from_config(
                     file_path, module_name, sources_config
                 )
             else:
                 raise ValueError(f"Unknown document type: {doc_type}")
 
-            # Cache metadata for this file to avoid re-extraction for other pages
-            file_metadata_cache[file_key] = metadata.copy()
-
             # Inject only essential metadata fields to avoid chunk size issues
             # (LlamaIndex includes metadata in chunk context)
             essential_fields = [
+                "title",
+                "formatted_authors",
                 "display_name",
                 "authors",
                 "source_url",
                 "doc_type",
                 "group_display_name",  # For paper groups UI display
                 "book_display_name",  # For book UI display (same across all chapters)
+                "library_display_name",  # For library UI display (same across all modules)
             ]
+
             for field in essential_fields:
                 if field in metadata:
                     doc.metadata[field] = metadata[field]
@@ -143,6 +107,7 @@ def build_module(
     module_name,
     library_docs_dir,
     indexes_dir,
+    sources_config,
     extensions=[".md", ".html", ".pdf"],
     chunk_sizes=[2048, 512, 256],
 ):
@@ -159,23 +124,27 @@ def build_module(
     Returns:
         None
     """
+    # Get document type from config
 
-    source_dir = os.path.join(library_docs_dir, module_name)
-    persist_dir = os.path.join(indexes_dir, module_name)
+    doc_type = get_document_type_from_config(module_name, sources_config)
+    logger.info(f"Module '{module_name}' document type: {doc_type}")
+
+    module_dir_name = f"{doc_type.value}_{module_name}"
+
+    source_dir = os.path.join(library_docs_dir, module_dir_name)
+    persist_dir = os.path.join(indexes_dir, module_dir_name)
 
     logger.info(f"\n--- BUILDING MODULE: {module_name} ---")
     logger.info(f"Source: {source_dir}")
     logger.info(f"Target: {persist_dir}")
 
-    # 1. Clean Slate for THIS module only
-    if os.path.exists(persist_dir):
-        logger.info(f"Removing old index at {persist_dir}...")
-        shutil.rmtree(persist_dir)
-
-    # 2. Load Documents
     if not os.path.exists(source_dir):
         logger.error(f"Source directory missing: {source_dir}")
         return
+
+    if os.path.exists(persist_dir):
+        logger.info(f"Removing old index at {persist_dir}...")
+        shutil.rmtree(persist_dir)
 
     try:
         documents = SimpleDirectoryReader(
@@ -194,27 +163,32 @@ def build_module(
         logger.warning(f"No documents found in {source_dir}. Skipping module.")
         return
 
-    # 2a. Extract Metadata
-    extract_metadata(module_name, documents)
+    # Extract Metadata
 
-    # 3. Parse
+    extract_metadata(module_name, doc_type, sources_config, documents)
+
+    # Parse
+
     node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
     nodes = node_parser.get_nodes_from_documents(documents)
     leaf_nodes = get_leaf_nodes(nodes)
     logger.info(f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves).")
 
-    # 4. Create Isolated DB
+    # Create Isolated DB
+
     # We use a unique collection name, though it's less critical since folders are separate
     db = chromadb.PersistentClient(path=persist_dir)
     collection = db.get_or_create_collection("data")
     vector_store = ChromaVectorStore(chroma_collection=collection)
 
-    # 5. Index & Persist
+    # Index & Persist
+
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     storage_context.docstore.add_documents(nodes)
 
     device = TensorTruthConfig._detect_default_device()
     logger.info(f"Embedding on {device.upper()}...")
+
     VectorStoreIndex(
         leaf_nodes,
         storage_context=storage_context,
@@ -286,6 +260,24 @@ Environment Variables:
         "--all", action="store_true", help="Build all modules in library-docs-dir"
     )
 
+    parser.add_argument(
+        "--books",
+        action="store_true",
+        help="Build all book modules found in sources.json.",
+    )
+
+    parser.add_argument(
+        "--libraries",
+        action="store_true",
+        help="Build all library modules found in sources.json.",
+    )
+
+    parser.add_argument(
+        "--papers",
+        action="store_true",
+        help="Build all paper modules found in sources.json.",
+    )
+
     # Build options
     parser.add_argument(
         "--chunk-sizes",
@@ -312,22 +304,27 @@ Environment Variables:
     sources_config = load_user_sources(sources_config_path)
 
     # Determine modules to build
-    if args.all:
+    if args.all or args.books or args.libraries or args.papers:
+
         # Check if modules were also specified
         if args.modules:
-            logger.error("Cannot use --all and --modules together.")
+            logger.error(
+                "Cannot use --modules together with group selectors (all/books/libraries/papers)."
+            )
             return 1
 
-        if not os.path.exists(library_docs_dir):
-            logger.error(f"Library docs directory does not exist: {library_docs_dir}")
-            logger.info("Run: tensor-truth-docs --list")
-            return 1
+        papers = [item for item in sources_config.get("papers", {})]
+        libraries = [item for item in sources_config.get("libraries", {})]
+        books = [item for item in sources_config.get("books", {})]
 
-        args.modules = [
-            name
-            for name in os.listdir(library_docs_dir)
-            if os.path.isdir(os.path.join(library_docs_dir, name))
-        ]
+        if args.all:
+            args.modules = papers + libraries + books
+        elif args.books:
+            args.modules = books
+        elif args.libraries:
+            args.modules = libraries
+        elif args.papers:
+            args.modules = papers
 
         if not args.modules:
             logger.error(f"No modules found in {library_docs_dir}")
@@ -367,6 +364,7 @@ Environment Variables:
             module,
             library_docs_dir,
             indexes_dir,
+            sources_config,
             args.extensions,
             args.chunk_sizes,
         )

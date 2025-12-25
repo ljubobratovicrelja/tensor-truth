@@ -19,7 +19,11 @@ def validate_module_for_build(module_name, library_docs_dir, sources_config):
         ValueError if validation fails
     """
     # Check filesystem
-    source_dir = os.path.join(library_docs_dir, module_name)
+    from .metadata import get_document_type_from_config
+
+    doc_type = get_document_type_from_config(module_name, sources_config)
+
+    source_dir = os.path.join(library_docs_dir, f"{doc_type.value}_{module_name}")
     if not os.path.exists(source_dir):
         raise ValueError(
             f"Module '{module_name}' not found in {library_docs_dir}.\n"
@@ -34,7 +38,9 @@ def validate_module_for_build(module_name, library_docs_dir, sources_config):
     all_sources = {
         **sources_config.get("libraries", {}),
         **sources_config.get("papers", {}),
+        **sources_config.get("books", {}),
     }
+
     if module_name not in all_sources:
         logger.warning(
             f"Module '{module_name}' not found in sources config. "

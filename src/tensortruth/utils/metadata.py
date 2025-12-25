@@ -12,6 +12,7 @@ Extraction strategy:
 import json
 import logging
 import re
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -19,6 +20,14 @@ import requests
 from llama_index.core.schema import Document
 
 logger = logging.getLogger(__name__)
+
+
+class DocumentType(Enum):
+    """Document types, as groups of sources defined in sources.json."""
+
+    BOOK = "book"
+    LIBRARY = "library"
+    PAPERS = "papers"
 
 
 # ============================================================================
@@ -296,36 +305,6 @@ def _parse_llm_json_response(response: str) -> Dict[str, Any]:
 # ============================================================================
 
 
-def _get_library_info_from_config(
-    module_name: str, sources_config: Dict
-) -> Optional[Dict]:
-    """Get library information from config for a module.
-
-    Args:
-        module_name: Module directory name (e.g., "pytorch_2.9")
-        sources_config: Contents of config/sources.json
-
-    Returns:
-        Dictionary with title, version, doc_root or None if not found
-    """
-    libraries = sources_config.get("libraries", {})
-
-    # Try direct match first
-    if module_name in libraries:
-        return libraries[module_name]
-
-    # Try matching by library name (extract from module_name)
-    # Pattern: libraryname_version (e.g., pytorch_2.9 -> pytorch)
-    lib_name = module_name.rsplit("_", 1)[0] if "_" in module_name else module_name
-
-    if lib_name in libraries:
-        lib_config = libraries[lib_name]
-        # Add the actual module name for reference
-        return {**lib_config, "module_name": module_name}
-
-    return None
-
-
 def _get_paper_group_metadata(module_name: str, sources_config: Dict) -> Dict[str, Any]:
     """Get paper group metadata from sources.json.
 
@@ -437,40 +416,26 @@ def format_authors(authors: Union[str, List, None]) -> Optional[str]:
 # ============================================================================
 
 
-def get_document_type_from_config(module_name: str, sources_config: Dict) -> str:
-    """Get document type from sources.json config.
+def get_document_type_from_config(
+    module_name: str, sources_config: Dict
+) -> DocumentType:
+    """Get document type for a module from sources.json."""
 
-    Args:
-        module_name: Module directory name (e.g., "pytorch", "dl_foundations")
-        sources_config: Contents of config/sources.json
-
-    Returns:
-        Document type: "arxiv", "pdf_book", "sphinx", "doxygen", or "paper" (default)
-    """
-    # Check libraries first
+    books = sources_config.get("books", {})
     libraries = sources_config.get("libraries", {})
-    if module_name in libraries:
-        return libraries[module_name].get("type", "sphinx")
-
-    # Try matching by library name (extract from module_name)
-    lib_name = module_name.rsplit("_", 1)[0] if "_" in module_name else module_name
-    if lib_name in libraries:
-        return libraries[lib_name].get("type", "sphinx")
-
-    # Check papers
     papers = sources_config.get("papers", {})
-    if module_name in papers:
-        return papers[module_name].get("type", "arxiv")
 
-    # Check books (top-level keys starting with "book_")
-    if module_name in sources_config:
-        return sources_config[module_name].get("type", "paper")
+    if module_name in books:
+        return DocumentType.BOOK
+    elif module_name in libraries:
+        return DocumentType.LIBRARY
+    elif module_name in papers:
+        return DocumentType.PAPERS
 
-    # Default to paper
-    return "paper"
+    raise ValueError(f"Module '{module_name}' is not found among sources.")
 
 
-def _get_book_metadata_from_config(
+def get_book_metadata_from_config(
     module_name: str, sources_config: Dict
 ) -> Dict[str, Any]:
     """Get book metadata from sources.json.
@@ -485,15 +450,17 @@ def _get_book_metadata_from_config(
     if not sources_config:
         raise ValueError("sources_config is required.")
 
-    book_info = sources_config.get(module_name, {})
+    book_info = sources_config["books"].get(module_name, {})
 
-    if not book_info or book_info.get("type") != "pdf_book":
+    if not book_info:
         raise ValueError(
-            f"Book '{module_name}' not found in sources.json or is not a pdf_book type."
+            f"Cannot find a book with module name '{module_name}' in sources.json."
         )
 
     title = book_info.get("title")
     authors = book_info.get("authors", [])
+    description = book_info.get("description", "")
+    category = book_info.get("category", "")
 
     # Convert list to string if needed
     if isinstance(authors, list):
@@ -505,10 +472,65 @@ def _get_book_metadata_from_config(
 
     return {
         "title": title,
+        "doc_type": "book",
         "authors": authors,
+        "formatted_authors": formatted_authors,
         "source_url": book_info.get("source"),
         "book_display_name": book_display_name,
+        "description": description,
+        "category": category,
     }
+
+
+def extract_book_chapter_metadata(
+    file_path: Path, book_metadata: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Extract metadata for book chapters from sources.json.
+
+    Args:
+        file_path: Path to markdown chapter file
+        book_metadata_cache: Cache dict keyed by module name
+
+    Returns:
+        Metadata dict with title, authors, display_name, book_display_name, doc_type, source_url
+    """
+
+    # Start with base book metadata
+    metadata = book_metadata.copy()
+
+    try:
+        title = metadata["title"]
+        formatted_authors = metadata["formatted_authors"]
+    except KeyError as e:
+        raise ValueError(
+            f"Book metadata is missing required key: {e}. "
+            f"Ensure book metadata is loaded correctly."
+        )
+
+    # Extract chapter number from filename if present
+    # Supports formats: Ch01, Ch.01, Chapter_01, __01_, etc.
+    chapter_match = re.search(
+        r"(?:ch(?:apter)?[._\s]?(\d+)|__(\d+)_)",
+        file_path.stem,
+        re.IGNORECASE,
+    )
+
+    if chapter_match:
+        # Get chapter number from whichever group matched
+        chapter_num = chapter_match.group(1) or chapter_match.group(2)
+        # Build chapter-specific display name
+        chapter_title = f"{title} Ch.{chapter_num}"
+        metadata["display_name"] = (
+            f"{chapter_title}, {formatted_authors}"
+            if formatted_authors
+            else chapter_title
+        )
+        logger.debug(f"  Chapter {chapter_num}: {file_path.name}")
+    else:
+        # No chapter number found, use book title as-is
+        metadata["display_name"] = metadata["book_display_name"]
+
+    return metadata
 
 
 def extract_arxiv_metadata_from_config(
@@ -549,78 +571,6 @@ def extract_arxiv_metadata_from_config(
     return metadata
 
 
-def extract_book_metadata(
-    doc: Document,
-    file_path: Path,
-    module_name: str,
-    sources_config: Dict,
-    book_metadata_cache: Dict[str, Dict],
-) -> Dict[str, Any]:
-    """Extract metadata for book chapters from sources.json.
-
-    Extraction strategy:
-    1. Get book-level metadata from sources.json (title, authors, URL)
-    2. Extract chapter number from filename if present
-    3. Build display_name with chapter info for individual chapters
-    4. Include book_display_name for UI display (same across all chapters)
-
-    Args:
-        doc: LlamaIndex Document object (unused, kept for signature compatibility)
-        file_path: Path to markdown chapter file
-        module_name: Module name (e.g., "book_linear_algebra_cherney")
-        sources_config: Contents of config/sources.json
-        book_metadata_cache: Cache dict keyed by module name
-
-    Returns:
-        Metadata dict with title, authors, display_name, book_display_name, doc_type, source_url
-    """
-    # Check cache first (keyed by module name, not book_dir)
-    if module_name in book_metadata_cache:
-        metadata = book_metadata_cache[module_name].copy()
-    else:
-        # Extract book metadata from sources.json
-        metadata = _get_book_metadata_from_config(module_name, sources_config)
-        logger.info(
-            f"Using book metadata from config: {metadata.get('book_display_name')}"
-        )
-        # Cache the metadata for this book module
-        book_metadata_cache[module_name] = metadata.copy()
-
-    # Set doc_type
-    metadata["doc_type"] = "book"
-
-    # Extract chapter number from filename if present
-    # Supports formats: Ch01, Ch.01, Chapter_01, __01_, etc.
-    chapter_match = re.search(
-        r"(?:ch(?:apter)?[._\s]?(\d+)|__(\d+)_)",
-        file_path.stem,
-        re.IGNORECASE,
-    )
-
-    title = metadata.get("title")
-    authors = metadata.get("authors")
-    formatted_authors = format_authors(authors)
-
-    if chapter_match:
-        # Get chapter number from whichever group matched
-        chapter_num = chapter_match.group(1) or chapter_match.group(2)
-        # Build chapter-specific display name
-        chapter_title = f"{title} Ch.{chapter_num}"
-        metadata["display_name"] = (
-            f"{chapter_title}, {formatted_authors}"
-            if formatted_authors
-            else chapter_title
-        )
-        logger.debug(f"  Chapter {chapter_num}: {file_path.name}")
-    else:
-        # No chapter number found, use book title as-is
-        metadata["display_name"] = (
-            f"{title}, {formatted_authors}" if formatted_authors else title
-        )
-
-    return metadata
-
-
 def extract_library_metadata_from_config(
     module_name: str, sources_config: Dict
 ) -> Dict[str, Any]:
@@ -633,35 +583,74 @@ def extract_library_metadata_from_config(
     Returns:
         Metadata dict with title, source_url, doc_type
     """
-    lib_info = _get_library_info_from_config(module_name, sources_config)
+
+    lib_info = sources_config.get("libraries", {}).get(module_name, None)
 
     if not lib_info:
-        # Fallback: generate from module name
-        lib_name = module_name.rsplit("_", 1)[0] if "_" in module_name else module_name
-        title = lib_name.replace("_", " ").replace("-", " ").title()
-        return {
-            "title": title,
-            "authors": None,
-            "display_name": title,
-            "source_url": None,
-            "doc_type": "library_doc",
-        }
+        raise ValueError(
+            f"Library '{module_name}' not found in sources.json 'libraries' section."
+        )
 
     # Build title from library name and version
-    lib_name = module_name.rsplit("_", 1)[0] if "_" in module_name else module_name
+    title = module_name.rsplit("_", 1)[0]  # Remove version suffix if present
+    title = title[0].upper() + title[1:].lower()  # Capitalize first letter
+
     version = lib_info.get("version", "")
-    title_parts = [lib_name.replace("_", " ").replace("-", " ").title()]
-    if version:
-        title_parts.append(version)
-    title = " ".join(title_parts)
+    library_dispay_name = f"{title} {version}"
 
     return {
         "title": title,
         "authors": None,
-        "display_name": title,
+        "generator_type": lib_info.get("doc_type"),
+        "library_display_name": library_dispay_name,
         "source_url": lib_info.get("doc_root"),
         "doc_type": "library_doc",
     }
+
+
+def extract_library_module_metadata(
+    file_path: Path, library_metadata: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Extract metadata for library documentation modules.
+    Args:
+        file_path: Path to document file
+        library_metadata: Metadata dict for the library
+    Returns:
+        Metadata dict with title, authors, display_name, library_display_name, doc_type, source_url
+    """
+
+    # Read first line to get source URL
+    with open(file_path, "r", encoding="utf-8") as f:
+        first_line = f.readline().strip()
+
+    # Extract URL from format: # Source: https://...
+    source_url = None
+    if first_line.startswith("# Source: "):
+        source_url = first_line.replace("# Source: ", "").strip()
+
+    if not source_url:
+        raise ValueError(
+            f"Source URL not found in first line of {file_path.name}. "
+            f"Expected format: '# Source: <URL>'"
+        )
+
+    # Build metadata from library base
+    metadata = library_metadata.copy()
+
+    metadata["source_url"] = source_url
+
+    # Format display_name based on doc_type
+    library_display_name = library_metadata.get("library_display_name", "")
+    generator_type = library_metadata.get("generator_type", "")
+
+    if generator_type == "sphinx":
+        module_name = source_url.rstrip("/").split("/")[-1]
+        metadata["display_name"] = f"{library_display_name} > {module_name}"
+    else:
+        # For doxygen or other types, just use library_display_name
+        metadata["display_name"] = library_display_name
+
+    return metadata
 
 
 def extract_uploaded_pdf_metadata(
@@ -709,4 +698,5 @@ def extract_uploaded_pdf_metadata(
     # Add source URL as file URI
     metadata["source_url"] = file_path.as_uri()
 
+    return metadata
     return metadata
