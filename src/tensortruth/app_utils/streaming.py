@@ -80,7 +80,8 @@ def _stream_llm_with_thinking(
 
     Args:
         response_stream: Iterator of ChatResponse chunks from LLM
-        spinner_placeholder: Streamlit placeholder for spinner (will be replaced by thinking if present)
+        spinner_placeholder: Streamlit placeholder for spinner (will be
+            replaced by thinking if present)
         content_placeholder: Streamlit placeholder for content display
 
     Returns:

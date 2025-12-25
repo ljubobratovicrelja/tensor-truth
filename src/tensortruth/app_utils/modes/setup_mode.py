@@ -114,7 +114,10 @@ def render_setup_mode():
                     "Max Tokens (for thinking models)",
                     options=[1024, 2048, 4096, 8192, 16384],
                     key="setup_max_tokens",
-                    help="Limits total output (thinking + response) for reasoning models to prevent runaway loops",
+                    help=(
+                        "Limits total output (thinking + response) for "
+                        "reasoning models to prevent runaway loops",
+                    ),
                 )
 
                 st.subheader("3. RAG Parameters")
