@@ -73,6 +73,39 @@ def stream_response_with_spinner(
     return full_response, error_holder["error"]
 
 
+def _stream_llm_with_thinking(
+    response_stream, thinking_placeholder, content_placeholder
+) -> Tuple[str, str]:
+    """Common logic for streaming LLM responses with thinking token extraction.
+
+    Args:
+        response_stream: Iterator of ChatResponse chunks from LLM
+        thinking_placeholder: Streamlit placeholder for thinking display
+        content_placeholder: Streamlit placeholder for content display
+
+    Returns:
+        Tuple of (content_accumulated, thinking_accumulated)
+    """
+    thinking_accumulated = ""
+    content_accumulated = ""
+
+    for chunk in response_stream:
+        # Extract and display thinking delta
+        thinking_delta = chunk.additional_kwargs.get("thinking_delta", None)
+        if thinking_delta:
+            thinking_accumulated += thinking_delta
+            thinking_placeholder.info(
+                f"**🧠 Reasoning:**\n\n{convert_latex_delimiters(thinking_accumulated)}"
+            )
+
+        # Extract and display content delta
+        if chunk.delta:
+            content_accumulated += chunk.delta
+            content_placeholder.markdown(convert_latex_delimiters(content_accumulated))
+
+    return content_accumulated, thinking_accumulated
+
+
 def stream_rag_response(
     synthesizer, prompt: str, context_nodes
 ) -> Tuple[str, Optional[Exception], Optional[str]]:
@@ -86,11 +119,10 @@ def stream_rag_response(
     Returns:
         Tuple of (full_response_text, error_if_any, thinking_text)
     """
-    thinking_accumulated = ""
     content_accumulated = ""
+    thinking_accumulated = ""
     error = None
 
-    # Create placeholders for thinking and content
     thinking_placeholder = st.empty()
     content_placeholder = st.empty()
     spinner_placeholder = st.empty()
@@ -98,62 +130,40 @@ def stream_rag_response(
     try:
         with spinner_placeholder:
             with st.spinner(get_random_generating_message()):
-                # Try to access LLM stream directly if available
-                # Different synthesizer types have different internal structures
+                # Try to stream directly from LLM to access thinking tokens
                 if hasattr(synthesizer, "_llm") and hasattr(
                     synthesizer._llm, "stream_chat"
                 ):
-                    # Build the context string from nodes
                     from llama_index.core.base.llms.types import (
                         ChatMessage,
                         MessageRole,
                     )
 
+                    # Build context string and format prompt
                     context_str = "\n\n".join([n.get_content() for n in context_nodes])
-
-                    # Build prompt with context (simplified approach)
                     formatted_prompt = (
                         f"Context information:\n{context_str}\n\n"
-                        "Query: {prompt}\n\nAnswer:"
+                        f"Query: {prompt}\n\nAnswer:"
                     )
 
-                    # Get chat history from memory if available
+                    # Get chat history and add formatted prompt
                     chat_history = []
                     if hasattr(synthesizer, "_memory") and synthesizer._memory:
                         chat_history = list(synthesizer._memory.get())
 
-                    # Add the formatted prompt as a user message
                     messages = chat_history + [
                         ChatMessage(role=MessageRole.USER, content=formatted_prompt)
                     ]
 
-                    # Stream directly from LLM to access thinking tokens
+                    # Stream from LLM with thinking token support
                     response_stream = synthesizer._llm.stream_chat(messages)
-
-                    for chunk in response_stream:
-                        # Extract thinking delta
-                        thinking_delta = chunk.additional_kwargs.get(
-                            "thinking_delta", None
+                    content_accumulated, thinking_accumulated = (
+                        _stream_llm_with_thinking(
+                            response_stream, thinking_placeholder, content_placeholder
                         )
-                        if thinking_delta:
-                            thinking_accumulated += thinking_delta
-                            # Display thinking with special styling
-                            if thinking_accumulated:
-                                thinking_accumulated_processed = (
-                                    convert_latex_delimiters(thinking_accumulated)
-                                )
-                                thinking_placeholder.info(
-                                    f"**🧠 Reasoning:**\n\n{thinking_accumulated_processed}"
-                                )
-
-                        # Extract content delta
-                        if chunk.delta:
-                            content_accumulated += chunk.delta
-                            content_placeholder.markdown(
-                                convert_latex_delimiters(content_accumulated)
-                            )
+                    )
                 else:
-                    # Fallback to original synthesizer approach (no thinking tokens)
+                    # Fallback to synthesizer (no thinking tokens available)
                     response = synthesizer.synthesize(prompt, context_nodes)
                     for token in response.response_gen:
                         content_accumulated += token
@@ -161,7 +171,6 @@ def stream_rag_response(
                             convert_latex_delimiters(content_accumulated)
                         )
 
-        # Clear spinner after completion
         spinner_placeholder.empty()
 
     except Exception as e:
@@ -186,11 +195,10 @@ def stream_simple_llm_response(
     Returns:
         Tuple of (full_response_text, error_if_any, thinking_text)
     """
-    thinking_accumulated = ""
     content_accumulated = ""
+    thinking_accumulated = ""
     error = None
 
-    # Create placeholders for thinking and content
     thinking_placeholder = st.empty()
     content_placeholder = st.empty()
     spinner_placeholder = st.empty()
@@ -199,29 +207,10 @@ def stream_simple_llm_response(
         with spinner_placeholder:
             with st.spinner(get_random_generating_message()):
                 response_stream = llm.stream_chat(chat_history)
+                content_accumulated, thinking_accumulated = _stream_llm_with_thinking(
+                    response_stream, thinking_placeholder, content_placeholder
+                )
 
-                for chunk in response_stream:
-                    # Extract thinking delta
-                    thinking_delta = chunk.additional_kwargs.get("thinking_delta", None)
-                    if thinking_delta:
-                        thinking_accumulated += thinking_delta
-                        # Display thinking with special styling
-                        if thinking_accumulated:
-                            thinking_accumulated_processed = convert_latex_delimiters(
-                                thinking_accumulated
-                            )
-                            thinking_placeholder.info(
-                                f"**🧠 Reasoning:**\n\n{thinking_accumulated_processed}"
-                            )
-
-                    # Extract content delta
-                    if chunk.delta:
-                        content_accumulated += chunk.delta
-                        content_placeholder.markdown(
-                            convert_latex_delimiters(content_accumulated)
-                        )
-
-        # Clear spinner after completion
         spinner_placeholder.empty()
 
     except Exception as e:
