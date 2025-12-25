@@ -266,7 +266,7 @@ def render_chat_mode():
                         )
 
                     # Phase 2: LLM Streaming
-                    full_response, error = stream_rag_response(
+                    full_response, error, thinking = stream_rag_response(
                         synthesizer, prompt, context_nodes
                     )
 
@@ -305,15 +305,17 @@ def render_chat_mode():
                     engine._memory.put(user_message)
                     engine._memory.put(assistant_message)
 
-                    session["messages"].append(
-                        {
-                            "role": "assistant",
-                            "content": full_response,
-                            "sources": source_data,
-                            "time_taken": elapsed,
-                            "low_confidence": low_confidence_warning,
-                        }
-                    )
+                    message_data = {
+                        "role": "assistant",
+                        "content": full_response,
+                        "sources": source_data,
+                        "time_taken": elapsed,
+                        "low_confidence": low_confidence_warning,
+                    }
+                    if thinking:
+                        message_data["thinking"] = thinking
+
+                    session["messages"].append(message_data)
 
                     save_sessions(st.session_state.sessions_file)
 
@@ -338,17 +340,33 @@ def render_chat_mode():
                 # NO RAG MODE
                 start_time = time.time()
                 try:
-                    if "simple_llm" not in st.session_state:
-                        from tensortruth.rag_engine import get_llm
+                    # Check if simple_llm needs to be reloaded due to param changes
+                    from tensortruth.rag_engine import get_llm
 
+                    # Compute a simple hash of relevant params for simple LLM
+                    simple_llm_config = (
+                        params.get("model"),
+                        params.get("temperature"),
+                        params.get("llm_device"),
+                    )
+
+                    # Reload if config changed or LLM doesn't exist
+                    if (
+                        "simple_llm" not in st.session_state
+                        or st.session_state.get("simple_llm_config")
+                        != simple_llm_config
+                    ):
                         st.session_state.simple_llm = get_llm(params)
+                        st.session_state.simple_llm_config = simple_llm_config
 
                     llm = st.session_state.simple_llm
 
                     chat_history = build_chat_history(session["messages"])
 
                     # Stream response
-                    full_response, error = stream_simple_llm_response(llm, chat_history)
+                    full_response, error, thinking = stream_simple_llm_response(
+                        llm, chat_history
+                    )
 
                     if error:
                         raise error
@@ -357,13 +375,15 @@ def render_chat_mode():
 
                     st.caption(f"⏱️ {elapsed:.2f}s | 🔴 No RAG")
 
-                    session["messages"].append(
-                        {
-                            "role": "assistant",
-                            "content": full_response,
-                            "time_taken": elapsed,
-                        }
-                    )
+                    message_data = {
+                        "role": "assistant",
+                        "content": full_response,
+                        "time_taken": elapsed,
+                    }
+                    if thinking:
+                        message_data["thinking"] = thinking
+
+                    session["messages"].append(message_data)
 
                     save_sessions(st.session_state.sessions_file)
 

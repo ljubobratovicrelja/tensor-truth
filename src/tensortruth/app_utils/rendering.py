@@ -233,6 +233,12 @@ def render_chat_message(
                     0.0, confidence_threshold, has_sources=False
                 )
 
+        # Render thinking if present
+        if message.get("thinking"):
+            st.info(
+                f"**🧠 Reasoning:**\n\n{convert_latex_delimiters(message['thinking'])}"
+            )
+
         # Render message content
         st.markdown(convert_latex_delimiters(message["content"]))
 

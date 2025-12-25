@@ -188,13 +188,19 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
         print(f"Loading LLM {model_name} on: CPU (Forced)")
         ollama_options["num_gpu"] = 0
 
+    # Enable thinking only for models that support it
+    # Known thinking models: deepseek-r1, qwen3 (and their variants)
+    thinking_enabled = any(
+        keyword in model_name.lower() for keyword in ["deepseek-r1", "qwen3", "qwq"]
+    )
+
     return Ollama(
         model=model_name,
         base_url=get_ollama_url(),
         request_timeout=300.0,
         temperature=params.get("temperature", 0.3),
         context_window=params.get("context_window", 16384),
-        thinking=True,
+        thinking=thinking_enabled,
         additional_kwargs={
             "num_ctx": params.get("context_window", 16384),
             "options": ollama_options,
