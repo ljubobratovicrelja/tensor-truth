@@ -1050,18 +1050,6 @@
       "description": "Free calculus textbook from MIT OpenCourseWare with comprehensive coverage",
       "items": {}
     },
-    "book_calculus_apex": {
-      "type": "pdf_book",
-      "category": "calculus",
-      "title": "APEX Calculus",
-      "authors": [
-        "Gregory Hartman"
-      ],
-      "source": "https://commons.und.edu/cgi/viewcontent.cgi?article=1030&context=oers",
-      "split_method": "toc",
-      "description": "Free, open-source textbook covering Calculus I, II, and III",
-      "items": {}
-    },
     "book_vector_calculus_corral": {
       "type": "pdf_book",
       "category": "calculus",
@@ -1072,31 +1060,6 @@
       "source": "https://www.mecmath.net/VectorCalculus.pdf",
       "split_method": "none",
       "description": "Focused treatment of vector calculus and multivariable topics",
-      "items": {}
-    },
-    "book_diff_equations_trench": {
-      "type": "pdf_book",
-      "category": "calculus",
-      "title": "Elementary Differential Equations",
-      "authors": [
-        "William F. Trench"
-      ],
-      "source": "https://digitalcommons.trinity.edu/cgi/viewcontent.cgi?article=1007&context=mono",
-      "split_method": "toc",
-      "description": "Comprehensive introduction to ordinary differential equations",
-      "items": {}
-    },
-    "book_numerical_optimization_nocedal": {
-      "type": "pdf_book",
-      "category": "numerical_optimization",
-      "title": "Numerical Optimization",
-      "authors": [
-        "Jorge Nocedal",
-        "Stephen Wright"
-      ],
-      "source": "https://www.csie.ntu.edu.tw/~r97002/temp/num_optimization.pdf",
-      "split_method": "manual",
-      "description": "The standard reference for numerical optimization",
       "items": {}
     },
     "book_convex_optimization_boyd": {
@@ -1110,33 +1073,6 @@
       "source": "https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf",
       "split_method": "toc",
       "description": "Classic Stanford textbook on convex optimization",
-      "items": {}
-    },
-    "book_algorithms_optimization_kochenderfer": {
-      "type": "pdf_book",
-      "category": "numerical_optimization",
-      "title": "Algorithms for Optimization",
-      "authors": [
-        "Mykel J. Kochenderfer",
-        "Tim A. Wheeler"
-      ],
-      "source": "https://algorithmsbook.com/optimization/files/optimization.pdf",
-      "split_method": "toc",
-      "description": "Modern treatment with Julia code examples",
-      "items": {}
-    },
-    "book_elements_statistical_learning_hastie": {
-      "type": "pdf_book",
-      "category": "machine_learning",
-      "title": "The Elements of Statistical Learning",
-      "authors": [
-        "Trevor Hastie",
-        "Robert Tibshirani",
-        "Jerome Friedman"
-      ],
-      "source": "https://hastie.su.domains/ElemStatLearn/printings/ESLII_print12.pdf",
-      "split_method": "toc",
-      "description": "Classic Stanford textbook on statistical learning",
       "items": {}
     },
     "book_pattern_recognition_bishop": {
