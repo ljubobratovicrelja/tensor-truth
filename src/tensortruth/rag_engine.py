@@ -136,32 +136,31 @@ CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE = (
     "Response:"
 )
 
-# Prompt used when confidence cutoff filters all sources - includes warning acknowledgment
+# Prompt used when no documents are retrieved from knowledge base
 CUSTOM_CONTEXT_PROMPT_NO_SOURCES = (
-    "Role: Technical Research & Development Assistant.\n"
-    "Status: NO RETRIEVED DOCUMENTS.\n\n"
-    "--- HISTORY ---\n"
+    "Role: Technical Research & Development Assistant.\n\n"
+    "--- CONVERSATION HISTORY ---\n"
     "{chat_history}\n"
     "--- END HISTORY ---\n\n"
+    "CONTEXT: No documents were retrieved from the knowledge base for this query.\n\n"
     "INSTRUCTIONS:\n"
-    "1. SYSTEM ALERT: The knowledge base returned zero matches. "
-    "You are now operating on GENERAL MODEL KNOWLEDGE only.\n"
-    "2. MANDATORY FORMATTING: Start your response with one of the following labels:\n"
-    "   - 'NO INDEXED DATA FOUND. General knowledge fallback:'\n"
-    "   - 'OUT OF SCOPE. Using general training data:'\n"
-    "3. SCOPE: If the query is strictly about the internal database (e.g., 'What is in file X?'), "
-    "state 'No data found' and terminate.\n"
-    "4. CONTINUITY: If the answer is in the Chat History, output it without the "
-    "no-data warning.\n"
-    f"5. {_CODE_EXECUTION_RULES}\n"
+    "1. PRIORITIZE HISTORY: If the user's query refers to previous conversation "
+    "(e.g., 'what did you do', 'explain that', 'fix the error'), answer using the conversation history. "
+    "Do NOT mention missing documents.\n"
+    "2. GENERAL QUERIES: For questions not in the history, use your general knowledge. "
+    "Only mention the lack of indexed data if the user is specifically asking about "
+    "documentation or files that should be in the knowledge base.\n"
+    "3. DATABASE QUERIES: If the user asks about specific files in the knowledge base "
+    "(e.g., 'What is in file X?'), state that no matching documents were found.\n"
+    f"4. {_CODE_EXECUTION_RULES}\n\n"
     "User Query: {query_str}\n"
     "Response:"
 )
 
-# Context string injected when confidence cutoff filters all nodes
+# Legacy constant - deprecated, kept for backward compatibility
 NO_CONTEXT_FALLBACK_CONTEXT = (
-    "[SYSTEM FLAG: NULL_CONTEXT. No documents met the confidence threshold. "
-    "Proceed with caution using internal knowledge only.]"
+    "[DEPRECATED] This constant is no longer used. "
+    "Context handling is now done via prompt templates."
 )
 
 CUSTOM_CONDENSE_PROMPT_TEMPLATE = (

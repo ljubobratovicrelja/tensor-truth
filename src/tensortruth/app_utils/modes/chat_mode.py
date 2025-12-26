@@ -250,24 +250,18 @@ def render_chat_mode():
                             )
                             low_confidence_warning = True
                     elif not context_nodes or len(context_nodes) == 0:
-                        from llama_index.core.schema import NodeWithScore, TextNode
-
                         from tensortruth.rag_engine import (
                             CUSTOM_CONTEXT_PROMPT_NO_SOURCES,
-                            NO_CONTEXT_FALLBACK_CONTEXT,
                         )
 
                         render_low_confidence_warning(
                             0.0, confidence_threshold, has_sources=False
                         )
 
-                        warning_node = NodeWithScore(
-                            node=TextNode(text=NO_CONTEXT_FALLBACK_CONTEXT),
-                            score=0.0,
-                        )
-                        context_nodes = [warning_node]
+                        # Leave context_nodes empty - no synthetic nodes
+                        context_nodes = []
                         low_confidence_warning = True
-                        has_real_sources = False  # No real sources, just synthetic node
+                        has_real_sources = False  # No real sources
 
                         synthesizer._context_prompt_template = (
                             CUSTOM_CONTEXT_PROMPT_NO_SOURCES

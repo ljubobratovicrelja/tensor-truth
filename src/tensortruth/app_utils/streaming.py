@@ -161,17 +161,26 @@ def stream_rag_response(
                         MessageRole,
                     )
 
-                    # Build context string and format prompt
-                    context_str = "\n\n".join([n.get_content() for n in context_nodes])
-                    formatted_prompt = (
-                        f"Context information:\n{context_str}\n\n"
-                        f"Query: {prompt}\n\nAnswer:"
-                    )
-
-                    # Get chat history and add formatted prompt
+                    # Get chat history first
                     chat_history = []
                     if hasattr(synthesizer, "_memory") and synthesizer._memory:
                         chat_history = list(synthesizer._memory.get())
+
+                    # Build context string and format prompt
+                    if context_nodes and len(context_nodes) > 0:
+                        # Normal case: we have retrieved documents
+                        context_str = "\n\n".join(
+                            [n.get_content() for n in context_nodes]
+                        )
+                        formatted_prompt = (
+                            f"Context information:\n{context_str}\n\n"
+                            f"Query: {prompt}\n\nAnswer:"
+                        )
+                    else:
+                        # No documents retrieved - just pass the query
+                        # The synthesizer's custom template (CUSTOM_CONTEXT_PROMPT_NO_SOURCES)
+                        # will handle the formatting with chat history
+                        formatted_prompt = prompt
 
                     messages = chat_history + [
                         ChatMessage(role=MessageRole.USER, content=formatted_prompt)
