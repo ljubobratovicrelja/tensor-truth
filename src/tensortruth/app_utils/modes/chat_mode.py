@@ -194,11 +194,12 @@ def render_chat_mode():
                 with st.chat_message("command", avatar=":material/settings:"):
                     st.markdown(response)
 
-                save_sessions(st.session_state.sessions_file)
-
                 if state_modifier is not None:
                     with st.spinner("⚙️ Applying changes..."):
                         state_modifier()
+
+                # Save sessions AFTER state_modifier has run to persist parameter changes
+                save_sessions(st.session_state.sessions_file)
 
                 st.rerun()
 
