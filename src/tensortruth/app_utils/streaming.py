@@ -121,8 +121,8 @@ def _stream_llm_with_thinking(
             code_parser.feed_token(chunk.delta)  # Parse for code blocks
             content_placeholder.markdown(convert_latex_delimiters(content_accumulated))
 
-    # Finalize code block parsing
-    code_blocks = code_parser.finalize()
+    # Finalize code block parsing and get all blocks
+    code_parser.finalize()
     all_blocks = code_parser.get_all_blocks()
 
     return content_accumulated, thinking_accumulated, all_blocks

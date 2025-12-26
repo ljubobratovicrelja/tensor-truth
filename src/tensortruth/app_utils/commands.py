@@ -1,4 +1,7 @@
-"""Slash command processing for chat interface - Refactored with class-based architecture."""
+"""Slash command processing for chat interface.
+
+Refactored with class-based architecture.
+"""
 
 from abc import ABC, abstractmethod
 from typing import Callable, List, Optional, Tuple
@@ -93,9 +96,8 @@ class ListCommand(Command):
         lines.append(
             f"**Confidence Warning:** `{current_params.get('confidence_cutoff', 0.3)}`"
         )
-        lines.append(
-            f"**Confidence Cutoff (Hard):** `{current_params.get('confidence_cutoff_hard', 0.0)}`"
-        )
+        hard_cutoff = current_params.get("confidence_cutoff_hard", 0.0)
+        lines.append(f"**Confidence Cutoff (Hard):** `{hard_cutoff}`")
 
         # Hardware Allocation Section
         lines.append("\n#### Hardware Allocation")
@@ -139,7 +141,7 @@ class ModelCommand(Command):
     def __init__(self):
         super().__init__(
             name="model",
-            usage="/model [name] - Show current model info or switch to a different model",
+            usage="/model [name] - Show current model info or switch model",
         )
 
     def execute(
@@ -348,7 +350,10 @@ class ConfCommand(Command):
                     "Engine restarting..."
                 )
             else:
-                response = f"**Confidence Warning:** Set to `{new_warning}`. Engine restarting..."
+                response = (
+                    f"**Confidence Warning:** Set to `{new_warning}`. "
+                    "Engine restarting..."
+                )
 
             def update_confidence():
                 session["params"]["confidence_cutoff"] = new_warning
@@ -403,7 +408,10 @@ class DeviceCommand(Command):
             )
             return True, response, None
         else:
-            response = f"**Pipeline Switched:** Now running Embed/Rerank on `{target_dev.upper()}`."
+            response = (
+                f"**Pipeline Switched:** Now running Embed/Rerank on "
+                f"`{target_dev.upper()}`."
+            )
 
             def update_rag_device():
                 session["params"]["rag_device"] = target_dev
@@ -543,7 +551,8 @@ class ExecCommand(Command):
                 return (
                     True,
                     "🔄 **Execution environment reset**\n\n"
-                    "The Docker container has been restarted. All variables and state have been cleared.",
+                    "The Docker container has been restarted. All variables "
+                    "and state have been cleared.",
                     None,
                 )
             except Exception as e:

@@ -14,7 +14,8 @@ class CodeValidator:
     Example:
         validator = CodeValidator()
         warnings = validator.validate("import os\\nos.system('ls')")
-        # Returns: ["Imports potentially dangerous module: os", "Uses dangerous function: system"]
+        # Returns: ["Imports potentially dangerous module: os",
+        #           "Uses dangerous function: system"]
     """
 
     # Modules that can interact with the system

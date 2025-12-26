@@ -1,9 +1,8 @@
 """Code block parser for detecting Python code in streaming LLM responses."""
 
-import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional
+from typing import List
 
 
 class ParserState(Enum):
@@ -173,8 +172,9 @@ class CodeBlockParser:
 
         if char == "\n" or char == " " or self.backtick_count == self.fence_backticks:
             # Confirmed closing fence - create completed block
-            # The backticks were NOT added to current_code (we detected them in _handle_accumulating)
-            # So current_code already has the correct content without trailing backticks
+            # The backticks were NOT added to current_code
+            # (we detected them in _handle_accumulating)
+            # So current_code already has correct content without backticks
             code = self.current_code
 
             # Only create block if language is Python-related

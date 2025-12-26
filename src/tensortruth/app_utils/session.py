@@ -97,7 +97,8 @@ async def update_title_async(
     """
     sessions_file = Path(sessions_file)
 
-    # Accept chat_data as parameter to avoid accessing st.session_state from background thread
+    # Accept chat_data as parameter to avoid accessing st.session_state
+    # from background thread
     if chat_data is None:
         chat_data = st.session_state.chat_data
 
@@ -110,7 +111,8 @@ async def update_title_async(
         new_title = await generate_smart_title_async(text, model_name, keep_alive=1)
         session["title"] = new_title
         session["title_needs_update"] = False  # Clear the flag
-        # Write directly to file instead of using save_sessions (which accesses session_state)
+        # Write directly to file instead of using save_sessions
+        # (which accesses session_state)
         with open(sessions_file, "w", encoding="utf-8") as f:
             json.dump(chat_data, f, indent=2)
 

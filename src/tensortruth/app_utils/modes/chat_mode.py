@@ -111,7 +111,8 @@ def render_chat_mode():
         engine = None
     elif not modules and not has_pdf_index:
         st.info(
-            "💬 Simple LLM mode (No RAG) - Use `/load <name>` to attach a knowledge base."
+            "💬 Simple LLM mode (No RAG) - "
+            "Use `/load <name>` to attach a knowledge base."
         )
         engine = None
 
@@ -133,7 +134,8 @@ def render_chat_mode():
     # Show tip if no messages exist
     if not session["messages"] and not prompt:
         st.caption(
-            "💡 Tip: Type **/help** to see all commands. Use `/device` to manage hardware."
+            "💡 Tip: Type **/help** to see all commands. "
+            "Use `/device` to manage hardware."
         )
 
     if prompt:
@@ -197,7 +199,8 @@ def render_chat_mode():
         session["messages"].append({"role": "user", "content": prompt})
         save_sessions(st.session_state.sessions_file)
 
-        # Check if title needs updating (avoid race conditions by doing it after response)
+        # Check if title needs updating
+        # (avoid race conditions by doing it after response)
         should_update_title = session.get("title_needs_update", False)
 
         with st.chat_message("user"):

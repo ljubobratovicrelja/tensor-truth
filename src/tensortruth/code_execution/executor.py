@@ -117,7 +117,8 @@ class ExecutionOrchestrator:
 
                 if result.success:
                     logger.info(
-                        f"Block {i+1} executed successfully in {result.execution_time:.2f}s"
+                        f"Block {i+1} executed successfully in "
+                        f"{result.execution_time:.2f}s"
                     )
                 else:
                     logger.warning(

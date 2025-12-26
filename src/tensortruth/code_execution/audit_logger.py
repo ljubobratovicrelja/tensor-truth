@@ -31,7 +31,8 @@ class AuditLogger:
         """Initialize audit logger.
 
         Args:
-            log_file: Path to JSONL log file (defaults to ~/.tensortruth/execution_audit.jsonl)
+            log_file: Path to JSONL log file
+                (defaults to ~/.tensortruth/execution_audit.jsonl)
         """
         if log_file is None:
             log_file = Path.home() / ".tensortruth" / "execution_audit.jsonl"

@@ -1,4 +1,7 @@
-"""Code execution module for running LLM-generated Python code in isolated Docker containers."""
+"""Code execution module for running LLM-generated Python code.
+
+Executes code in isolated Docker containers.
+"""
 
 from .executor import ExecutionOrchestrator, ExecutionResult
 from .parser import CodeBlock, CodeBlockParser

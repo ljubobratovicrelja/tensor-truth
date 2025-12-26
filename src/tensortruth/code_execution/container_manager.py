@@ -2,7 +2,6 @@
 
 import atexit
 import logging
-import os
 import threading
 import time
 from dataclasses import dataclass
@@ -162,7 +161,8 @@ class SessionContainerManager:
                     else:
                         # Container stopped, remove and recreate
                         logger.warning(
-                            f"Container for session {session_id} is {container.status}, removing"
+                            f"Container for session {session_id} is "
+                            f"{container.status}, removing"
                         )
                         self._remove_container(session_id)
                 except Exception as e:
