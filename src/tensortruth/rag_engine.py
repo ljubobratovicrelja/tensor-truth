@@ -56,11 +56,14 @@ BASE_INDEX_DIR = "./indexes"
 # Common code execution instructions (appended to all prompts)
 _CODE_EXECUTION_RULES = (
     "CODE EXECUTION:\n"
-    "   - Python code blocks will be AUTOMATICALLY EXECUTED in an isolated container.\n"
+    "   - Python code blocks will be AUTOMATICALLY EXECUTED in a persistent container session.\n"
+    "   - Variables, imports, and state PERSIST across ALL code blocks in this conversation (like Jupyter notebooks).\n"
+    "   - You can reference variables/functions defined in ANY previous code block in the Chat History.\n"
+    "   - Example: If you defined `df = pd.DataFrame(...)` earlier, you can use `df` in new code blocks.\n"
+    "   - Review the Chat History to see what variables/imports are already available before redefining them.\n"
     '   - Include `if __name__ == "__main__":` blocks for executable examples.\n'
     "   - Make code print informative output - the output will be shown directly to the user.\n"
     "   - DO NOT predict or describe the output - the actual execution result will be displayed.\n"
-    "   - Write self-contained, runnable code that demonstrates the concept.\n"
     "   - For matplotlib plots: Save figures with plt.savefig('plot.png') - images will be displayed automatically.\n"
     "   - You can generate multiple outputs: plot1.png, plot2.png, data.csv, etc.\n"
 )

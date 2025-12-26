@@ -19,12 +19,16 @@ RUN useradd -m -u 1000 coderunner && \
     mkdir -p /workspace && \
     chown coderunner:coderunner /workspace
 
+# Copy session runner script
+COPY session_runner.py /home/coderunner/session_runner.py
+RUN chown coderunner:coderunner /home/coderunner/session_runner.py
+
 # Set working directory
 WORKDIR /workspace
 
 # Switch to non-root user
 USER coderunner
 
-# Keep container alive for exec commands
-# This allows the container to persist state across multiple executions
-CMD ["tail", "-f", "/dev/null"]
+# Run persistent Python session
+# This maintains state (variables, imports) across multiple code executions
+CMD ["python", "/home/coderunner/session_runner.py"]

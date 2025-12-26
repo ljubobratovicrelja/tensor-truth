@@ -282,61 +282,91 @@ class SessionContainerManager:
                 exit_code=-1,
             )
 
-        # Prepare code for execution with proper output capture
-        # We use exec to preserve globals across executions
-        wrapped_code = f"""
-import sys
-import io
-import traceback
-
-# Capture stdout and stderr
-_stdout = io.StringIO()
-_stderr = io.StringIO()
-_old_stdout = sys.stdout
-_old_stderr = sys.stderr
-sys.stdout = _stdout
-sys.stderr = _stderr
-
-try:
-    exec('''
-{code}
-''', globals())
-except Exception:
-    traceback.print_exc(file=sys.stderr)
-finally:
-    sys.stdout = _old_stdout
-    sys.stderr = _old_stderr
-    print(_stdout.getvalue(), end='')
-    print(_stderr.getvalue(), file=sys.stderr, end='')
-"""
-
-        # Execute code in container
+        # Communicate with persistent Python session via file-based protocol
+        # This allows variables and imports to persist across executions
         try:
-            exec_result = container.exec_run(
-                ["python", "-c", wrapped_code],
-                stdin=False,
-                tty=False,
-                demux=True,  # Separate stdout and stderr
-                workdir="/workspace",
-                user="coderunner",
+            import json
+            import uuid
+
+            workspace_path = (
+                Path.home() / ".tensortruth" / "sessions" / session_id / "workspace"
             )
 
-            exit_code = exec_result.exit_code
-            stdout_bytes, stderr_bytes = exec_result.output
+            # Generate unique request ID
+            request_id = str(uuid.uuid4())
 
-            stdout = stdout_bytes.decode("utf-8") if stdout_bytes else ""
-            stderr = stderr_bytes.decode("utf-8") if stderr_bytes else ""
+            # File paths for communication
+            input_file = workspace_path / ".code_input.json"
+            output_file = workspace_path / ".code_output.json"
 
-            execution_time = time.time() - start_time
-            success = exit_code == 0
+            # Remove old output file if it exists
+            if output_file.exists():
+                output_file.unlink()
 
-            error_message = None
-            if not success:
-                error_message = (
-                    stderr if stderr else f"Execution failed with exit code {exit_code}"
+            # Write code request
+            with open(input_file, "w") as f:
+                json.dump({"code": code, "request_id": request_id}, f)
+
+            # Wait for output file with timeout
+            max_wait = timeout
+            poll_interval = 0.1
+            waited = 0.0
+
+            while waited < max_wait:
+                if output_file.exists():
+                    # Give it a moment to finish writing
+                    time.sleep(0.05)
+
+                    # Read result
+                    try:
+                        with open(output_file, "r") as f:
+                            result = json.load(f)
+                    except json.JSONDecodeError:
+                        # File not fully written yet, wait
+                        time.sleep(poll_interval)
+                        waited += poll_interval
+                        continue
+
+                    # Remove output file
+                    output_file.unlink()
+
+                    execution_time = time.time() - start_time
+                    success = result["success"]
+                    stdout = result["stdout"]
+                    stderr = result["stderr"]
+                    error_message = result.get("error") if not success else None
+                    exit_code = 0 if success else 1
+
+                    break
+
+                time.sleep(poll_interval)
+                waited += poll_interval
+            else:
+                # Timeout occurred
+                execution_time = time.time() - start_time
+                success = False
+                stdout = ""
+                stderr = ""
+                error_message = f"Code execution timed out after {timeout}s"
+                exit_code = -1
+
+                # Clean up input file
+                if input_file.exists():
+                    input_file.unlink()
+
+                output_files = self._capture_output_files(session_id, existing_files)
+
+                return ExecutionResult(
+                    success=False,
+                    stdout=stdout,
+                    stderr=stderr,
+                    execution_time=execution_time,
+                    error_message=error_message,
+                    exit_code=exit_code,
+                    output_files=output_files,
                 )
 
-            # Capture output files (images, etc.) - only NEW files since execution started
+            # Capture output files
             output_files = self._capture_output_files(session_id, existing_files)
 
             return ExecutionResult(
