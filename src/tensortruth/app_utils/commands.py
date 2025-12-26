@@ -454,9 +454,108 @@ class CommandRegistry:
             "- **/device rag <cpu|cuda|mps>** - Move RAG pipeline to specific hardware",
             "- **/device llm <cpu|gpu>** - Move LLM to specific hardware",
             "- **/conf <warning> [hard]** - Set confidence warning and optional hard cutoff",
+            "- **/exec [on|off|status|reset]** - Control automatic code execution",
             "- **/help** - Show command help",
         ]
         return "\n".join(lines)
+
+
+class ExecCommand(Command):
+    """Command to control code execution settings."""
+
+    def __init__(self):
+        super().__init__(
+            name="exec",
+            aliases=["execute", "noexec"],
+            usage="/exec [on|off|status|reset] - Control automatic code execution",
+        )
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        action = args[0].lower() if args else "status"
+
+        # Handle /noexec alias
+        if "noexec" in st.session_state.get("last_command", ""):
+            action = "off"
+
+        if action == "on":
+
+            def enable_execution():
+                st.session_state.code_execution_enabled = True
+
+            return (
+                True,
+                "✅ **Automatic code execution enabled**\n\n"
+                "Python code blocks will be executed automatically in isolated Docker containers.",
+                enable_execution,
+            )
+
+        elif action == "off":
+
+            def disable_execution():
+                st.session_state.code_execution_enabled = False
+
+            return (
+                True,
+                "⏸️ **Automatic code execution disabled**\n\n"
+                "Code blocks will be displayed but not executed.",
+                disable_execution,
+            )
+
+        elif action == "status":
+            enabled = st.session_state.get("code_execution_enabled", True)
+            timeout = st.session_state.get("code_exec_timeout", 30)
+            status_msg = "**enabled**" if enabled else "**disabled**"
+
+            # Check if Docker is available
+            try:
+                from tensortruth.code_execution import ExecutionOrchestrator
+
+                orchestrator = ExecutionOrchestrator()
+                docker_available = orchestrator.is_docker_available()
+                docker_status = (
+                    "✅ Available" if docker_available else "❌ Not available"
+                )
+            except Exception:
+                docker_status = "❌ Not available"
+
+            return (
+                True,
+                f"### Code Execution Status\n\n"
+                f"- **Status:** {status_msg}\n"
+                f"- **Timeout:** {timeout}s\n"
+                f"- **Docker:** {docker_status}\n\n"
+                f"Use `/exec on` to enable or `/exec off` to disable.",
+                None,
+            )
+
+        elif action == "reset":
+            current_id = st.session_state.chat_data.get("current_id")
+            if not current_id:
+                return (True, "❌ No active session", None)
+
+            try:
+                from tensortruth.code_execution import ExecutionOrchestrator
+
+                orchestrator = ExecutionOrchestrator()
+                orchestrator.cleanup_session(current_id)
+                return (
+                    True,
+                    "🔄 **Execution environment reset**\n\n"
+                    "The Docker container has been restarted. All variables and state have been cleared.",
+                    None,
+                )
+            except Exception as e:
+                return (True, f"❌ **Error resetting environment:** {str(e)}", None)
+
+        else:
+            return (
+                True,
+                f"❌ **Unknown action:** `{action}`\n\n"
+                f"Usage: `/exec [on|off|status|reset]`",
+                None,
+            )
 
 
 # Initialize global command registry
@@ -468,6 +567,7 @@ _registry.register(UnloadCommand())
 _registry.register(ReloadCommand())
 _registry.register(ConfCommand())
 _registry.register(DeviceCommand())
+_registry.register(ExecCommand())
 _registry.register(HelpCommand(_registry))
 
 

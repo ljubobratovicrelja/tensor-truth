@@ -2,12 +2,13 @@
 
 import queue
 import threading
-from typing import Callable, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import streamlit as st
 
 from tensortruth import convert_latex_delimiters
 from tensortruth.app_utils import get_random_generating_message
+from tensortruth.code_execution.parser import CodeBlock, CodeBlockParser
 
 
 def stream_response_with_spinner(
@@ -75,7 +76,7 @@ def stream_response_with_spinner(
 
 def _stream_llm_with_thinking(
     response_stream, spinner_placeholder, content_placeholder
-) -> Tuple[str, str]:
+) -> Tuple[str, str, List[CodeBlock]]:
     """Common logic for streaming LLM responses with thinking token extraction.
 
     Args:
@@ -85,11 +86,12 @@ def _stream_llm_with_thinking(
         content_placeholder: Streamlit placeholder for content display
 
     Returns:
-        Tuple of (content_accumulated, thinking_accumulated)
+        Tuple of (content_accumulated, thinking_accumulated, code_blocks)
     """
     thinking_accumulated = ""
     content_accumulated = ""
     thinking_placeholder = None
+    code_parser = CodeBlockParser()
 
     for chunk in response_stream:
         # Extract and display thinking delta
@@ -116,14 +118,19 @@ def _stream_llm_with_thinking(
         # Extract and display content delta
         if chunk.delta:
             content_accumulated += chunk.delta
+            code_parser.feed_token(chunk.delta)  # Parse for code blocks
             content_placeholder.markdown(convert_latex_delimiters(content_accumulated))
 
-    return content_accumulated, thinking_accumulated
+    # Finalize code block parsing
+    code_blocks = code_parser.finalize()
+    all_blocks = code_parser.get_all_blocks()
+
+    return content_accumulated, thinking_accumulated, all_blocks
 
 
 def stream_rag_response(
     synthesizer, prompt: str, context_nodes
-) -> Tuple[str, Optional[Exception], Optional[str]]:
+) -> Tuple[str, Optional[Exception], Optional[str], List[CodeBlock]]:
     """Stream a RAG response using the synthesizer.
 
     Args:
@@ -132,10 +139,11 @@ def stream_rag_response(
         context_nodes: Retrieved context nodes
 
     Returns:
-        Tuple of (full_response_text, error_if_any, thinking_text)
+        Tuple of (full_response_text, error_if_any, thinking_text, code_blocks)
     """
     content_accumulated = ""
     thinking_accumulated = ""
+    code_blocks = []
     error = None
 
     spinner_placeholder = st.empty()
@@ -171,19 +179,22 @@ def stream_rag_response(
 
                     # Stream from LLM with thinking token support
                     response_stream = synthesizer._llm.stream_chat(messages)
-                    content_accumulated, thinking_accumulated = (
+                    content_accumulated, thinking_accumulated, code_blocks = (
                         _stream_llm_with_thinking(
                             response_stream, spinner_placeholder, content_placeholder
                         )
                     )
                 else:
                     # Fallback to synthesizer (no thinking tokens available)
+                    code_parser = CodeBlockParser()
                     response = synthesizer.synthesize(prompt, context_nodes)
                     for token in response.response_gen:
                         content_accumulated += token
+                        code_parser.feed_token(token)
                         content_placeholder.markdown(
                             convert_latex_delimiters(content_accumulated)
                         )
+                    code_blocks = code_parser.get_all_blocks()
 
         spinner_placeholder.empty()
 
@@ -194,12 +205,13 @@ def stream_rag_response(
         content_accumulated,
         error,
         thinking_accumulated if thinking_accumulated else None,
+        code_blocks,
     )
 
 
 def stream_simple_llm_response(
     llm, chat_history
-) -> Tuple[str, Optional[Exception], Optional[str]]:
+) -> Tuple[str, Optional[Exception], Optional[str], List[CodeBlock]]:
     """Stream a response from Ollama without RAG.
 
     Args:
@@ -207,10 +219,11 @@ def stream_simple_llm_response(
         chat_history: List of ChatMessage objects
 
     Returns:
-        Tuple of (full_response_text, error_if_any, thinking_text)
+        Tuple of (full_response_text, error_if_any, thinking_text, code_blocks)
     """
     content_accumulated = ""
     thinking_accumulated = ""
+    code_blocks = []
     error = None
 
     spinner_placeholder = st.empty()
@@ -220,8 +233,10 @@ def stream_simple_llm_response(
         with spinner_placeholder:
             with st.spinner(get_random_generating_message()):
                 response_stream = llm.stream_chat(chat_history)
-                content_accumulated, thinking_accumulated = _stream_llm_with_thinking(
-                    response_stream, spinner_placeholder, content_placeholder
+                content_accumulated, thinking_accumulated, code_blocks = (
+                    _stream_llm_with_thinking(
+                        response_stream, spinner_placeholder, content_placeholder
+                    )
                 )
 
         spinner_placeholder.empty()
@@ -233,4 +248,5 @@ def stream_simple_llm_response(
         content_accumulated,
         error,
         thinking_accumulated if thinking_accumulated else None,
+        code_blocks,
     )

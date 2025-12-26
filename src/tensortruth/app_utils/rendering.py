@@ -202,6 +202,29 @@ def render_low_confidence_warning(
         )
 
 
+def render_execution_result(result: dict):
+    """Render a single code execution result.
+
+    Args:
+        result: ExecutionResult dict with success, stdout, stderr, etc.
+    """
+    if result["success"]:
+        with st.expander("✅ Code executed successfully", expanded=True):
+            if result["stdout"]:
+                st.markdown("**Output:**")
+                st.code(result["stdout"], language="text")
+            if result["stderr"]:
+                st.markdown("**Warnings:**")
+                st.code(result["stderr"], language="text")
+            st.caption(f"⏱️ {result['execution_time']:.2f}s")
+    else:
+        with st.expander("❌ Execution failed", expanded=True):
+            st.error(result["error_message"])
+            if result["stderr"]:
+                st.code(result["stderr"], language="text")
+            st.caption(f"⏱️ {result['execution_time']:.2f}s")
+
+
 def render_chat_message(
     message: dict, params: dict, modules: list, has_pdf_index: bool = False
 ):
@@ -248,6 +271,11 @@ def render_chat_message(
 
         # Render message content
         st.markdown(convert_latex_delimiters(message["content"]))
+
+        # Render code execution results if present
+        if "execution_results" in message and message["execution_results"]:
+            for result in message["execution_results"]:
+                render_execution_result(result)
 
         # Render footer (sources + metadata)
         meta_cols = st.columns([3, 1])

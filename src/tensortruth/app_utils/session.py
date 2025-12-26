@@ -149,6 +149,15 @@ def delete_session(session_id: str, sessions_file: Union[str, Path]) -> None:
 
     from .paths import get_session_dir
 
+    # Cleanup Docker container for code execution
+    try:
+        from tensortruth.code_execution import ExecutionOrchestrator
+
+        orchestrator = ExecutionOrchestrator()
+        orchestrator.cleanup_session(session_id)
+    except Exception:
+        pass  # Continue deletion even if container cleanup fails
+
     # Delete from session data
     if session_id in st.session_state.chat_data["sessions"]:
         del st.session_state.chat_data["sessions"][session_id]

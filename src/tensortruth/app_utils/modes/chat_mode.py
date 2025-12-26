@@ -266,7 +266,7 @@ def render_chat_mode():
                         )
 
                     # Phase 2: LLM Streaming
-                    full_response, error, thinking = stream_rag_response(
+                    full_response, error, thinking, code_blocks = stream_rag_response(
                         synthesizer, prompt, context_nodes
                     )
 
@@ -274,6 +274,24 @@ def render_chat_mode():
                         raise error
 
                     elapsed = time.time() - start_time
+
+                    # Phase 3: Code Execution (if enabled and blocks found)
+                    execution_results = []
+                    if code_blocks and st.session_state.get(
+                        "code_execution_enabled", True
+                    ):
+                        from tensortruth.code_execution import ExecutionOrchestrator
+
+                        try:
+                            orchestrator = ExecutionOrchestrator()
+                            execution_results = orchestrator.execute_blocks(
+                                session_id=current_id,
+                                code_blocks=code_blocks,
+                                timeout=st.session_state.get("code_exec_timeout", 30),
+                                enabled=True,
+                            )
+                        except Exception as exec_error:
+                            st.warning(f"Code execution error: {exec_error}")
 
                     # Extract source metadata (only for real sources)
                     source_data = []
@@ -314,6 +332,14 @@ def render_chat_mode():
                     }
                     if thinking:
                         message_data["thinking"] = thinking
+                    if code_blocks:
+                        message_data["code_blocks"] = [
+                            block.to_dict() for block in code_blocks
+                        ]
+                    if execution_results:
+                        message_data["execution_results"] = [
+                            result.to_dict() for result in execution_results
+                        ]
 
                     session["messages"].append(message_data)
 
@@ -365,14 +391,32 @@ def render_chat_mode():
                     chat_history = build_chat_history(session["messages"])
 
                     # Stream response
-                    full_response, error, thinking = stream_simple_llm_response(
-                        llm, chat_history
+                    full_response, error, thinking, code_blocks = (
+                        stream_simple_llm_response(llm, chat_history)
                     )
 
                     if error:
                         raise error
 
                     elapsed = time.time() - start_time
+
+                    # Code Execution (if enabled and blocks found)
+                    execution_results = []
+                    if code_blocks and st.session_state.get(
+                        "code_execution_enabled", True
+                    ):
+                        from tensortruth.code_execution import ExecutionOrchestrator
+
+                        try:
+                            orchestrator = ExecutionOrchestrator()
+                            execution_results = orchestrator.execute_blocks(
+                                session_id=current_id,
+                                code_blocks=code_blocks,
+                                timeout=st.session_state.get("code_exec_timeout", 30),
+                                enabled=True,
+                            )
+                        except Exception as exec_error:
+                            st.warning(f"Code execution error: {exec_error}")
 
                     st.caption(f"⏱️ {elapsed:.2f}s | 🔴 No RAG")
 
@@ -383,6 +427,14 @@ def render_chat_mode():
                     }
                     if thinking:
                         message_data["thinking"] = thinking
+                    if code_blocks:
+                        message_data["code_blocks"] = [
+                            block.to_dict() for block in code_blocks
+                        ]
+                    if execution_results:
+                        message_data["execution_results"] = [
+                            result.to_dict() for result in execution_results
+                        ]
 
                     session["messages"].append(message_data)
 
