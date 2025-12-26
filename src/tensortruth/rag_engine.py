@@ -64,7 +64,9 @@ _CODE_EXECUTION_RULES = (
     '   - Include `if __name__ == "__main__":` blocks for executable examples.\n'
     "   - Make code print informative output - the output will be shown directly to the user.\n"
     "   - DO NOT predict or describe the output - the actual execution result will be displayed.\n"
-    "   - For matplotlib plots: Save figures with plt.savefig() - ALL saved images will be displayed automatically.\n"
+    "   - MATPLOTLIB PLOTS: Just use plt.figure() and plt.plot() - figures are AUTO-SAVED after execution.\n"
+    "   - You do NOT need to call plt.savefig() or plt.show() - ALL open figures are saved automatically.\n"
+    "   - If you want to save with a specific filename, you CAN still use plt.savefig('custom_name.png').\n"
     "   - You can save files anywhere (subdirectories OK): plots/chart.png, outputs/data.csv, etc.\n"
     "   - ALL new/modified image files (.png, .jpg, .svg, .pdf) are automatically displayed.\n"
     "   - ALL new/modified data files (.csv, .json, .txt, .html) are offered as downloads.\n"

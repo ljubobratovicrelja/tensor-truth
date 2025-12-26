@@ -13,6 +13,9 @@ from pathlib import Path
 # Global namespace shared across all executions
 _session_globals = {}
 
+# Counter for auto-generated plot filenames
+_plot_counter = 0
+
 
 def execute_code_block(code: str) -> dict:
     """Execute code in the persistent global namespace.
@@ -24,6 +27,8 @@ def execute_code_block(code: str) -> dict:
         Dict with stdout, stderr, success status
     """
     import io
+
+    global _plot_counter
 
     # Capture stdout and stderr
     stdout_capture = io.StringIO()
@@ -40,6 +45,42 @@ def execute_code_block(code: str) -> dict:
 
         # Execute in persistent global namespace
         exec(code, _session_globals)
+
+        # Auto-save any matplotlib figures that are open
+        try:
+            import matplotlib.pyplot as plt
+
+            # Get all figure numbers
+            fig_nums = plt.get_fignums()
+
+            if fig_nums:
+                # Save each figure
+                for fig_num in fig_nums:
+                    fig = plt.figure(fig_num)
+
+                    # Generate filename
+                    _plot_counter += 1
+                    filename = f"plot_{_plot_counter}.png"
+
+                    # Save figure
+                    fig.savefig(filename, dpi=150, bbox_inches="tight")
+                    print(
+                        f"Auto-saved figure {fig_num} to {filename}",
+                        file=stdout_capture,
+                    )
+
+                # Close all figures to free memory
+                plt.close("all")
+
+        except ImportError:
+            # matplotlib not imported in this code block, skip
+            pass
+        except Exception as e:
+            # Don't fail the whole execution if auto-save fails
+            print(
+                f"Warning: Failed to auto-save matplotlib figures: {e}",
+                file=stderr_capture,
+            )
 
     except Exception as e:
         success = False
