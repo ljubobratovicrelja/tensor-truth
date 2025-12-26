@@ -94,7 +94,13 @@ def compute_config_hash(
     modules_tuple = tuple(sorted(modules)) if modules else None
 
     # Convert params dict to sorted frozenset for hashing
-    param_items = sorted([(k, v) for k, v in params.items()])
+    # Convert any list values to tuples so they can be hashed
+    def make_hashable(value):
+        if isinstance(value, list):
+            return tuple(value)
+        return value
+
+    param_items = sorted([(k, make_hashable(v)) for k, v in params.items()])
     param_hash = frozenset(param_items)
 
     # Return complete config tuple (None if no modules and no PDF index)

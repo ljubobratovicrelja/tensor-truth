@@ -120,6 +120,46 @@ def render_setup_mode():
                     ),
                 )
 
+                # Thinking model controls
+                st.markdown("#### Thinking Model Controls")
+                st.info(
+                    "These settings control reasoning models (DeepSeek-R1, Qwen, GPT-OSS) "
+                    "to prevent infinite thinking loops."
+                )
+
+                think_level_col, think_topk_col = st.columns(2)
+
+                with think_level_col:
+                    st.selectbox(
+                        "Thinking Level",
+                        options=["disabled", "low", "medium", "high"],
+                        key="setup_thinking_level",
+                        help=(
+                            "disabled: No thinking/reasoning\n"
+                            "low: Minimal reasoning (safest, prevents loops)\n"
+                            "medium: Moderate reasoning\n"
+                            "high: Maximum reasoning (may loop on complex queries)"
+                        ),
+                    )
+
+                with think_topk_col:
+                    st.number_input(
+                        "Thinking Top-K",
+                        min_value=1,
+                        max_value=100,
+                        key="setup_thinking_top_k",
+                        help="Lower values make thinking more focused (20 recommended)",
+                    )
+
+                st.text_input(
+                    "Stop Sequences (comma-separated)",
+                    key="setup_thinking_stop_sequences",
+                    help=(
+                        "Comma-separated sequences that halt thinking. "
+                        "Use \\n for newlines. Example: </think>,\\n\\nAnswer:"
+                    ),
+                )
+
                 st.subheader("3. RAG Parameters")
 
                 rerank_col, top_n_col, conf_col = st.columns(3)

@@ -227,27 +227,70 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
     # Check if model supports thinking by querying Ollama API
     thinking_enabled = check_thinking_support(model_name)
 
+    # Determine temperature - override for thinking models to be more deterministic
+    temperature = params.get("temperature", 0.3)
+
+    # Prepare additional_kwargs with proper structure
+    additional_kwargs = {
+        "num_ctx": params.get("context_window", 16384),
+        "options": ollama_options,
+    }
+
+    # Determine the final thinking setting based on user preference
+    # This will be passed to the Ollama constructor's 'thinking' parameter
+    final_thinking_value = None
+
     # For thinking models, limit total tokens to prevent runaway reasoning
     # For non-thinking models, use unlimited (-1) to prevent truncation
     if thinking_enabled:
         # Limit thinking models to ~4K tokens total (thinking + response)
         # This prevents endless loops while allowing reasonable reasoning
         ollama_options["num_predict"] = params.get("max_tokens", 4096)
+
+        # CRITICAL: Control thinking behavior to prevent infinite loops
+        # The Ollama class has a bug: `think = kwargs.pop("think", None) or self.thinking`
+        # This means if we pass think=False in kwargs, it gets ignored because of the `or`
+        # So we must control thinking via the constructor's 'thinking' parameter
+        thinking_level = params.get("thinking_level", "low")
+
+        if thinking_level is False or thinking_level == "disabled":
+            # User wants thinking disabled - set thinking=False in constructor
+            final_thinking_value = False
+        elif thinking_level in ["low", "medium", "high"]:
+            # For level-based thinking (GPT-OSS), we need to pass it via additional_kwargs
+            # AND set thinking=True so it doesn't get overridden
+            additional_kwargs["think"] = thinking_level
+            final_thinking_value = True
+        else:
+            # Safe default for GPT-OSS
+            additional_kwargs["think"] = "low"
+            final_thinking_value = True
+
+        # Make thinking more focused and deterministic
+        ollama_options["top_k"] = params.get("thinking_top_k", 20)  # More focused
+        if temperature > 0.3:
+            # Override temperature for thinking models to be more deterministic
+            temperature = 0.1
+
+        # Add stop sequences to halt runaway thinking
+        # These are common markers where thinking should end
+        ollama_options["stop"] = params.get(
+            "thinking_stop_sequences",
+            ["</think>", "\n\nFinal Answer:", "\n\nAnswer:", "---END THINKING---"],
+        )
     else:
         # Non-thinking models get unlimited to prevent truncation
         ollama_options["num_predict"] = -1
+        final_thinking_value = None
 
     return Ollama(
         model=model_name,
         base_url=get_ollama_url(),
         request_timeout=300.0,
-        temperature=params.get("temperature", 0.3),
+        temperature=temperature,
         context_window=params.get("context_window", 16384),
-        thinking=thinking_enabled,
-        additional_kwargs={
-            "num_ctx": params.get("context_window", 16384),
-            "options": ollama_options,
-        },
+        thinking=final_thinking_value,
+        additional_kwargs=additional_kwargs,
         system_prompt=user_system_prompt,
     )
 

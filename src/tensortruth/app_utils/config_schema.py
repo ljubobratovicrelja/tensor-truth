@@ -22,6 +22,10 @@ class UIConfig:
     default_top_n: int = 5
     default_confidence_threshold: float = 0.4
     default_confidence_cutoff_hard: float = 0.1
+    # Thinking model controls
+    default_thinking_level: str = "low"  # "low", "medium", "high", or "disabled"
+    default_thinking_top_k: int = 20
+    default_thinking_stop_sequences: str = "</think>,\\n\\nFinal Answer:,\\n\\nAnswer:"
 
 
 @dataclass

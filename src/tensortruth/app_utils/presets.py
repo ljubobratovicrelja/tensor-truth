@@ -12,6 +12,7 @@ ALLOWED_RERANKER_MODELS = [
     "BAAI/bge-reranker-base",
     "cross-encoder/ms-marco-MiniLM-L-6-v2",
 ]
+ALLOWED_THINKING_LEVELS = ["disabled", "low", "medium", "high"]
 
 
 def _normalize_preset(preset: dict) -> dict:
@@ -72,6 +73,30 @@ def _normalize_preset(preset: dict) -> dict:
             preset["system_prompt"] = " ".join(str(p) for p in prompt)
         elif not isinstance(prompt, str):
             preset["system_prompt"] = str(prompt)
+
+    # Validate thinking_level (must be in allowed values)
+    if "thinking_level" in preset:
+        # Handle boolean False (disabled) from old sessions
+        if preset["thinking_level"] is False:
+            preset["thinking_level"] = "disabled"
+        elif preset["thinking_level"] not in ALLOWED_THINKING_LEVELS:
+            preset["thinking_level"] = "low"  # Safe default
+
+    # Validate thinking_top_k (must be between 1 and 100)
+    if "thinking_top_k" in preset:
+        top_k = preset["thinking_top_k"]
+        preset["thinking_top_k"] = max(1, min(100, int(top_k)))
+
+    # Ensure thinking_stop_sequences is a string (for UI display)
+    if "thinking_stop_sequences" in preset:
+        stop_seq = preset["thinking_stop_sequences"]
+        if isinstance(stop_seq, list):
+            # Convert list to comma-separated string
+            preset["thinking_stop_sequences"] = ",".join(
+                s.replace("\n", "\\n") for s in stop_seq
+            )
+        elif not isinstance(stop_seq, str):
+            preset["thinking_stop_sequences"] = str(stop_seq)
 
     return preset
 
@@ -226,11 +251,30 @@ def quick_launch_preset(
         return False, "None of the preset modules are available"
 
     # Build params from preset
+    # Handle thinking_level - convert "disabled" to False for the engine
+    thinking_level = preset.get("thinking_level", "low")
+    if thinking_level == "disabled":
+        thinking_level = False
+
+    # Parse stop sequences if stored as string
+    stop_sequences = preset.get(
+        "thinking_stop_sequences", "</think>,\\n\\nFinal Answer:,\\n\\nAnswer:"
+    )
+    if isinstance(stop_sequences, str):
+        stop_sequences = [
+            s.strip().replace("\\n", "\n")
+            for s in stop_sequences.split(",")
+            if s.strip()
+        ]
+
     params = {
         "model": preset.get("model", "deepseek-r1:8b"),
         "temperature": preset.get("temperature", 0.3),
         "context_window": preset.get("context_window", 16384),
         "max_tokens": preset.get("max_tokens", 4096),
+        "thinking_level": thinking_level,
+        "thinking_top_k": preset.get("thinking_top_k", 20),
+        "thinking_stop_sequences": stop_sequences,
         "system_prompt": preset.get("system_prompt", ""),
         "reranker_model": preset.get("reranker_model", "BAAI/bge-reranker-v2-m3"),
         "reranker_top_n": preset.get("reranker_top_n", 3),
@@ -316,6 +360,12 @@ def build_preset_config(
         config["setup_temp"] = p["temperature"]
     if "max_tokens" in p:
         config["setup_max_tokens"] = p["max_tokens"]
+    if "thinking_level" in p:
+        config["setup_thinking_level"] = p["thinking_level"]
+    if "thinking_top_k" in p:
+        config["setup_thinking_top_k"] = p["thinking_top_k"]
+    if "thinking_stop_sequences" in p:
+        config["setup_thinking_stop_sequences"] = p["thinking_stop_sequences"]
     if "reranker_top_n" in p:
         config["setup_top_n"] = p["reranker_top_n"]
     if "confidence_cutoff" in p:

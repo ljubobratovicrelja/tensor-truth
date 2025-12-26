@@ -30,6 +30,13 @@ def init_setup_defaults_from_config():
     st.session_state.setup_temp = config.ui.default_temperature
     st.session_state.setup_max_tokens = config.ui.default_max_tokens
 
+    # Thinking model controls
+    st.session_state.setup_thinking_level = config.ui.default_thinking_level
+    st.session_state.setup_thinking_top_k = config.ui.default_thinking_top_k
+    st.session_state.setup_thinking_stop_sequences = (
+        config.ui.default_thinking_stop_sequences
+    )
+
     # RAG parameters
     st.session_state.setup_reranker = config.ui.default_reranker
     st.session_state.setup_top_n = config.ui.default_top_n
@@ -57,11 +64,26 @@ def build_params_from_session_state() -> dict:
     Returns:
         Dict with all parameters needed for session creation or preset saving.
     """
+    # Parse thinking_level - convert "disabled" to False for the engine
+    thinking_level = st.session_state.setup_thinking_level
+    if thinking_level == "disabled":
+        thinking_level = False
+
+    # Parse stop sequences from comma-separated string
+    stop_sequences = [
+        s.strip().replace("\\n", "\n")
+        for s in st.session_state.setup_thinking_stop_sequences.split(",")
+        if s.strip()
+    ]
+
     return {
         "model": st.session_state.setup_model,
         "temperature": st.session_state.setup_temp,
         "context_window": st.session_state.setup_ctx,
         "max_tokens": st.session_state.setup_max_tokens,
+        "thinking_level": thinking_level,
+        "thinking_top_k": st.session_state.setup_thinking_top_k,
+        "thinking_stop_sequences": stop_sequences,
         "system_prompt": st.session_state.setup_sys_prompt,
         "reranker_model": st.session_state.setup_reranker,
         "reranker_top_n": st.session_state.setup_top_n,
@@ -84,6 +106,18 @@ def get_session_params_with_defaults(session_params: dict) -> dict:
     # Use cached config from session_state (loaded once in init_app_state)
     config = st.session_state.config
 
+    # Handle thinking_stop_sequences - may be stored as list or string
+    default_stop_seq = config.ui.default_thinking_stop_sequences
+    thinking_stop_sequences = session_params.get(
+        "thinking_stop_sequences", default_stop_seq
+    )
+    if isinstance(thinking_stop_sequences, str):
+        thinking_stop_sequences = [
+            s.strip().replace("\\n", "\n")
+            for s in thinking_stop_sequences.split(",")
+            if s.strip()
+        ]
+
     return {
         "model": session_params.get("model", "deepseek-r1:8b"),
         "temperature": session_params.get("temperature", config.ui.default_temperature),
@@ -91,6 +125,13 @@ def get_session_params_with_defaults(session_params: dict) -> dict:
             "context_window", config.ui.default_context_window
         ),
         "max_tokens": session_params.get("max_tokens", config.ui.default_max_tokens),
+        "thinking_level": session_params.get(
+            "thinking_level", config.ui.default_thinking_level
+        ),
+        "thinking_top_k": session_params.get(
+            "thinking_top_k", config.ui.default_thinking_top_k
+        ),
+        "thinking_stop_sequences": thinking_stop_sequences,
         "confidence_cutoff": session_params.get(
             "confidence_cutoff", config.ui.default_confidence_threshold
         ),
