@@ -212,6 +212,47 @@ def render_execution_result(result: dict):
     """
     if result["success"]:
         with st.expander("✅ Code executed successfully", expanded=True):
+            # Render output files (images, plots, etc.)
+            if result.get("output_files"):
+                from pathlib import Path
+
+                for file_path in result["output_files"]:
+                    file_path = Path(file_path)
+                    if file_path.exists():
+                        # Determine file type and render appropriately
+                        if file_path.suffix.lower() in {
+                            ".png",
+                            ".jpg",
+                            ".jpeg",
+                            ".gif",
+                        }:
+                            st.image(str(file_path), use_container_width=True)
+                        elif file_path.suffix.lower() == ".svg":
+                            with open(file_path, "r") as f:
+                                st.markdown(f.read(), unsafe_allow_html=True)
+                        elif file_path.suffix.lower() == ".pdf":
+                            st.caption(f"📄 Generated: {file_path.name}")
+                            with open(file_path, "rb") as f:
+                                st.download_button(
+                                    label=f"Download {file_path.name}",
+                                    data=f.read(),
+                                    file_name=file_path.name,
+                                    mime="application/pdf",
+                                )
+                        elif file_path.suffix.lower() in {
+                            ".csv",
+                            ".json",
+                            ".txt",
+                            ".html",
+                        }:
+                            st.caption(f"📊 Generated: {file_path.name}")
+                            with open(file_path, "rb") as f:
+                                st.download_button(
+                                    label=f"Download {file_path.name}",
+                                    data=f.read(),
+                                    file_name=file_path.name,
+                                )
+
             if result["stdout"]:
                 st.markdown("**Output:**")
                 st.code(result["stdout"], language="text")

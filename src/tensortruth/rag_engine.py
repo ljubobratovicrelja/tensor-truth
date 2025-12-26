@@ -61,6 +61,8 @@ _CODE_EXECUTION_RULES = (
     "   - Make code print informative output - the output will be shown directly to the user.\n"
     "   - DO NOT predict or describe the output - the actual execution result will be displayed.\n"
     "   - Write self-contained, runnable code that demonstrates the concept.\n"
+    "   - For matplotlib plots: Save figures with plt.savefig('plot.png') - images will be displayed automatically.\n"
+    "   - You can generate multiple outputs: plot1.png, plot2.png, data.csv, etc.\n"
 )
 
 CUSTOM_CONTEXT_PROMPT_TEMPLATE = (

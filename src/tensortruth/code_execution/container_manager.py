@@ -21,6 +21,7 @@ class ExecutionResult:
     execution_time: float
     error_message: Optional[str]
     exit_code: int
+    output_files: list = None  # List of output file paths (images, data files, etc.)
 
     def to_dict(self):
         """Convert to dictionary for JSON serialization."""
@@ -31,6 +32,7 @@ class ExecutionResult:
             "execution_time": self.execution_time,
             "error_message": self.error_message,
             "exit_code": self.exit_code,
+            "output_files": self.output_files or [],
         }
 
 
@@ -203,6 +205,28 @@ class SessionContainerManager:
         container_name = f"tensortruth-session-{session_id[:8]}"
 
         try:
+            # First check if container already exists
+            try:
+                existing_container = client.containers.get(container_name)
+                logger.info(
+                    f"Found existing container {container_name}, "
+                    f"status: {existing_container.status}"
+                )
+
+                # If container exists but stopped, start it
+                if existing_container.status != "running":
+                    existing_container.start()
+                    logger.info(f"Started existing container {container_name}")
+
+                self._containers[session_id] = existing_container
+                self._last_used[session_id] = time.time()
+                return existing_container
+
+            except docker.errors.NotFound:
+                # Container doesn't exist, create new one
+                pass
+
+            # Create new container
             container = client.containers.run(
                 self.image_name,
                 name=container_name,
@@ -242,6 +266,9 @@ class SessionContainerManager:
             ExecutionResult with stdout, stderr, and status
         """
         start_time = time.time()
+
+        # Get snapshot of files before execution
+        existing_files = self._get_workspace_files(session_id)
 
         try:
             container = self.get_or_create_container(session_id)
@@ -309,6 +336,9 @@ finally:
                     stderr if stderr else f"Execution failed with exit code {exit_code}"
                 )
 
+            # Capture output files (images, etc.) - only NEW files since execution started
+            output_files = self._capture_output_files(session_id, existing_files)
+
             return ExecutionResult(
                 success=success,
                 stdout=stdout,
@@ -316,6 +346,7 @@ finally:
                 execution_time=execution_time,
                 error_message=error_message,
                 exit_code=exit_code,
+                output_files=output_files,
             )
 
         except Exception as e:
@@ -329,6 +360,80 @@ finally:
                 error_message=f"Execution error: {str(e)}",
                 exit_code=-1,
             )
+
+    def _get_workspace_files(self, session_id: str) -> dict:
+        """Get dict of existing files in workspace with modification times.
+
+        Args:
+            session_id: Chat session ID
+
+        Returns:
+            Dict mapping file path to modification time
+        """
+        workspace_path = (
+            Path.home() / ".tensortruth" / "sessions" / session_id / "workspace"
+        )
+
+        existing = {}
+        try:
+            if workspace_path.exists():
+                for file_path in workspace_path.iterdir():
+                    if file_path.is_file():
+                        existing[str(file_path)] = file_path.stat().st_mtime
+        except Exception as e:
+            logger.error(f"Error getting workspace files: {e}")
+
+        return existing
+
+    def _capture_output_files(self, session_id: str, existing_files: dict) -> list:
+        """Capture NEW or MODIFIED output files from container workspace.
+
+        Args:
+            session_id: Chat session ID
+            existing_files: Dict mapping file paths to modification times before execution
+
+        Returns:
+            List of NEW or MODIFIED output file paths
+        """
+        workspace_path = (
+            Path.home() / ".tensortruth" / "sessions" / session_id / "workspace"
+        )
+
+        # Supported output file extensions
+        image_extensions = {".png", ".jpg", ".jpeg", ".svg", ".pdf", ".gif"}
+        data_extensions = {".csv", ".json", ".txt", ".html"}
+        supported_extensions = image_extensions | data_extensions
+
+        output_files = []
+
+        try:
+            # Scan workspace for NEW or MODIFIED output files
+            for file_path in workspace_path.iterdir():
+                if (
+                    file_path.is_file()
+                    and file_path.suffix.lower() in supported_extensions
+                ):
+                    file_str = str(file_path)
+                    current_mtime = file_path.stat().st_mtime
+
+                    # Include if file is NEW (not in existing_files)
+                    # OR if file was MODIFIED (mtime changed)
+                    if (
+                        file_str not in existing_files
+                        or current_mtime > existing_files[file_str]
+                    ):
+                        output_files.append(file_str)
+
+            if output_files:
+                logger.info(
+                    f"Captured {len(output_files)} NEW/modified output file(s) "
+                    f"for session {session_id}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error capturing output files: {e}")
+
+        return output_files
 
     def cleanup_session(self, session_id: str):
         """Remove container for a specific session.
