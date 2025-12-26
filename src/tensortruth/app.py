@@ -68,7 +68,7 @@ if not index_dir.exists() or not any(index_dir.iterdir()):
 with st.sidebar:
     st.image(str(st.session_state.logo_path), width=500)
 
-    if st.button("Start New Chat", type="primary", use_container_width=True):
+    if st.button("Start New Chat", type="primary", width="stretch"):
         st.session_state.mode = "setup"
         st.session_state.chat_data["current_id"] = None
         st.session_state.expand_config_section = False
@@ -85,7 +85,7 @@ with st.sidebar:
         title = sess.get("title", "Untitled")
 
         label = f" {title} "
-        if st.button(label, key=sess_id, use_container_width=True):
+        if st.button(label, key=sess_id, width="stretch"):
             st.session_state.chat_data["current_id"] = sess_id
             st.session_state.mode = "chat"
             st.rerun()
@@ -106,7 +106,7 @@ with st.sidebar:
         with st.expander("Session Settings", expanded=True):
             new_name = st.text_input("Rename:", value=curr_sess.get("title"))
 
-            if st.button("Update", use_container_width=True):
+            if st.button("Update", width="stretch"):
                 rename_session(new_name, st.session_state.sessions_file)
 
             st.caption("Active Indices:")
@@ -143,10 +143,10 @@ with st.sidebar:
                 md_data,
                 f"{curr_sess['title'][:20]}.md",
                 "text/markdown",
-                use_container_width=True,
+                width="stretch",
             )
 
-            if st.button("Delete Chat", use_container_width=True):
+            if st.button("Delete Chat", width="stretch"):
                 open_delete_dialog()
                 st.rerun()
 
