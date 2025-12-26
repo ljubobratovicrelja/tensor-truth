@@ -5,6 +5,31 @@ from typing import List, Optional
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
 
+def create_execution_message(execution_results: list) -> ChatMessage:
+    """Create a ChatMessage from code execution results for LLM context.
+
+    Args:
+        execution_results: List of ExecutionResult objects
+
+    Returns:
+        ChatMessage with SYSTEM role containing formatted execution results
+    """
+    exec_content = "Code execution results:\n"
+    for i, result in enumerate(execution_results):
+        exec_content += f"\nBlock {i+1}:\n"
+        if result.success:
+            if result.stdout:
+                exec_content += f"stdout: {result.stdout}\n"
+            if result.stderr:
+                exec_content += f"stderr: {result.stderr}\n"
+        else:
+            exec_content += f"ERROR: {result.error_message}\n"
+            if result.stderr:
+                exec_content += f"stderr: {result.stderr}\n"
+
+    return ChatMessage(content=exec_content, role=MessageRole.SYSTEM)
+
+
 def build_chat_history(
     session_messages: List[dict], max_messages: Optional[int] = None
 ) -> List[ChatMessage]:
@@ -15,7 +40,7 @@ def build_chat_history(
         max_messages: Optional limit on number of messages to include
 
     Returns:
-        List of ChatMessage objects (user and assistant only, no commands)
+        List of ChatMessage objects (user, assistant, and code_execution)
     """
     chat_messages = []
 
@@ -28,7 +53,12 @@ def build_chat_history(
             chat_messages.append(
                 ChatMessage(content=msg["content"], role=MessageRole.ASSISTANT)
             )
-        # Skip command messages
+        elif msg["role"] == "code_execution":
+            # Code execution results as system message for LLM context
+            chat_messages.append(
+                ChatMessage(content=msg["content"], role=MessageRole.SYSTEM)
+            )
+        # Skip command messages and other roles
 
     # Apply max_messages limit if specified
     if max_messages is not None and len(chat_messages) > max_messages:

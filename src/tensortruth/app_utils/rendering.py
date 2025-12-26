@@ -281,7 +281,8 @@ def render_content_with_execution_results(content: str, execution_results: list 
         return
 
     # Pattern to match code blocks (both ```python and ``` generic)
-    code_block_pattern = re.compile(r"(```[\w]*\n.*?\n```)", re.DOTALL | re.MULTILINE)
+    # Matches: ```language\ncode\n``` or ```language\ncode```
+    code_block_pattern = re.compile(r"(```[\w]*\n.*?```)", re.DOTALL)
 
     # Split content by code blocks while keeping the code blocks
     parts = code_block_pattern.split(content)
@@ -314,6 +315,10 @@ def render_chat_message(
         modules: List of active module names
         has_pdf_index: Whether session has PDF documents indexed
     """
+    # Skip rendering code_execution messages - they're shown via expander boxes
+    if message["role"] == "code_execution":
+        return
+
     avatar = ":material/settings:" if message["role"] == "command" else None
     has_rag = bool(modules) or has_pdf_index
 

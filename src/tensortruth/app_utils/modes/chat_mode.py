@@ -5,8 +5,13 @@ import threading
 import time
 
 import streamlit as st
+from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
-from tensortruth.app_utils.chat_utils import build_chat_history, preserve_chat_history
+from tensortruth.app_utils.chat_utils import (
+    build_chat_history,
+    create_execution_message,
+    preserve_chat_history,
+)
 from tensortruth.app_utils.config import compute_config_hash
 from tensortruth.app_utils.helpers import (
     free_memory,
@@ -314,11 +319,6 @@ def render_chat_mode():
                     )
 
                     # Update engine memory
-                    from llama_index.core.base.llms.types import (
-                        ChatMessage,
-                        MessageRole,
-                    )
-
                     user_message = ChatMessage(content=prompt, role=MessageRole.USER)
                     assistant_message = ChatMessage(
                         content=full_response, role=MessageRole.ASSISTANT
@@ -326,6 +326,7 @@ def render_chat_mode():
                     engine._memory.put(user_message)
                     engine._memory.put(assistant_message)
 
+                    # Add assistant message to session
                     message_data = {
                         "role": "assistant",
                         "content": full_response,
@@ -345,6 +346,17 @@ def render_chat_mode():
                         ]
 
                     session["messages"].append(message_data)
+
+                    # Add code execution results as a separate message for LLM context
+                    if execution_results:
+
+                        exec_message = create_execution_message(execution_results)
+                        engine._memory.put(exec_message)
+
+                        # Add to session history (won't be rendered, just for LLM context)
+                        session["messages"].append(
+                            {"role": "code_execution", "content": exec_message.content}
+                        )
 
                     save_sessions(st.session_state.sessions_file)
 
