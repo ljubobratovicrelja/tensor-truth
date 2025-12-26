@@ -1,6 +1,9 @@
 """Code validation for detecting potentially dangerous operations."""
 
 import ast
+import subprocess
+import tempfile
+from pathlib import Path
 from typing import List
 
 
@@ -56,6 +59,10 @@ class CodeValidator:
         """
         warnings = []
 
+        # First run flake8 linting
+        flake8_warnings = self._run_flake8(code)
+        warnings.extend(flake8_warnings)
+
         try:
             tree = ast.parse(code)
         except SyntaxError as e:
@@ -88,6 +95,65 @@ class CodeValidator:
                     warnings.append(
                         "Code requires user input - execution will block/timeout"
                     )
+
+        return warnings
+
+    def _run_flake8(self, code: str) -> List[str]:
+        """Run flake8 linting on code and return warnings.
+
+        Args:
+            code: Python code string to lint
+
+        Returns:
+            List of flake8 warning messages
+        """
+        warnings = []
+
+        try:
+            # Write code to a temporary file
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".py", delete=False
+            ) as temp_file:
+                temp_file.write(code)
+                temp_file_path = temp_file.name
+
+            # Run flake8 with project settings
+            result = subprocess.run(
+                [
+                    "flake8",
+                    temp_file_path,
+                    "--max-line-length=88",
+                    "--extend-ignore=E203,W503",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            # Parse flake8 output
+            if result.stdout:
+                for line in result.stdout.strip().split("\n"):
+                    if line:
+                        # Format: filename:line:col: code message
+                        # Extract just the code and message
+                        parts = line.split(":", 3)
+                        if len(parts) >= 4:
+                            warnings.append(f"Style: {parts[3].strip()}")
+
+        except subprocess.TimeoutExpired:
+            warnings.append("Flake8 linting timed out")
+        except FileNotFoundError:
+            # flake8 not installed, skip linting
+            pass
+        except Exception:
+            # Don't let linting errors block execution
+            pass
+        finally:
+            # Clean up temp file
+            try:
+                Path(temp_file_path).unlink(missing_ok=True)
+            except Exception:
+                pass
 
         return warnings
 
