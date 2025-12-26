@@ -407,7 +407,8 @@ class SessionContainerManager:
         existing = {}
         try:
             if workspace_path.exists():
-                for file_path in workspace_path.iterdir():
+                # Recursively scan all files in workspace and subdirectories
+                for file_path in workspace_path.rglob("*"):
                     if file_path.is_file():
                         existing[str(file_path)] = file_path.stat().st_mtime
         except Exception as e:
@@ -437,8 +438,14 @@ class SessionContainerManager:
         output_files = []
 
         try:
-            # Scan workspace for NEW or MODIFIED output files
-            for file_path in workspace_path.iterdir():
+            # Recursively scan workspace and subdirectories for NEW or MODIFIED output files
+            for file_path in workspace_path.rglob("*"):
+                # Skip internal files used for session communication
+                if file_path.name.startswith(".code_") or file_path.name.startswith(
+                    ".session_"
+                ):
+                    continue
+
                 if (
                     file_path.is_file()
                     and file_path.suffix.lower() in supported_extensions
