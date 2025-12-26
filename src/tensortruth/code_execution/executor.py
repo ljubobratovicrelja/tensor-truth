@@ -25,7 +25,7 @@ class ExecutionOrchestrator:
         results = orchestrator.execute_blocks(
             session_id="abc123",
             code_blocks=blocks,
-            timeout=30
+            timeout=60
         )
         for result in results:
             print(result.stdout)
@@ -52,7 +52,7 @@ class ExecutionOrchestrator:
         self,
         session_id: str,
         code_blocks: List[CodeBlock],
-        timeout: int = 30,
+        timeout: int = 60,
         enabled: bool = True,
     ) -> List[ExecutionResult]:
         """Execute multiple code blocks sequentially.

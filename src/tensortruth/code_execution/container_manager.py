@@ -233,8 +233,8 @@ class SessionContainerManager:
                 detach=True,
                 stdin_open=True,
                 tty=False,
-                network_mode="none",  # No network access
-                mem_limit="512m",  # 512MB RAM
+                network_mode="bridge",  # Enable network access for dataset downloads
+                mem_limit="1g",  # 1GB RAM
                 cpu_quota=50000,  # 50% of one CPU core (out of 100000)
                 pids_limit=100,  # Max 100 processes
                 volumes={str(workspace_path): {"bind": "/workspace", "mode": "rw"}},
@@ -253,7 +253,7 @@ class SessionContainerManager:
             raise RuntimeError(f"Failed to create execution container: {e}")
 
     def execute_code(
-        self, session_id: str, code: str, timeout: int = 30
+        self, session_id: str, code: str, timeout: int = 60
     ) -> ExecutionResult:
         """Execute Python code in the session's container.
 

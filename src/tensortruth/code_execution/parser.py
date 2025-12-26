@@ -230,6 +230,17 @@ class CodeBlockParser:
                 incomplete.append(block)
                 self.completed_blocks.append(block)
 
+        # If we're in closing fence state when stream ends, the block is complete
+        elif self.state == ParserState.IN_CLOSING_FENCE:
+            if self._is_python_language(self.current_language):
+                block = CodeBlock(
+                    language=self.current_language or "python",
+                    code=self.current_code.rstrip(),
+                    start_position=self.current_start_pos,
+                )
+                incomplete.append(block)
+                self.completed_blocks.append(block)
+
         return incomplete
 
     def get_all_blocks(self) -> List[CodeBlock]:

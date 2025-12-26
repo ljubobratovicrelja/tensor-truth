@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir \
 # Install PyTorch CPU-only version
 RUN pip install --no-cache-dir \
     torch==2.9.1 \
+    torchvision \
     --index-url https://download.pytorch.org/whl/cpu
 
 # Create non-root user for code execution
