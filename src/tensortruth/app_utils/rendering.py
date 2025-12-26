@@ -1,5 +1,7 @@
 """Rendering utilities for Streamlit UI components."""
 
+import re
+
 import streamlit as st
 
 from tensortruth import convert_latex_delimiters
@@ -225,6 +227,41 @@ def render_execution_result(result: dict):
             st.caption(f"⏱️ {result['execution_time']:.2f}s")
 
 
+def render_content_with_execution_results(content: str, execution_results: list = None):
+    """Render markdown content with execution results injected after code blocks.
+
+    Args:
+        content: Markdown content from message
+        execution_results: List of execution result dicts (one per code block)
+    """
+    if not execution_results:
+        # No execution results, render content normally
+        st.markdown(convert_latex_delimiters(content))
+        return
+
+    # Pattern to match code blocks (both ```python and ``` generic)
+    code_block_pattern = re.compile(r"(```[\w]*\n.*?\n```)", re.DOTALL | re.MULTILINE)
+
+    # Split content by code blocks while keeping the code blocks
+    parts = code_block_pattern.split(content)
+
+    result_index = 0
+
+    for part in parts:
+        if part.startswith("```"):
+            # This is a code block - render it
+            st.markdown(convert_latex_delimiters(part))
+
+            # Inject execution result if available
+            if result_index < len(execution_results):
+                render_execution_result(execution_results[result_index])
+                result_index += 1
+        else:
+            # This is regular text - render it
+            if part.strip():  # Only render non-empty parts
+                st.markdown(convert_latex_delimiters(part))
+
+
 def render_chat_message(
     message: dict, params: dict, modules: list, has_pdf_index: bool = False
 ):
@@ -269,13 +306,9 @@ def render_chat_message(
                 unsafe_allow_html=True,
             )
 
-        # Render message content
-        st.markdown(convert_latex_delimiters(message["content"]))
-
-        # Render code execution results if present
-        if "execution_results" in message and message["execution_results"]:
-            for result in message["execution_results"]:
-                render_execution_result(result)
+        # Render message content with inline execution results
+        execution_results = message.get("execution_results", [])
+        render_content_with_execution_results(message["content"], execution_results)
 
         # Render footer (sources + metadata)
         meta_cols = st.columns([3, 1])
