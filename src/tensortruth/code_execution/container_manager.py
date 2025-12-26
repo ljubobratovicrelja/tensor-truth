@@ -271,7 +271,7 @@ class SessionContainerManager:
         existing_files = self._get_workspace_files(session_id)
 
         try:
-            container = self.get_or_create_container(session_id)
+            self.get_or_create_container(session_id)
         except RuntimeError as e:
             return ExecutionResult(
                 success=False,
