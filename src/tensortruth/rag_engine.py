@@ -52,6 +52,17 @@ BASE_INDEX_DIR = "./indexes"
 
 
 # --- CUSTOM PROMPTS ---
+
+# Common code execution instructions (appended to all prompts)
+_CODE_EXECUTION_RULES = (
+    "CODE EXECUTION:\n"
+    "   - Python code blocks will be AUTOMATICALLY EXECUTED in an isolated container.\n"
+    '   - Include `if __name__ == "__main__":` blocks for executable examples.\n'
+    "   - Make code print informative output - the output will be shown directly to the user.\n"
+    "   - DO NOT predict or describe the output - the actual execution result will be displayed.\n"
+    "   - Write self-contained, runnable code that demonstrates the concept.\n"
+)
+
 CUSTOM_CONTEXT_PROMPT_TEMPLATE = (
     "Role: Technical Research & Development Assistant.\n"
     "Objective: Provide direct, factual answers based strictly on the provided context "
@@ -72,7 +83,8 @@ CUSTOM_CONTEXT_PROMPT_TEMPLATE = (
     "Reference it directly (e.g., 'As shown in the previous ResNet block...').\n"
     "3. PRECISION: If the Context is insufficient, state exactly what is missing. "
     "Do not halluciation or fill gaps with generic fluff.\n"
-    "4. FORMATTING: Use Markdown headers for structure. Use LaTeX for math.\n\n"
+    "4. FORMATTING: Use Markdown headers for structure. Use LaTeX for math.\n"
+    f"5. {_CODE_EXECUTION_RULES}\n"
     "User Query: {query_str}\n"
     "Response:"
 )
@@ -95,7 +107,8 @@ CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE = (
     "3. PRIORITIZATION: If the Chat History contains the answer, ignore the "
     "retrieved context entirely.\n"
     "4. NO HALLUCINATION: If neither History nor Context supports a factual answer, "
-    "state 'Insufficient data available' and stop.\n\n"
+    "state 'Insufficient data available' and stop.\n"
+    f"5. {_CODE_EXECUTION_RULES}\n"
     "User Query: {query_str}\n"
     "Response:"
 )
@@ -116,7 +129,8 @@ CUSTOM_CONTEXT_PROMPT_NO_SOURCES = (
     "3. SCOPE: If the query is strictly about the internal database (e.g., 'What is in file X?'), "
     "state 'No data found' and terminate.\n"
     "4. CONTINUITY: If the answer is in the Chat History, output it without the "
-    "no-data warning.\n\n"
+    "no-data warning.\n"
+    f"5. {_CODE_EXECUTION_RULES}\n"
     "User Query: {query_str}\n"
     "Response:"
 )
