@@ -14,6 +14,11 @@ RUN pip install --no-cache-dir \
     requests \
     pillow
 
+# Install PyTorch CPU-only version
+RUN pip install --no-cache-dir \
+    torch==2.9.1 \
+    --index-url https://download.pytorch.org/whl/cpu
+
 # Create non-root user for code execution
 RUN useradd -m -u 1000 coderunner && \
     mkdir -p /workspace && \
