@@ -439,7 +439,15 @@ def load_engine_for_modules(
 
     composite_retriever = MultiIndexRetriever(active_retrievers)
 
-    memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
+    # Use a generous token limit for memory (leave room for context and system prompt)
+    # For a 128k model, we can afford to keep much more history
+    context_window = engine_params.get("context_window", 16384)
+    # Reserve ~40% of context for RAG docs + system prompt, use 60% for conversation history
+    memory_token_limit = int(context_window * 0.6)
+
+    print(f"--- MEMORY TOKEN LIMIT: {memory_token_limit} (60% of {context_window}) ---")
+
+    memory = ChatMemoryBuffer.from_defaults(token_limit=memory_token_limit)
 
     # Restore chat history from previous engine if provided
     if preserved_chat_history:
@@ -474,7 +482,7 @@ def load_engine_for_modules(
         memory=memory,
         context_prompt=CUSTOM_CONTEXT_PROMPT_TEMPLATE,
         condense_prompt=CUSTOM_CONDENSE_PROMPT_TEMPLATE,
-        verbose=False,
+        verbose=True,
     )
 
     return chat_engine

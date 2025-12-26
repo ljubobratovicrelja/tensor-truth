@@ -54,7 +54,6 @@ def build_chat_history(
                 ChatMessage(content=msg["content"], role=MessageRole.ASSISTANT)
             )
         elif msg["role"] == "code_execution":
-            # Code execution results as system message for LLM context
             chat_messages.append(
                 ChatMessage(content=msg["content"], role=MessageRole.SYSTEM)
             )

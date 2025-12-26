@@ -129,7 +129,7 @@ def _stream_llm_with_thinking(
 
 
 def stream_rag_response(
-    synthesizer, prompt: str, context_nodes
+    synthesizer, prompt: str, context_nodes, engine=None
 ) -> Tuple[str, Optional[Exception], Optional[str], List[CodeBlock]]:
     """Stream a RAG response using the synthesizer.
 
@@ -137,6 +137,7 @@ def stream_rag_response(
         synthesizer: LlamaIndex synthesizer instance
         prompt: User query
         context_nodes: Retrieved context nodes
+        engine: Optional chat engine (for accessing persistent memory)
 
     Returns:
         Tuple of (full_response_text, error_if_any, thinking_text, code_blocks)
@@ -156,35 +157,88 @@ def stream_rag_response(
                 if hasattr(synthesizer, "_llm") and hasattr(
                     synthesizer._llm, "stream_chat"
                 ):
+                    from llama_index.core.base.llms.generic_utils import (
+                        messages_to_history_str,
+                    )
                     from llama_index.core.base.llms.types import (
                         ChatMessage,
                         MessageRole,
                     )
 
-                    # Get chat history first
+                    # Get chat history from ENGINE (not synthesizer - synthesizer is ephemeral!)
                     chat_history = []
-                    if hasattr(synthesizer, "_memory") and synthesizer._memory:
-                        chat_history = list(synthesizer._memory.get())
+                    if engine and hasattr(engine, "_memory") and engine._memory:
+                        chat_history = list(engine._memory.get())
 
-                    # Build context string and format prompt
+                    print("\n=== RAG MODE - Chat History (from engine) ===")
+                    print(f"Total messages in history: {len(chat_history)}")
+                    for i, msg in enumerate(chat_history):
+                        role_name = (
+                            msg.role.value
+                            if hasattr(msg.role, "value")
+                            else str(msg.role)
+                        )
+                        content_preview = (
+                            msg.content[:100] if len(msg.content) > 100 else msg.content
+                        )
+                        print(f"  [{i}] {role_name}: {content_preview}...")
+                        if role_name == "system":
+                            print(f"      FULL SYSTEM MESSAGE: {msg.content}")
+                    print("=" * 80)
+
+                    # Build context string from retrieved documents
+                    context_str = ""
                     if context_nodes and len(context_nodes) > 0:
-                        # Normal case: we have retrieved documents
                         context_str = "\n\n".join(
                             [n.get_content() for n in context_nodes]
                         )
-                        formatted_prompt = (
-                            f"Context information:\n{context_str}\n\n"
-                            f"Query: {prompt}\n\nAnswer:"
-                        )
-                    else:
-                        # No documents retrieved - just pass the query
-                        # The synthesizer's custom template (CUSTOM_CONTEXT_PROMPT_NO_SOURCES)
-                        # will handle the formatting with chat history
-                        formatted_prompt = prompt
 
-                    messages = chat_history + [
-                        ChatMessage(role=MessageRole.USER, content=formatted_prompt)
-                    ]
+                    # Format chat history as string for the template
+                    chat_history_str = (
+                        messages_to_history_str(chat_history) if chat_history else ""
+                    )
+
+                    # Choose appropriate template based on confidence/sources
+                    # Import all template options
+                    from tensortruth.rag_engine import (
+                        CUSTOM_CONTEXT_PROMPT_NO_SOURCES,
+                        CUSTOM_CONTEXT_PROMPT_TEMPLATE,
+                    )
+
+                    if context_nodes and len(context_nodes) > 0:
+                        template = CUSTOM_CONTEXT_PROMPT_TEMPLATE
+                    else:
+                        template = CUSTOM_CONTEXT_PROMPT_NO_SOURCES
+
+                    # Format the system prompt with all context
+                    system_content = template.format(
+                        context_str=context_str,
+                        chat_history=chat_history_str,
+                        query_str=prompt,
+                    )
+
+                    # Build message list: SYSTEM + HISTORY + USER
+                    messages = (
+                        [ChatMessage(role=MessageRole.SYSTEM, content=system_content)]
+                        + chat_history
+                        + [ChatMessage(role=MessageRole.USER, content=prompt)]
+                    )
+
+                    print("\n=== FINAL MESSAGES TO LLM ===")
+                    print(f"Total messages: {len(messages)}")
+                    for i, msg in enumerate(messages):
+                        role_name = (
+                            msg.role.value
+                            if hasattr(msg.role, "value")
+                            else str(msg.role)
+                        )
+                        content_len = len(msg.content)
+                        print(f"  [{i}] {role_name}: {content_len} chars")
+                        if i == 0:  # System message
+                            print(
+                                f"      System prompt preview: {msg.content[:200]}..."
+                            )
+                    print("=" * 80)
 
                     # Stream from LLM with thinking token support
                     response_stream = synthesizer._llm.stream_chat(messages)

@@ -5,13 +5,8 @@ import threading
 import time
 
 import streamlit as st
-from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
-from tensortruth.app_utils.chat_utils import (
-    build_chat_history,
-    create_execution_message,
-    preserve_chat_history,
-)
+from tensortruth.app_utils.chat_utils import build_chat_history, preserve_chat_history
 from tensortruth.app_utils.config import compute_config_hash
 from tensortruth.app_utils.helpers import (
     free_memory,
@@ -24,6 +19,13 @@ from tensortruth.app_utils.rendering import (
     render_chat_message,
     render_low_confidence_warning,
     render_message_footer,
+)
+from tensortruth.app_utils.response_handler import (
+    build_message_data,
+    execute_code_blocks,
+    maybe_update_title,
+    save_response_to_session,
+    update_engine_memory,
 )
 from tensortruth.app_utils.session import save_sessions
 from tensortruth.app_utils.setup_state import get_session_params_with_defaults
@@ -213,6 +215,30 @@ def render_chat_mode():
 
         with st.chat_message("assistant"):
             if engine:
+                # DEBUG: Check engine memory at start of turn
+                print("\n=== START OF TURN - Engine Memory Check ===")
+                print(f"Engine object ID: {id(engine)}")
+                print(
+                    f"Engine in session_state ID: {id(st.session_state.get('engine'))}"
+                )
+                print(
+                    f"Are they same object? {engine is st.session_state.get('engine')}"
+                )
+                if hasattr(engine, "_memory"):
+                    initial_memory = list(engine._memory.get())
+                    print(f"Memory has {len(initial_memory)} messages at turn start")
+                    for i, msg in enumerate(initial_memory):
+                        role = (
+                            msg.role.value
+                            if hasattr(msg.role, "value")
+                            else str(msg.role)
+                        )
+                        preview = msg.content[:60]
+                        print(f"  [{i}] {role}: {preview}...")
+                else:
+                    print("Engine has no _memory attribute!")
+                print("=" * 80)
+
                 start_time = time.time()
                 try:
                     # Phase 1: RAG Retrieval
@@ -267,9 +293,9 @@ def render_chat_mode():
                             CUSTOM_CONTEXT_PROMPT_NO_SOURCES
                         )
 
-                    # Phase 2: LLM Streaming
+                    # Phase 2: LLM Streaming (pass engine for memory access)
                     full_response, error, thinking, code_blocks = stream_rag_response(
-                        synthesizer, prompt, context_nodes
+                        synthesizer, prompt, context_nodes, engine=engine
                     )
 
                     if error:
@@ -277,23 +303,8 @@ def render_chat_mode():
 
                     elapsed = time.time() - start_time
 
-                    # Phase 3: Code Execution (if enabled and blocks found)
-                    execution_results = []
-                    if code_blocks and st.session_state.get(
-                        "code_execution_enabled", True
-                    ):
-                        from tensortruth.code_execution import ExecutionOrchestrator
-
-                        try:
-                            orchestrator = ExecutionOrchestrator()
-                            execution_results = orchestrator.execute_blocks(
-                                session_id=current_id,
-                                code_blocks=code_blocks,
-                                timeout=st.session_state.get("code_exec_timeout", 30),
-                                enabled=True,
-                            )
-                        except Exception as exec_error:
-                            st.warning(f"Code execution error: {exec_error}")
+                    # Phase 3: Code Execution
+                    execution_results = execute_code_blocks(current_id, code_blocks)
 
                     # Extract source metadata (only for real sources)
                     source_data = []
@@ -312,59 +323,55 @@ def render_chat_mode():
                         has_pdf_index=has_pdf_index,
                     )
 
-                    # Update engine memory
-                    user_message = ChatMessage(content=prompt, role=MessageRole.USER)
-                    assistant_message = ChatMessage(
-                        content=full_response, role=MessageRole.ASSISTANT
+                    # Update engine memory with user/assistant messages
+                    update_engine_memory(engine, prompt, full_response)
+
+                    # Build and save response to session
+                    message_data = build_message_data(
+                        full_response=full_response,
+                        elapsed=elapsed,
+                        thinking=thinking,
+                        code_blocks=code_blocks,
+                        execution_results=execution_results,
+                        sources=source_data,
+                        low_confidence=low_confidence_warning,
                     )
-                    engine._memory.put(user_message)
-                    engine._memory.put(assistant_message)
 
-                    # Add assistant message to session
-                    message_data = {
-                        "role": "assistant",
-                        "content": full_response,
-                        "sources": source_data,
-                        "time_taken": elapsed,
-                        "low_confidence": low_confidence_warning,
-                    }
-                    if thinking:
-                        message_data["thinking"] = thinking
-                    if code_blocks:
-                        message_data["code_blocks"] = [
-                            block.to_dict() for block in code_blocks
-                        ]
-                    if execution_results:
-                        message_data["execution_results"] = [
-                            result.to_dict() for result in execution_results
-                        ]
+                    save_response_to_session(
+                        session=session,
+                        prompt=prompt,
+                        message_data=message_data,
+                        execution_results=execution_results,
+                        sessions_file=st.session_state.sessions_file,
+                        engine=engine,
+                    )
 
-                    session["messages"].append(message_data)
+                    # Update title if needed
+                    maybe_update_title(
+                        should_update_title,
+                        current_id,
+                        prompt,
+                        params.get("model"),
+                        st.session_state.sessions_file,
+                    )
 
-                    # Add code execution results as a separate message for LLM context
-                    if execution_results:
-
-                        exec_message = create_execution_message(execution_results)
-                        engine._memory.put(exec_message)
-
-                        # Add to session history (won't be rendered, just for LLM context)
-                        session["messages"].append(
-                            {"role": "code_execution", "content": exec_message.content}
+                    # DEBUG: Check engine memory right before rerun
+                    print("\n=== END OF TURN - Before Rerun (RAG Mode) ===")
+                    print(f"Engine object ID: {id(engine)}")
+                    print(
+                        f"Session state engine ID: {id(st.session_state.get('engine'))}"
+                    )
+                    if hasattr(engine, "_memory"):
+                        final_memory = list(engine._memory.get())
+                        print(
+                            f"Engine memory has {len(final_memory)} messages before rerun"
                         )
-
-                    save_sessions(st.session_state.sessions_file)
-
-                    # Update title after successful response
-                    if should_update_title:
-                        from tensortruth.app_utils.session import update_title
-
-                        with st.spinner("Generating title..."):
-                            update_title(
-                                current_id,
-                                prompt,
-                                params.get("model"),
-                                st.session_state.sessions_file,
-                            )
+                    if hasattr(st.session_state.engine, "_memory"):
+                        ss_memory = list(st.session_state.engine._memory.get())
+                        print(
+                            f"Session state engine memory has {len(ss_memory)} messages"
+                        )
+                    print("=" * 80)
 
                     st.rerun()
 
@@ -409,57 +416,37 @@ def render_chat_mode():
 
                     elapsed = time.time() - start_time
 
-                    # Code Execution (if enabled and blocks found)
-                    execution_results = []
-                    if code_blocks and st.session_state.get(
-                        "code_execution_enabled", True
-                    ):
-                        from tensortruth.code_execution import ExecutionOrchestrator
-
-                        try:
-                            orchestrator = ExecutionOrchestrator()
-                            execution_results = orchestrator.execute_blocks(
-                                session_id=current_id,
-                                code_blocks=code_blocks,
-                                timeout=st.session_state.get("code_exec_timeout", 30),
-                                enabled=True,
-                            )
-                        except Exception as exec_error:
-                            st.warning(f"Code execution error: {exec_error}")
+                    # Code Execution
+                    execution_results = execute_code_blocks(current_id, code_blocks)
 
                     st.caption(f"⏱️ {elapsed:.2f}s | 🔴 No RAG")
 
-                    message_data = {
-                        "role": "assistant",
-                        "content": full_response,
-                        "time_taken": elapsed,
-                    }
-                    if thinking:
-                        message_data["thinking"] = thinking
-                    if code_blocks:
-                        message_data["code_blocks"] = [
-                            block.to_dict() for block in code_blocks
-                        ]
-                    if execution_results:
-                        message_data["execution_results"] = [
-                            result.to_dict() for result in execution_results
-                        ]
+                    # Build and save response to session
+                    message_data = build_message_data(
+                        full_response=full_response,
+                        elapsed=elapsed,
+                        thinking=thinking,
+                        code_blocks=code_blocks,
+                        execution_results=execution_results,
+                    )
 
-                    session["messages"].append(message_data)
+                    save_response_to_session(
+                        session=session,
+                        prompt=prompt,
+                        message_data=message_data,
+                        execution_results=execution_results,
+                        sessions_file=st.session_state.sessions_file,
+                        engine=None,  # No engine in non-RAG mode
+                    )
 
-                    save_sessions(st.session_state.sessions_file)
-
-                    # Update title after successful response
-                    if should_update_title:
-                        from tensortruth.app_utils.session import update_title
-
-                        with st.spinner("Generating title..."):
-                            update_title(
-                                current_id,
-                                prompt,
-                                params.get("model"),
-                                st.session_state.sessions_file,
-                            )
+                    # Update title if needed
+                    maybe_update_title(
+                        should_update_title,
+                        current_id,
+                        prompt,
+                        params.get("model"),
+                        st.session_state.sessions_file,
+                    )
 
                     st.rerun()
 
