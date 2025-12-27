@@ -374,7 +374,7 @@ def render_chat_mode():
 
                     elapsed = time.time() - start_time
 
-                    st.caption(f"⏱️ {elapsed:.2f}s | 🔴 No RAG")
+                    st.caption(f"⏱️ {elapsed:.2f}s")
 
                     message_data = {
                         "role": "assistant",
