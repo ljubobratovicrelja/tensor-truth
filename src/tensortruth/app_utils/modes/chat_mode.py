@@ -5,6 +5,7 @@ import threading
 import time
 
 import streamlit as st
+from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
 from tensortruth.app_utils.chat_utils import build_chat_history, preserve_chat_history
 from tensortruth.app_utils.config import compute_config_hash
@@ -290,12 +291,6 @@ def render_chat_mode():
                         low_confidence=low_confidence_warning,
                         modules=modules,
                         has_pdf_index=has_pdf_index,
-                    )
-
-                    # Update engine memory
-                    from llama_index.core.base.llms.types import (
-                        ChatMessage,
-                        MessageRole,
                     )
 
                     user_message = ChatMessage(content=prompt, role=MessageRole.USER)
