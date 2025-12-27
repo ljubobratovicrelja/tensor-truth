@@ -5,6 +5,27 @@ import streamlit as st
 from tensortruth import convert_latex_delimiters
 
 
+def render_thinking(thinking_text: str, placeholder=None):
+    """Render thinking/reasoning content with consistent formatting.
+
+    Args:
+        thinking_text: The thinking content to display
+        placeholder: Optional Streamlit placeholder to render into (uses st.markdown if None)
+    """
+    html_content = f"""<div class="thinking-content">
+
+**🧠 Reasoning:**
+
+{convert_latex_delimiters(thinking_text)}
+
+</div>"""
+
+    if placeholder:
+        placeholder.markdown(html_content, unsafe_allow_html=True)
+    else:
+        st.markdown(html_content, unsafe_allow_html=True)
+
+
 def get_doc_type_icon(doc_type: str) -> str:
     """Get icon emoji for document type.
 
@@ -235,16 +256,7 @@ def render_chat_message(
 
         # Render thinking if present
         if message.get("thinking"):
-            st.markdown(
-                f"""<div class="thinking-content">
-
-**🧠 Reasoning:**
-
-{convert_latex_delimiters(message['thinking'])}
-
-</div>""",
-                unsafe_allow_html=True,
-            )
+            render_thinking(message["thinking"])
 
         # Render message content
         st.markdown(convert_latex_delimiters(message["content"]))
