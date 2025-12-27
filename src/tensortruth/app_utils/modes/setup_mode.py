@@ -28,6 +28,13 @@ def render_setup_mode():
         available_mods = [mod for mod, _ in available_mods_tuples]
 
         available_models = get_ollama_models()
+        if not available_models:
+            st.error(
+                "No Ollama models found. Please ensure Ollama is running and "
+                "configured correctly in Connection Settings below."
+            )
+            return
+
         system_devices = get_system_devices()
         presets = load_presets(st.session_state.presets_file)
 
