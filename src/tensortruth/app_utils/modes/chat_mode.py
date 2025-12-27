@@ -2,31 +2,17 @@
 
 import os
 import threading
-import time
 
 import streamlit as st
-from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
-from tensortruth.app_utils.chat_utils import build_chat_history, preserve_chat_history
+from tensortruth.app_utils.chat_handler import handle_chat_response
+from tensortruth.app_utils.chat_utils import preserve_chat_history
 from tensortruth.app_utils.config import compute_config_hash
-from tensortruth.app_utils.helpers import (
-    free_memory,
-    get_available_modules,
-    get_random_rag_processing_message,
-)
+from tensortruth.app_utils.helpers import free_memory, get_available_modules
 from tensortruth.app_utils.paths import get_session_index_dir
-from tensortruth.app_utils.rendering import (
-    extract_source_metadata,
-    render_chat_message,
-    render_low_confidence_warning,
-    render_message_footer,
-)
+from tensortruth.app_utils.rendering import render_chat_message
 from tensortruth.app_utils.session import save_sessions
 from tensortruth.app_utils.setup_state import get_session_params_with_defaults
-from tensortruth.app_utils.streaming import (
-    stream_rag_response,
-    stream_simple_llm_response,
-)
 
 from ..commands import process_command
 
@@ -198,206 +184,18 @@ def render_chat_mode():
         session["messages"].append({"role": "user", "content": prompt})
         save_sessions(st.session_state.sessions_file)
 
-        # Check if title needs updating (avoid race conditions by doing it after response)
-        should_update_title = session.get("title_needs_update", False)
-
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            if engine:
-                start_time = time.time()
-                try:
-                    # Phase 1: RAG Retrieval
-                    with st.spinner(get_random_rag_processing_message()):
-                        synthesizer, context_source, context_nodes = engine._run_c3(
-                            prompt, chat_history=None, streaming=True
-                        )
-
-                    # Check confidence threshold
-                    low_confidence_warning = False
-                    has_real_sources = True  # Track if we have actual retrieved sources
-                    confidence_threshold = params.get("confidence_cutoff", 0.0)
-
-                    if (
-                        context_nodes
-                        and len(context_nodes) > 0
-                        and confidence_threshold > 0
-                    ):
-                        best_score = max(
-                            (node.score for node in context_nodes if node.score),
-                            default=0.0,
-                        )
-
-                        if best_score < confidence_threshold:
-                            from tensortruth.rag_engine import (
-                                CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE,
-                            )
-
-                            synthesizer._context_prompt_template = (
-                                CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE
-                            )
-
-                            render_low_confidence_warning(
-                                best_score, confidence_threshold, has_sources=True
-                            )
-                            low_confidence_warning = True
-                    elif not context_nodes or len(context_nodes) == 0:
-                        from llama_index.core.schema import NodeWithScore, TextNode
-
-                        from tensortruth.rag_engine import (
-                            CUSTOM_CONTEXT_PROMPT_NO_SOURCES,
-                            NO_CONTEXT_FALLBACK_CONTEXT,
-                        )
-
-                        render_low_confidence_warning(
-                            0.0, confidence_threshold, has_sources=False
-                        )
-
-                        warning_node = NodeWithScore(
-                            node=TextNode(text=NO_CONTEXT_FALLBACK_CONTEXT),
-                            score=0.0,
-                        )
-                        context_nodes = [warning_node]
-                        low_confidence_warning = True
-                        has_real_sources = False  # No real sources, just synthetic node
-
-                        synthesizer._context_prompt_template = (
-                            CUSTOM_CONTEXT_PROMPT_NO_SOURCES
-                        )
-
-                    # Phase 2: LLM Streaming
-                    full_response, error, thinking = stream_rag_response(
-                        synthesizer, prompt, context_nodes
-                    )
-
-                    if error:
-                        raise error
-
-                    elapsed = time.time() - start_time
-
-                    # Extract source metadata (only for real sources)
-                    source_data = []
-                    if has_real_sources:
-                        for node in context_nodes:
-                            metadata = extract_source_metadata(node, is_node=True)
-                            source_data.append(metadata)
-
-                    # Render footer (only show sources if we have real ones)
-                    render_message_footer(
-                        sources_or_nodes=context_nodes if has_real_sources else None,
-                        is_nodes=True,
-                        time_taken=elapsed,
-                        low_confidence=low_confidence_warning,
-                        modules=modules,
-                        has_pdf_index=has_pdf_index,
-                    )
-
-                    user_message = ChatMessage(content=prompt, role=MessageRole.USER)
-                    assistant_message = ChatMessage(
-                        content=full_response, role=MessageRole.ASSISTANT
-                    )
-                    engine._memory.put(user_message)
-                    engine._memory.put(assistant_message)
-
-                    message_data = {
-                        "role": "assistant",
-                        "content": full_response,
-                        "sources": source_data,
-                        "time_taken": elapsed,
-                        "low_confidence": low_confidence_warning,
-                    }
-                    if thinking:
-                        message_data["thinking"] = thinking
-
-                    session["messages"].append(message_data)
-
-                    save_sessions(st.session_state.sessions_file)
-
-                    # Update title after successful response
-                    if should_update_title:
-                        from tensortruth.app_utils.session import update_title
-
-                        with st.spinner("Generating title..."):
-                            update_title(
-                                current_id,
-                                prompt,
-                                params.get("model"),
-                                st.session_state.sessions_file,
-                            )
-
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"Engine Error: {e}")
-
-            elif not modules:
-                # NO RAG MODE
-                start_time = time.time()
-                try:
-                    # Check if simple_llm needs to be reloaded due to param changes
-                    from tensortruth.rag_engine import get_llm
-
-                    # Compute a simple hash of relevant params for simple LLM
-                    simple_llm_config = (
-                        params.get("model"),
-                        params.get("temperature"),
-                        params.get("llm_device"),
-                        params.get("max_tokens"),
-                    )
-
-                    # Reload if config changed or LLM doesn't exist
-                    if (
-                        "simple_llm" not in st.session_state
-                        or st.session_state.get("simple_llm_config")
-                        != simple_llm_config
-                    ):
-                        st.session_state.simple_llm = get_llm(params)
-                        st.session_state.simple_llm_config = simple_llm_config
-
-                    llm = st.session_state.simple_llm
-
-                    chat_history = build_chat_history(session["messages"])
-
-                    # Stream response
-                    full_response, error, thinking = stream_simple_llm_response(
-                        llm, chat_history
-                    )
-
-                    if error:
-                        raise error
-
-                    elapsed = time.time() - start_time
-
-                    st.caption(f"⏱️ {elapsed:.2f}s")
-
-                    message_data = {
-                        "role": "assistant",
-                        "content": full_response,
-                        "time_taken": elapsed,
-                    }
-                    if thinking:
-                        message_data["thinking"] = thinking
-
-                    session["messages"].append(message_data)
-
-                    save_sessions(st.session_state.sessions_file)
-
-                    # Update title after successful response
-                    if should_update_title:
-                        from tensortruth.app_utils.session import update_title
-
-                        with st.spinner("Generating title..."):
-                            update_title(
-                                current_id,
-                                prompt,
-                                params.get("model"),
-                                st.session_state.sessions_file,
-                            )
-
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"LLM Error: {e}")
-            else:
-                st.error("Engine not loaded!")
+            # Unified handler for both RAG and simple LLM modes
+            handle_chat_response(
+                prompt=prompt,
+                session=session,
+                params=params,
+                current_id=current_id,
+                sessions_file=st.session_state.sessions_file,
+                modules=modules,
+                has_pdf_index=has_pdf_index,
+                engine=engine,
+            )
