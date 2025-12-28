@@ -1,264 +1,498 @@
-# arXiv Paper Management System
+# Building Custom Indexes: A Guide to tensor-truth-docs and tensor-truth-build
 
-A unified script for managing, fetching, and organizing AI/ML/CV papers from arXiv for RAG pipelines.
+This guide walks you through the process of building custom vector indexes for your own documentation, research papers, and textbooks using Tensor-Truth's CLI tools.
 
-## Structure
+## Overview
 
+Tensor-Truth uses a two-stage pipeline to create searchable indexes:
+
+1. **`tensor-truth-docs`** - Fetch and convert documentation sources to markdown
+2. **`tensor-truth-build`** - Build vector indexes from the markdown files
+
+All data is stored in `~/.tensortruth/` by default (or `%USERPROFILE%\.tensortruth` on Windows).
+
+### 🔧 Configuration Paths (Environment Variables)
+
+**All paths can be configured via environment variables** - this is especially useful for Docker deployments where you can prepare configurations upfront:
+
+| Environment Variable | Default | Purpose |
+|---------------------|---------|---------|
+| `TENSOR_TRUTH_DOCS_DIR` | `~/.tensortruth/library_docs` | Source documentation directory |
+| `TENSOR_TRUTH_SOURCES_CONFIG` | `~/.tensortruth/sources.json` | Sources configuration file |
+| `TENSOR_TRUTH_INDEXES_DIR` | `~/.tensortruth/indexes` | Vector indexes output directory |
+
+**Docker example:**
+```bash
+docker run -d \
+  -e TENSOR_TRUTH_DOCS_DIR=/data/docs \
+  -e TENSOR_TRUTH_SOURCES_CONFIG=/data/sources.json \
+  -e TENSOR_TRUTH_INDEXES_DIR=/data/indexes \
+  -v /host/data:/data \
+  tensor-truth
 ```
-.
-├── fetch_paper.py           # Main unified script (improved)
-├── papers_config.json        # Paper configuration organized by category
-└── library_docs/            # Output directory (created automatically)
-    ├── dl_foundations/
-    ├── vision_2d_generative/
-    └── 3d_reconstruction_rendering/
-```
 
-## Configuration File
+This allows you to prepare your `sources.json` and pre-downloaded documentation before launching the container.
 
-The `papers_config.json` organizes papers into categories with this structure:
+---
+
+## The sources.json Configuration
+
+The `sources.json` file is the heart of the system. It defines what documentation sources are available and how to fetch them.
+
+### Default Configuration
+
+A pre-configured `sources.json` is included with Tensor-Truth at [`config/sources.json`](../config/sources.json). It includes:
+
+- **Libraries**: PyTorch, NumPy, SciPy, Matplotlib, Pandas, scikit-learn, and more
+- **Research Papers**: Organized into categories (DL architectures, computer vision, NLP, etc.)
+- **Textbooks**: Linear algebra, calculus, optimization, machine learning, etc.
+
+### Configuration Structure
 
 ```json
 {
-  "category_id": {
-    "description": "Category description",
-    "items": [
-      {
-        "title": "Paper Title",
-        "arxiv_id": "YYMM.NNNNN",
-        "url": "https://arxiv.org/abs/YYMM.NNNNN"
+  "libraries": {
+    "pytorch_2.9": {
+      "type": "sphinx",
+      "version": "2.9",
+      "doc_root": "https://pytorch.org/docs/stable/",
+      "inventory_url": "https://pytorch.org/docs/stable/objects.inv",
+      "selector": "div[role='main']"
+    }
+  },
+  "papers": {
+    "dl_architectures_optimization": {
+      "display_name": "DL Foundations & Architectures",
+      "description": "Core CNN/Transformer architectures and optimization methods",
+      "type": "arxiv",
+      "items": {
+        "1512.03385": {
+          "title": "Deep Residual Learning for Image Recognition",
+          "arxiv_id": "1512.03385",
+          "url": "https://arxiv.org/abs/1512.03385",
+          "authors": "Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun",
+          "year": "2015"
+        }
       }
-    ]
+    }
+  },
+  "books": {
+    "linear_algebra_cherney": {
+      "type": "pdf_book",
+      "category": "linear_algebra",
+      "title": "Linear Algebra",
+      "authors": ["David Cherney", "Tom Denton", "Rohit Thomas", "Andrew Waldron"],
+      "source": "https://www.math.ucdavis.edu/~linear/linear-guest.pdf",
+      "split_method": "toc",
+      "description": "Comprehensive free textbook from UC Davis",
+      "items": {}
+    }
   }
 }
 ```
 
-The provided config includes 40 influential papers in 3 categories:
-- **dl_foundations** (13 papers) - Core DL architectures, Transformers, foundation models
-- **vision_2d_generative** (14 papers) - Object detection, segmentation, GANs, diffusion
-- **3d_reconstruction_rendering** (13 papers) - NeRF, Gaussian Splatting, relighting, 4D
+---
 
-## Usage Modes
+## Case Study: Adding a Custom Paper Category
 
-### 1. Add New Papers (Write to Config + Download)
+Let's walk through adding a new category of papers on **Gaussian Splatting** for 3D reconstruction.
 
-Add papers to a category. This will:
-- Fetch and download the paper
-- Convert to Markdown
-- **Add the paper metadata to the JSON config**
+### Step 1: List Available Sources
+
+First, see what's already configured:
 
 ```bash
-# Add single paper
-python fetch_paper.py --config papers_config.json --category dl_foundations --ids 2401.12345
-
-# Add multiple papers
-python fetch_paper.py --config papers_config.json --category 3d_reconstruction_rendering --ids 2401.12345 2402.67890 2403.13111
+tensor-truth-docs --list
 ```
 
-### 2. Rebuild from Config (Read from Config + Download Missing)
+This shows all available libraries, paper categories, and books.
 
-Rebuild/update papers from existing config. This will:
-- Read all papers in the specified category from config
-- Download and convert any missing papers
-- Skip papers that already exist
+### Step 2: Create the Category in sources.json
+
+The user configuration lives at `~/.tensortruth/sources.json`. On first run, it copies the default config. Edit this file to add your custom category:
+
+```json
+{
+  "papers": {
+    "3d_reconstruction": {
+      "display_name": "3D Reconstruction & Rendering",
+      "description": "Neural radiance fields, Gaussian splatting, and novel view synthesis",
+      "type": "arxiv",
+      "items": {
+        "2308.04079": {
+          "title": "3D Gaussian Splatting for Real-Time Radiance Field Rendering",
+          "arxiv_id": "2308.04079",
+          "url": "https://arxiv.org/abs/2308.04079",
+          "authors": "Bernhard Kerbl, Georgios Kopanas, Thomas Leimkühler, George Drettakis",
+          "year": "2023"
+        },
+        "2003.08934": {
+          "title": "NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis",
+          "arxiv_id": "2003.08934",
+          "url": "https://arxiv.org/abs/2003.08934",
+          "authors": "Ben Mildenhall, Pratul P. Srinivasan, Matthew Tancik, Jonathan T. Barron, Ravi Ramamoorthi, Ren Ng",
+          "year": "2020"
+        }
+      }
+    }
+  }
+}
+```
+
+### Step 3: Fetch the Papers
+
+Download PDFs and convert to markdown:
 
 ```bash
-# Rebuild single category
-python fetch_paper.py --config papers_config.json --rebuild dl_foundations
+# Fetch papers already defined in sources.json
+tensor-truth-docs --type papers --category 3d_reconstruction
 
-# Rebuild multiple categories
-python fetch_paper.py --config papers_config.json --rebuild dl_foundations vision_2d_generative
-
-# Rebuild ALL categories
-python fetch_paper.py --config papers_config.json --rebuild-all
-
-# Rebuild with parallel workers (much faster!)
-python fetch_paper.py --config papers_config.json --rebuild-all --workers 8
-
-# Default is 4 workers, adjust based on your connection
-python fetch_paper.py --config papers_config.json --rebuild dl_foundations --workers 12
+# Or add NEW papers by ArXiv ID (automatically updates sources.json)
+tensor-truth-docs --type papers --category 3d_reconstruction --ids 2308.04079 2003.08934
 ```
 
-### 3. List Categories
+**Important distinction:**
+- **Without `--ids`**: Fetches papers already listed in the category's `items` in sources.json
+- **With `--ids`**: Fetches ArXiv metadata, adds papers to sources.json automatically, then downloads them
 
-View all categories and paper counts:
+**Options:**
+- `--converter marker`: Use marker-pdf for better math equation support (slower)
+- `--converter pymupdf`: Default, faster but less accurate for complex math
+- `--format pdf`: Keep original PDFs without conversion
+
+Papers are stored in `~/.tensortruth/library_docs/3d_reconstruction/`
+
+### Step 4: Build the Index
+
+Create vector embeddings from the markdown files:
 
 ```bash
-python fetch_paper.py --config papers_config.json --list
+tensor-truth-build --modules 3d_reconstruction
 ```
 
-Output:
-```
-Available categories:
-============================================================
+The index is built at `~/.tensortruth/indexes/papers_3d_reconstruction/`
 
-dl_foundations
-  Description: Deep Learning Foundations & Architectures - Core architectures...
-  Papers: 13
+**Build Options:**
+- `--chunk-sizes 2048 512 128`: Control hierarchical chunk sizes (default)
+- `--extensions .md .html .pdf`: File types to include
 
-vision_2d_generative
-  Description: 2D Vision Tasks & Generative Models - Object detection...
-  Papers: 14
+**💡 Chunk Size Strategy:**
 
-3d_reconstruction_rendering
-  Description: 3D/4D Reconstruction, Rendering & Relighting - Neural scene...
-  Papers: 13
-============================================================
-```
+Research shows that optimal chunk sizes vary by content type and use case. Based on empirical studies ([LlamaIndex](https://www.llamaindex.ai/blog/evaluating-the-ideal-chunk-size-for-a-rag-system-using-llamaindex-6207e5d3fec5), [Pinecone](https://www.pinecone.io/learn/chunking-strategies/)) and community consensus:
 
-## Key Features
+**General findings:**
+- **512-1024 tokens** balances faithfulness and relevancy for most content
+- Smaller chunks (128-256) provide granular retrieval but risk missing context
+- Larger chunks (2048+) preserve context but increase latency and "lost in the middle" problems
 
-### Parallel Processing
-- Download multiple papers simultaneously
-- Configurable worker count (default: 4)
-- Significantly faster for large collections
-- Thread-safe logging and statistics
+**Recommended strategies by content type:**
 
-### Intelligent Skipping
-- Checks for existing PDF + MD files
-- Only processes missing papers
-- Saves time on rebuilds
+- **Books/Textbooks**: Preserve narrative flow with larger chunks
+  - `--chunk-sizes 4096 1024 512` - Maintains chapter-level context
+  - Books benefit from hierarchical retrieval (summary → sections → paragraphs)
 
-### Automatic Config Management
-- Adding papers automatically updates the JSON config
-- No manual JSON editing needed
-- Config stays in sync with downloaded papers
+- **API Documentation**: Default works well for precise reference lookup
+  - `--chunk-sizes 2048 512 128` - Balances function-level detail with context
+  - Smaller leaf chunks help isolate individual API functions/classes
 
-### Category Organization
-Papers are organized by category in `library_docs/`:
-```
-library_docs/
-├── dl_foundations/
-│   ├── 1512.03385.pdf
-│   ├── Deep_Residual_Learning_for_Image_Recognition.md
-│   └── ...
-├── vision_2d_generative/
-│   └── ...
-└── 3d_reconstruction_rendering/
-    └── ...
-```
+- **Research Papers**: Medium chunks capture complete ideas
+  - `--chunk-sizes 3072 768 256` - Preserves mathematical proofs and arguments
+  - Papers with heavy math benefit from larger chunks to avoid splitting equations
 
-### Progress Tracking
-Detailed logging shows:
-- Paper being processed
-- Status (processing, skipping, or error)
-- Summary statistics after rebuild
+**Key principle:** The leaf size (last number) determines what gets embedded. Larger = more context but less precision. Start with defaults and iterate based on query patterns.
 
-## Workflow Examples
+### Step 5: Use in the App
 
-### Starting a New Category
+Launch the web interface:
 
 ```bash
-# Add papers to a new category
-python fetch_paper.py --config papers_config.json --category diffusion_models --ids 2006.11239 2112.10752 2204.06125
-
-# The config will automatically create the new category
+tensor-truth
 ```
 
-### Updating an Existing Category
-
-```bash
-# Add newly released papers
-python fetch_paper.py --config papers_config.json --category 3d_reconstruction_rendering --ids 2412.12345
-
-# Then rebuild to ensure everything is downloaded
-python fetch_paper.py --config papers_config.json --rebuild 3d_reconstruction_rendering
-```
-
-### Fresh Setup on New Machine
-
-```bash
-# Clone your repo with papers_config.json
-git clone your-repo
-
-# Rebuild all categories to download papers (with 8 parallel workers)
-python fetch_paper.py --config papers_config.json --rebuild-all --workers 8
-
-# This will download all 40 papers much faster than sequential!
-```
-
-### Performance Tuning
-
-```bash
-# Conservative (good for unstable connections)
-python fetch_paper.py --config papers_config.json --rebuild-all --workers 2
-
-# Balanced (default)
-python fetch_paper.py --config papers_config.json --rebuild-all --workers 4
-
-# Aggressive (fast connection, many papers)
-python fetch_paper.py --config papers_config.json --rebuild-all --workers 12
-```
-
-## Output Format
-
-Each Markdown file includes metadata headers ideal for RAG:
-
-```markdown
-# Title: 3D Gaussian Splatting for Real-Time Radiance Field Rendering
-# Authors: Bernhard Kerbl, Georgios Kopanas, Thomas Leimkühler, George Drettakis
-# Year: 2023
-# ArXiv ID: 2308.04079
-# Abstract: 
-Radiance Field methods have recently revolutionized novel-view synthesis...
+Your new paper category will appear in the "Active Indexes" sidebar. Select it to enable retrieval from those papers.
 
 ---
 
-[Converted paper content with preserved layout, tables, and figures...]
+## Adding Library Documentation
+
+### Example: Adding FastAPI Documentation
+
+FastAPI uses Sphinx documentation, so the process is straightforward.
+
+#### 1. Add to sources.json
+
+```json
+{
+  "libraries": {
+    "fastapi_0.115": {
+      "type": "sphinx",
+      "version": "0.115",
+      "doc_root": "https://fastapi.tiangolo.com/",
+      "inventory_url": "https://fastapi.tiangolo.com/objects.inv",
+      "selector": "article.md-content"
+    }
+  }
+}
 ```
 
-This structure enables your RAG system to:
-- Index by category
-- Search by metadata (author, year, arXiv ID)
-- Retrieve relevant sections with full context
-- Handle complex layouts (2-column papers, tables)
+**Key fields:**
+- `type`: Either `"sphinx"` or `"doxygen"`
+- `doc_root`: Base URL of the documentation
+- `inventory_url`: Location of `objects.inv` file (Sphinx inventory)
+- `selector`: CSS selector for the main content area
 
-## Requirements
+#### 2. Fetch Documentation
 
 ```bash
-pip install arxiv pymupdf4llm
+tensor-truth-docs fastapi_0.115
 ```
 
-## Command Reference
+**Options:**
+- `--workers 10`: Number of parallel downloads (default: 20)
+- `--format markdown`: Output format (markdown, html, or pdf)
+- `--cleanup`: Aggressive HTML cleanup (useful for Doxygen)
+- `--min-size 100`: Skip files smaller than 100 characters
+
+#### 3. Build the Index
 
 ```bash
-# Add papers (writes to config)
-python fetch_paper.py --config CONFIG --category CATEGORY --ids ID1 ID2 ...
-
-# Rebuild specific categories (reads from config)
-python fetch_paper.py --config CONFIG --rebuild CATEGORY1 CATEGORY2 ...
-
-# Rebuild ALL categories
-python fetch_paper.py --config CONFIG --rebuild-all
-
-# Use parallel workers (faster downloads)
-python fetch_paper.py --config CONFIG --rebuild-all --workers N
-
-# List categories
-python fetch_paper.py --config CONFIG --list
-
-# Help
-python fetch_paper.py --help
+tensor-truth-build --modules fastapi_0.115
 ```
 
-## Configuration Defaults
+---
 
-- Default config file: `papers_config.json`
-- Default output directory: `./library_docs`
-- Default parallel workers: `4`
+## Adding Textbooks
 
-You can specify a different config with `--config path/to/config.json`
+Textbooks require special handling because they need to be split into chapters or chunks.
 
-## Performance Notes
+### Example: Adding a Custom Textbook
 
-**Worker Count Recommendations:**
-- **2-4 workers**: Stable/slow connections, prevents timeouts
-- **4-8 workers**: Normal connections (recommended)
-- **8-16 workers**: Fast connections, large batches
+Let's add a deep learning textbook.
 
-**Expected Speed:**
-- Sequential (1 worker): ~40 papers in 30-45 minutes
-- Parallel (4 workers): ~40 papers in 10-15 minutes
-- Parallel (8 workers): ~40 papers in 8-12 minutes
+#### 1. Add to sources.json
 
-Times vary based on paper sizes and connection speed.
+```json
+{
+  "books": {
+    "deep_learning_goodfellow": {
+      "type": "pdf_book",
+      "category": "machine_learning",
+      "title": "Deep Learning",
+      "authors": ["Ian Goodfellow", "Yoshua Bengio", "Aaron Courville"],
+      "source": "https://github.com/janishar/mit-deep-learning-book-pdf/raw/master/complete-book-pdf/deeplearningbook.pdf",
+      "split_method": "toc",
+      "description": "Comprehensive textbook on deep learning theory",
+      "items": {}
+    }
+  }
+}
+```
+
+**Split methods:**
+- `"toc"`: Automatically detect chapters from table of contents (recommended)
+- `"none"`: Manual chunking by page count
+- `"manual"`: Pre-define chapters with page ranges in `items`
+
+#### 2. Fetch and Convert
+
+```bash
+# Fetch with automatic chapter detection
+tensor-truth-docs --type books deep_learning_goodfellow --converter marker
+
+# Or fetch all books in a category
+tensor-truth-docs --type books --category machine_learning
+
+# Or fetch all books
+tensor-truth-docs --type books --all
+```
+
+**Options:**
+- `--pages-per-chunk 15`: Pages per chunk when `split_method="none"` (default: 15)
+- `--max-pages-per-chapter 0`: Split large chapters (0 = no limit)
+
+#### 3. Build the Index
+
+```bash
+tensor-truth-build --modules deep_learning_goodfellow
+```
+
+---
+
+## Advanced Workflows
+
+### Batch Operations
+
+Fetch and build everything at once:
+
+```bash
+# Fetch all sources
+tensor-truth-docs --type papers --all
+tensor-truth-docs --type books --all
+
+# Build all indexes
+tensor-truth-build --all
+
+# Or by category
+tensor-truth-build --papers    # All paper categories
+tensor-truth-build --books     # All books
+tensor-truth-build --libraries # All libraries
+```
+
+### Custom Paths
+
+Override default paths with environment variables or CLI arguments (see [Configuration Paths](#-configuration-paths-environment-variables) for details):
+
+```bash
+# Using environment variables (recommended for Docker)
+export TENSOR_TRUTH_DOCS_DIR=/data/docs
+export TENSOR_TRUTH_SOURCES_CONFIG=/data/sources.json
+export TENSOR_TRUTH_INDEXES_DIR=/data/indexes
+
+# Or using CLI arguments
+tensor-truth-docs pytorch \
+  --library-docs-dir /data/docs \
+  --sources-config /data/sources.json
+
+tensor-truth-build --modules pytorch \
+  --library-docs-dir /data/docs \
+  --indexes-dir /data/indexes \
+  --sources-config /data/sources.json
+```
+
+### Validation
+
+Verify your configuration:
+
+```bash
+# Check sources.json structure and filesystem
+tensor-truth-docs --validate
+```
+
+This validates:
+- JSON syntax
+- Required fields
+- File existence
+- Index availability
+
+---
+
+## Tips and Best Practices
+
+### 1. Use Marker for Math-Heavy Content
+For papers with complex equations, use `--converter marker`:
+```bash
+tensor-truth-docs --type papers --category 3d_reconstruction --converter marker
+```
+
+### 2. Filter Small Files
+Library docs often include tiny navigation files. Skip them:
+```bash
+tensor-truth-docs pytorch --min-size 200
+```
+
+### 3. Monitor GPU Memory
+Building indexes uses GPU for embeddings. If you run out of memory, close Ollama temporarily:
+```bash
+# Stop Ollama
+pkill ollama  # Linux/Mac
+taskkill /F /IM ollama.exe  # Windows
+
+# Build indexes
+tensor-truth-build --modules my_module
+
+# Restart Ollama
+ollama serve
+```
+
+### 4. Incremental Updates
+Only rebuild what changed:
+```bash
+# Fetch new version
+tensor-truth-docs pytorch_2.10
+
+# Build only the new version
+tensor-truth-build --modules pytorch_2.10
+```
+
+### 5. Note on Retrieval Evaluation
+
+Tensor-Truth does not currently implement automated retrieval metrics (e.g., faithfulness, relevancy, hit rate, MRR). The chunk size recommendations are based on published research and community best practices rather than automated evaluation on your specific dataset.
+
+**Planned features:** We intend to integrate the **LlamaIndex Response Evaluator** for measuring faithfulness and relevancy, and experiment with **RAGAS** for comprehensive retrieval quality metrics. These will help users optimize chunk sizes and retrieval strategies for their specific use cases.
+
+For now, if you need to evaluate retrieval performance, consider manually testing query accuracy with different chunk configurations.
+
+---
+
+## Troubleshooting
+
+### PDFs Won't Download
+- Check the source URL is accessible
+- Some sites block automated downloads (use manual download + file:// URL)
+
+### Build Fails with "No documents found"
+- Ensure you ran `tensor-truth-docs` first
+- Check the module name matches between fetch and build
+- Verify files exist in `~/.tensortruth/library_docs/<module_name>/` (or wherever `TENSOR_TRUTH_DOCS_DIR` points)
+
+### Book Chapters Not Detected
+- Try `--converter marker` for better TOC extraction
+- Fall back to manual splitting with `split_method: "none"`
+- Pre-define chapters manually in sources.json with page ranges
+- **Large chapters detected?** Use `--max-pages-per-chapter 20` to split them into smaller files. Smaller chunks (15-25 pages) work better for RAG retrieval as they allow more focused context without overwhelming the LLM's context window.
+
+---
+
+## Example: Complete Workflow
+
+Here's a complete example adding a new computer vision paper category:
+
+```bash
+# 1. Edit ~/.tensortruth/sources.json
+cat >> ~/.tensortruth/sources.json << 'EOF'
+{
+  "papers": {
+    "object_detection": {
+      "display_name": "Object Detection",
+      "description": "Modern object detection architectures",
+      "type": "arxiv",
+      "items": {
+        "1506.01497": {
+          "title": "Faster R-CNN: Towards Real-Time Object Detection",
+          "arxiv_id": "1506.01497",
+          "url": "https://arxiv.org/abs/1506.01497",
+          "authors": "Shaoqing Ren, Kaiming He, Ross Girshick, Jian Sun",
+          "year": "2015"
+        }
+      }
+    }
+  }
+}
+EOF
+
+# 2. Fetch papers
+tensor-truth-docs --type papers --category object_detection --converter marker
+
+# 3. Build index
+tensor-truth-build --modules object_detection
+
+# 4. Launch app
+tensor-truth
+```
+
+Your new papers are now searchable in the UI!
+
+---
+
+## Summary
+
+The workflow is simple:
+
+1. **Configure**: Edit `~/.tensortruth/sources.json` with your sources
+2. **Fetch**: Run `tensor-truth-docs` to download and convert
+3. **Build**: Run `tensor-truth-build` to create vector indexes
+4. **Use**: Launch `tensor-truth` and select your indexes
+
+For the full default configuration, see [`config/sources.json`](../config/sources.json).
+
+For Docker deployment and advanced configuration, see [DOCKER.md](DOCKER.md).

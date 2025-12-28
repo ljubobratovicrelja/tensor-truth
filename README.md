@@ -65,7 +65,7 @@ docker run -d \
   -e OLLAMA_HOST=http://host.docker.internal:11434 \
   ljubobratovicrelja/tensor-truth:latest
 ```
-**See [DOCKER.md](DOCKER.md) for complete Docker documentation, troubleshooting, and advanced usage.**
+**See [DOCKER.md](docs/DOCKER.md) for complete Docker documentation, troubleshooting, and advanced usage.**
 
 
 ## Data Storage
@@ -113,16 +113,18 @@ Pre-built indexes cover common libraries, but you can create custom knowledge ba
 
 **Scrape Documentation:**
 ```bash
-tensor-truth-docs --list                                    # Show all available sources
-tensor-truth-docs pytorch numpy                             # Scrape library docs
-tensor-truth-docs --type papers --category dl_foundations   # Fetch paper category
-tensor-truth-docs --type papers --category ml --ids 1706.03762 1810.04805  # Specific papers
+tensor-truth-docs --list                              # Show all available sources
+tensor-truth-docs pytorch_2.9 numpy_2.3               # Scrape library docs
+tensor-truth-docs --type papers --category foundation_models   # Fetch paper category
+tensor-truth-docs --type papers --category foundation_models --ids 1706.03762 1810.04805  # Add specific papers
 ```
 
 **Build Vector Index:**
 ```bash
-tensor-truth-build --modules module_name
+tensor-truth-build --modules foundation_models
 ```
+
+See detailed documentation and examples in [PAPERS.md](docs/PAPERS.md).
 
 **Session PDFs:**
 
