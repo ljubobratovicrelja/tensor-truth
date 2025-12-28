@@ -14,7 +14,7 @@ from tensortruth.app_utils.rendering import (
     render_low_confidence_warning,
     render_message_footer,
 )
-from tensortruth.app_utils.session import save_sessions, update_title
+from tensortruth.app_utils.session import save_sessions
 from tensortruth.app_utils.streaming import (
     stream_rag_response,
     stream_simple_llm_response,
@@ -216,6 +216,13 @@ def handle_chat_response(
         engine: RAG engine (None for simple LLM mode)
     """
     try:
+        # Generate title if needed (first message only, before mode-specific logic)
+        if session.get("title_needs_update", False):
+            with st.spinner("Generating title..."):
+                from tensortruth.app_utils.session import update_title
+
+                update_title(current_id, prompt, params.get("model"), sessions_file)
+
         # Delegate to mode-specific handler
         if engine:
             thinking, message_data = _handle_rag_mode(
@@ -231,11 +238,6 @@ def handle_chat_response(
         # Save message and session
         session["messages"].append(message_data)
         save_sessions(sessions_file)
-
-        # Update title if needed
-        if session.get("title_needs_update", False):
-            with st.spinner("Generating title..."):
-                update_title(current_id, prompt, params.get("model"), sessions_file)
 
         st.rerun()
 
