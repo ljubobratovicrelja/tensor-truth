@@ -1228,11 +1228,11 @@ Environment Variables:
 
     parser.add_argument(
         "--converter",
-        choices=["pymupdf", "marker"],
-        default="pymupdf",
+        choices=["marker", "pymupdf"],
+        default="marker",
         help=(
             "Markdown converter selection for papers/books. "
-            "Both are AI powered (pymupdf.layout is used)"
+            "marker (default) provides better quality, pymupdf is faster"
         ),
     )
 
