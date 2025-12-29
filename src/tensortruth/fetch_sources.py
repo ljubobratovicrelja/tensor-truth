@@ -555,7 +555,7 @@ def add_library_interactive(sources_config_path, library_docs_dir, args):
     print("\n⏳ Detecting main content selector...")
     selector = detect_css_selector(url)
     if selector:
-        lib_config["css_selector"] = selector
+        lib_config["selector"] = selector
         use_selector = (
             input(f"Use detected CSS selector '{selector}'? (y/n) [y]: ")
             .strip()
@@ -565,14 +565,14 @@ def add_library_interactive(sources_config_path, library_docs_dir, args):
         if use_selector != "y":
             custom_selector = input("Enter custom CSS selector: ").strip()
             if custom_selector:
-                lib_config["css_selector"] = custom_selector
+                lib_config["selector"] = custom_selector
     else:
         # Prompt for manual selector
         custom_selector = input(
             "Enter CSS selector for main content (e.g., div[role='main']): "
         ).strip()
         if custom_selector:
-            lib_config["css_selector"] = custom_selector
+            lib_config["selector"] = custom_selector
 
     # Step 4: Get library metadata
     print("\n=== Library Metadata ===")
@@ -608,8 +608,8 @@ def add_library_interactive(sources_config_path, library_docs_dir, args):
     print(f"Doc Root:      {url}")
     if "inventory_url" in lib_config:
         print(f"Inventory URL: {lib_config['inventory_url']}")
-    if "css_selector" in lib_config:
-        print(f"CSS Selector:  {lib_config['css_selector']}")
+    if "selector" in lib_config:
+        print(f"CSS Selector:  {lib_config['selector']}")
 
     confirm = input("\nAdd this library? (y/n): ").strip().lower()
     if confirm != "y":
