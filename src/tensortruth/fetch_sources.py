@@ -178,6 +178,38 @@ def validate_url(url: str) -> bool:
             return False
 
 
+def prompt_for_url(prompt_message: str, examples: list[str] = None) -> str:
+    """Prompt user for URL with validation and retry loop.
+
+    Args:
+        prompt_message: Message to display when prompting for URL
+        examples: Optional list of example URLs to display
+
+    Returns:
+        Valid URL string
+
+    Raises:
+        SystemExit: If user cancels (exits with code 1)
+    """
+    print(prompt_message)
+    if examples:
+        print("Examples:")
+        for example in examples:
+            print(f"  - {example}")
+
+    url = input("\nURL: ").strip()
+
+    # Retry loop for URL validation
+    while not validate_url(url):
+        logger.error(f"Invalid or inaccessible URL: {url}")
+        url = input("\nTry again (or press Enter to cancel): ").strip()
+        if not url:
+            print("Cancelled.")
+            raise SystemExit(1)
+
+    return url
+
+
 def sanitize_config_key(name: str) -> str:
     """Sanitize name to valid sources.json key.
 
@@ -504,16 +536,13 @@ def add_library_interactive(sources_config_path, library_docs_dir, args):
     # Step 1: Get URL
     url = args.url if hasattr(args, "url") and args.url else None
     if not url:
-        print("Enter the root URL of the library documentation:")
-        print("Examples:")
-        print("  - https://pytorch.org/docs/stable/")
-        print("  - https://numpy.org/doc/stable/")
-        url = input("\nLibrary URL: ").strip()
-
-    # Validate URL
-    if not validate_url(url):
-        logger.error(f"Invalid or inaccessible URL: {url}")
-        return 1
+        url = prompt_for_url(
+            "Enter the root URL of the library documentation:",
+            examples=[
+                "https://pytorch.org/docs/stable/",
+                "https://numpy.org/doc/stable/",
+            ],
+        )
 
     # Step 2: Auto-detect doc type
     print("\n⏳ Auto-detecting documentation type...")
@@ -685,16 +714,13 @@ def add_book_interactive(sources_config_path, library_docs_dir, args):
     # Step 1: Get URL
     url = args.url if hasattr(args, "url") and args.url else None
     if not url:
-        print("Enter the URL of the PDF book:")
-        print("Examples:")
-        print("  - https://example.com/books/linear_algebra.pdf")
-        print("  - https://arxiv.org/pdf/1234.5678.pdf")
-        url = input("\nBook URL: ").strip()
-
-    # Validate URL
-    if not validate_url(url):
-        logger.error(f"Invalid or inaccessible URL: {url}")
-        return 1
+        url = prompt_for_url(
+            "Enter the URL of the PDF book:",
+            examples=[
+                "https://example.com/books/linear_algebra.pdf",
+                "https://arxiv.org/pdf/1234.5678.pdf",
+            ],
+        )
 
     # Step 2: Download PDF temporarily
     print("\n⏳ Downloading PDF to extract metadata...")
