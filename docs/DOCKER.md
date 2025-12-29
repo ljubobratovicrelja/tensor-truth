@@ -8,7 +8,13 @@ Official Docker image for running Tensor-Truth RAG application with GPU accelera
 
 ## Quick Start
 
-Pull and run the latest image:
+**Pull the pre-built image from Docker Hub:**
+
+```bash
+docker pull ljubobratovicrelja/tensor-truth:latest
+```
+
+**Run the container:**
 
 ```bash
 docker run -d \
@@ -40,10 +46,13 @@ This Docker image provides a complete, minimal environment for running Tensor-Tr
 - **PDF processing** (pymupdf4llm, marker-pdf)
 - **Torch** ML libraries with CUDA support
 
-### What's NOT Included
-The image excludes optional development and documentation tools to keep it minimal:
-- `[docs]` extras (BeautifulSoup, arxiv, sphobjinv) - only needed for `tensor-truth-docs` CLI
-- `[dev]` extras (pytest, black, mypy) - development dependencies
+### Image Size
+
+**`ljubobratovicrelja/tensor-truth:latest`** - ~5GB (base PyTorch image is 4.6GB)
+
+Includes `tensor-truth[docs]` extras for CLI tools (`tensor-truth-docs`, `tensor-truth-build`).
+
+Indexes are downloaded automatically on first run via HuggingFace Hub (fast download).
 
 ## Prerequisites
 
@@ -118,6 +127,112 @@ docker run -d \
 
 Access at **http://localhost:8080**
 
+## Using CLI Tools (tensor-truth-docs, tensor-truth-build)
+
+The image includes `[docs]` extras, giving you access to documentation scraping and index building tools.
+
+**Note**: Examples below use the Docker Hub image `ljubobratovicrelja/tensor-truth:latest`. If you built locally, replace with `tensor-truth:latest`.
+
+### Running CLI Commands
+
+The default `CMD` starts the Streamlit web app. To run CLI tools, override the command:
+
+**Interactive shell (recommended for multiple commands):**
+
+```bash
+docker run -it --rm --gpus all \
+  -v ~/.tensortruth:/root/.tensortruth \
+  ljubobratovicrelja/tensor-truth:latest \
+  /bin/bash
+
+# Inside the container:
+tensor-truth-docs --list
+tensor-truth-docs pytorch_2.9
+tensor-truth-build --modules pytorch_2.9
+```
+
+**Single command execution:**
+
+```bash
+# List available sources
+docker run --rm --gpus all \
+  -v ~/.tensortruth:/root/.tensortruth \
+  ljubobratovicrelja/tensor-truth:latest \
+  tensor-truth-docs --list
+
+# Fetch documentation
+docker run --rm --gpus all \
+  -v ~/.tensortruth:/root/.tensortruth \
+  ljubobratovicrelja/tensor-truth:latest \
+  tensor-truth-docs pytorch_2.9
+
+# Build indexes
+docker run --rm --gpus all \
+  -v ~/.tensortruth:/root/.tensortruth \
+  ljubobratovicrelja/tensor-truth:latest \
+  tensor-truth-build --modules pytorch_2.9
+```
+
+### Data Persistence with CLI Tools
+
+**All data persists automatically** through the volume mount:
+
+- `tensor-truth-docs` saves to `/root/.tensortruth/library_docs/` (mapped to `~/.tensortruth/library_docs/` on host)
+- `tensor-truth-build` saves to `/root/.tensortruth/indexes/` (mapped to `~/.tensortruth/indexes/` on host)
+
+When you restart the container (even the web app), your custom indexes are still there because they're stored on the host filesystem, not in the container.
+
+**Example workflow (using arXiv papers):**
+
+```bash
+# 1. Fetch arXiv papers by category and specific IDs
+docker run --rm --gpus all \
+  -v ~/.tensortruth:/root/.tensortruth \
+  ljubobratovicrelja/tensor-truth:latest \
+  tensor-truth-docs --type papers --category foundation_models --ids 1706.03762 1810.04805
+
+# 2. Build index for the category
+docker run --rm --gpus all \
+  -v ~/.tensortruth:/root/.tensortruth \
+  ljubobratovicrelja/tensor-truth:latest \
+  tensor-truth-build --modules foundation_models
+
+# 3. Restart web app - new indexes are immediately available
+docker restart tensor-truth
+```
+
+**Note**: For library documentation (e.g., `pytorch_2.9`, `fastapi_0.115`), you need to first manually configure `~/.tensortruth/sources.json` using the repository's `config/sources.json` as a template. arXiv papers work out-of-the-box without manual configuration.
+
+For complete documentation on CLI tools, see [PAPERS.md](PAPERS.md).
+
+### Advanced: Skip Base Index Download
+
+By default, the app downloads pre-built indexes on first run. If you prefer to build only your own custom indexes (skipping the base package):
+
+1. **Before first launch**, enter the container shell and build your indexes:
+
+```bash
+docker run -it --rm --gpus all \
+  -v ~/.tensortruth:/root/.tensortruth \
+  ljubobratovicrelja/tensor-truth:latest \
+  /bin/bash
+
+# Inside container: fetch and build your custom indexes
+tensor-truth-docs pytorch_2.9
+tensor-truth-build --modules pytorch_2.9
+exit
+```
+
+2. **Then start the app normally**:
+
+```bash
+docker run -d --name tensor-truth --gpus all -p 8501:8501 \
+  -v ~/.tensortruth:/root/.tensortruth \
+  ljubobratovicrelja/tensor-truth:latest
+```
+
+The app detects existing indexes in `~/.tensortruth/indexes/` and skips downloading the base package, using only your custom-built indexes.
+
 ## Data Persistence
 
 The image uses a volume mount at `/root/.tensortruth` for persistent data storage.
@@ -126,9 +241,10 @@ The image uses a volume mount at `/root/.tensortruth` for persistent data storag
 
 - **Chat sessions** - conversation history and metadata
 - **Presets** - saved RAG configurations
-- **Vector indexes** - ChromaDB databases for document retrieval
+- **Vector indexes** - ChromaDB databases for document retrieval (including custom-built ones)
+- **Library documentation** - Source files fetched via `tensor-truth-docs`
 - **Session PDFs** - uploaded documents and their conversions
-- **Configuration** - user settings and preferences
+- **Configuration** - user settings and sources.json (created when using `tensor-truth-docs`)
 
 ### Backup Your Data
 
@@ -148,17 +264,20 @@ To share data between Docker and local installation:
 -v ~/.tensortruth:/root/.tensortruth
 ```
 
-This allows you to switch between Docker and pip-installed versions seamlessly.
+This allows you to switch between Docker and pip-installed versions seamlessly. Indexes built in Docker are accessible to local installations and vice versa.
 
 ## First Run Behavior
 
 On the first launch, the application will:
 
 1. **Create config** - Initialize default configuration file
-2. **Download indexes** - Fetch pre-built vector indexes from Google Drive (~500MB)
-3. **Setup directories** - Create session, preset, and index folders
+2. **Download indexes** - Fetch pre-built vector indexes from HuggingFace Hub (fast, reliable)
+3. **Pull Ollama model** - Request `qwen2.5:0.5b` from the Ollama host (runs on the machine specified by `OLLAMA_HOST`, not inside the container)
+4. **Setup directories** - Create session, preset, and index folders
 
-This process takes 2-5 minutes depending on network speed. Subsequent runs are instant since data persists in the volume.
+This process takes 1-3 minutes depending on network speed. Subsequent runs are instant since data persists in the volume.
+
+**Note**: The Ollama model pull happens on your Ollama host machine (e.g., `host.docker.internal:11434`), not inside the Docker container. Make sure Ollama is running and accessible before starting tensor-truth.
 
 ## Environment Variables
 
@@ -295,13 +414,13 @@ docker exec tensor-truth curl http://host.docker.internal:11434/api/tags
 
 If connection fails, verify firewall settings and OLLAMA_HOST configuration.
 
-### Index Download Fails
+### Index Download Issues
 
-If Google Drive download fails on first run:
+If HuggingFace Hub download fails on first run (rare):
 
-1. Download indexes manually: [Google Drive Link](https://drive.google.com/file/d/12wZsBwrywl9nXOCLr50lpWB2SiFdu1XB/view?usp=sharing)
-2. Extract to `~/.tensortruth/indexes/`
-3. Restart container
+1. Check your internet connection and firewall settings
+2. Verify HuggingFace Hub is accessible: `curl https://huggingface.co`
+3. Check container logs: `docker logs tensor-truth`
 
 ### Out of Memory
 
@@ -310,3 +429,27 @@ If embeddings or reranking fail with OOM:
 - Use smaller reranker model (e.g., `bge-reranker-base` instead of `bge-reranker-v2-m3`)
 - Reduce `Top N` parameter in the UI (fewer documents retrieved/reranked)
 - Ensure sufficient GPU VRAM (depends on the models used)
+
+## Building Custom Images
+
+If you want to build the Docker image locally from source instead of using the pre-built image:
+
+```bash
+docker build -t tensor-truth:latest .
+```
+
+Then run it:
+
+```bash
+docker run -d \
+  --name tensor-truth \
+  --gpus all \
+  -p 8501:8501 \
+  -v ~/.tensortruth:/root/.tensortruth \
+  -e OLLAMA_HOST=http://host.docker.internal:11434 \
+  tensor-truth:latest
+```
+
+The image is ~5GB and includes all dependencies. Indexes download automatically on first run via HuggingFace Hub.
+
+**Note**: Local builds use the simplified image name `tensor-truth:latest` (without the `ljubobratovicrelja/` prefix). The pre-built image from Docker Hub uses the full name `ljubobratovicrelja/tensor-truth:latest`.

@@ -52,10 +52,14 @@ On first launch, pre-built indexes will auto-download from Google Drive (takes a
 
 ## Docker Deployment
 
-For easier deployment without managing virtual environments or CUDA installations, a pre-built Docker image is available. This approach is useful if you want to avoid setting up PyTorch with CUDA manually, though you still need a machine with NVIDIA GPU and drivers installed.
+For easier deployment without managing virtual environments or CUDA installations, a pre-built Docker image is available on Docker Hub. This approach is useful if you want to avoid setting up PyTorch with CUDA manually, though you still need a machine with NVIDIA GPU and drivers installed.
 
+**Pull the image:**
+```bash
+docker pull ljubobratovicrelja/tensor-truth:latest
+```
 
-**Quick start - Pull and run from Docker Hub:**
+**Run the container:**
 ```bash
 docker run -d \
   --name tensor-truth \
@@ -65,6 +69,9 @@ docker run -d \
   -e OLLAMA_HOST=http://host.docker.internal:11434 \
   ljubobratovicrelja/tensor-truth:latest
 ```
+
+Access the app at **http://localhost:8501**
+
 **See [DOCKER.md](docs/DOCKER.md) for complete Docker documentation, troubleshooting, and advanced usage.**
 
 
