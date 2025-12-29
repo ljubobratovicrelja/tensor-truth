@@ -7,6 +7,7 @@ import argparse
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
 
 from tqdm import tqdm
 
@@ -18,6 +19,28 @@ from .scrapers.doxygen import fetch_doxygen_urls
 from .scrapers.sphinx import fetch_inventory
 from .utils.sources_config import list_sources, load_user_sources, update_sources_config
 from .utils.validation import validate_sources
+
+# ============================================================================
+# Configuration Constants
+# ============================================================================
+
+
+class SourceType(str, Enum):
+    """Source configuration section names."""
+
+    LIBRARIES = "libraries"
+    PAPERS = "papers"
+    BOOKS = "books"
+
+
+class DocType(str, Enum):
+    """Documentation types."""
+
+    SPHINX = "sphinx"
+    DOXYGEN = "doxygen"
+    ARXIV = "arxiv"
+    PDF_BOOK = "pdf_book"
+
 
 # --- CONFIGURATION ---
 MAX_WORKERS = 20  # Safe number for parallel downloads
@@ -472,7 +495,11 @@ def add_library_interactive(sources_config_path, library_docs_dir, args):
     try:
         config = load_user_sources(sources_config_path)
     except IOError:
-        config = {"libraries": {}, "papers": {}, "books": {}}
+        config = {
+            SourceType.LIBRARIES: {},
+            SourceType.PAPERS: {},
+            SourceType.BOOKS: {},
+        }
 
     # Step 1: Get URL
     url = args.url if hasattr(args, "url") and args.url else None
@@ -497,7 +524,11 @@ def add_library_interactive(sources_config_path, library_docs_dir, args):
         print("  1) Sphinx")
         print("  2) Doxygen")
         choice = input("Doc type (1/2): ").strip()
-        doc_type = "sphinx" if choice == "1" else "doxygen" if choice == "2" else None
+        doc_type = (
+            DocType.SPHINX
+            if choice == "1"
+            else DocType.DOXYGEN if choice == "2" else None
+        )
 
         if not doc_type:
             logger.error("Invalid doc type selection")
@@ -506,7 +537,7 @@ def add_library_interactive(sources_config_path, library_docs_dir, args):
     # Step 3: Auto-detect configuration based on type
     lib_config = {"type": doc_type, "doc_root": url}
 
-    if doc_type == "sphinx":
+    if doc_type == DocType.SPHINX:
         # Detect objects.inv
         print("\n⏳ Looking for objects.inv...")
         inv_url = detect_objects_inv(url)
@@ -549,7 +580,7 @@ def add_library_interactive(sources_config_path, library_docs_dir, args):
     lib_name = input("\nEnter library config key (e.g., pytorch, numpy): ").strip()
     lib_name = sanitize_config_key(lib_name)
 
-    if lib_name in config.get("libraries", {}):
+    if lib_name in config.get(SourceType.LIBRARIES, {}):
         logger.error(f"Library '{lib_name}' already exists in config")
         overwrite = input("Overwrite? (y/n): ").strip().lower()
         if overwrite != "y":
@@ -586,8 +617,10 @@ def add_library_interactive(sources_config_path, library_docs_dir, args):
         return 1
 
     # Step 6: Save
-    config.setdefault("libraries", {})[lib_name] = lib_config
-    update_sources_config(sources_config_path, "libraries", lib_name, lib_config)
+    config.setdefault(SourceType.LIBRARIES, {})[lib_name] = lib_config
+    update_sources_config(
+        sources_config_path, SourceType.LIBRARIES, lib_name, lib_config
+    )
     print(f"\n✓ Added library '{lib_name}' to sources.json")
 
     # Step 7: Offer to fetch
@@ -643,7 +676,11 @@ def add_book_interactive(sources_config_path, library_docs_dir, args):
     try:
         config = load_user_sources(sources_config_path)
     except IOError:
-        config = {"libraries": {}, "papers": {}, "books": {}}
+        config = {
+            SourceType.LIBRARIES: {},
+            SourceType.PAPERS: {},
+            SourceType.BOOKS: {},
+        }
 
     # Step 1: Get URL
     url = args.url if hasattr(args, "url") and args.url else None
@@ -716,13 +753,7 @@ def add_book_interactive(sources_config_path, library_docs_dir, args):
         book_name = sanitize_config_key(custom_name)
 
     # Check for duplicates
-    all_books = {
-        name: cfg
-        for name, cfg in config.get("papers", {}).items()
-        if cfg.get("type") == "pdf_book"
-    }
-
-    if book_name in all_books:
+    if book_name in config.get(SourceType.BOOKS, {}):
         logger.error(f"Book '{book_name}' already exists in config")
         overwrite = input("Overwrite? (y/n): ").strip().lower()
         if overwrite != "y":
@@ -751,7 +782,7 @@ def add_book_interactive(sources_config_path, library_docs_dir, args):
 
     # Step 7: Build config
     book_config = {
-        "type": "pdf_book",
+        "type": DocType.PDF_BOOK,
         "title": title,
         "authors": authors,
         "category": category,
@@ -773,9 +804,9 @@ def add_book_interactive(sources_config_path, library_docs_dir, args):
         print("Cancelled.")
         return 1
 
-    # Step 8: Save (books are stored in config["papers"])
-    config.setdefault("papers", {})[book_name] = book_config
-    update_sources_config(sources_config_path, "papers", book_name, book_config)
+    # Step 8: Save to config["books"]
+    config.setdefault(SourceType.BOOKS, {})[book_name] = book_config
+    update_sources_config(sources_config_path, SourceType.BOOKS, book_name, book_config)
     print(f"\n✓ Added book '{book_name}' to sources.json")
 
     # Step 9: Offer to fetch
@@ -836,7 +867,11 @@ def add_paper_interactive(sources_config_path, library_docs_dir, args):
     try:
         config = load_user_sources(sources_config_path)
     except IOError:
-        config = {"libraries": {}, "papers": {}, "books": {}}
+        config = {
+            SourceType.LIBRARIES: {},
+            SourceType.PAPERS: {},
+            SourceType.BOOKS: {},
+        }
 
     # Step 1: Category
     category = args.category if hasattr(args, "category") and args.category else None
@@ -848,10 +883,10 @@ def add_paper_interactive(sources_config_path, library_docs_dir, args):
 
     # Step 2: Check if category exists
     category_config = None
-    if category in config.get("papers", {}):
-        cat = config["papers"][category]
+    if category in config.get(SourceType.PAPERS, {}):
+        cat = config[SourceType.PAPERS][category]
         # Make sure it's not a book
-        if cat.get("type") == "pdf_book":
+        if cat.get("type") == DocType.PDF_BOOK:
             logger.error(f"'{category}' is a book category, not a paper category")
             return 1
 
@@ -873,13 +908,13 @@ def add_paper_interactive(sources_config_path, library_docs_dir, args):
             print(f"Using default: {description}")
 
         category_config = {
-            "type": "arxiv",
+            "type": DocType.ARXIV,
             "display_name": display_name,
             "description": description,
             "items": {},
         }
 
-        config["papers"][category] = category_config
+        config[SourceType.PAPERS][category] = category_config
 
     # Step 3: Get ArXiv IDs
     arxiv_ids = (
@@ -968,7 +1003,9 @@ def add_paper_interactive(sources_config_path, library_docs_dir, args):
         category_config["items"][arxiv_id] = paper_entry
 
     # Save
-    update_sources_config(sources_config_path, "papers", category, category_config)
+    update_sources_config(
+        sources_config_path, SourceType.PAPERS, category, category_config
+    )
     print(f"\n✓ Added {len(papers_to_add)} papers to category '{category}'")
 
     # Step 7: Offer to fetch
@@ -1254,7 +1291,11 @@ Environment Variables:
         config = load_user_sources(sources_config_path)
     except IOError:
         logger.warning("No sources config found, starting with empty config.")
-        config = {"libraries": {}, "papers": {}, "books": {}}
+        config = {
+            SourceType.LIBRARIES: {},
+            SourceType.PAPERS: {},
+            SourceType.BOOKS: {},
+        }
     except Exception as e:
         logger.error(f"Failed to load sources config: {e}")
         return 1
@@ -1284,14 +1325,14 @@ Environment Variables:
             return 1
 
         for lib_name in libraries_to_scrape:
-            if lib_name not in config["libraries"]:
+            if lib_name not in config[SourceType.LIBRARIES]:
                 logger.error(
                     f"Library '{lib_name}' not found in config. "
                     "Use --list to see available libraries."
                 )
                 continue
 
-            lib_config = config["libraries"][lib_name]
+            lib_config = config[SourceType.LIBRARIES][lib_name]
             logger.info(f"\n=== Scraping {lib_name} ===")
 
             try:
@@ -1307,7 +1348,7 @@ Environment Variables:
 
                 # Auto-write to user's sources.json after successful fetch
                 update_sources_config(
-                    sources_config_path, "libraries", lib_name, lib_config
+                    sources_config_path, SourceType.LIBRARIES, lib_name, lib_config
                 )
             except Exception as e:
                 logger.error(
@@ -1321,8 +1362,8 @@ Environment Variables:
             # Fetch all paper categories (excluding books)
             paper_categories = {
                 name: cfg
-                for name, cfg in config.get("papers", {}).items()
-                if cfg.get("type") != "pdf_book"
+                for name, cfg in config.get(SourceType.PAPERS, {}).items()
+                if cfg.get("type") != DocType.PDF_BOOK
             }
 
             if not paper_categories:
@@ -1347,7 +1388,10 @@ Environment Variables:
 
                     # Update sources.json
                     update_sources_config(
-                        sources_config_path, "papers", category_name, category_config
+                        sources_config_path,
+                        SourceType.PAPERS,
+                        category_name,
+                        category_config,
                     )
                 except Exception as e:
                     logger.error(
@@ -1362,7 +1406,7 @@ Environment Variables:
             logger.error("--category required for --type papers (or use --all)")
             return 1
 
-        if args.category not in config["papers"]:
+        if args.category not in config[SourceType.PAPERS]:
             if args.arxiv_ids:
                 logger.info(
                     f"Category '{args.category}' not found: creating new category."
@@ -1383,8 +1427,8 @@ Environment Variables:
                     description = f"Papers in the {display_name} category"
                     logger.info(f"Using default description: {description}")
 
-                config["papers"][args.category] = {
-                    "type": "arxiv",
+                config[SourceType.PAPERS][args.category] = {
+                    "type": DocType.ARXIV,
                     "display_name": display_name,
                     "description": description,
                     "items": {},
@@ -1397,7 +1441,7 @@ Environment Variables:
                 )
                 return 1
 
-        category_config = config["papers"][args.category]
+        category_config = config[SourceType.PAPERS][args.category]
 
         # If specific IDs provided, fetch only those and add to category
         if args.arxiv_ids:
@@ -1448,7 +1492,7 @@ Environment Variables:
 
             # Update sources.json after adding papers with --ids
             update_sources_config(
-                sources_config_path, "papers", args.category, category_config
+                sources_config_path, SourceType.PAPERS, args.category, category_config
             )
         else:
             # Fetch entire category
@@ -1463,7 +1507,10 @@ Environment Variables:
 
                 # Auto-write to user's sources.json after successful fetch
                 update_sources_config(
-                    sources_config_path, "papers", args.category, category_config
+                    sources_config_path,
+                    SourceType.PAPERS,
+                    args.category,
+                    category_config,
                 )
             except Exception as e:
                 logger.error(f"Failed to fetch paper category {args.category}: {e}")
@@ -1471,12 +1518,7 @@ Environment Variables:
 
     elif args.type == "books":
         # Book fetching
-        # Books are stored in config["papers"] with type="pdf_book"
-        all_books = {
-            name: cfg
-            for name, cfg in config.get("papers", {}).items()
-            if cfg.get("type") == "pdf_book"
-        }
+        all_books = config.get(SourceType.BOOKS, {})
 
         if args.all:
             # Fetch all books
@@ -1504,7 +1546,10 @@ Environment Variables:
                         success_count += 1
                         # Update sources.json after each successful fetch
                         update_sources_config(
-                            sources_config_path, "papers", book_name, book_config
+                            sources_config_path,
+                            SourceType.BOOKS,
+                            book_name,
+                            book_config,
                         )
                 except Exception as e:
                     logger.error(
@@ -1545,7 +1590,7 @@ Environment Variables:
 
                     # Update sources.json
                     update_sources_config(
-                        sources_config_path, "papers", book_name, book_config
+                        sources_config_path, SourceType.BOOKS, book_name, book_config
                     )
                 except Exception as e:
                     logger.error(
@@ -1569,7 +1614,9 @@ Environment Variables:
                 # Update all books in category
                 for name, cfg in all_books.items():
                     if cfg.get("category") == args.category:
-                        update_sources_config(sources_config_path, "papers", name, cfg)
+                        update_sources_config(
+                            sources_config_path, SourceType.BOOKS, name, cfg
+                        )
             except Exception as e:
                 logger.error(f"Failed to fetch book category {args.category}: {e}")
                 return 1
