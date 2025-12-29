@@ -108,6 +108,390 @@ def scrape_library(
     logger.info(f"{'=' * 60}\n")
 
 
+# ============================================================================
+# Interactive Add Feature - Helper Functions
+# ============================================================================
+
+
+def validate_url(url: str) -> bool:
+    """Validate URL format and accessibility.
+
+    Args:
+        url: URL to validate
+
+    Returns:
+        True if URL is valid and accessible, False otherwise
+    """
+    import re
+
+    # Basic regex check
+    url_pattern = re.compile(
+        r"^https?://"  # http:// or https://
+        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"  # domain...
+        r"localhost|"  # localhost...
+        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
+        r"(?::\d+)?"  # optional port
+        r"(?:/?|[/?]\S+)$",
+        re.IGNORECASE,
+    )
+
+    if not url_pattern.match(url):
+        return False
+
+    # Try HEAD request to check accessibility
+    try:
+        import requests
+
+        response = requests.head(url, timeout=10, allow_redirects=True)
+        return response.status_code < 400
+    except Exception:
+        # If HEAD fails, try GET
+        try:
+            import requests
+
+            response = requests.get(url, timeout=10, allow_redirects=True)
+            return response.status_code < 400
+        except Exception:
+            return False
+
+
+def sanitize_config_key(name: str) -> str:
+    """Sanitize name to valid sources.json key.
+
+    Args:
+        name: Name to sanitize
+
+    Returns:
+        Sanitized name (lowercase, alphanumeric + underscore)
+    """
+    import re
+
+    # Convert to lowercase
+    name = name.lower()
+    # Replace non-alphanumeric with underscore
+    name = re.sub(r"[^a-z0-9_-]", "_", name)
+    # Remove leading/trailing underscores
+    name = name.strip("_")
+    # Collapse multiple underscores
+    name = re.sub(r"_+", "_", name)
+    return name
+
+
+def validate_arxiv_id(arxiv_id: str):
+    """Validate and normalize ArXiv ID.
+
+    Supports formats:
+    - 1234.5678 (new format)
+    - arch-ive/1234567 (old format)
+    - https://arxiv.org/abs/1234.5678 (URL)
+
+    Args:
+        arxiv_id: ArXiv ID to validate
+
+    Returns:
+        Normalized ID or None if invalid
+    """
+    import re
+
+    arxiv_id = arxiv_id.strip()
+
+    # Extract from URL
+    if "arxiv.org" in arxiv_id:
+        match = re.search(r"(\d{4}\.\d{4,5})", arxiv_id)
+        if match:
+            return match.group(1)
+        match = re.search(r"([a-z\-]+/\d{7})", arxiv_id)
+        if match:
+            return match.group(1)
+        return None
+
+    # Validate format
+    # New format: YYMM.NNNNN
+    if re.match(r"^\d{4}\.\d{4,5}$", arxiv_id):
+        return arxiv_id
+
+    # Old format: arch-ive/YYMMNNN
+    if re.match(r"^[a-z\-]+/\d{7}$", arxiv_id):
+        return arxiv_id
+
+    logger.warning(f"Invalid ArXiv ID format: {arxiv_id}")
+    return None
+
+
+# ============================================================================
+# Paper Addition Functions
+# ============================================================================
+
+
+def add_paper_interactive(sources_config_path, library_docs_dir, args):
+    """Interactive ArXiv paper addition (replaces --ids flow).
+
+    Flow:
+    1. Prompt for category name
+    2. If category doesn't exist, create it with metadata
+    3. Prompt for ArXiv IDs (or use --arxiv-ids)
+    4. Fetch metadata from ArXiv API
+    5. Preview papers to be added
+    6. Confirm and save to sources.json
+    7. Optionally fetch papers immediately
+
+    Args:
+        sources_config_path: Path to sources.json
+        library_docs_dir: Base directory for documentation
+        args: Command line arguments (may contain --arxiv-ids, --category)
+
+    Returns:
+        Exit code (0 = success, 1 = error)
+    """
+    import re
+
+    print("\n=== Adding ArXiv Papers ===\n")
+
+    # Load existing config
+    try:
+        config = load_user_sources(sources_config_path)
+    except IOError:
+        config = {"libraries": {}, "papers": {}, "books": {}}
+
+    # Step 1: Category
+    category = args.category if hasattr(args, "category") and args.category else None
+    if not category:
+        print("Paper categories group related papers together.")
+        print("Examples: dl_foundations, computer_vision, nlp, reinforcement_learning")
+        category = input("\nEnter category name: ").strip().lower()
+        category = sanitize_config_key(category)
+
+    # Step 2: Check if category exists
+    category_config = None
+    if category in config.get("papers", {}):
+        cat = config["papers"][category]
+        # Make sure it's not a book
+        if cat.get("type") == "pdf_book":
+            logger.error(f"'{category}' is a book category, not a paper category")
+            return 1
+
+        category_config = cat
+        print(f"\n✓ Using existing category: {cat.get('display_name', category)}")
+        print(f"  Description: {cat.get('description', 'N/A')}")
+        print(f"  Current papers: {len(cat.get('items', {}))}")
+    else:
+        print(f"\nCategory '{category}' does not exist. Creating new category...")
+
+        display_name = input("Enter display name for category: ").strip()
+        if not display_name:
+            display_name = category.replace("_", " ").title()
+            print(f"Using default: {display_name}")
+
+        description = input("Enter category description: ").strip()
+        if not description:
+            description = f"Papers in the {display_name} category"
+            print(f"Using default: {description}")
+
+        category_config = {
+            "type": "arxiv",
+            "display_name": display_name,
+            "description": description,
+            "items": {},
+        }
+
+        config["papers"][category] = category_config
+
+    # Step 3: Get ArXiv IDs
+    arxiv_ids = (
+        args.arxiv_ids if hasattr(args, "arxiv_ids") and args.arxiv_ids else None
+    )
+    if not arxiv_ids:
+        print("\nEnter ArXiv IDs to add (space or comma separated):")
+        print("Example: 1706.03762 2010.11929 1512.03385")
+        ids_str = input("ArXiv IDs: ").strip()
+        # Split by space or comma
+        arxiv_ids = re.split(r"[\s,]+", ids_str)
+
+    # Validate IDs
+    arxiv_ids = [validate_arxiv_id(aid) for aid in arxiv_ids if aid]
+    arxiv_ids = [aid for aid in arxiv_ids if aid is not None]
+    if not arxiv_ids:
+        logger.error("No valid ArXiv IDs provided")
+        return 1
+
+    # Step 4: Fetch metadata
+    print(f"\nFetching metadata for {len(arxiv_ids)} papers...")
+    papers_to_add = []
+
+    for arxiv_id in arxiv_ids:
+        # Check if already exists
+        if arxiv_id in category_config.get("items", {}):
+            existing = category_config["items"][arxiv_id]
+            print(f"⚠️  {arxiv_id} already in category: {existing.get('title')}")
+            continue
+
+        # Fetch from ArXiv
+        try:
+            import arxiv as arxiv_lib
+
+            search = arxiv_lib.Search(id_list=[arxiv_id])
+            paper = next(search.results())
+
+            paper_entry = {
+                "title": paper.title,
+                "arxiv_id": arxiv_id,
+                "url": f"https://arxiv.org/abs/{arxiv_id}",
+                "authors": ", ".join([author.name for author in paper.authors]),
+                "year": str(paper.published.year),
+            }
+
+            papers_to_add.append((arxiv_id, paper_entry))
+            print(f"✓ {arxiv_id}: {paper.title} ({paper.published.year})")
+
+        except Exception as e:
+            logger.warning(f"Could not fetch metadata for {arxiv_id}: {e}")
+            # Prompt for manual entry
+            manual = input(f"Add {arxiv_id} manually? (y/n): ").strip().lower()
+            if manual == "y":
+                title = input("  Title: ").strip()
+                authors = input("  Authors (comma-separated): ").strip()
+                year = input("  Year: ").strip()
+
+                paper_entry = {
+                    "title": title,
+                    "arxiv_id": arxiv_id,
+                    "url": f"https://arxiv.org/abs/{arxiv_id}",
+                    "authors": authors,
+                    "year": year,
+                }
+                papers_to_add.append((arxiv_id, paper_entry))
+
+    if not papers_to_add:
+        print("\nNo new papers to add.")
+        return 0
+
+    # Step 5: Confirm
+    print(f"\n=== Adding {len(papers_to_add)} papers to '{category}' ===")
+    for arxiv_id, paper in papers_to_add:
+        print(f"  • {paper['title']} ({paper['year']})")
+
+    confirm = input("\nAdd these papers? (y/n): ").strip().lower()
+    if confirm != "y":
+        print("Cancelled.")
+        return 1
+
+    # Step 6: Add to config
+    if "items" not in category_config:
+        category_config["items"] = {}
+
+    for arxiv_id, paper_entry in papers_to_add:
+        category_config["items"][arxiv_id] = paper_entry
+
+    # Save
+    update_sources_config(sources_config_path, "papers", category, category_config)
+    print(f"\n✓ Added {len(papers_to_add)} papers to category '{category}'")
+
+    # Step 7: Offer to fetch
+    fetch = input("\nFetch papers now? (y/n): ").strip().lower()
+    if fetch == "y":
+        output_dir = os.path.join(library_docs_dir, f"papers_{category}")
+        os.makedirs(output_dir, exist_ok=True)
+
+        converter = input("Converter (marker/pymupdf) [marker]: ").strip() or "marker"
+
+        from .scrapers.arxiv import fetch_arxiv_paper
+
+        for arxiv_id, _ in papers_to_add:
+            fetch_arxiv_paper(
+                arxiv_id, output_dir, output_format="markdown", converter=converter
+            )
+
+    return 0
+
+
+# ============================================================================
+# Main Interactive Entry Point
+# ============================================================================
+
+
+def interactive_add(sources_config_path, library_docs_dir, args):
+    """Main interactive entry point for adding sources.
+
+    Prompts user to select source type, then delegates to:
+    - add_library_interactive() for libraries (not yet implemented - shows message)
+    - add_book_interactive() for books (not yet implemented - shows message)
+    - add_paper_interactive() for papers
+
+    Args:
+        sources_config_path: Path to sources.json
+        library_docs_dir: Base directory for documentation
+        args: Parsed command line arguments (for optional skip-prompt args)
+
+    Returns:
+        Exit code (0 = success, 1 = error)
+    """
+    print("\n" + "=" * 60)
+    print("Interactive Source Addition")
+    print("=" * 60)
+    print("\nThis wizard will help you add a new source to Tensor-Truth.")
+    print("You can add:")
+    print("  1) Library - Documentation for a library (Sphinx/Doxygen)")
+    print("  2) Book    - PDF textbook or reference book")
+    print("  3) Paper   - ArXiv research paper(s)")
+    print()
+
+    # Check if type was provided via CLI
+    source_type = None
+    if hasattr(args, "type") and args.type:
+        # Normalize type
+        type_map = {
+            "library": "library",
+            "libraries": "library",
+            "book": "book",
+            "books": "book",
+            "paper": "paper",
+            "papers": "paper",
+        }
+        source_type = type_map.get(args.type.lower())
+        if not source_type:
+            logger.error(f"Invalid type: {args.type}")
+            logger.error("Valid types: library, book, paper")
+            return 1
+    else:
+        # Interactive type selection
+        while True:
+            choice = (
+                input("What would you like to add? (1/2/3 or library/book/paper): ")
+                .strip()
+                .lower()
+            )
+
+            if choice in ["1", "library"]:
+                source_type = "library"
+                break
+            elif choice in ["2", "book"]:
+                source_type = "book"
+                break
+            elif choice in ["3", "paper"]:
+                source_type = "paper"
+                break
+            else:
+                print("Invalid choice. Please enter 1, 2, 3 or library/book/paper.")
+                continue
+
+    # Delegate to appropriate handler
+    if source_type == "library":
+        print("\n⚠️  Library addition is not yet implemented.")
+        print("For now, please add libraries manually to sources.json")
+        print("See docs/PAPERS.md for the configuration format.")
+        return 1
+    elif source_type == "book":
+        print("\n⚠️  Book addition is not yet implemented.")
+        print("For now, please add books manually to sources.json")
+        print("See docs/PAPERS.md for the configuration format.")
+        return 1
+    elif source_type == "paper":
+        return add_paper_interactive(sources_config_path, library_docs_dir, args)
+    else:
+        logger.error(f"Unknown source type: {source_type}")
+        return 1
+
+
 def main():
     """Main entry point for unified source fetching."""
     parser = argparse.ArgumentParser(
@@ -177,11 +561,17 @@ Environment Variables:
         help="Validate sources.json config against filesystem",
     )
 
+    parser.add_argument(
+        "--add",
+        action="store_true",
+        help="Interactive mode to add new sources (libraries, papers, or books)",
+    )
+
     # Source type arguments
     parser.add_argument(
         "--type",
-        choices=["library", "papers", "books"],
-        help="Type of source to fetch",
+        choices=["library", "paper", "papers", "book", "books"],
+        help="Type of source to fetch or add (with --add)",
     )
 
     parser.add_argument(
@@ -196,9 +586,14 @@ Environment Variables:
     )
 
     parser.add_argument(
-        "--ids",
+        "--arxiv-ids",
         nargs="+",
-        help="Specific ArXiv IDs to fetch (for --type papers)",
+        help="ArXiv IDs to add or fetch (for --type papers)",
+    )
+
+    parser.add_argument(
+        "--url",
+        help="Source URL (for --add mode with books/libraries, skips URL prompt)",
     )
 
     parser.add_argument(
@@ -295,6 +690,10 @@ Environment Variables:
         validate_sources(sources_config_path, library_docs_dir)
         return 0
 
+    # Interactive add mode
+    if args.add:
+        return interactive_add(sources_config_path, library_docs_dir, args)
+
     # Determine source type
     if args.type == "library" or (not args.type and args.libraries):
         # Library documentation scraping
@@ -385,7 +784,7 @@ Environment Variables:
             return 1
 
         if args.category not in config["papers"]:
-            if args.ids:
+            if args.arxiv_ids:
                 logger.info(
                     f"Category '{args.category}' not found: creating new category."
                 )
@@ -422,7 +821,7 @@ Environment Variables:
         category_config = config["papers"][args.category]
 
         # If specific IDs provided, fetch only those and add to category
-        if args.ids:
+        if args.arxiv_ids:
             output_dir = os.path.join(library_docs_dir, f"papers_{args.category}")
             os.makedirs(output_dir, exist_ok=True)
 
@@ -431,7 +830,7 @@ Environment Variables:
                 category_config["items"] = {}
 
             # Fetch each paper and add to category if not already present
-            for arxiv_id in args.ids:
+            for arxiv_id in args.arxiv_ids:
                 # Check if already in category (using arxiv ID)
                 if arxiv_id not in category_config["items"]:
                     # Fetch paper metadata from ArXiv

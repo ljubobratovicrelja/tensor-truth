@@ -93,6 +93,85 @@ A pre-configured `sources.json` is included with Tensor-Truth at [`config/source
 
 ---
 
+## Interactive Source Addition (Recommended)
+
+The `--add` flag launches an interactive wizard that guides you through adding new sources:
+
+```bash
+tensor-truth-docs --add
+```
+
+### Features
+
+The wizard will:
+1. Ask what type of source you want to add (library, book, or paper)
+2. Guide you through the configuration with smart prompts
+3. Auto-fetch metadata where possible (ArXiv papers)
+4. Validate your inputs
+5. Save to sources.json
+6. Optionally fetch the source immediately
+
+### Adding Papers Interactively
+
+**Fully Interactive:**
+```bash
+$ tensor-truth-docs --add
+
+=== Interactive Source Addition ===
+What would you like to add? (1/2/3 or library/book/paper): 3
+
+=== Adding ArXiv Papers ===
+Enter category name: computer_vision
+
+✓ Using existing category: Computer Vision
+  Description: Object detection, segmentation, and visual recognition
+  Current papers: 5
+
+Enter ArXiv IDs to add (space or comma separated):
+Example: 1706.03762 2010.11929 1512.03385
+ArXiv IDs: 1506.02640
+
+Fetching metadata for 1 papers...
+✓ 1506.02640: You Only Look Once: Unified, Real-Time Object Detection (2015)
+
+=== Adding 1 papers to 'computer_vision' ===
+  • You Only Look Once: Unified, Real-Time Object Detection (2015)
+
+Add these papers? (y/n): y
+✓ Added 1 papers to category 'computer_vision'
+
+Fetch papers now? (y/n): y
+```
+
+**Skip Prompts with CLI Arguments:**
+```bash
+# Skip type selection
+tensor-truth-docs --add --type paper
+
+# Skip type and provide category
+tensor-truth-docs --add --type paper --category computer_vision
+
+# Fully non-interactive
+tensor-truth-docs --add --type paper --category computer_vision --arxiv-ids 1506.02640
+```
+
+### Migration from --ids
+
+The `--ids` flag has been removed. Use `--arxiv-ids` instead:
+
+```bash
+# Old (no longer works)
+tensor-truth-docs --type papers --category X --ids 1234.5678
+
+# New
+tensor-truth-docs --type papers --category X --arxiv-ids 1234.5678
+
+# Or use interactive mode
+tensor-truth-docs --add
+```
+
+---
+
 ## Case Study: Adding a Custom Paper Category
 
 Let's walk through adding a new category of papers on **Gaussian Splatting** for 3D reconstruction.
@@ -148,12 +227,16 @@ Download PDFs and convert to markdown:
 tensor-truth-docs --type papers --category 3d_reconstruction
 
 # Or add NEW papers by ArXiv ID (automatically updates sources.json)
-tensor-truth-docs --type papers --category 3d_reconstruction --ids 2308.04079 2003.08934
+tensor-truth-docs --type papers --category 3d_reconstruction --arxiv-ids 2308.04079 2003.08934
+
+# Or use the new interactive mode (recommended)
+tensor-truth-docs --add
 ```
 
 **Important distinction:**
-- **Without `--ids`**: Fetches papers already listed in the category's `items` in sources.json
-- **With `--ids`**: Fetches ArXiv metadata, adds papers to sources.json automatically, then downloads them
+- **Without `--arxiv-ids`**: Fetches papers already listed in the category's `items` in sources.json
+- **With `--arxiv-ids`**: Fetches ArXiv metadata, adds papers to sources.json automatically, then downloads them
+- **With `--add`**: Interactive wizard guides you through adding sources (libraries, books, or papers)
 
 **Options:**
 - `--converter marker`: Use marker-pdf for better math equation support (slower)
