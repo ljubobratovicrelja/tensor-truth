@@ -332,27 +332,35 @@ class TestInteractiveAdd:
         # Should skip to paper addition without prompting
         mock_add.assert_called_once()
 
-    def test_library_not_implemented(self, tmp_path, sources_config):
-        """Test that library addition shows not implemented message."""
+    def test_library_addition_called(self, tmp_path, sources_config):
+        """Test that library addition is called."""
 
         args = MagicMock()
         args.type = "library"
+        args.url = None  # Will trigger URL prompt in the function
 
-        result = interactive_add(sources_config, str(tmp_path), args)
+        with patch("tensortruth.fetch_sources.add_library_interactive") as mock_add:
+            mock_add.return_value = 0
+            result = interactive_add(sources_config, str(tmp_path), args)
 
-        # Should return error for not implemented
-        assert result == 1
+        # Should call library addition
+        mock_add.assert_called_once()
+        assert result == 0
 
-    def test_book_not_implemented(self, tmp_path, sources_config):
-        """Test that book addition shows not implemented message."""
+    def test_book_addition_called(self, tmp_path, sources_config):
+        """Test that book addition is called."""
 
         args = MagicMock()
         args.type = "book"
+        args.url = None  # Will trigger URL prompt in the function
 
-        result = interactive_add(sources_config, str(tmp_path), args)
+        with patch("tensortruth.fetch_sources.add_book_interactive") as mock_add:
+            mock_add.return_value = 0
+            result = interactive_add(sources_config, str(tmp_path), args)
 
-        # Should return error for not implemented
-        assert result == 1
+        # Should call book addition
+        mock_add.assert_called_once()
+        assert result == 0
 
     def test_invalid_type_rejected(self, tmp_path, sources_config):
         """Test that invalid --type is rejected."""

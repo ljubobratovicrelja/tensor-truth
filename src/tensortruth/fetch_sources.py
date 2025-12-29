@@ -219,6 +219,591 @@ def validate_arxiv_id(arxiv_id: str):
 
 
 # ============================================================================
+# Library Detection Helpers
+# ============================================================================
+
+
+def detect_doc_type(doc_root: str) -> str:
+    """Auto-detect documentation type (Sphinx or Doxygen).
+
+    Args:
+        doc_root: Documentation root URL
+
+    Returns:
+        "sphinx", "doxygen", or None if unknown
+    """
+    import requests
+
+    try:
+        # Check for Sphinx objects.inv
+        inv_url = f"{doc_root.rstrip('/')}/objects.inv"
+        response = requests.head(inv_url, timeout=10, allow_redirects=True)
+        if response.status_code == 200:
+            logger.info("✓ Detected Sphinx docs (found objects.inv)")
+            return "sphinx"
+    except Exception:
+        pass
+
+    try:
+        # Check for Doxygen index pages
+        response = requests.get(doc_root, timeout=10)
+        if response.status_code == 200:
+            html = response.text.lower()
+            # Common Doxygen indicators
+            if "annotated.html" in html or "classes.html" in html or "doxygen" in html:
+                logger.info("✓ Detected Doxygen docs")
+                return "doxygen"
+    except Exception:
+        pass
+
+    logger.warning("Could not auto-detect doc type")
+    return None
+
+
+def detect_objects_inv(doc_root: str) -> str:
+    """Find objects.inv URL for Sphinx documentation.
+
+    Args:
+        doc_root: Documentation root URL
+
+    Returns:
+        Full URL to objects.inv or None if not found
+    """
+    import requests
+
+    # Common locations to check
+    locations = [
+        "",  # Root
+        "_static/",
+        "en/latest/",
+        "en/stable/",
+        "_build/html/",
+    ]
+
+    base = doc_root.rstrip("/")
+
+    for loc in locations:
+        url = f"{base}/{loc}objects.inv" if loc else f"{base}/objects.inv"
+        try:
+            response = requests.head(url, timeout=10, allow_redirects=True)
+            if response.status_code == 200:
+                logger.info(f"✓ Found objects.inv at: {url}")
+                return url
+        except Exception:
+            continue
+
+    logger.warning("Could not find objects.inv")
+    return None
+
+
+def detect_css_selector(doc_root: str) -> str:
+    """Auto-detect CSS selector for main content.
+
+    Args:
+        doc_root: Documentation root URL
+
+    Returns:
+        CSS selector string or None
+    """
+    import requests
+    from bs4 import BeautifulSoup
+
+    try:
+        response = requests.get(doc_root, timeout=10)
+        if response.status_code != 200:
+            return None
+
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Try common selectors in order of preference
+        selectors = [
+            ("div[role='main']", soup.select("div[role='main']")),
+            ("article[role='main']", soup.select("article[role='main']")),
+            ("main", soup.select("main")),
+            (".document", soup.select(".document")),
+            (".content", soup.select(".content")),
+        ]
+
+        for selector, elements in selectors:
+            if elements:
+                logger.info(f"✓ Detected CSS selector: {selector}")
+                return selector
+
+        logger.warning("Could not auto-detect CSS selector")
+        return None
+
+    except Exception as e:
+        logger.warning(f"Error detecting CSS selector: {e}")
+        return None
+
+
+# ============================================================================
+# Book Metadata Helpers
+# ============================================================================
+
+
+def download_pdf_with_headers(url: str, output_path: str) -> str:
+    """Download PDF with proper headers.
+
+    Args:
+        url: PDF URL
+        output_path: Output file path
+
+    Returns:
+        Path to downloaded file or None on error
+    """
+    import requests
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        with open(output_path, "wb") as f:
+            f.write(response.content)
+
+        logger.info(f"✓ Downloaded PDF to: {output_path}")
+        return output_path
+
+    except Exception as e:
+        logger.error(f"Failed to download PDF: {e}")
+        return None
+
+
+def extract_pdf_metadata(pdf_path: str) -> dict:
+    """Extract title and authors from PDF metadata.
+
+    Args:
+        pdf_path: Path to PDF file
+
+    Returns:
+        Dict with 'title' and 'authors' keys
+    """
+    try:
+        import fitz  # PyMuPDF
+
+        with fitz.open(pdf_path) as doc:
+            metadata = doc.metadata
+
+            title = metadata.get("title", None)
+            author_str = metadata.get("author", "")
+
+            # Parse authors (handle various separator formats)
+            authors = []
+            if author_str:
+                # Try different separators
+                for sep in [";", ",", " and "]:
+                    if sep in author_str:
+                        authors = [a.strip() for a in author_str.split(sep)]
+                        break
+                else:
+                    # Single author
+                    authors = [author_str.strip()] if author_str.strip() else []
+
+            logger.info(f"✓ Extracted metadata: title='{title}', authors={authors}")
+            return {"title": title, "authors": authors}
+
+    except Exception as e:
+        logger.warning(f"Could not extract PDF metadata: {e}")
+        return {"title": None, "authors": []}
+
+
+def generate_book_name(title: str, authors: list) -> str:
+    """Generate sanitized book config key.
+
+    Args:
+        title: Book title
+        authors: List of author names
+
+    Returns:
+        Sanitized config key (e.g., "machine_learning_basics_smith")
+    """
+    # Sanitize title
+    title_slug = sanitize_config_key(title) if title else "untitled"
+
+    # Get first author's last name
+    author_slug = ""
+    if authors:
+        # Try to extract last name (split on spaces, take last part)
+        first_author = authors[0]
+        parts = first_author.split()
+        last_name = parts[-1] if parts else first_author
+        author_slug = "_" + sanitize_config_key(last_name)
+
+    # Combine and truncate if too long
+    full_name = title_slug + author_slug
+    if len(full_name) > 60:
+        full_name = full_name[:60].rstrip("_")
+
+    return full_name
+
+
+# ============================================================================
+# Library Addition Functions
+# ============================================================================
+
+
+def add_library_interactive(sources_config_path, library_docs_dir, args):
+    """Interactive library addition with auto-detection.
+
+    Flow:
+    1. Prompt for library URL (or use --url)
+    2. Auto-detect doc type (Sphinx/Doxygen)
+    3. Auto-detect objects.inv and CSS selector
+    4. Prompt for library name, display name, version
+    5. Allow manual overrides for auto-detected values
+    6. Confirm and save to sources.json
+    7. Optionally fetch library immediately
+
+    Args:
+        sources_config_path: Path to sources.json
+        library_docs_dir: Base directory for documentation
+        args: Command line arguments (may contain --url)
+
+    Returns:
+        Exit code (0 = success, 1 = error)
+    """
+    print("\n=== Adding Library Documentation ===\n")
+
+    # Load existing config
+    try:
+        config = load_user_sources(sources_config_path)
+    except IOError:
+        config = {"libraries": {}, "papers": {}, "books": {}}
+
+    # Step 1: Get URL
+    url = args.url if hasattr(args, "url") and args.url else None
+    if not url:
+        print("Enter the root URL of the library documentation:")
+        print("Examples:")
+        print("  - https://pytorch.org/docs/stable/")
+        print("  - https://numpy.org/doc/stable/")
+        url = input("\nLibrary URL: ").strip()
+
+    # Validate URL
+    if not validate_url(url):
+        logger.error(f"Invalid or inaccessible URL: {url}")
+        return 1
+
+    # Step 2: Auto-detect doc type
+    print("\n⏳ Auto-detecting documentation type...")
+    doc_type = detect_doc_type(url)
+
+    if not doc_type:
+        print("\nCould not auto-detect type. Please select:")
+        print("  1) Sphinx")
+        print("  2) Doxygen")
+        choice = input("Doc type (1/2): ").strip()
+        doc_type = "sphinx" if choice == "1" else "doxygen" if choice == "2" else None
+
+        if not doc_type:
+            logger.error("Invalid doc type selection")
+            return 1
+
+    # Step 3: Auto-detect configuration based on type
+    lib_config = {"type": doc_type, "doc_root": url}
+
+    if doc_type == "sphinx":
+        # Detect objects.inv
+        print("\n⏳ Looking for objects.inv...")
+        inv_url = detect_objects_inv(url)
+        if inv_url:
+            lib_config["inventory_url"] = inv_url
+            use_inv = (
+                input("Use detected inventory URL? (y/n) [y]: ").strip().lower() or "y"
+            )
+            if use_inv != "y":
+                custom_inv = input("Enter custom inventory URL: ").strip()
+                if custom_inv:
+                    lib_config["inventory_url"] = custom_inv
+
+    # Detect CSS selector
+    print("\n⏳ Detecting main content selector...")
+    selector = detect_css_selector(url)
+    if selector:
+        lib_config["css_selector"] = selector
+        use_selector = (
+            input(f"Use detected CSS selector '{selector}'? (y/n) [y]: ")
+            .strip()
+            .lower()
+            or "y"
+        )
+        if use_selector != "y":
+            custom_selector = input("Enter custom CSS selector: ").strip()
+            if custom_selector:
+                lib_config["css_selector"] = custom_selector
+    else:
+        # Prompt for manual selector
+        custom_selector = input(
+            "Enter CSS selector for main content (e.g., div[role='main']): "
+        ).strip()
+        if custom_selector:
+            lib_config["css_selector"] = custom_selector
+
+    # Step 4: Get library metadata
+    print("\n=== Library Metadata ===")
+
+    lib_name = input("\nEnter library config key (e.g., pytorch, numpy): ").strip()
+    lib_name = sanitize_config_key(lib_name)
+
+    if lib_name in config.get("libraries", {}):
+        logger.error(f"Library '{lib_name}' already exists in config")
+        overwrite = input("Overwrite? (y/n): ").strip().lower()
+        if overwrite != "y":
+            return 1
+
+    display_name = input(
+        f"Enter display name (e.g., PyTorch, NumPy) [{lib_name.title()}]: "
+    ).strip()
+    if not display_name:
+        display_name = lib_name.title()
+
+    version = input("Enter version (e.g., 2.0, stable) [stable]: ").strip()
+    if not version:
+        version = "stable"
+
+    lib_config["display_name"] = display_name
+    lib_config["version"] = version
+
+    # Step 5: Preview and confirm
+    print("\n=== Library Configuration ===")
+    print(f"Config Key:    {lib_name}")
+    print(f"Display Name:  {display_name}")
+    print(f"Version:       {version}")
+    print(f"Type:          {doc_type}")
+    print(f"Doc Root:      {url}")
+    if "inventory_url" in lib_config:
+        print(f"Inventory URL: {lib_config['inventory_url']}")
+    if "css_selector" in lib_config:
+        print(f"CSS Selector:  {lib_config['css_selector']}")
+
+    confirm = input("\nAdd this library? (y/n): ").strip().lower()
+    if confirm != "y":
+        print("Cancelled.")
+        return 1
+
+    # Step 6: Save
+    config.setdefault("libraries", {})[lib_name] = lib_config
+    update_sources_config(sources_config_path, "libraries", lib_name, lib_config)
+    print(f"\n✓ Added library '{lib_name}' to sources.json")
+
+    # Step 7: Offer to fetch
+    fetch = input("\nFetch library documentation now? (y/n): ").strip().lower()
+    if fetch == "y":
+        try:
+            scrape_library(
+                lib_name,
+                lib_config,
+                library_docs_dir,
+                max_workers=MAX_WORKERS,
+                output_format="markdown",
+            )
+        except Exception as e:
+            logger.error(f"Failed to fetch library: {e}")
+            return 1
+
+    return 0
+
+
+# ============================================================================
+# Book Addition Functions
+# ============================================================================
+
+
+def add_book_interactive(sources_config_path, library_docs_dir, args):
+    """Interactive book addition with PDF metadata extraction.
+
+    Flow:
+    1. Prompt for book URL (or use --url)
+    2. Download PDF temporarily
+    3. Extract title and authors from PDF metadata
+    4. Prompt to confirm/override metadata
+    5. Generate book config key
+    6. Prompt for category and split method
+    7. Confirm and save to sources.json
+    8. Optionally fetch book immediately
+
+    Args:
+        sources_config_path: Path to sources.json
+        library_docs_dir: Base directory for documentation
+        args: Command line arguments (may contain --url, --category)
+
+    Returns:
+        Exit code (0 = success, 1 = error)
+    """
+    import os
+    import tempfile
+
+    print("\n=== Adding Book ===\n")
+
+    # Load existing config
+    try:
+        config = load_user_sources(sources_config_path)
+    except IOError:
+        config = {"libraries": {}, "papers": {}, "books": {}}
+
+    # Step 1: Get URL
+    url = args.url if hasattr(args, "url") and args.url else None
+    if not url:
+        print("Enter the URL of the PDF book:")
+        print("Examples:")
+        print("  - https://example.com/books/linear_algebra.pdf")
+        print("  - https://arxiv.org/pdf/1234.5678.pdf")
+        url = input("\nBook URL: ").strip()
+
+    # Validate URL
+    if not validate_url(url):
+        logger.error(f"Invalid or inaccessible URL: {url}")
+        return 1
+
+    # Step 2: Download PDF temporarily
+    print("\n⏳ Downloading PDF to extract metadata...")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        tmp_path = tmp_file.name
+
+    pdf_path = download_pdf_with_headers(url, tmp_path)
+    if not pdf_path:
+        logger.error("Failed to download PDF")
+        return 1
+
+    # Step 3: Extract metadata
+    print("\n⏳ Extracting metadata from PDF...")
+    metadata = extract_pdf_metadata(pdf_path)
+
+    # Clean up temp file
+    try:
+        os.unlink(tmp_path)
+    except Exception:
+        pass
+
+    # Step 4: Confirm/override metadata
+    title = metadata.get("title")
+    authors = metadata.get("authors", [])
+
+    if title:
+        print(f"\n✓ Detected title: {title}")
+        use_title = input("Use this title? (y/n) [y]: ").strip().lower() or "y"
+        if use_title != "y":
+            title = input("Enter title: ").strip()
+    else:
+        print("\n⚠️  Could not detect title from PDF metadata")
+        title = input("Enter title: ").strip()
+
+    if authors:
+        print(f"✓ Detected authors: {', '.join(authors)}")
+        use_authors = input("Use these authors? (y/n) [y]: ").strip().lower() or "y"
+        if use_authors != "y":
+            authors_str = input("Enter authors (comma-separated): ").strip()
+            authors = [a.strip() for a in authors_str.split(",")] if authors_str else []
+    else:
+        print("⚠️  Could not detect authors from PDF metadata")
+        authors_str = input("Enter authors (comma-separated): ").strip()
+        authors = [a.strip() for a in authors_str.split(",")] if authors_str else []
+
+    if not title:
+        logger.error("Title is required")
+        return 1
+
+    # Step 5: Generate config key
+    book_name = generate_book_name(title, authors)
+    print(f"\n✓ Generated config key: {book_name}")
+
+    custom_name = input("Use this key? (y/n) or enter custom key [y]: ").strip()
+    if custom_name.lower() not in ["", "y", "yes"]:
+        book_name = sanitize_config_key(custom_name)
+
+    # Check for duplicates
+    all_books = {
+        name: cfg
+        for name, cfg in config.get("papers", {}).items()
+        if cfg.get("type") == "pdf_book"
+    }
+
+    if book_name in all_books:
+        logger.error(f"Book '{book_name}' already exists in config")
+        overwrite = input("Overwrite? (y/n): ").strip().lower()
+        if overwrite != "y":
+            return 1
+
+    # Step 6: Get category and split method
+    category = args.category if hasattr(args, "category") and args.category else None
+    if not category:
+        print("\nEnter category for this book (groups related books):")
+        print("Examples: linear_algebra, machine_learning, deep_learning")
+        category = input("Category: ").strip()
+        category = sanitize_config_key(category)
+
+    print("\nSelect split method:")
+    print("  toc    - Split by table of contents (recommended)")
+    print("  none   - Keep as single document")
+    print("  manual - Define chapters manually (not yet implemented)")
+
+    split_method = input("Split method (toc/none/manual) [toc]: ").strip().lower()
+    if not split_method:
+        split_method = "toc"
+
+    if split_method not in ["toc", "none", "manual"]:
+        logger.error(f"Invalid split method: {split_method}")
+        return 1
+
+    # Step 7: Build config
+    book_config = {
+        "type": "pdf_book",
+        "title": title,
+        "authors": authors,
+        "category": category,
+        "url": url,
+        "split_method": split_method,
+    }
+
+    # Preview
+    print("\n=== Book Configuration ===")
+    print(f"Config Key:    {book_name}")
+    print(f"Title:         {title}")
+    print(f"Authors:       {', '.join(authors)}")
+    print(f"Category:      {category}")
+    print(f"Split Method:  {split_method}")
+    print(f"URL:           {url}")
+
+    confirm = input("\nAdd this book? (y/n): ").strip().lower()
+    if confirm != "y":
+        print("Cancelled.")
+        return 1
+
+    # Step 8: Save (books are stored in config["papers"])
+    config.setdefault("papers", {})[book_name] = book_config
+    update_sources_config(sources_config_path, "papers", book_name, book_config)
+    print(f"\n✓ Added book '{book_name}' to sources.json")
+
+    # Step 9: Offer to fetch
+    fetch = input("\nFetch book now? (y/n): ").strip().lower()
+    if fetch == "y":
+        try:
+            from .scrapers.book import fetch_book
+
+            converter = input("Converter (marker/pymupdf) [marker]: ").strip()
+            if not converter:
+                converter = "marker"
+
+            fetch_book(
+                book_name,
+                book_config,
+                library_docs_dir,
+                converter=converter,
+                pages_per_chunk=15,
+                max_pages_per_chapter=0,
+            )
+        except Exception as e:
+            logger.error(f"Failed to fetch book: {e}")
+            return 1
+
+    return 0
+
+
+# ============================================================================
 # Paper Addition Functions
 # ============================================================================
 
@@ -476,15 +1061,9 @@ def interactive_add(sources_config_path, library_docs_dir, args):
 
     # Delegate to appropriate handler
     if source_type == "library":
-        print("\n⚠️  Library addition is not yet implemented.")
-        print("For now, please add libraries manually to sources.json")
-        print("See docs/PAPERS.md for the configuration format.")
-        return 1
+        return add_library_interactive(sources_config_path, library_docs_dir, args)
     elif source_type == "book":
-        print("\n⚠️  Book addition is not yet implemented.")
-        print("For now, please add books manually to sources.json")
-        print("See docs/PAPERS.md for the configuration format.")
-        return 1
+        return add_book_interactive(sources_config_path, library_docs_dir, args)
     elif source_type == "paper":
         return add_paper_interactive(sources_config_path, library_docs_dir, args)
     else:

@@ -17,8 +17,7 @@ class TestDetectDocType:
 
     def test_detect_sphinx_from_objects_inv(self):
         """Test detection of Sphinx docs by objects.inv presence."""
-        # When implemented:
-        # from tensortruth.fetch_sources import detect_doc_type
+        from tensortruth.fetch_sources import detect_doc_type
 
         # Mock HEAD request that finds objects.inv
         with patch("requests.head") as mock_head:
@@ -26,35 +25,42 @@ class TestDetectDocType:
             mock_head.return_value.url = "https://example.com/objects.inv"
 
             # Should detect as Sphinx
-            # result = detect_doc_type("https://example.com/docs/")
-            # assert result == "sphinx"
-
-        pytest.skip("Feature not yet implemented")
+            result = detect_doc_type("https://example.com/docs/")
+            assert result == "sphinx"
 
     def test_detect_doxygen_from_index_pages(self):
         """Test detection of Doxygen docs by index page patterns."""
-        # Mock GET request finding annotated.html
-        with patch("requests.get") as mock_get:
-            mock_get.return_value.status_code = 200
-            mock_get.return_value.text = '<a href="annotated.html">Classes</a>'
+        from tensortruth.fetch_sources import detect_doc_type
 
-            # Should detect as Doxygen
-            # result = detect_doc_type("https://example.com/docs/")
-            # assert result == "doxygen"
+        # Mock HEAD request fails for objects.inv
+        with patch("requests.head") as mock_head:
+            mock_head.return_value.status_code = 404
 
-        pytest.skip("Feature not yet implemented")
+            # Mock GET request finding annotated.html
+            with patch("requests.get") as mock_get:
+                mock_get.return_value.status_code = 200
+                mock_get.return_value.text = '<a href="annotated.html">Classes</a>'
+
+                # Should detect as Doxygen
+                result = detect_doc_type("https://example.com/docs/")
+                assert result == "doxygen"
 
     def test_unknown_doc_type_returns_none(self):
         """Test that unrecognizable doc types return None."""
-        with patch("requests.get") as mock_get:
-            mock_get.return_value.status_code = 200
-            mock_get.return_value.text = "<html><body>Generic docs</body></html>"
+        from tensortruth.fetch_sources import detect_doc_type
 
-            # Should return None
-            # result = detect_doc_type("https://example.com/docs/")
-            # assert result is None
+        # Mock HEAD request fails for objects.inv
+        with patch("requests.head") as mock_head:
+            mock_head.return_value.status_code = 404
 
-        pytest.skip("Feature not yet implemented")
+            # Mock GET request returns generic HTML
+            with patch("requests.get") as mock_get:
+                mock_get.return_value.status_code = 200
+                mock_get.return_value.text = "<html><body>Generic docs</body></html>"
+
+                # Should return None
+                result = detect_doc_type("https://example.com/docs/")
+                assert result is None
 
 
 @pytest.mark.unit
@@ -63,44 +69,44 @@ class TestDetectObjectsInv:
 
     def test_find_objects_inv_in_root(self):
         """Test finding objects.inv in doc root."""
+        from tensortruth.fetch_sources import detect_objects_inv
+
         with patch("requests.head") as mock_head:
             mock_head.return_value.status_code = 200
 
             # Should find objects.inv at root
-            # result = detect_objects_inv("https://example.com/docs/")
-            # assert result == "https://example.com/docs/objects.inv"
-
-        pytest.skip("Feature not yet implemented")
+            result = detect_objects_inv("https://example.com/docs/")
+            assert result == "https://example.com/docs/objects.inv"
 
     def test_find_objects_inv_in_subdirectory(self):
         """Test finding objects.inv in common subdirectories."""
+        from tensortruth.fetch_sources import detect_objects_inv
+
         with patch("requests.head") as mock_head:
-            # Root fails
+            # Root fails, but finds in _static/
             def side_effect(url, **kwargs):
                 response = MagicMock()
-                if "objects.inv" in url and "_static" not in url:
-                    response.status_code = 404
-                else:
+                if "_static/objects.inv" in url:
                     response.status_code = 200
+                else:
+                    response.status_code = 404
                 return response
 
             mock_head.side_effect = side_effect
 
-            # Should try common locations
-            # result = detect_objects_inv("https://example.com/docs/")
-            # May check _static/, en/latest/, etc.
-
-        pytest.skip("Feature not yet implemented")
+            # Should find in _static/ subdirectory
+            result = detect_objects_inv("https://example.com/docs/")
+            assert result == "https://example.com/docs/_static/objects.inv"
 
     def test_objects_inv_not_found_returns_none(self):
         """Test that missing objects.inv returns None."""
+        from tensortruth.fetch_sources import detect_objects_inv
+
         with patch("requests.head") as mock_head:
             mock_head.return_value.status_code = 404
 
-            # result = detect_objects_inv("https://example.com/docs/")
-            # assert result is None
-
-        pytest.skip("Feature not yet implemented")
+            result = detect_objects_inv("https://example.com/docs/")
+            assert result is None
 
 
 @pytest.mark.unit
@@ -109,6 +115,8 @@ class TestDetectCssSelector:
 
     def test_detect_main_role_selector(self):
         """Test detection of div[role='main'] selector."""
+        from tensortruth.fetch_sources import detect_css_selector
+
         html = """
         <html>
             <div role="main">
@@ -121,49 +129,59 @@ class TestDetectCssSelector:
             mock_get.return_value.status_code = 200
             mock_get.return_value.text = html
 
-            # result = detect_css_selector("https://example.com/docs/")
-            # assert result == "div[role='main']"
-
-        pytest.skip("Feature not yet implemented")
+            result = detect_css_selector("https://example.com/docs/")
+            assert result == "div[role='main']"
 
     def test_detect_article_selector(self):
         """Test detection of article[role='main'] selector."""
-        # html = """
-        # <html>
-        #     <article role="main">
-        #         <h1>Content</h1>
-        #     </article>
-        # </html>
-        # """
+        from tensortruth.fetch_sources import detect_css_selector
 
-        # result = detect_css_selector("https://example.com/docs/")
-        # assert result == "article[role='main']"
+        html = """
+        <html>
+            <article role="main">
+                <h1>Content</h1>
+            </article>
+        </html>
+        """
 
-        pytest.skip("Feature not yet implemented")
+        with patch("requests.get") as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.text = html
+
+            result = detect_css_selector("https://example.com/docs/")
+            assert result == "article[role='main']"
 
     def test_fallback_to_main_tag(self):
         """Test fallback to <main> tag."""
-        # html = """
-        # <html>
-        #     <main>
-        #         <h1>Content</h1>
-        #     </main>
-        # </html>
-        # """
+        from tensortruth.fetch_sources import detect_css_selector
 
-        # result = detect_css_selector("https://example.com/docs/")
-        # assert result == "main"
+        html = """
+        <html>
+            <main>
+                <h1>Content</h1>
+            </main>
+        </html>
+        """
 
-        pytest.skip("Feature not yet implemented")
+        with patch("requests.get") as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.text = html
+
+            result = detect_css_selector("https://example.com/docs/")
+            assert result == "main"
 
     def test_no_selector_found_returns_none(self):
         """Test that undetectable selector returns None."""
-        # html = "<html><body>Content</body></html>"
+        from tensortruth.fetch_sources import detect_css_selector
 
-        # result = detect_css_selector("https://example.com/docs/")
-        # assert result is None
+        html = "<html><body>Content</body></html>"
 
-        pytest.skip("Feature not yet implemented")
+        with patch("requests.get") as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.text = html
+
+            result = detect_css_selector("https://example.com/docs/")
+            assert result is None
 
 
 @pytest.mark.integration

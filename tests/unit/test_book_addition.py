@@ -17,8 +17,7 @@ class TestExtractPdfMetadata:
 
     def test_extract_title_and_authors_from_pdf(self, create_test_pdf):
         """Test extraction of title and authors from PDF metadata."""
-
-        # pdf_path = create_test_pdf("test_book.pdf")
+        from tensortruth.fetch_sources import extract_pdf_metadata
 
         # Mock PyMuPDF metadata extraction
         with patch("fitz.open") as mock_fitz:
@@ -29,45 +28,51 @@ class TestExtractPdfMetadata:
             }
             mock_fitz.return_value.__enter__.return_value = mock_doc
 
-            # metadata = extract_pdf_metadata(str(pdf_path))
-            # assert metadata["title"] == "Introduction to Machine Learning"
-            # assert "Author One" in metadata["authors"]
-            # assert "Author Two" in metadata["authors"]
-
-        pytest.skip("Feature not yet implemented")
+            metadata = extract_pdf_metadata("test_book.pdf")
+            assert metadata["title"] == "Introduction to Machine Learning"
+            assert "Author One" in metadata["authors"]
+            assert "Author Two" in metadata["authors"]
 
     def test_handle_missing_metadata(self, create_test_pdf):
         """Test handling of PDFs with missing metadata."""
-
-        # pdf_path = create_test_pdf("no_metadata.pdf")
+        from tensortruth.fetch_sources import extract_pdf_metadata
 
         with patch("fitz.open") as mock_fitz:
             mock_doc = MagicMock()
             mock_doc.metadata = {}  # No metadata
             mock_fitz.return_value.__enter__.return_value = mock_doc
 
-            # metadata = extract_pdf_metadata(str(pdf_path))
-            # assert metadata["title"] is None
-            # assert metadata["authors"] == []
-
-        pytest.skip("Feature not yet implemented")
+            metadata = extract_pdf_metadata("no_metadata.pdf")
+            assert metadata["title"] is None
+            assert metadata["authors"] == []
 
     def test_parse_multiple_author_formats(self):
         """Test parsing various author separator formats."""
+        from tensortruth.fetch_sources import extract_pdf_metadata
 
-        # Semicolon separated
-        # authors = parse_pdf_authors("Author One; Author Two; Author Three")
-        # assert len(authors) == 3
+        # Test semicolon separated
+        with patch("fitz.open") as mock_fitz:
+            mock_doc = MagicMock()
+            mock_doc.metadata = {"author": "Author One; Author Two; Author Three"}
+            mock_fitz.return_value.__enter__.return_value = mock_doc
+            metadata = extract_pdf_metadata("test.pdf")
+            assert len(metadata["authors"]) == 3
 
-        # Comma separated
-        # authors = parse_pdf_authors("Author One, Author Two, Author Three")
-        # assert len(authors) == 3
+        # Test comma separated
+        with patch("fitz.open") as mock_fitz:
+            mock_doc = MagicMock()
+            mock_doc.metadata = {"author": "Author One, Author Two, Author Three"}
+            mock_fitz.return_value.__enter__.return_value = mock_doc
+            metadata = extract_pdf_metadata("test.pdf")
+            assert len(metadata["authors"]) == 3
 
-        # "and" separated
-        # authors = parse_pdf_authors("Author One and Author Two and Author Three")
-        # assert len(authors) == 3
-
-        pytest.skip("Feature not yet implemented")
+        # Test "and" separated
+        with patch("fitz.open") as mock_fitz:
+            mock_doc = MagicMock()
+            mock_doc.metadata = {"author": "Author One and Author Two and Author Three"}
+            mock_fitz.return_value.__enter__.return_value = mock_doc
+            metadata = extract_pdf_metadata("test.pdf")
+            assert len(metadata["authors"]) == 3
 
 
 @pytest.mark.unit
@@ -76,48 +81,37 @@ class TestGenerateBookName:
 
     def test_generate_from_title_and_author(self):
         """Test generating book name from title and first author."""
+        from tensortruth.fetch_sources import generate_book_name
 
-        # name = generate_book_name(
-        #     "Introduction to Machine Learning",
-        #     ["Smith", "Jones"]
-        # )
-        # assert name == "introduction_to_machine_learning_smith"
-
-        pytest.skip("Feature not yet implemented")
+        name = generate_book_name(
+            "Introduction to Machine Learning", ["Smith", "Jones"]
+        )
+        assert name == "introduction_to_machine_learning_smith"
 
     def test_sanitize_special_characters(self):
         """Test that special characters are sanitized."""
+        from tensortruth.fetch_sources import generate_book_name
 
-        # name = generate_book_name(
-        #     "C++ Programming (2nd Edition)",
-        #     ["Stroustrup"]
-        # )
-        # assert name == "c_programming_2nd_edition_stroustrup"
-
-        pytest.skip("Feature not yet implemented")
+        name = generate_book_name("C++ Programming (2nd Edition)", ["Stroustrup"])
+        assert name == "c_programming_2nd_edition_stroustrup"
 
     def test_handle_long_titles(self):
         """Test truncation of very long titles."""
+        from tensortruth.fetch_sources import generate_book_name
 
-        # name = generate_book_name(
-        #     "A Very Long Title That Should Be Truncated To Reasonable Length",
-        #     ["Author"]
-        # )
-        # Should truncate but keep readable
-        # assert len(name) < 60
-
-        pytest.skip("Feature not yet implemented")
+        name = generate_book_name(
+            "A Very Long Title That Should Be Truncated To Reasonable Length",
+            ["Author"],
+        )
+        # Should truncate but keep readable (max 60 chars)
+        assert len(name) <= 60
 
     def test_handle_no_authors(self):
         """Test handling books with no author information."""
+        from tensortruth.fetch_sources import generate_book_name
 
-        # name = generate_book_name(
-        #     "Anonymous Textbook",
-        #     []
-        # )
-        # assert name == "anonymous_textbook"
-
-        pytest.skip("Feature not yet implemented")
+        name = generate_book_name("Anonymous Textbook", [])
+        assert name == "anonymous_textbook"
 
 
 @pytest.mark.unit
@@ -127,53 +121,51 @@ class TestDownloadPdfWithHeaders:
     @patch("requests.get")
     def test_download_pdf_with_user_agent(self, mock_get, tmp_path):
         """Test PDF download with proper headers."""
+        from tensortruth.fetch_sources import download_pdf_with_headers
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.content = b"%PDF-1.4\nTest PDF content"
         mock_get.return_value = mock_response
 
-        # download_path = download_pdf_with_headers(
-        #     "https://example.com/book.pdf",
-        #     str(tmp_path / "book.pdf")
-        # )
+        result = download_pdf_with_headers(
+            "https://example.com/book.pdf", str(tmp_path / "book.pdf")
+        )
 
         # Verify headers were sent
-        # mock_get.assert_called_once()
-        # call_args = mock_get.call_args
-        # assert "User-Agent" in call_args[1]["headers"]
-
-        pytest.skip("Feature not yet implemented")
+        mock_get.assert_called_once()
+        call_args = mock_get.call_args
+        assert "User-Agent" in call_args[1]["headers"]
+        assert result is not None
 
     @patch("requests.get")
     def test_handle_download_failure(self, mock_get, tmp_path):
         """Test handling of download failures."""
+        from tensortruth.fetch_sources import download_pdf_with_headers
 
         mock_get.side_effect = Exception("Network error")
 
-        # download_path = download_pdf_with_headers(
-        #     "https://example.com/book.pdf",
-        #     str(tmp_path / "book.pdf")
-        # )
-        # assert download_path is None
-
-        pytest.skip("Feature not yet implemented")
+        download_path = download_pdf_with_headers(
+            "https://example.com/book.pdf", str(tmp_path / "book.pdf")
+        )
+        assert download_path is None
 
     @patch("requests.get")
     def test_handle_404_response(self, mock_get, tmp_path):
         """Test handling of 404 responses."""
+        from tensortruth.fetch_sources import download_pdf_with_headers
 
         mock_response = MagicMock()
         mock_response.status_code = 404
+        mock_response.raise_for_status = MagicMock(
+            side_effect=Exception("404 Not Found")
+        )
         mock_get.return_value = mock_response
 
-        # download_path = download_pdf_with_headers(
-        #     "https://example.com/nonexistent.pdf",
-        #     str(tmp_path / "book.pdf")
-        # )
-        # assert download_path is None
-
-        pytest.skip("Feature not yet implemented")
+        download_path = download_pdf_with_headers(
+            "https://example.com/nonexistent.pdf", str(tmp_path / "book.pdf")
+        )
+        assert download_path is None
 
 
 @pytest.mark.integration
