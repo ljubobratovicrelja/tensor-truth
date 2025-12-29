@@ -276,7 +276,14 @@ Environment Variables:
 
     # Load user's sources config
     # Note: In Phase 2, interactive CLI will populate this file
-    config = load_user_sources(sources_config_path)
+    try:
+        config = load_user_sources(sources_config_path)
+    except IOError:
+        logger.warning("No sources config found, starting with empty config.")
+        config = {"libraries": {}, "papers": {}, "books": {}}
+    except Exception as e:
+        logger.error(f"Failed to load sources config: {e}")
+        return 1
 
     # List mode
     if args.list:
@@ -378,17 +385,45 @@ Environment Variables:
             return 1
 
         if args.category not in config["papers"]:
-            logger.error(
-                f"Paper category '{args.category}' not found. "
-                "Use --list to see available categories."
-            )
-            return 1
+            if args.ids:
+                logger.info(
+                    f"Category '{args.category}' not found: creating new category."
+                )
+
+                # Ask for inputs on display_name and description
+                display_name = input(
+                    f"Enter display name for category '{args.category}': "
+                ).strip()
+                if not display_name:
+                    display_name = args.category.replace("_", " ").title()
+                    logger.info(f"Using default display name: {display_name}")
+
+                description = input(
+                    f"Enter description for category '{args.category}': "
+                ).strip()
+                if not description:
+                    description = f"Papers in the {display_name} category"
+                    logger.info(f"Using default description: {description}")
+
+                config["papers"][args.category] = {
+                    "type": "arxiv",
+                    "display_name": display_name,
+                    "description": description,
+                    "items": {},
+                }
+
+            else:
+                logger.error(
+                    f"Paper category '{args.category}' not found. "
+                    "Use --list to see available categories."
+                )
+                return 1
 
         category_config = config["papers"][args.category]
 
         # If specific IDs provided, fetch only those and add to category
         if args.ids:
-            output_dir = os.path.join(library_docs_dir, args.category)
+            output_dir = os.path.join(library_docs_dir, f"papers_{args.category}")
             os.makedirs(output_dir, exist_ok=True)
 
             # Ensure category has items dict
@@ -432,6 +467,11 @@ Environment Variables:
                     output_format=args.format,
                     converter=args.converter,
                 )
+
+            # Update sources.json after adding papers with --ids
+            update_sources_config(
+                sources_config_path, "papers", args.category, category_config
+            )
         else:
             # Fetch entire category
             try:
