@@ -601,7 +601,7 @@ def extract_library_metadata_from_config(
     return {
         "title": title,
         "authors": None,
-        "generator_type": lib_info.get("doc_type"),
+        "generator_type": lib_info.get("type"),
         "library_display_name": library_dispay_name,
         "source_url": lib_info.get("doc_root"),
         "doc_type": "library_doc",
