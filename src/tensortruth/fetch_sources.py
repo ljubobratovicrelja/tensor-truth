@@ -1370,8 +1370,7 @@ Environment Variables:
 
     # Validate mode
     if args.validate:
-        validate_sources(sources_config_path, library_docs_dir)
-        return 0
+        return validate_sources(sources_config_path, library_docs_dir)
 
     # Interactive add mode
     if args.add:
