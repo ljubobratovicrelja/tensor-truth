@@ -131,7 +131,7 @@ tensor-truth-docs --type papers --category foundation_models --ids 1706.03762 18
 tensor-truth-build --modules foundation_models
 ```
 
-See detailed documentation and examples in [PAPERS.md](docs/PAPERS.md).
+See detailed documentation and examples in [INDEXES.md](docs/INDEXES.md).
 
 **Session PDFs:**
 

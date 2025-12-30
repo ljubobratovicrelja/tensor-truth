@@ -203,7 +203,7 @@ docker restart tensor-truth
 
 **Note**: For library documentation (e.g., `pytorch_2.9`, `fastapi_0.115`), you need to first manually configure `~/.tensortruth/sources.json` using the repository's `config/sources.json` as a template. arXiv papers work out-of-the-box without manual configuration.
 
-For complete documentation on CLI tools, see [PAPERS.md](PAPERS.md).
+For complete documentation on CLI tools, see [INDEXES.md](INDEXES.md).
 
 ### Advanced: Skip Base Index Download
 
