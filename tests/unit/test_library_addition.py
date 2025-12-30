@@ -1,14 +1,21 @@
 """
-TDD tests for library addition feature (not yet implemented).
+Tests for interactive library addition feature.
 
-These tests define the expected behavior for the interactive library
-addition feature, following test-driven development principles.
+Tests cover auto-detection of documentation types, URL validation,
+and configuration management for adding libraries to sources.json.
 """
 
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from tensortruth.fetch_sources import (
+    add_library_interactive,
+    detect_css_selector,
+    detect_doc_type,
+    detect_objects_inv,
+)
 
 
 @pytest.mark.unit
@@ -17,7 +24,6 @@ class TestDetectDocType:
 
     def test_detect_sphinx_from_objects_inv(self):
         """Test detection of Sphinx docs by objects.inv presence."""
-        from tensortruth.fetch_sources import detect_doc_type
 
         # Mock HEAD request that finds objects.inv
         with patch("requests.head") as mock_head:
@@ -30,7 +36,6 @@ class TestDetectDocType:
 
     def test_detect_doxygen_from_index_pages(self):
         """Test detection of Doxygen docs by index page patterns."""
-        from tensortruth.fetch_sources import detect_doc_type
 
         # Mock HEAD request fails for objects.inv
         with patch("requests.head") as mock_head:
@@ -47,7 +52,6 @@ class TestDetectDocType:
 
     def test_unknown_doc_type_returns_none(self):
         """Test that unrecognizable doc types return None."""
-        from tensortruth.fetch_sources import detect_doc_type
 
         # Mock HEAD request fails for objects.inv
         with patch("requests.head") as mock_head:
@@ -69,7 +73,6 @@ class TestDetectObjectsInv:
 
     def test_find_objects_inv_in_root(self):
         """Test finding objects.inv in doc root."""
-        from tensortruth.fetch_sources import detect_objects_inv
 
         with patch("requests.head") as mock_head:
             mock_head.return_value.status_code = 200
@@ -80,7 +83,6 @@ class TestDetectObjectsInv:
 
     def test_find_objects_inv_in_subdirectory(self):
         """Test finding objects.inv in common subdirectories."""
-        from tensortruth.fetch_sources import detect_objects_inv
 
         with patch("requests.head") as mock_head:
             # Root fails, but finds in _static/
@@ -100,7 +102,6 @@ class TestDetectObjectsInv:
 
     def test_objects_inv_not_found_returns_none(self):
         """Test that missing objects.inv returns None."""
-        from tensortruth.fetch_sources import detect_objects_inv
 
         with patch("requests.head") as mock_head:
             mock_head.return_value.status_code = 404
@@ -115,7 +116,6 @@ class TestDetectCssSelector:
 
     def test_detect_main_role_selector(self):
         """Test detection of div[role='main'] selector."""
-        from tensortruth.fetch_sources import detect_css_selector
 
         html = """
         <html>
@@ -134,7 +134,6 @@ class TestDetectCssSelector:
 
     def test_detect_article_selector(self):
         """Test detection of article[role='main'] selector."""
-        from tensortruth.fetch_sources import detect_css_selector
 
         html = """
         <html>
@@ -153,7 +152,6 @@ class TestDetectCssSelector:
 
     def test_fallback_to_main_tag(self):
         """Test fallback to <main> tag."""
-        from tensortruth.fetch_sources import detect_css_selector
 
         html = """
         <html>
@@ -172,7 +170,6 @@ class TestDetectCssSelector:
 
     def test_no_selector_found_returns_none(self):
         """Test that undetectable selector returns None."""
-        from tensortruth.fetch_sources import detect_css_selector
 
         html = "<html><body>Content</body></html>"
 
@@ -198,101 +195,131 @@ class TestAddLibraryInteractive:
 
     def test_add_sphinx_library_with_auto_detection(self, tmp_path, sources_config):
         """Test adding Sphinx library with full auto-detection."""
-        pytest.skip("Feature not yet implemented")
 
         args = MagicMock()
         args.url = None  # Will prompt
 
-        # Mock auto-detection
-        with patch("tensortruth.fetch_sources.detect_doc_type") as mock_detect_type:
-            with patch(
-                "tensortruth.fetch_sources.detect_objects_inv"
-            ) as mock_detect_inv:
+        # Mock auto-detection and URL validation
+        with patch("tensortruth.fetch_sources.validate_url") as mock_validate:
+            with patch("tensortruth.fetch_sources.detect_doc_type") as mock_detect_type:
                 with patch(
-                    "tensortruth.fetch_sources.detect_css_selector"
-                ) as mock_detect_css:
-                    mock_detect_type.return_value = "sphinx"
-                    mock_detect_inv.return_value = "https://example.com/objects.inv"
-                    mock_detect_css.return_value = "div[role='main']"
-
-                    # Mock user inputs: URL, name, version, confirm
+                    "tensortruth.fetch_sources.detect_objects_inv"
+                ) as mock_detect_inv:
                     with patch(
-                        "builtins.input",
-                        side_effect=[
-                            "https://example.com/docs/",  # URL
-                            "test_lib",  # Name
-                            "Test Library",  # Display name
-                            "1.0",  # Version
-                            "y",  # Confirm
-                        ],
-                    ):
-                        pass
-                        # result = add_library_interactive(sources_config, str(tmp_path), args)
+                        "tensortruth.fetch_sources.detect_css_selector"
+                    ) as mock_detect_css:
+                        mock_validate.return_value = True  # URL is valid
+                        mock_detect_type.return_value = "sphinx"
+                        mock_detect_inv.return_value = "https://example.com/objects.inv"
+                        mock_detect_css.return_value = "div[role='main']"
 
-                        # Verify library was added
-                        # config = json.loads(open(sources_config).read())
-                        # assert "test_lib" in config["libraries"]
-                        # assert config["libraries"]["test_lib"]["type"] == "sphinx"
+                        # Mock user inputs: URL, accept inv, accept selector,
+                        # name, display name, version, confirm, don't fetch
+                        with patch(
+                            "builtins.input",
+                            side_effect=[
+                                "https://example.com/docs/",  # URL
+                                "y",  # Accept detected inventory URL
+                                "y",  # Accept detected CSS selector
+                                "test_lib",  # Name
+                                "Test Library",  # Display name
+                                "1.0",  # Version
+                                "y",  # Confirm
+                                "n",  # Don't fetch now
+                            ],
+                        ):
+                            result = add_library_interactive(
+                                sources_config, str(tmp_path), args
+                            )
 
-        pytest.skip("Feature not yet implemented")
+                            assert result == 0
+
+                            # Verify library was added
+                            config = json.loads(open(sources_config).read())
+                            assert "test_lib" in config["libraries"]
+                            assert config["libraries"]["test_lib"]["type"] == "sphinx"
+                            assert (
+                                config["libraries"]["test_lib"]["inventory_url"]
+                                == "https://example.com/objects.inv"
+                            )
+                            assert (
+                                config["libraries"]["test_lib"]["selector"]
+                                == "div[role='main']"
+                            )
 
     def test_add_doxygen_library(self, tmp_path, sources_config):
         """Test adding Doxygen library."""
-        pytest.skip("Feature not yet implemented")
 
         args = MagicMock()
         args.url = "https://example.com/doxygen/"
 
-        with patch("tensortruth.fetch_sources.detect_doc_type") as mock_detect:
-            mock_detect.return_value = "doxygen"
-
-            # Mock inputs for Doxygen-specific config
+        with patch("tensortruth.fetch_sources.detect_doc_type") as mock_detect_type:
             with patch(
-                "builtins.input",
-                side_effect=[
-                    "doxygen_lib",  # Name
-                    "Doxygen Library",  # Display name
-                    "1.0",  # Version
-                    "y",  # Confirm
-                ],
-            ):
-                pass
-                # result = add_library_interactive(sources_config, str(tmp_path), args)
+                "tensortruth.fetch_sources.detect_css_selector"
+            ) as mock_detect_css:
+                mock_detect_type.return_value = "doxygen"
+                mock_detect_css.return_value = "div.contents"
 
-                # config = json.loads(open(sources_config).read())
-                # assert config["libraries"]["doxygen_lib"]["type"] == "doxygen"
+                # Mock inputs for Doxygen-specific config
+                with patch(
+                    "builtins.input",
+                    side_effect=[
+                        "y",  # Accept detected CSS selector
+                        "doxygen_lib",  # Name
+                        "Doxygen Library",  # Display name
+                        "1.0",  # Version
+                        "y",  # Confirm
+                        "n",  # Don't fetch now
+                    ],
+                ):
+                    result = add_library_interactive(
+                        sources_config, str(tmp_path), args
+                    )
 
-        pytest.skip("Feature not yet implemented")
+                    assert result == 0
+
+                    config = json.loads(open(sources_config).read())
+                    assert config["libraries"]["doxygen_lib"]["type"] == "doxygen"
+                    assert (
+                        config["libraries"]["doxygen_lib"]["selector"] == "div.contents"
+                    )
 
     def test_manual_override_auto_detection(self, tmp_path, sources_config):
         """Test that user can override auto-detected values."""
-        pytest.skip("Feature not yet implemented")
 
         args = MagicMock()
         args.url = "https://example.com/docs/"
 
-        with patch("tensortruth.fetch_sources.detect_css_selector") as mock_detect:
-            mock_detect.return_value = "div[role='main']"
-
-            # User chooses to override selector
+        with patch("tensortruth.fetch_sources.detect_doc_type") as mock_detect_type:
             with patch(
-                "builtins.input",
-                side_effect=[
-                    "test_lib",
-                    "Test Library",
-                    "1.0",
-                    "n",  # Don't use auto-detected selector
-                    "article.content",  # Custom selector
-                    "y",  # Confirm
-                ],
-            ):
-                pass
-                # result = add_library_interactive(sources_config, str(tmp_path), args)
+                "tensortruth.fetch_sources.detect_css_selector"
+            ) as mock_detect_css:
+                mock_detect_type.return_value = "sphinx"
+                mock_detect_css.return_value = "div[role='main']"
 
-                # config = json.loads(open(sources_config).read())
-                # assert config["libraries"]["test_lib"]["selector"] == "article.content"
+                # User chooses to override selector
+                with patch(
+                    "builtins.input",
+                    side_effect=[
+                        "n",  # Don't use auto-detected selector
+                        "article.content",  # Custom selector
+                        "test_lib",  # Name
+                        "Test Library",  # Display name
+                        "1.0",  # Version
+                        "y",  # Confirm
+                        "n",  # Don't fetch now
+                    ],
+                ):
+                    result = add_library_interactive(
+                        sources_config, str(tmp_path), args
+                    )
 
-        pytest.skip("Feature not yet implemented")
+                    assert result == 0
+
+                    config = json.loads(open(sources_config).read())
+                    assert (
+                        config["libraries"]["test_lib"]["selector"] == "article.content"
+                    )
 
     def test_invalid_url_rejected(self, tmp_path, sources_config):
         """Test that invalid URLs are rejected."""
@@ -307,15 +334,15 @@ class TestAddLibraryInteractive:
             with patch(
                 "builtins.input",
                 side_effect=[
-                    "not-a-valid-url",
-                    "",  # Cancel
+                    "not-a-valid-url",  # Invalid URL
+                    "",  # Cancel (empty input)
                 ],
             ):
-                pass
-                # result = add_library_interactive(sources_config, str(tmp_path), args)
-                # assert result == 1  # Error code
+                with pytest.raises(SystemExit) as exc_info:
+                    add_library_interactive(sources_config, str(tmp_path), args)
 
-        pytest.skip("Feature not yet implemented")
+                # prompt_for_url raises SystemExit(1) on cancel
+                assert exc_info.value.code == 1
 
     def test_duplicate_library_name_rejected(self, tmp_path, sources_config):
         """Test that duplicate library names are rejected."""
@@ -328,19 +355,32 @@ class TestAddLibraryInteractive:
         args = MagicMock()
         args.url = "https://example.com/docs/"
 
-        # User tries to use duplicate name
-        with patch(
-            "builtins.input",
-            side_effect=[
-                "existing_lib",  # Duplicate name
-                "new_lib",  # Valid name
-                "New Library",
-                "1.0",
-                "y",
-            ],
-        ):
-            # result = add_library_interactive(sources_config, str(tmp_path), args)
-            # Should warn and ask for different name
-            pass
+        with patch("tensortruth.fetch_sources.detect_doc_type") as mock_detect_type:
+            with patch(
+                "tensortruth.fetch_sources.detect_css_selector"
+            ) as mock_detect_css:
+                mock_detect_type.return_value = "sphinx"
+                mock_detect_css.return_value = "div[role='main']"
 
-        pytest.skip("Feature not yet implemented")
+                # User tries to use duplicate name, then rejects overwrite
+                with patch(
+                    "builtins.input",
+                    side_effect=[
+                        "y",  # Accept detected selector
+                        "existing_lib",  # Duplicate name
+                        "",  # Display name (will default)
+                        "",  # Version (will default)
+                        "n",  # Don't overwrite
+                    ],
+                ):
+                    result = add_library_interactive(
+                        sources_config, str(tmp_path), args
+                    )
+
+                    # Should return error code 1
+                    assert result == 1
+
+                    # Config should not be modified
+                    config = json.loads(open(sources_config).read())
+                    assert "type" in config["libraries"]["existing_lib"]
+                    assert config["libraries"]["existing_lib"]["type"] == "sphinx"

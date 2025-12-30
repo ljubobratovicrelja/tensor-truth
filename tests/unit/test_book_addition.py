@@ -1,14 +1,21 @@
 """
-TDD tests for book addition feature (not yet implemented).
+Tests for interactive book addition feature.
 
-These tests define the expected behavior for the interactive book
-addition feature, following test-driven development principles.
+Tests cover PDF metadata extraction, interactive prompts, validation,
+and configuration management for adding books to sources.json.
 """
 
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from tensortruth.fetch_sources import (
+    add_book_interactive,
+    download_pdf_with_headers,
+    extract_pdf_metadata,
+    generate_book_name,
+)
 
 
 @pytest.mark.unit
@@ -17,7 +24,6 @@ class TestExtractPdfMetadata:
 
     def test_extract_title_and_authors_from_pdf(self, create_test_pdf):
         """Test extraction of title and authors from PDF metadata."""
-        from tensortruth.fetch_sources import extract_pdf_metadata
 
         # Mock PyMuPDF metadata extraction
         with patch("fitz.open") as mock_fitz:
@@ -35,7 +41,6 @@ class TestExtractPdfMetadata:
 
     def test_handle_missing_metadata(self, create_test_pdf):
         """Test handling of PDFs with missing metadata."""
-        from tensortruth.fetch_sources import extract_pdf_metadata
 
         with patch("fitz.open") as mock_fitz:
             mock_doc = MagicMock()
@@ -48,7 +53,6 @@ class TestExtractPdfMetadata:
 
     def test_parse_multiple_author_formats(self):
         """Test parsing various author separator formats."""
-        from tensortruth.fetch_sources import extract_pdf_metadata
 
         # Test semicolon separated
         with patch("fitz.open") as mock_fitz:
@@ -81,7 +85,6 @@ class TestGenerateBookName:
 
     def test_generate_from_title_and_author(self):
         """Test generating book name from title and first author."""
-        from tensortruth.fetch_sources import generate_book_name
 
         name = generate_book_name(
             "Introduction to Machine Learning", ["Smith", "Jones"]
@@ -90,14 +93,12 @@ class TestGenerateBookName:
 
     def test_sanitize_special_characters(self):
         """Test that special characters are sanitized."""
-        from tensortruth.fetch_sources import generate_book_name
 
         name = generate_book_name("C++ Programming (2nd Edition)", ["Stroustrup"])
         assert name == "c_programming_2nd_edition_stroustrup"
 
     def test_handle_long_titles(self):
         """Test truncation of very long titles."""
-        from tensortruth.fetch_sources import generate_book_name
 
         name = generate_book_name(
             "A Very Long Title That Should Be Truncated To Reasonable Length",
@@ -108,7 +109,6 @@ class TestGenerateBookName:
 
     def test_handle_no_authors(self):
         """Test handling books with no author information."""
-        from tensortruth.fetch_sources import generate_book_name
 
         name = generate_book_name("Anonymous Textbook", [])
         assert name == "anonymous_textbook"
@@ -121,7 +121,6 @@ class TestDownloadPdfWithHeaders:
     @patch("requests.get")
     def test_download_pdf_with_user_agent(self, mock_get, tmp_path):
         """Test PDF download with proper headers."""
-        from tensortruth.fetch_sources import download_pdf_with_headers
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -141,7 +140,6 @@ class TestDownloadPdfWithHeaders:
     @patch("requests.get")
     def test_handle_download_failure(self, mock_get, tmp_path):
         """Test handling of download failures."""
-        from tensortruth.fetch_sources import download_pdf_with_headers
 
         mock_get.side_effect = Exception("Network error")
 
@@ -153,7 +151,6 @@ class TestDownloadPdfWithHeaders:
     @patch("requests.get")
     def test_handle_404_response(self, mock_get, tmp_path):
         """Test handling of 404 responses."""
-        from tensortruth.fetch_sources import download_pdf_with_headers
 
         mock_response = MagicMock()
         mock_response.status_code = 404
@@ -182,7 +179,6 @@ class TestAddBookInteractive:
 
     def test_add_book_with_auto_metadata(self, tmp_path, sources_config):
         """Test adding book with automatic metadata extraction."""
-        pytest.skip("Feature not yet implemented")
 
         args = MagicMock()
         args.url = "https://example.com/book.pdf"
@@ -201,31 +197,39 @@ class TestAddBookInteractive:
                     "authors": ["Smith", "Jones"],
                 }
 
-                # Mock user inputs: category, accept metadata, split method, confirm
+                # Mock user inputs: accept title, accept authors,
+                # accept key, category, split choice, confirm
                 with patch(
                     "builtins.input",
                     side_effect=[
+                        "y",  # Accept auto-detected title
+                        "y",  # Accept auto-detected authors
+                        "y",  # Accept generated config key
                         "ml_basics",  # Category
-                        "y",  # Accept auto-detected metadata
-                        "toc",  # Split method
+                        "1",  # Split method (toc)
                         "y",  # Confirm
+                        "n",  # Don't fetch now
                     ],
                 ):
-                    pass
-                    # result = add_book_interactive(sources_config, str(tmp_path), args)
+                    result = add_book_interactive(sources_config, str(tmp_path), args)
+
+                    assert result == 0  # Success
 
                     # Verify book was added
-                    # config = json.loads(open(sources_config).read())
-                    # assert "machine_learning_basics_smith" in config["books"]
-
-        pytest.skip("Feature not yet implemented")
+                    config = json.loads(open(sources_config).read())
+                    # Note: generate_book_name uses first author's last name ("Smith")
+                    assert "machine_learning_basics_smith" in config["books"]
+                    book = config["books"]["machine_learning_basics_smith"]
+                    assert book["title"] == "Machine Learning Basics"
+                    assert book["authors"] == ["Smith", "Jones"]
+                    assert book["split_method"] == "toc"
 
     def test_manual_metadata_entry(self, tmp_path, sources_config):
         """Test manual metadata entry when auto-extraction fails."""
-        pytest.skip("Feature not yet implemented")
 
         args = MagicMock()
         args.url = "https://example.com/book.pdf"
+        args.category = None
 
         with patch(
             "tensortruth.fetch_sources.download_pdf_with_headers"
@@ -239,32 +243,42 @@ class TestAddBookInteractive:
                     "authors": [],
                 }
 
-                # Mock inputs: category, manual metadata
+                # Mock inputs: manual title, manual authors,
+                # accept key, category, split method, confirm
                 with patch(
                     "builtins.input",
                     side_effect=[
-                        "category",
-                        "Manual Book Title",  # Title
-                        "Author One, Author Two",  # Authors
-                        "none",  # Split method
+                        "Manual Book Title",  # Title (prompted since None)
+                        "Author One, Author Two",  # Authors (prompted since empty)
+                        "y",  # Accept generated config key
+                        "category",  # Category
+                        "2",  # Split method (none)
                         "y",  # Confirm
+                        "n",  # Don't fetch now
                     ],
                 ):
-                    pass
-                    # result = add_book_interactive(sources_config, str(tmp_path), args)
+                    result = add_book_interactive(sources_config, str(tmp_path), args)
 
-                    # config = json.loads(open(sources_config).read())
-                    # book_key = "manual_book_title_author"
-                    # assert config["books"][book_key]["title"] == "Manual Book Title"
+                    assert result == 0
 
-        pytest.skip("Feature not yet implemented")
+                    config = json.loads(open(sources_config).read())
+                    # Note: generate_book_name uses first author's last name
+                    # For "Author One", last name is "One"
+                    book_key = "manual_book_title_one"
+                    assert book_key in config["books"]
+                    assert config["books"][book_key]["title"] == "Manual Book Title"
+                    assert config["books"][book_key]["authors"] == [
+                        "Author One",
+                        "Author Two",
+                    ]
+                    assert config["books"][book_key]["split_method"] == "none"
 
     def test_skip_url_prompt_with_cli_arg(self, tmp_path, sources_config):
         """Test that --url CLI arg skips URL prompt."""
-        pytest.skip("Feature not yet implemented")
 
         args = MagicMock()
         args.url = "https://example.com/book.pdf"
+        args.category = None
 
         with patch(
             "tensortruth.fetch_sources.download_pdf_with_headers"
@@ -272,33 +286,39 @@ class TestAddBookInteractive:
             with patch(
                 "tensortruth.fetch_sources.extract_pdf_metadata"
             ) as mock_extract:
-                mock_download.return_value = str(tmp_path / "book.pdf")
-                mock_extract.return_value = {
-                    "title": "Test Book",
-                    "authors": ["Author"],
-                }
+                with patch("tensortruth.fetch_sources.prompt_for_url") as mock_prompt:
+                    mock_download.return_value = str(tmp_path / "book.pdf")
+                    mock_extract.return_value = {
+                        "title": "Test Book",
+                        "authors": ["Author"],
+                    }
 
-                with patch(
-                    "builtins.input",
-                    side_effect=[
-                        "category",
-                        "y",  # Accept metadata
-                        "none",
-                        "y",
-                    ],
-                ):
-                    # result = add_book_interactive(sources_config, str(tmp_path), args)
-                    # Should not prompt for URL
-                    pass
+                    with patch(
+                        "builtins.input",
+                        side_effect=[
+                            "y",  # Accept title
+                            "y",  # Accept authors
+                            "y",  # Accept key
+                            "category",  # Category
+                            "2",  # Split method (none)
+                            "y",  # Confirm
+                            "n",  # Don't fetch now
+                        ],
+                    ):
+                        result = add_book_interactive(
+                            sources_config, str(tmp_path), args
+                        )
 
-        pytest.skip("Feature not yet implemented")
+                        assert result == 0
+                        # Should not have called prompt_for_url since URL provided
+                        mock_prompt.assert_not_called()
 
     def test_split_method_toc(self, tmp_path, sources_config):
         """Test book with TOC-based splitting."""
-        pytest.skip("Feature not yet implemented")
 
         args = MagicMock()
         args.url = "https://example.com/book.pdf"
+        args.category = None
 
         with patch(
             "tensortruth.fetch_sources.download_pdf_with_headers"
@@ -315,59 +335,128 @@ class TestAddBookInteractive:
                 with patch(
                     "builtins.input",
                     side_effect=[
-                        "category",
-                        "y",
-                        "toc",  # TOC split
-                        "y",
+                        "y",  # Accept title
+                        "y",  # Accept authors
+                        "y",  # Accept key
+                        "category",  # Category
+                        "1",  # TOC split
+                        "y",  # Confirm
+                        "n",  # Don't fetch now
                     ],
                 ):
-                    pass
-                    # result = add_book_interactive(sources_config, str(tmp_path), args)
+                    result = add_book_interactive(sources_config, str(tmp_path), args)
 
-                    # config = json.loads(open(sources_config).read())
-                    # book_entry = config["books"]["test_book_author"]
-                    # assert book_entry["split_method"] == "toc"
+                    assert result == 0
 
-        pytest.skip("Feature not yet implemented")
+                    config = json.loads(open(sources_config).read())
+                    book_entry = config["books"]["test_book_author"]
+                    assert book_entry["split_method"] == "toc"
 
     def test_split_method_none(self, tmp_path, sources_config):
         """Test book with no splitting."""
 
-        # When split_method is "none", entire PDF is one document
-        # config["books"]["key"]["split_method"] == "none"
+        args = MagicMock()
+        args.url = "https://example.com/book.pdf"
+        args.category = None
 
-        pytest.skip("Feature not yet implemented")
+        with patch(
+            "tensortruth.fetch_sources.download_pdf_with_headers"
+        ) as mock_download:
+            with patch(
+                "tensortruth.fetch_sources.extract_pdf_metadata"
+            ) as mock_extract:
+                mock_download.return_value = str(tmp_path / "book.pdf")
+                mock_extract.return_value = {
+                    "title": "Test Book",
+                    "authors": ["Author"],
+                }
+
+                with patch(
+                    "builtins.input",
+                    side_effect=[
+                        "y",  # Accept title
+                        "y",  # Accept authors
+                        "y",  # Accept key
+                        "category",  # Category
+                        "2",  # No split
+                        "y",  # Confirm
+                        "n",  # Don't fetch now
+                    ],
+                ):
+                    result = add_book_interactive(sources_config, str(tmp_path), args)
+
+                    assert result == 0
+
+                    config = json.loads(open(sources_config).read())
+                    book_entry = config["books"]["test_book_author"]
+                    assert book_entry["split_method"] == "none"
 
     def test_split_method_manual(self, tmp_path, sources_config):
-        """Test book with manual chapter definitions."""
+        """Test that manual split method is blocked in interactive
+        mode and requires re-selection."""
 
-        # When split_method is "manual", user defines chapters
-        # with page ranges interactively
+        args = MagicMock()
+        args.url = "https://example.com/book.pdf"
+        args.category = None
 
-        pytest.skip("Feature not yet implemented")
+        with patch(
+            "tensortruth.fetch_sources.download_pdf_with_headers"
+        ) as mock_download:
+            with patch(
+                "tensortruth.fetch_sources.extract_pdf_metadata"
+            ) as mock_extract:
+                mock_download.return_value = str(tmp_path / "book.pdf")
+                mock_extract.return_value = {
+                    "title": "Test Book",
+                    "authors": ["Author"],
+                }
+
+                # User selects manual (3), gets blocked, then selects toc (1)
+                with patch(
+                    "builtins.input",
+                    side_effect=[
+                        "y",  # Accept title
+                        "y",  # Accept authors
+                        "y",  # Accept key
+                        "category",  # Category
+                        "3",  # Manual split (blocked)
+                        "1",  # Re-select: TOC split
+                        "y",  # Confirm
+                        "n",  # Don't fetch now
+                    ],
+                ):
+                    result = add_book_interactive(sources_config, str(tmp_path), args)
+
+                    assert result == 0
+
+                    config = json.loads(open(sources_config).read())
+                    book_entry = config["books"]["test_book_author"]
+                    # Should have toc, not manual, since manual was blocked
+                    assert book_entry["split_method"] == "toc"
 
     def test_invalid_url_rejected(self, tmp_path, sources_config):
         """Test that invalid PDF URLs are rejected."""
 
         args = MagicMock()
         args.url = None
+        args.category = None
 
         with patch("tensortruth.fetch_sources.validate_url") as mock_validate:
             mock_validate.return_value = False
 
-            # User enters invalid URL
+            # User enters invalid URL, then cancels
             with patch(
                 "builtins.input",
                 side_effect=[
-                    "not-a-url",
-                    "",  # Cancel
+                    "not-a-url",  # Invalid URL
+                    "",  # Cancel (empty input)
                 ],
             ):
-                pass
-                # result = add_book_interactive(sources_config, str(tmp_path), args)
-                # assert result == 1
+                with pytest.raises(SystemExit) as exc_info:
+                    add_book_interactive(sources_config, str(tmp_path), args)
 
-        pytest.skip("Feature not yet implemented")
+                # prompt_for_url raises SystemExit(1) on cancel
+                assert exc_info.value.code == 1
 
     def test_duplicate_book_rejected(self, tmp_path, sources_config):
         """Test that duplicate book names are rejected."""
@@ -382,16 +471,45 @@ class TestAddBookInteractive:
 
         args = MagicMock()
         args.url = "https://example.com/book.pdf"
+        args.category = None
 
-        # Should detect duplicate and ask for different name
-        pytest.skip("Feature not yet implemented")
+        with patch(
+            "tensortruth.fetch_sources.download_pdf_with_headers"
+        ) as mock_download:
+            with patch(
+                "tensortruth.fetch_sources.extract_pdf_metadata"
+            ) as mock_extract:
+                mock_download.return_value = str(tmp_path / "book.pdf")
+                mock_extract.return_value = {
+                    "title": "Existing Book",  # Will generate "existing_book" key
+                    "authors": ["Author"],
+                }
+
+                # User accepts metadata, but duplicate detected, chooses not to overwrite
+                with patch(
+                    "builtins.input",
+                    side_effect=[
+                        "y",  # Accept title
+                        "y",  # Accept authors
+                        "existing_book",  # Use this as config key (duplicate!)
+                        "n",  # Don't overwrite
+                    ],
+                ):
+                    result = add_book_interactive(sources_config, str(tmp_path), args)
+
+                    # Should return error code 1
+                    assert result == 1
+
+                    # Config should not be modified
+                    config = json.loads(open(sources_config).read())
+                    assert config["books"]["existing_book"]["title"] == "Existing"
 
     def test_user_cancels_at_confirmation(self, tmp_path, sources_config):
         """Test that user can cancel at confirmation step."""
-        pytest.skip("Feature not yet implemented")
 
         args = MagicMock()
         args.url = "https://example.com/book.pdf"
+        args.category = None
 
         with patch(
             "tensortruth.fetch_sources.download_pdf_with_headers"
@@ -409,18 +527,17 @@ class TestAddBookInteractive:
                 with patch(
                     "builtins.input",
                     side_effect=[
-                        "category",
-                        "y",  # Accept metadata
-                        "none",
-                        "n",  # Cancel
+                        "y",  # Accept title
+                        "y",  # Accept authors
+                        "y",  # Accept key
+                        "category",  # Category
+                        "2",  # Split method (none)
+                        "n",  # Cancel at confirmation
                     ],
                 ):
-                    pass
-                    # result = add_book_interactive(sources_config, str(tmp_path), args)
-                    # assert result == 1
+                    result = add_book_interactive(sources_config, str(tmp_path), args)
+                    assert result == 1
 
                     # Config should not be modified
-                    # config = json.loads(open(sources_config).read())
-                    # assert len(config["books"]) == 0
-
-        pytest.skip("Feature not yet implemented")
+                    config = json.loads(open(sources_config).read())
+                    assert len(config["books"]) == 0
