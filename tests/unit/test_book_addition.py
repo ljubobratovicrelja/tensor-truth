@@ -223,6 +223,10 @@ class TestAddBookInteractive:
                     assert book["title"] == "Machine Learning Basics"
                     assert book["authors"] == ["Smith", "Jones"]
                     assert book["split_method"] == "toc"
+                    # Schema validation: books use "source" not "url"
+                    assert "source" in book
+                    assert "url" not in book
+                    assert book["source"] == "https://example.com/book.pdf"
 
     def test_manual_metadata_entry(self, tmp_path, sources_config):
         """Test manual metadata entry when auto-extraction fails."""
@@ -266,12 +270,16 @@ class TestAddBookInteractive:
                     # For "Author One", last name is "One"
                     book_key = "manual_book_title_one"
                     assert book_key in config["books"]
-                    assert config["books"][book_key]["title"] == "Manual Book Title"
-                    assert config["books"][book_key]["authors"] == [
+                    book = config["books"][book_key]
+                    assert book["title"] == "Manual Book Title"
+                    assert book["authors"] == [
                         "Author One",
                         "Author Two",
                     ]
-                    assert config["books"][book_key]["split_method"] == "none"
+                    assert book["split_method"] == "none"
+                    # Schema validation: books use "source" not "url"
+                    assert "source" in book
+                    assert "url" not in book
 
     def test_skip_url_prompt_with_cli_arg(self, tmp_path, sources_config):
         """Test that --url CLI arg skips URL prompt."""

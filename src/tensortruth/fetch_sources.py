@@ -862,7 +862,7 @@ def add_book_interactive(sources_config_path, library_docs_dir, args):
         "title": title,
         "authors": authors,
         "category": category,
-        "url": url,
+        "source": url,
         "split_method": split_method,
     }
 
@@ -873,7 +873,7 @@ def add_book_interactive(sources_config_path, library_docs_dir, args):
     print(f"Authors:       {', '.join(authors)}")
     print(f"Category:      {category}")
     print(f"Split Method:  {split_method}")
-    print(f"URL:           {url}")
+    print(f"Source:        {url}")
 
     confirm = input("\nAdd this book? (y/n): ").strip().lower()
     if confirm != "y":
