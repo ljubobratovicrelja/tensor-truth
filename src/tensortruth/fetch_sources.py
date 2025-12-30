@@ -61,7 +61,7 @@ def scrape_library(
     """Scrape documentation for a single library.
 
     Args:
-        library_name: Name of the library
+        library_name: Name of the library (e.g., "pytorch_2.9")
         config: Library configuration dictionary
         output_base_dir: Base directory for output (e.g., ~/.tensortruth/library_docs)
         max_workers: Number of parallel workers
@@ -69,7 +69,9 @@ def scrape_library(
         enable_cleanup: Enable aggressive HTML cleanup
         min_size: Minimum file size in characters
     """
-    output_dir = os.path.join(output_base_dir, f"{library_name}_{config['version']}")
+    # Create directory with 'library_' prefix to match build_db expectations
+    # library_name already includes version (e.g., "pytorch_2.9")
+    output_dir = os.path.join(output_base_dir, f"library_{library_name}")
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)

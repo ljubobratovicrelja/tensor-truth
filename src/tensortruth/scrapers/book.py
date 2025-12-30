@@ -34,7 +34,7 @@ def fetch_book(
     - "manual"/"none": Download PDF → Split by page chunks → Convert each chunk
 
     Args:
-        book_name: Book identifier (e.g., "book_linear_algebra_cherney")
+        book_name: Book identifier (e.g., "linear_algebra_cherney")
         book_config: Book configuration from sources.json
         output_base_dir: Base output directory
         converter: "marker" or "pymupdf"
@@ -45,7 +45,8 @@ def fetch_book(
     Returns:
         True if successful, False otherwise
     """
-    output_dir = Path(output_base_dir) / book_name
+    # Create directory with 'book_' prefix to match build_db expectations
+    output_dir = Path(output_base_dir) / f"book_{book_name}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     source_url = book_config.get("source")
