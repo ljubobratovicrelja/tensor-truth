@@ -794,17 +794,59 @@ def add_book_interactive(sources_config_path, library_docs_dir, args):
         category = sanitize_config_key(category)
 
     print("\nSelect split method:")
-    print("  toc    - Split by table of contents (recommended)")
-    print("  none   - Keep as single document")
-    print("  manual - Define chapters manually (not yet implemented)")
+    print("  1. Split by table of contents (recommended)")
+    print("  2. Keep as single document")
+    print("  3. Define chapters manually")
 
-    split_method = input("Split method (toc/none/manual) [toc]: ").strip().lower()
-    if not split_method:
-        split_method = "toc"
+    choice = input("\nEnter choice (1-3) [1]: ").strip()
+    if not choice:
+        choice = "1"
 
-    if split_method not in ["toc", "none", "manual"]:
-        logger.error(f"Invalid split method: {split_method}")
+    if choice not in ["1", "2", "3"]:
+        logger.error(f"Invalid choice: {choice}. Please select 1, 2, or 3.")
         return 1
+
+    # Map choice to split method
+    split_methods = {"1": "toc", "2": "none", "3": "manual"}
+    split_method = split_methods[choice]
+
+    # Block manual option with helpful message
+    if split_method == "manual":
+        print("\n⚠️  Manual chapter definition is not available in interactive mode.")
+        print(
+            "To define custom chapters, you need to manually edit the sources.json file."
+        )
+        print("\nExample configuration for splitting a book into 3 equal sections:")
+        print(
+            """
+  "your_book_name": {
+    "type": "pdf_book",
+    "title": "Your Book Title",
+    "authors": ["Author Name"],
+    "category": "your_category",
+    "url": "https://example.com/book.pdf",
+    "split_method": "manual",
+    "sections": [
+      {"name": "Part 1 (Pages 1-100)", "pages": [1, 100]},
+      {"name": "Part 2 (Pages 101-200)", "pages": [101, 200]},
+      {"name": "Part 3 (Pages 201-300)", "pages": [201, 300]}
+    ]
+  }
+"""
+        )
+        print("Please choose a different split method for now:")
+        print("  1. Split by table of contents (recommended)")
+        print("  2. Keep as single document")
+
+        choice = input("\nEnter choice (1-2) [1]: ").strip()
+        if not choice:
+            choice = "1"
+
+        if choice not in ["1", "2"]:
+            logger.error(f"Invalid choice: {choice}. Please select 1 or 2.")
+            return 1
+
+        split_method = split_methods[choice]
 
     # Step 7: Build config
     book_config = {
