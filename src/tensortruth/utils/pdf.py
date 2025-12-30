@@ -458,4 +458,79 @@ def post_process_math(md_text: Optional[str]) -> Optional[str]:
         processed_lines.append(line)
 
     return "\n".join(processed_lines)
-    return "\n".join(processed_lines)
+
+
+def extract_pdf_metadata(pdf_path: Union[str, Path]) -> Dict[str, Any]:
+    """Extract title and authors from PDF metadata.
+
+    Args:
+        pdf_path: Path to PDF file
+
+    Returns:
+        Dict with 'title' and 'authors' keys
+    """
+    try:
+        with fitz.open(pdf_path) as doc:
+            metadata = doc.metadata
+
+            title = metadata.get("title", None)
+            author_str = metadata.get("author", "")
+
+            # Parse authors (handle various separator formats)
+            authors = []
+            if author_str:
+                # Try different separators
+                for sep in [";", ",", " and "]:
+                    if sep in author_str:
+                        authors = [a.strip() for a in author_str.split(sep)]
+                        break
+                else:
+                    # Single author
+                    authors = [author_str.strip()] if author_str.strip() else []
+
+            logger.info(f"✓ Extracted metadata: title='{title}', authors={authors}")
+            return {"title": title, "authors": authors}
+
+    except Exception as e:
+        logger.warning(f"Could not extract PDF metadata: {e}")
+        return {"title": None, "authors": []}
+
+
+def generate_book_name(title: str, authors: List[str]) -> str:
+    """Generate sanitized book config key from title and authors.
+
+    Args:
+        title: Book title
+        authors: List of author names
+
+    Returns:
+        Sanitized config key (e.g., "machine_learning_basics_smith")
+    """
+    from .validation import sanitize_config_key
+
+    # Sanitize title
+    title_slug = sanitize_config_key(title) if title else "untitled"
+
+    # Get first author's last name
+    author_slug = ""
+    if authors:
+        # Extract surname: everything except the first name
+        # Handles: "Smith", "John Smith", "Ludwig van Beethoven", "Juan de la Cruz"
+        first_author = authors[0]
+        parts = first_author.split()
+
+        if len(parts) <= 1:
+            # Single name, use as-is
+            last_name = first_author
+        else:
+            # Take everything after the first name
+            last_name = " ".join(parts[1:])
+
+        author_slug = "_" + sanitize_config_key(last_name)
+
+    # Combine and truncate if too long
+    full_name = title_slug + author_slug
+    if len(full_name) > 60:
+        full_name = full_name[:60].rstrip("_")
+
+    return full_name

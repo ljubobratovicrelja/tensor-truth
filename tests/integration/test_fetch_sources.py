@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tensortruth.fetch_sources import add_paper_interactive, interactive_add
 from tensortruth.fetch_sources import main as fetch_main
+from tensortruth.utils.interactive import add_paper_interactive, interactive_add
 
 
 @pytest.mark.integration
@@ -286,7 +286,9 @@ class TestInteractiveAdd:
                 "n",  # Cancel at confirmation
             ],
         ):
-            with patch("tensortruth.fetch_sources.add_paper_interactive") as mock_add:
+            with patch(
+                "tensortruth.utils.interactive.add_paper_interactive"
+            ) as mock_add:
                 mock_add.return_value = 0
                 interactive_add(sources_config, str(tmp_path), args)
 
@@ -299,7 +301,7 @@ class TestInteractiveAdd:
         args = MagicMock()
         args.type = "paper"
 
-        with patch("tensortruth.fetch_sources.add_paper_interactive") as mock_add:
+        with patch("tensortruth.utils.interactive.add_paper_interactive") as mock_add:
             mock_add.return_value = 0
             interactive_add(sources_config, str(tmp_path), args)
 
@@ -313,7 +315,7 @@ class TestInteractiveAdd:
         args.type = "library"
         args.url = None  # Will trigger URL prompt in the function
 
-        with patch("tensortruth.fetch_sources.add_library_interactive") as mock_add:
+        with patch("tensortruth.utils.interactive.add_library_interactive") as mock_add:
             mock_add.return_value = 0
             result = interactive_add(sources_config, str(tmp_path), args)
 
@@ -328,7 +330,7 @@ class TestInteractiveAdd:
         args.type = "book"
         args.url = None  # Will trigger URL prompt in the function
 
-        with patch("tensortruth.fetch_sources.add_book_interactive") as mock_add:
+        with patch("tensortruth.utils.interactive.add_book_interactive") as mock_add:
             mock_add.return_value = 0
             result = interactive_add(sources_config, str(tmp_path), args)
 
@@ -353,7 +355,7 @@ class TestInteractiveAdd:
         args = MagicMock()
         args.type = "papers"  # Plural
 
-        with patch("tensortruth.fetch_sources.add_paper_interactive") as mock_add:
+        with patch("tensortruth.utils.interactive.add_paper_interactive") as mock_add:
             mock_add.return_value = 0
             interactive_add(sources_config, str(tmp_path), args)
 

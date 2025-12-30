@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -260,3 +261,134 @@ def validate_sources(sources_config_path, library_docs_dir):
         logger.info("✅ VALIDATION PASSED")
         logger.info(f"   All {total_sources} sources configured and fetched")
         return 0
+
+
+def validate_url(url: str) -> bool:
+    """Validate URL format and accessibility.
+
+    Args:
+        url: URL to validate
+
+    Returns:
+        True if URL is valid and accessible, False otherwise
+    """
+    # Basic regex check
+    url_pattern = re.compile(
+        r"^https?://"  # http:// or https://
+        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"  # domain...
+        r"localhost|"  # localhost...
+        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # ...or ip
+        r"(?::\d+)?"  # optional port
+        r"(?:/?|[/?]\S+)$",
+        re.IGNORECASE,
+    )
+
+    if not url_pattern.match(url):
+        return False
+
+    # Try HEAD request to check accessibility
+    try:
+        import requests
+
+        response = requests.head(url, timeout=10, allow_redirects=True)
+        return response.status_code < 400
+    except Exception:
+        # If HEAD fails, try GET
+        try:
+            import requests
+
+            response = requests.get(url, timeout=10, allow_redirects=True)
+            return response.status_code < 400
+        except Exception:
+            return False
+
+
+def prompt_for_url(prompt_message: str, examples: list[str] = None) -> str:
+    """Prompt user for URL with validation and retry loop.
+
+    Args:
+        prompt_message: Message to display when prompting for URL
+        examples: Optional list of example URLs to display
+
+    Returns:
+        Valid URL string
+
+    Raises:
+        SystemExit: If user cancels (exits with code 1)
+    """
+    print(prompt_message)
+    if examples:
+        print("Examples:")
+        for example in examples:
+            print(f"  - {example}")
+
+    url = input("\nURL: ").strip()
+
+    # Retry loop for URL validation
+    while not validate_url(url):
+        logger.error(f"Invalid or inaccessible URL: {url}")
+        url = input("\nTry again (or press Enter to cancel): ").strip()
+        if not url:
+            print("Cancelled.")
+            raise SystemExit(1)
+
+    return url
+
+
+def sanitize_config_key(name: str) -> str:
+    """Sanitize name to valid sources.json key.
+
+    Args:
+        name: Name to sanitize
+
+    Returns:
+        Sanitized name (lowercase, alphanumeric + underscore)
+    """
+    # Convert to lowercase
+    name = name.lower()
+    # Replace non-alphanumeric with underscore
+    name = re.sub(r"[^a-z0-9_-]", "_", name)
+    # Remove leading/trailing underscores
+    name = name.strip("_")
+    # Collapse multiple underscores
+    name = re.sub(r"_+", "_", name)
+    return name
+
+
+def validate_arxiv_id(arxiv_id: str):
+    """Validate and normalize ArXiv ID.
+
+    Supports formats:
+    - 1234.5678 (new format)
+    - arch-ive/1234567 (old format)
+    - https://arxiv.org/abs/1234.5678 (URL)
+
+    Args:
+        arxiv_id: ArXiv ID to validate
+
+    Returns:
+        Normalized ID or None if invalid
+    """
+    arxiv_id = arxiv_id.strip()
+
+    # Extract from URL
+    if "arxiv.org" in arxiv_id:
+        match = re.search(r"(\d{4}\.\d{4,5})", arxiv_id)
+        if match:
+            return match.group(1)
+        match = re.search(r"([a-z\-]+/\d{7})", arxiv_id)
+        if match:
+            return match.group(1)
+        return None
+
+    # Validate format
+    # New format: YYMM.NNNNN
+    if re.match(r"^\d{4}\.\d{4,5}$", arxiv_id):
+        return arxiv_id
+
+    # Old format: arch-ive/YYMMNNN
+    if re.match(r"^[a-z\-]+/\d{7}$", arxiv_id):
+        return arxiv_id
+
+    logger.warning(f"Invalid ArXiv ID format: {arxiv_id}")
+    return None

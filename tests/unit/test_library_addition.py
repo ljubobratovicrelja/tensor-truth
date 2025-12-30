@@ -10,12 +10,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tensortruth.fetch_sources import (
-    add_library_interactive,
+from tensortruth.utils.detection import (
     detect_css_selector,
     detect_doc_type,
     detect_objects_inv,
 )
+from tensortruth.utils.interactive import add_library_interactive
 
 
 @pytest.mark.unit
@@ -197,28 +197,29 @@ class TestAddLibraryInteractive:
         """Test adding Sphinx library with full auto-detection."""
 
         args = MagicMock()
-        args.url = None  # Will prompt
+        args.url = "https://example.com/docs/"  # Provide URL directly
 
         # Mock auto-detection and URL validation
-        with patch("tensortruth.fetch_sources.validate_url") as mock_validate:
-            with patch("tensortruth.fetch_sources.detect_doc_type") as mock_detect_type:
+        with patch("tensortruth.utils.validation.validate_url") as mock_validate:
+            with patch(
+                "tensortruth.utils.interactive.detect_doc_type"
+            ) as mock_detect_type:
                 with patch(
-                    "tensortruth.fetch_sources.detect_objects_inv"
+                    "tensortruth.utils.interactive.detect_objects_inv"
                 ) as mock_detect_inv:
                     with patch(
-                        "tensortruth.fetch_sources.detect_css_selector"
+                        "tensortruth.utils.interactive.detect_css_selector"
                     ) as mock_detect_css:
                         mock_validate.return_value = True  # URL is valid
                         mock_detect_type.return_value = "sphinx"
                         mock_detect_inv.return_value = "https://example.com/objects.inv"
                         mock_detect_css.return_value = "div[role='main']"
 
-                        # Mock user inputs: URL, accept inv, accept selector,
+                        # Mock user inputs: accept inv, accept selector,
                         # name, version, confirm, don't fetch
                         with patch(
                             "builtins.input",
                             side_effect=[
-                                "https://example.com/docs/",  # URL
                                 "y",  # Accept detected inventory URL
                                 "y",  # Accept detected CSS selector
                                 "test_lib",  # Name
@@ -252,9 +253,9 @@ class TestAddLibraryInteractive:
         args = MagicMock()
         args.url = "https://example.com/doxygen/"
 
-        with patch("tensortruth.fetch_sources.detect_doc_type") as mock_detect_type:
+        with patch("tensortruth.utils.interactive.detect_doc_type") as mock_detect_type:
             with patch(
-                "tensortruth.fetch_sources.detect_css_selector"
+                "tensortruth.utils.interactive.detect_css_selector"
             ) as mock_detect_css:
                 mock_detect_type.return_value = "doxygen"
                 mock_detect_css.return_value = "div.contents"
@@ -288,35 +289,41 @@ class TestAddLibraryInteractive:
         args = MagicMock()
         args.url = "https://example.com/docs/"
 
-        with patch("tensortruth.fetch_sources.detect_doc_type") as mock_detect_type:
+        with patch("tensortruth.utils.interactive.detect_doc_type") as mock_detect_type:
             with patch(
-                "tensortruth.fetch_sources.detect_css_selector"
-            ) as mock_detect_css:
-                mock_detect_type.return_value = "sphinx"
-                mock_detect_css.return_value = "div[role='main']"
-
-                # User chooses to override selector
+                "tensortruth.utils.interactive.detect_objects_inv"
+            ) as mock_detect_inv:
                 with patch(
-                    "builtins.input",
-                    side_effect=[
-                        "n",  # Don't use auto-detected selector
-                        "article.content",  # Custom selector
-                        "test_lib",  # Name
-                        "1.0",  # Version
-                        "y",  # Confirm
-                        "n",  # Don't fetch now
-                    ],
-                ):
-                    result = add_library_interactive(
-                        sources_config, str(tmp_path), args
-                    )
+                    "tensortruth.utils.interactive.detect_css_selector"
+                ) as mock_detect_css:
+                    mock_detect_type.return_value = "sphinx"
+                    mock_detect_inv.return_value = "https://example.com/objects.inv"
+                    mock_detect_css.return_value = "div[role='main']"
 
-                    assert result == 0
+                    # User chooses to override selector
+                    with patch(
+                        "builtins.input",
+                        side_effect=[
+                            "y",  # Accept detected inventory URL
+                            "n",  # Don't use auto-detected selector
+                            "article.content",  # Custom selector
+                            "test_lib",  # Name
+                            "1.0",  # Version
+                            "y",  # Confirm
+                            "n",  # Don't fetch now
+                        ],
+                    ):
+                        result = add_library_interactive(
+                            sources_config, str(tmp_path), args
+                        )
 
-                    config = json.loads(open(sources_config).read())
-                    assert (
-                        config["libraries"]["test_lib"]["selector"] == "article.content"
-                    )
+                        assert result == 0
+
+                        config = json.loads(open(sources_config).read())
+                        assert (
+                            config["libraries"]["test_lib"]["selector"]
+                            == "article.content"
+                        )
 
     def test_invalid_url_rejected(self, tmp_path, sources_config):
         """Test that invalid URLs are rejected."""
@@ -324,7 +331,7 @@ class TestAddLibraryInteractive:
         args = MagicMock()
         args.url = None
 
-        with patch("tensortruth.fetch_sources.validate_url") as mock_validate:
+        with patch("tensortruth.utils.validation.validate_url") as mock_validate:
             mock_validate.return_value = False
 
             # User enters invalid URL, then cancels
@@ -352,31 +359,36 @@ class TestAddLibraryInteractive:
         args = MagicMock()
         args.url = "https://example.com/docs/"
 
-        with patch("tensortruth.fetch_sources.detect_doc_type") as mock_detect_type:
+        with patch("tensortruth.utils.interactive.detect_doc_type") as mock_detect_type:
             with patch(
-                "tensortruth.fetch_sources.detect_css_selector"
-            ) as mock_detect_css:
-                mock_detect_type.return_value = "sphinx"
-                mock_detect_css.return_value = "div[role='main']"
-
-                # User tries to use duplicate name, then rejects overwrite
+                "tensortruth.utils.interactive.detect_objects_inv"
+            ) as mock_detect_inv:
                 with patch(
-                    "builtins.input",
-                    side_effect=[
-                        "y",  # Accept detected selector
-                        "existing_lib",  # Duplicate name
-                        "",  # Version (will default)
-                        "n",  # Don't overwrite
-                    ],
-                ):
-                    result = add_library_interactive(
-                        sources_config, str(tmp_path), args
-                    )
+                    "tensortruth.utils.interactive.detect_css_selector"
+                ) as mock_detect_css:
+                    mock_detect_type.return_value = "sphinx"
+                    mock_detect_inv.return_value = "https://example.com/objects.inv"
+                    mock_detect_css.return_value = "div[role='main']"
 
-                    # Should return error code 1
-                    assert result == 1
+                    # User tries to use duplicate name, then rejects overwrite
+                    with patch(
+                        "builtins.input",
+                        side_effect=[
+                            "y",  # Accept detected inventory URL
+                            "y",  # Accept detected selector
+                            "existing_lib",  # Duplicate name
+                            "",  # Version (will default)
+                            "n",  # Don't overwrite
+                        ],
+                    ):
+                        result = add_library_interactive(
+                            sources_config, str(tmp_path), args
+                        )
 
-                    # Config should not be modified
-                    config = json.loads(open(sources_config).read())
-                    assert "type" in config["libraries"]["existing_lib"]
-                    assert config["libraries"]["existing_lib"]["type"] == "sphinx"
+                        # Should return error code 1
+                        assert result == 1
+
+                        # Config should not be modified
+                        config = json.loads(open(sources_config).read())
+                        assert "type" in config["libraries"]["existing_lib"]
+                        assert config["libraries"]["existing_lib"]["type"] == "sphinx"

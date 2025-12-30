@@ -2,10 +2,22 @@
 Pytest configuration and shared fixtures.
 """
 
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+# Mock pymupdf.layout before any imports
+layout_mock = MagicMock()
+layout_mock.activate = MagicMock(return_value=None)
+sys.modules["pymupdf.layout"] = layout_mock
+
+# Create a mock pymupdf module with layout attribute and version
+pymupdf_mock = MagicMock()
+pymupdf_mock.layout = layout_mock
+pymupdf_mock.__version__ = "1.26.7"  # Match installed version
+sys.modules["pymupdf"] = pymupdf_mock
 
 # ============================================================================
 # Path Fixtures

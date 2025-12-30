@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tensortruth.fetch_sources import (
+from tensortruth.utils.validation import (
     sanitize_config_key,
     validate_arxiv_id,
     validate_url,

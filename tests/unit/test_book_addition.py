@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tensortruth.fetch_sources import (
-    add_book_interactive,
+from tensortruth.utils.interactive import add_book_interactive
+from tensortruth.utils.pdf import (
     download_pdf_with_headers,
     extract_pdf_metadata,
     generate_book_name,
@@ -26,12 +26,13 @@ class TestExtractPdfMetadata:
         """Test extraction of title and authors from PDF metadata."""
 
         # Mock PyMuPDF metadata extraction
-        with patch("fitz.open") as mock_fitz:
+        with patch("tensortruth.utils.pdf.fitz.open") as mock_fitz:
             mock_doc = MagicMock()
-            mock_doc.metadata = {
+            mock_metadata = {
                 "title": "Introduction to Machine Learning",
                 "author": "Author One; Author Two",
             }
+            mock_doc.metadata = mock_metadata
             mock_fitz.return_value.__enter__.return_value = mock_doc
 
             metadata = extract_pdf_metadata("test_book.pdf")
@@ -42,7 +43,7 @@ class TestExtractPdfMetadata:
     def test_handle_missing_metadata(self, create_test_pdf):
         """Test handling of PDFs with missing metadata."""
 
-        with patch("fitz.open") as mock_fitz:
+        with patch("tensortruth.utils.pdf.fitz.open") as mock_fitz:
             mock_doc = MagicMock()
             mock_doc.metadata = {}  # No metadata
             mock_fitz.return_value.__enter__.return_value = mock_doc
@@ -55,7 +56,7 @@ class TestExtractPdfMetadata:
         """Test parsing various author separator formats."""
 
         # Test semicolon separated
-        with patch("fitz.open") as mock_fitz:
+        with patch("tensortruth.utils.pdf.fitz.open") as mock_fitz:
             mock_doc = MagicMock()
             mock_doc.metadata = {"author": "Author One; Author Two; Author Three"}
             mock_fitz.return_value.__enter__.return_value = mock_doc
@@ -63,7 +64,7 @@ class TestExtractPdfMetadata:
             assert len(metadata["authors"]) == 3
 
         # Test comma separated
-        with patch("fitz.open") as mock_fitz:
+        with patch("tensortruth.utils.pdf.fitz.open") as mock_fitz:
             mock_doc = MagicMock()
             mock_doc.metadata = {"author": "Author One, Author Two, Author Three"}
             mock_fitz.return_value.__enter__.return_value = mock_doc
@@ -71,7 +72,7 @@ class TestExtractPdfMetadata:
             assert len(metadata["authors"]) == 3
 
         # Test "and" separated
-        with patch("fitz.open") as mock_fitz:
+        with patch("tensortruth.utils.pdf.fitz.open") as mock_fitz:
             mock_doc = MagicMock()
             mock_doc.metadata = {"author": "Author One and Author Two and Author Three"}
             mock_fitz.return_value.__enter__.return_value = mock_doc
@@ -143,10 +144,10 @@ class TestDownloadPdfWithHeaders:
 
         mock_get.side_effect = Exception("Network error")
 
-        download_path = download_pdf_with_headers(
+        result = download_pdf_with_headers(
             "https://example.com/book.pdf", str(tmp_path / "book.pdf")
         )
-        assert download_path is None
+        assert result is False
 
     @patch("requests.get")
     def test_handle_404_response(self, mock_get, tmp_path):
@@ -159,10 +160,10 @@ class TestDownloadPdfWithHeaders:
         )
         mock_get.return_value = mock_response
 
-        download_path = download_pdf_with_headers(
+        result = download_pdf_with_headers(
             "https://example.com/nonexistent.pdf", str(tmp_path / "book.pdf")
         )
-        assert download_path is None
+        assert result is False
 
 
 @pytest.mark.integration
@@ -185,13 +186,11 @@ class TestAddBookInteractive:
         args.category = None  # Will prompt
 
         # Mock PDF download and metadata extraction
-        with patch(
-            "tensortruth.fetch_sources.download_pdf_with_headers"
-        ) as mock_download:
+        with patch("tensortruth.utils.pdf.download_pdf_with_headers") as mock_download:
             with patch(
-                "tensortruth.fetch_sources.extract_pdf_metadata"
+                "tensortruth.utils.interactive.extract_pdf_metadata"
             ) as mock_extract:
-                mock_download.return_value = str(tmp_path / "book.pdf")
+                mock_download.return_value = True
                 mock_extract.return_value = {
                     "title": "Machine Learning Basics",
                     "authors": ["Smith", "Jones"],
@@ -235,13 +234,11 @@ class TestAddBookInteractive:
         args.url = "https://example.com/book.pdf"
         args.category = None
 
-        with patch(
-            "tensortruth.fetch_sources.download_pdf_with_headers"
-        ) as mock_download:
+        with patch("tensortruth.utils.pdf.download_pdf_with_headers") as mock_download:
             with patch(
-                "tensortruth.fetch_sources.extract_pdf_metadata"
+                "tensortruth.utils.interactive.extract_pdf_metadata"
             ) as mock_extract:
-                mock_download.return_value = str(tmp_path / "book.pdf")
+                mock_download.return_value = True
                 mock_extract.return_value = {
                     "title": None,
                     "authors": [],
@@ -288,14 +285,14 @@ class TestAddBookInteractive:
         args.url = "https://example.com/book.pdf"
         args.category = None
 
-        with patch(
-            "tensortruth.fetch_sources.download_pdf_with_headers"
-        ) as mock_download:
+        with patch("tensortruth.utils.pdf.download_pdf_with_headers") as mock_download:
             with patch(
-                "tensortruth.fetch_sources.extract_pdf_metadata"
+                "tensortruth.utils.interactive.extract_pdf_metadata"
             ) as mock_extract:
-                with patch("tensortruth.fetch_sources.prompt_for_url") as mock_prompt:
-                    mock_download.return_value = str(tmp_path / "book.pdf")
+                with patch(
+                    "tensortruth.utils.validation.prompt_for_url"
+                ) as mock_prompt:
+                    mock_download.return_value = True
                     mock_extract.return_value = {
                         "title": "Test Book",
                         "authors": ["Author"],
@@ -328,13 +325,11 @@ class TestAddBookInteractive:
         args.url = "https://example.com/book.pdf"
         args.category = None
 
-        with patch(
-            "tensortruth.fetch_sources.download_pdf_with_headers"
-        ) as mock_download:
+        with patch("tensortruth.utils.pdf.download_pdf_with_headers") as mock_download:
             with patch(
-                "tensortruth.fetch_sources.extract_pdf_metadata"
+                "tensortruth.utils.interactive.extract_pdf_metadata"
             ) as mock_extract:
-                mock_download.return_value = str(tmp_path / "book.pdf")
+                mock_download.return_value = True
                 mock_extract.return_value = {
                     "title": "Test Book",
                     "authors": ["Author"],
@@ -367,13 +362,11 @@ class TestAddBookInteractive:
         args.url = "https://example.com/book.pdf"
         args.category = None
 
-        with patch(
-            "tensortruth.fetch_sources.download_pdf_with_headers"
-        ) as mock_download:
+        with patch("tensortruth.utils.pdf.download_pdf_with_headers") as mock_download:
             with patch(
-                "tensortruth.fetch_sources.extract_pdf_metadata"
+                "tensortruth.utils.interactive.extract_pdf_metadata"
             ) as mock_extract:
-                mock_download.return_value = str(tmp_path / "book.pdf")
+                mock_download.return_value = True
                 mock_extract.return_value = {
                     "title": "Test Book",
                     "authors": ["Author"],
@@ -407,13 +400,11 @@ class TestAddBookInteractive:
         args.url = "https://example.com/book.pdf"
         args.category = None
 
-        with patch(
-            "tensortruth.fetch_sources.download_pdf_with_headers"
-        ) as mock_download:
+        with patch("tensortruth.utils.pdf.download_pdf_with_headers") as mock_download:
             with patch(
-                "tensortruth.fetch_sources.extract_pdf_metadata"
+                "tensortruth.utils.interactive.extract_pdf_metadata"
             ) as mock_extract:
-                mock_download.return_value = str(tmp_path / "book.pdf")
+                mock_download.return_value = True
                 mock_extract.return_value = {
                     "title": "Test Book",
                     "authors": ["Author"],
@@ -449,7 +440,7 @@ class TestAddBookInteractive:
         args.url = None
         args.category = None
 
-        with patch("tensortruth.fetch_sources.validate_url") as mock_validate:
+        with patch("tensortruth.utils.validation.validate_url") as mock_validate:
             mock_validate.return_value = False
 
             # User enters invalid URL, then cancels
@@ -481,13 +472,11 @@ class TestAddBookInteractive:
         args.url = "https://example.com/book.pdf"
         args.category = None
 
-        with patch(
-            "tensortruth.fetch_sources.download_pdf_with_headers"
-        ) as mock_download:
+        with patch("tensortruth.utils.pdf.download_pdf_with_headers") as mock_download:
             with patch(
-                "tensortruth.fetch_sources.extract_pdf_metadata"
+                "tensortruth.utils.interactive.extract_pdf_metadata"
             ) as mock_extract:
-                mock_download.return_value = str(tmp_path / "book.pdf")
+                mock_download.return_value = True
                 mock_extract.return_value = {
                     "title": "Existing Book",  # Will generate "existing_book" key
                     "authors": ["Author"],
@@ -519,13 +508,11 @@ class TestAddBookInteractive:
         args.url = "https://example.com/book.pdf"
         args.category = None
 
-        with patch(
-            "tensortruth.fetch_sources.download_pdf_with_headers"
-        ) as mock_download:
+        with patch("tensortruth.utils.pdf.download_pdf_with_headers") as mock_download:
             with patch(
-                "tensortruth.fetch_sources.extract_pdf_metadata"
+                "tensortruth.utils.interactive.extract_pdf_metadata"
             ) as mock_extract:
-                mock_download.return_value = str(tmp_path / "book.pdf")
+                mock_download.return_value = True
                 mock_extract.return_value = {
                     "title": "Test Book",
                     "authors": ["Author"],
