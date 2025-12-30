@@ -63,7 +63,7 @@ def validate_sources(sources_config_path, library_docs_dir):
         library_docs_dir: Path to library_docs directory
 
     Returns:
-        0 if valid, 1 if has errors
+        0 if valid or incomplete (warnings only), 1 if has errors
     """
     # Import here to avoid circular dependency
     from .sources_config import load_user_sources
@@ -73,12 +73,14 @@ def validate_sources(sources_config_path, library_docs_dir):
     errors = []
     warnings = []
 
-    print("\n=== Validating Sources Configuration ===")
-    print(f"Config: {sources_config_path}")
-    print(f"Docs:   {library_docs_dir}\n")
+    logger.info("=" * 60)
+    logger.info("Validating Sources Configuration")
+    logger.info(f"Config: {sources_config_path}")
+    logger.info(f"Docs:   {library_docs_dir}")
+    logger.info("=" * 60)
 
     # Validate config schema
-    print("--- Config Schema Validation ---\n")
+    logger.info("\n--- Config Schema Validation ---")
 
     # Check libraries
     for lib_name, lib_config in config.get("libraries", {}).items():
@@ -148,21 +150,19 @@ def validate_sources(sources_config_path, library_docs_dir):
                 )
 
     if errors:
-        print(f"❌ Config Errors ({len(errors)}):\n")
+        logger.error(f"Config Errors ({len(errors)}):")
         for err in errors:
-            print(f"  • {err}")
-        print()
+            logger.error(f"  • {err}")
     else:
-        print("✓ No config schema errors\n")
+        logger.info("✓ No config schema errors")
 
     if warnings:
-        print(f"⚠️  Config Warnings ({len(warnings)}):\n")
+        logger.warning(f"Config Warnings ({len(warnings)}):")
         for warn in warnings:
-            print(f"  • {warn}")
-        print()
+            logger.warning(f"  • {warn}")
 
     # Validate filesystem
-    print("--- Filesystem Validation ---\n")
+    logger.info("\n--- Filesystem Validation ---")
 
     missing = []
     found = []
@@ -198,20 +198,18 @@ def validate_sources(sources_config_path, library_docs_dir):
             missing.append((f"books.{book_name}", dir_name))
 
     if found:
-        print(f"✓ Found ({len(found)}):\n")
+        logger.info(f"✓ Found ({len(found)}):")
         for item in found:
-            print(f"  • {item}")
-        print()
+            logger.info(f"  • {item}")
 
     if missing:
-        print(f"✗ Missing ({len(missing)}):\n")
+        logger.warning(f"✗ Missing ({len(missing)}):")
         for item, dirname in missing:
-            print(f"  • {item} → {dirname}/ not found")
-            print(f"    Run: tensor-truth-docs {item.split('.')[1]}")
-        print()
+            logger.warning(f"  • {item} → {dirname}/ not found")
+            logger.warning(f"    Run: tensor-truth-docs {item.split('.')[1]}")
 
     # Check for orphaned directories
-    print("--- Orphaned Directories ---\n")
+    logger.info("\n--- Orphaned Directories ---")
     if os.path.exists(library_docs_dir):
         all_dirs = {
             d
@@ -231,17 +229,16 @@ def validate_sources(sources_config_path, library_docs_dir):
 
         orphaned = all_dirs - config_dirs
         if orphaned:
-            print(f"⚠️  Orphaned ({len(orphaned)}):\n")
+            logger.warning(f"⚠️  Orphaned ({len(orphaned)}):")
             for dirname in sorted(orphaned):
-                print(f"  • {dirname}/ (not in config)")
-            print()
+                logger.warning(f"  • {dirname}/ (not in config)")
         else:
-            print("✓ No orphaned directories\n")
+            logger.info("✓ No orphaned directories")
     else:
         warnings.append(f"Library docs directory does not exist: {library_docs_dir}")
 
     # Summary
-    print("=" * 60)
+    logger.info("=" * 60)
     total_sources = (
         len(config.get("libraries", {}))
         + len(config.get("papers", {}))
@@ -249,17 +246,17 @@ def validate_sources(sources_config_path, library_docs_dir):
     )
 
     if errors:
-        print("\n❌ VALIDATION FAILED")
-        print(f"   {len(errors)} error(s), {len(warnings)} warning(s)")
-        print(f"   {len(found)}/{total_sources} sources have docs on disk")
+        logger.error("❌ VALIDATION FAILED")
+        logger.error(f"   {len(errors)} error(s), {len(warnings)} warning(s)")
+        logger.error(f"   {len(found)}/{total_sources} sources have docs on disk")
         return 1
     elif missing:
-        print("\n⚠️  VALIDATION INCOMPLETE")
-        print(f"   {len(missing)} source(s) missing docs on disk")
-        print(f"   {len(found)}/{total_sources} sources have docs")
-        print("\n   Run tensor-truth-docs to fetch missing sources")
+        logger.warning("⚠️  VALIDATION INCOMPLETE")
+        logger.warning(f"   {len(missing)} source(s) missing docs on disk")
+        logger.warning(f"   {len(found)}/{total_sources} sources have docs")
+        logger.info("   Run tensor-truth-docs to fetch missing sources")
         return 0  # Not an error, just incomplete
     else:
-        print("\n✅ VALIDATION PASSED")
-        print(f"   All {total_sources} sources configured and fetched")
+        logger.info("✅ VALIDATION PASSED")
+        logger.info(f"   All {total_sources} sources configured and fetched")
         return 0
