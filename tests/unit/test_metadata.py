@@ -339,7 +339,7 @@ def test_extract_arxiv_metadata_from_config_found():
                         "title": "Deep Residual Learning",
                         "authors": "Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun",
                         "year": "2015",
-                        "url": "https://arxiv.org/abs/1512.03385",
+                        "source": "https://arxiv.org/abs/1512.03385",
                     }
                 }
             }
@@ -380,7 +380,7 @@ def test_extract_arxiv_metadata_from_config_invalid_filename():
                         "title": "Deep Residual Learning",
                         "authors": "Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun",
                         "year": "2015",
-                        "url": "https://arxiv.org/abs/1512.03385",
+                        "source": "https://arxiv.org/abs/1512.03385",
                     }
                 }
             }

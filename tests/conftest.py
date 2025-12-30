@@ -71,7 +71,7 @@ def sample_paper_metadata():
         "abstract": "This is a test abstract for testing purposes.",
         "arxiv_id": "1234.56789",
         "year": 2023,
-        "url": "https://arxiv.org/abs/1234.56789",
+        "source": "https://arxiv.org/abs/1234.56789",
     }
 
 
@@ -288,7 +288,7 @@ def sample_papers_config():
                 {
                     "title": "Attention Is All You Need",
                     "arxiv_id": "1706.03762",
-                    "url": "https://arxiv.org/abs/1706.03762",
+                    "source": "https://arxiv.org/abs/1706.03762",
                 }
             ],
         }

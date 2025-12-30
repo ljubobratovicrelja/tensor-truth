@@ -365,7 +365,7 @@ def _get_arxiv_metadata_from_config(
         "title": item.get("title"),
         "authors": item.get("authors"),
         "year": item.get("year"),
-        "source_url": item.get("url"),
+        "source_url": item.get("source"),
         "arxiv_id": arxiv_id,
     }
 

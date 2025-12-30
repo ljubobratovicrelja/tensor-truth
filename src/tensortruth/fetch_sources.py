@@ -1018,7 +1018,7 @@ def add_paper_interactive(sources_config_path, library_docs_dir, args):
             paper_entry = {
                 "title": paper.title,
                 "arxiv_id": arxiv_id,
-                "url": f"https://arxiv.org/abs/{arxiv_id}",
+                "source": f"https://arxiv.org/abs/{arxiv_id}",
                 "authors": ", ".join([author.name for author in paper.authors]),
                 "year": str(paper.published.year),
             }
@@ -1038,7 +1038,7 @@ def add_paper_interactive(sources_config_path, library_docs_dir, args):
                 paper_entry = {
                     "title": title,
                     "arxiv_id": arxiv_id,
-                    "url": f"https://arxiv.org/abs/{arxiv_id}",
+                    "source": f"https://arxiv.org/abs/{arxiv_id}",
                     "authors": authors,
                     "year": year,
                 }
@@ -1534,7 +1534,7 @@ Environment Variables:
                         category_config["items"][arxiv_id] = {
                             "title": paper.title,
                             "arxiv_id": arxiv_id,
-                            "url": f"https://arxiv.org/abs/{arxiv_id}",
+                            "source": f"https://arxiv.org/abs/{arxiv_id}",
                             "authors": authors,
                             "year": year,
                         }
