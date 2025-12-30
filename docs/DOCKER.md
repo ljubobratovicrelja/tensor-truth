@@ -129,7 +129,12 @@ Access at **http://localhost:8080**
 
 ## Using CLI Tools (tensor-truth-docs, tensor-truth-build)
 
-The image includes `[docs]` extras, giving you access to documentation scraping and index building tools.
+The image includes `[docs]` extras, providing access to the full documentation pipeline:
+
+- **`tensor-truth-docs`** - Fetch documentation (libraries, papers, books) and convert to markdown
+- **`tensor-truth-build`** - Build vector indexes from the fetched documentation
+
+These tools allow you to create custom indexes beyond the pre-built ones that download automatically on first run.
 
 **Note**: Examples below use the Docker Hub image `ljubobratovicrelja/tensor-truth:latest`. If you built locally, replace with `tensor-truth:latest`.
 
@@ -182,14 +187,20 @@ docker run --rm --gpus all \
 
 When you restart the container (even the web app), your custom indexes are still there because they're stored on the host filesystem, not in the container.
 
-**Example workflow (using arXiv papers):**
+**Example workflow (adding arXiv papers):**
 
 ```bash
-# 1. Fetch arXiv papers by category and specific IDs
+# 1. Interactive mode (recommended) - guides you through the process
+docker run -it --rm --gpus all \
+  -v ~/.tensortruth:/root/.tensortruth \
+  ljubobratovicrelja/tensor-truth:latest \
+  tensor-truth-docs --add
+
+# OR use command-line mode with specific ArXiv IDs
 docker run --rm --gpus all \
   -v ~/.tensortruth:/root/.tensortruth \
   ljubobratovicrelja/tensor-truth:latest \
-  tensor-truth-docs --type papers --category foundation_models --ids 1706.03762 1810.04805
+  tensor-truth-docs --type papers --category foundation_models --arxiv-ids 1706.03762 1810.04805
 
 # 2. Build index for the category
 docker run --rm --gpus all \
@@ -201,9 +212,7 @@ docker run --rm --gpus all \
 docker restart tensor-truth
 ```
 
-**Note**: For library documentation (e.g., `pytorch_2.9`, `fastapi_0.115`), you need to first manually configure `~/.tensortruth/sources.json` using the repository's `config/sources.json` as a template. arXiv papers work out-of-the-box without manual configuration.
-
-For complete documentation on CLI tools, see [INDEXES.md](INDEXES.md).
+**For comprehensive guides** on adding libraries, papers, and books, configuring chunk sizes, and troubleshooting, see [INDEXES.md](INDEXES.md).
 
 ### Advanced: Skip Base Index Download
 
@@ -281,9 +290,23 @@ This process takes 1-3 minutes depending on network speed. Subsequent runs are i
 
 ## Environment Variables
 
+### Application Variables
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OLLAMA_HOST` | `http://host.docker.internal:11434` | URL for Ollama API endpoint |
+
+### CLI Tools Configuration
+
+These environment variables are used by `tensor-truth-docs` and `tensor-truth-build`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TENSOR_TRUTH_DOCS_DIR` | `~/.tensortruth/library_docs` | Source documentation directory |
+| `TENSOR_TRUTH_SOURCES_CONFIG` | `~/.tensortruth/sources.json` | Sources configuration file |
+| `TENSOR_TRUTH_INDEXES_DIR` | `~/.tensortruth/indexes` | Vector indexes output directory |
+
+See [INDEXES.md](INDEXES.md#-configuration-paths-environment-variables) for details on using these for custom deployments.
 
 ### Setting Environment Variables
 

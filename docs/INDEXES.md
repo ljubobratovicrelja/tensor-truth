@@ -6,8 +6,17 @@ This guide walks you through the process of building custom vector indexes for y
 
 Tensor-Truth uses a two-stage pipeline to create searchable indexes:
 
-1. **`tensor-truth-docs`** - Fetch and convert documentation sources to markdown
-2. **`tensor-truth-build`** - Build vector indexes from the markdown files
+1. **`tensor-truth-docs`** (implemented in [fetch_sources.py](../src/tensortruth/fetch_sources.py))
+   - Fetches and converts documentation sources to markdown
+   - Supports three source types: **libraries** (Sphinx/Doxygen), **papers** (ArXiv), and **books** (PDF textbooks)
+   - Features interactive `--add` mode for guided source addition
+   - Outputs to `~/.tensortruth/library_docs/` with type-based prefixes (`library_*`, `papers_*`, `books_*`)
+
+2. **`tensor-truth-build`** (implemented in [build_db.py](../src/tensortruth/build_db.py))
+   - Builds vector indexes from fetched documentation using hierarchical chunking
+   - Extracts metadata based on document type (library modules, paper citations, book chapters)
+   - Outputs to `~/.tensortruth/indexes/` with matching directory names
+   - Supports selective building with `--modules`, `--all`, `--books`, `--libraries`, or `--papers`
 
 All data is stored in `~/.tensortruth/` by default (or `%USERPROFILE%\.tensortruth` on Windows).
 
@@ -151,26 +160,9 @@ tensor-truth-docs --add --type paper
 # Skip type and provide category
 tensor-truth-docs --add --type paper --category computer_vision
 
-# Fully non-interactive
+# Fully non-interactive (provide all required info)
 tensor-truth-docs --add --type paper --category computer_vision --arxiv-ids 1506.02640
 ```
-
-### Migration from --ids
-
-The `--ids` flag has been removed. Use `--arxiv-ids` instead:
-
-```bash
-# Old (no longer works)
-tensor-truth-docs --type papers --category X --ids 1234.5678
-
-# New
-tensor-truth-docs --type papers --category X --arxiv-ids 1234.5678
-
-# Or use interactive mode
-tensor-truth-docs --add
-```
-
----
 
 ## Case Study: Adding a Custom Paper Category
 

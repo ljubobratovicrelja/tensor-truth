@@ -116,26 +116,34 @@ ollama pull qwen2.5-coder:7b
 
 ## Building Your Own Indexes
 
-Pre-built indexes cover common libraries, but you can create custom knowledge bases.
+Pre-built indexes cover common libraries, but you can create custom knowledge bases for your specific needs.
 
-**Scrape Documentation:**
+### Quick Start
+
+**Interactive Mode (Recommended):**
+```bash
+tensor-truth-docs --add    # Guided wizard for adding libraries, papers, or books
+```
+
+**Command-Line Mode:**
 ```bash
 tensor-truth-docs --list                              # Show all available sources
-tensor-truth-docs pytorch_2.9 numpy_2.3               # Scrape library docs
-tensor-truth-docs --type papers --category foundation_models   # Fetch paper category
-tensor-truth-docs --type papers --category foundation_models --ids 1706.03762 1810.04805  # Add specific papers
+tensor-truth-docs pytorch_2.9 numpy_2.3               # Fetch library documentation
+tensor-truth-docs --type papers --category foundation_models --arxiv-ids 1706.03762  # Add specific papers
+tensor-truth-build --modules foundation_models        # Build vector index
 ```
-
-**Build Vector Index:**
-```bash
-tensor-truth-build --modules foundation_models
-```
-
-See detailed documentation and examples in [INDEXES.md](docs/INDEXES.md).
 
 **Session PDFs:**
 
-Upload PDFs directly in the web UI to create per-session indexes. For now only standard PDF files are supported, but more formats may be added later.
+Upload PDFs directly in the web UI to create per-session indexes. Only standard PDF files are supported currently.
+
+### Detailed Documentation
+
+For comprehensive guides on building custom indexes, see [docs/INDEXES.md](docs/INDEXES.md), which covers:
+- Interactive source addition workflow
+- Adding libraries, papers, and books
+- Chunk size optimization strategies
+- Advanced workflows and troubleshooting
 
 ## License
 
