@@ -482,10 +482,18 @@ def generate_book_name(title: str, authors: list) -> str:
     # Get first author's last name
     author_slug = ""
     if authors:
-        # Try to extract last name (split on spaces, take last part)
+        # Extract surname: everything except the first name
+        # Handles: "Smith", "John Smith", "Ludwig van Beethoven", "Juan de la Cruz"
         first_author = authors[0]
         parts = first_author.split()
-        last_name = parts[-1] if parts else first_author
+
+        if len(parts) <= 1:
+            # Single name, use as-is
+            last_name = first_author
+        else:
+            # Take everything after the first name
+            last_name = " ".join(parts[1:])
+
         author_slug = "_" + sanitize_config_key(last_name)
 
     # Combine and truncate if too long
