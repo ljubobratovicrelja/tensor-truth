@@ -214,7 +214,7 @@ class TestAddLibraryInteractive:
                         mock_detect_css.return_value = "div[role='main']"
 
                         # Mock user inputs: URL, accept inv, accept selector,
-                        # name, display name, version, confirm, don't fetch
+                        # name, version, confirm, don't fetch
                         with patch(
                             "builtins.input",
                             side_effect=[
@@ -222,7 +222,6 @@ class TestAddLibraryInteractive:
                                 "y",  # Accept detected inventory URL
                                 "y",  # Accept detected CSS selector
                                 "test_lib",  # Name
-                                "Test Library",  # Display name
                                 "1.0",  # Version
                                 "y",  # Confirm
                                 "n",  # Don't fetch now
@@ -237,15 +236,15 @@ class TestAddLibraryInteractive:
                             # Verify library was added
                             config = json.loads(open(sources_config).read())
                             assert "test_lib" in config["libraries"]
-                            assert config["libraries"]["test_lib"]["type"] == "sphinx"
+                            lib = config["libraries"]["test_lib"]
+                            assert lib["type"] == "sphinx"
                             assert (
-                                config["libraries"]["test_lib"]["inventory_url"]
+                                lib["inventory_url"]
                                 == "https://example.com/objects.inv"
                             )
-                            assert (
-                                config["libraries"]["test_lib"]["selector"]
-                                == "div[role='main']"
-                            )
+                            assert lib["selector"] == "div[role='main']"
+                            # Schema validation: libraries don't have display_name
+                            assert "display_name" not in lib
 
     def test_add_doxygen_library(self, tmp_path, sources_config):
         """Test adding Doxygen library."""
@@ -266,7 +265,6 @@ class TestAddLibraryInteractive:
                     side_effect=[
                         "y",  # Accept detected CSS selector
                         "doxygen_lib",  # Name
-                        "Doxygen Library",  # Display name
                         "1.0",  # Version
                         "y",  # Confirm
                         "n",  # Don't fetch now
@@ -304,7 +302,6 @@ class TestAddLibraryInteractive:
                         "n",  # Don't use auto-detected selector
                         "article.content",  # Custom selector
                         "test_lib",  # Name
-                        "Test Library",  # Display name
                         "1.0",  # Version
                         "y",  # Confirm
                         "n",  # Don't fetch now
@@ -368,7 +365,6 @@ class TestAddLibraryInteractive:
                     side_effect=[
                         "y",  # Accept detected selector
                         "existing_lib",  # Duplicate name
-                        "",  # Display name (will default)
                         "",  # Version (will default)
                         "n",  # Don't overwrite
                     ],

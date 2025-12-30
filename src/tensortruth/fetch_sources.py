@@ -623,23 +623,15 @@ def add_library_interactive(sources_config_path, library_docs_dir, args):
         if overwrite != "y":
             return 1
 
-    display_name = input(
-        f"Enter display name (e.g., PyTorch, NumPy) [{lib_name.title()}]: "
-    ).strip()
-    if not display_name:
-        display_name = lib_name.title()
-
     version = input("Enter version (e.g., 2.0, stable) [stable]: ").strip()
     if not version:
         version = "stable"
 
-    lib_config["display_name"] = display_name
     lib_config["version"] = version
 
     # Step 5: Preview and confirm
     print("\n=== Library Configuration ===")
     print(f"Config Key:    {lib_name}")
-    print(f"Display Name:  {display_name}")
     print(f"Version:       {version}")
     print(f"Type:          {doc_type}")
     print(f"Doc Root:      {url}")
