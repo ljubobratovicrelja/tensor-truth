@@ -953,11 +953,6 @@ def add_paper_interactive(sources_config_path, library_docs_dir, args):
     category_config = None
     if category in config.get(SourceType.PAPERS, {}):
         cat = config[SourceType.PAPERS][category]
-        # Make sure it's not a book
-        if cat.get("type") == DocType.PDF_BOOK:
-            logger.error(f"'{category}' is a book category, not a paper category")
-            return 1
-
         category_config = cat
         print(f"\n✓ Using existing category: {cat.get('display_name', category)}")
         print(f"  Description: {cat.get('description', 'N/A')}")

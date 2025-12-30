@@ -258,32 +258,6 @@ class TestAddPaperInteractive:
         # Should fail due to no valid IDs
         assert result == 1
 
-    def test_reject_book_category(self, tmp_path):
-        """Test that book categories are rejected for paper addition."""
-
-        # Create config with book category
-        config_file = tmp_path / "sources.json"
-        initial = {
-            "libraries": {},
-            "papers": {
-                "book_category": {
-                    "type": "pdf_book",
-                    "title": "Some Book",
-                }
-            },
-            "books": {},
-        }
-        config_file.write_text(json.dumps(initial, indent=2))
-
-        args = MagicMock()
-        args.category = "book_category"
-        args.arxiv_ids = ["1706.03762"]
-
-        result = add_paper_interactive(str(config_file), str(tmp_path), args)
-
-        # Should reject book category
-        assert result == 1
-
 
 @pytest.mark.integration
 class TestInteractiveAdd:
