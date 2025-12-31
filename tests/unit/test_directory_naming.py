@@ -41,7 +41,7 @@ class TestLibraryDirectoryNaming:
         Example: 'library_pytorch_2.9' NOT 'pytorch_2.9_2.9'
         """
         # Import here to avoid module load issues
-        from tensortruth.fetch_sources import scrape_library
+        from tensortruth.scrapers.library import scrape_library
 
         output_base_dir = tmp_path / "library_docs"
         output_base_dir.mkdir()
@@ -55,7 +55,7 @@ class TestLibraryDirectoryNaming:
         }
 
         # Mock network calls
-        with patch("tensortruth.fetch_sources.fetch_inventory", return_value=[]):
+        with patch("tensortruth.scrapers.library.fetch_inventory", return_value=[]):
             scrape_library(
                 library_name="pytorch_2.9",
                 config=library_config,
@@ -77,7 +77,7 @@ class TestLibraryDirectoryNaming:
         Bug: Current code creates 'pytorch_2.9_2.9' when library_name='pytorch_2.9'
         and config['version']='2.9'
         """
-        from tensortruth.fetch_sources import scrape_library
+        from tensortruth.scrapers.library import scrape_library
 
         output_base_dir = tmp_path / "library_docs"
         output_base_dir.mkdir()
@@ -88,7 +88,7 @@ class TestLibraryDirectoryNaming:
             "doc_root": "https://pytorch.org/docs/stable/",
         }
 
-        with patch("tensortruth.fetch_sources.fetch_inventory", return_value=[]):
+        with patch("tensortruth.scrapers.library.fetch_inventory", return_value=[]):
             scrape_library(
                 library_name="pytorch_2.9",
                 config=library_config,

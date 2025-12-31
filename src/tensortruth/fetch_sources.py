@@ -6,17 +6,12 @@ Handles scraping of library documentation (Sphinx/Doxygen) and ArXiv papers.
 import argparse
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor
-
-from tqdm import tqdm
 
 from .cli_paths import get_library_docs_dir, get_sources_config_path
 from .core.types import DocType, SourceType
+from .scrapers import scrape_library
 from .scrapers.arxiv import fetch_arxiv_paper, fetch_paper_category
 from .scrapers.book import fetch_book, fetch_book_category
-from .scrapers.common import process_url
-from .scrapers.doxygen import fetch_doxygen_urls
-from .scrapers.sphinx import fetch_inventory
 from .utils.interactive import interactive_add
 from .utils.sources_config import list_sources, load_user_sources, update_sources_config
 from .utils.validation import validate_sources
@@ -26,90 +21,6 @@ MAX_WORKERS = 20  # Safe number for parallel downloads
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-def scrape_library(
-    library_name,
-    config,
-    output_base_dir,
-    max_workers=MAX_WORKERS,
-    output_format="markdown",
-    enable_cleanup=False,
-    min_size=0,
-):
-    """Scrape documentation for a single library.
-
-    Args:
-        library_name: Name of the library (e.g., "pytorch_2.9")
-        config: Library configuration dictionary
-        output_base_dir: Base directory for output (e.g., ~/.tensortruth/library_docs)
-        max_workers: Number of parallel workers
-        output_format: Output format ('markdown' or 'html')
-        enable_cleanup: Enable aggressive HTML cleanup
-        min_size: Minimum file size in characters
-    """
-    # Create directory with 'library_' prefix to match build_db expectations
-    # library_name already includes version (e.g., "pytorch_2.9")
-    output_dir = os.path.join(output_base_dir, f"library_{library_name}")
-
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"Scraping: {library_name} v{config['version']}")
-    logger.info(f"Doc Type: {config.get('type', 'sphinx')}")
-    logger.info(f"Output Format: {output_format}")
-    logger.info(f"Cleanup: {'enabled' if enable_cleanup else 'disabled'}")
-    if min_size > 0:
-        logger.info(f"Min Size Filter: {min_size} characters")
-    logger.info(f"Output: {output_dir}")
-    logger.info(f"{'=' * 60}\n")
-
-    # 1. Get the list of URLs based on documentation type
-    doc_type = config.get(
-        "type", "sphinx"
-    )  # Changed from doc_type to type for consistency
-
-    if doc_type == "doxygen":
-        urls = fetch_doxygen_urls(config)
-    elif doc_type == "sphinx":
-        urls = fetch_inventory(config)
-    else:
-        logger.error(f"Unknown doc_type: {doc_type}. Supported: 'sphinx', 'doxygen'")
-        return
-
-    if not urls:
-        logger.warning(f"No URLs found for {library_name}")
-        return
-
-    # 2. Download
-    logger.info(f"Downloading {len(urls)} pages...")
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Use tqdm for progress bar
-        results = list(
-            tqdm(
-                executor.map(
-                    lambda u: process_url(
-                        u, config, output_dir, output_format, enable_cleanup, min_size
-                    ),
-                    urls,
-                ),
-                total=len(urls),
-                desc=library_name,
-            )
-        )
-
-    successful = sum(1 for r in results if r is True)
-    skipped = sum(1 for r in results if r == "skipped")
-    failed = len(results) - successful - skipped
-
-    logger.info(f"\n✅ Successfully downloaded {successful}/{len(urls)} pages")
-    if skipped > 0:
-        logger.info(f"⏭️  Skipped {skipped} files (below {min_size} chars)")
-    if failed > 0:
-        logger.warning(f"Failed {failed} files")
-    logger.info(f"{'=' * 60}\n")
 
 
 def main():
