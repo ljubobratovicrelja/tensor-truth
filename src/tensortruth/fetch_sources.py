@@ -7,11 +7,11 @@ import argparse
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
-from enum import Enum
 
 from tqdm import tqdm
 
 from .cli_paths import get_library_docs_dir, get_sources_config_path
+from .core.types import DocType, SourceType
 from .scrapers.arxiv import fetch_arxiv_paper, fetch_paper_category
 from .scrapers.book import fetch_book, fetch_book_category
 from .scrapers.common import process_url
@@ -20,28 +20,6 @@ from .scrapers.sphinx import fetch_inventory
 from .utils.interactive import interactive_add
 from .utils.sources_config import list_sources, load_user_sources, update_sources_config
 from .utils.validation import validate_sources
-
-# ============================================================================
-# Configuration Constants
-# ============================================================================
-
-
-class SourceType(str, Enum):
-    """Source configuration section names."""
-
-    LIBRARIES = "libraries"
-    PAPERS = "papers"
-    BOOKS = "books"
-
-
-class DocType(str, Enum):
-    """Documentation types."""
-
-    SPHINX = "sphinx"
-    DOXYGEN = "doxygen"
-    ARXIV = "arxiv"
-    PDF_BOOK = "pdf_book"
-
 
 # --- CONFIGURATION ---
 MAX_WORKERS = 20  # Safe number for parallel downloads

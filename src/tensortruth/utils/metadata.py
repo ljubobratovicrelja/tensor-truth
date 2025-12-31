@@ -12,22 +12,15 @@ Extraction strategy:
 import json
 import logging
 import re
-from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import requests
 from llama_index.core.schema import Document
 
+from ..core.types import DocumentType
+
 logger = logging.getLogger(__name__)
-
-
-class DocumentType(Enum):
-    """Document types, as groups of sources defined in sources.json."""
-
-    BOOK = "book"
-    LIBRARY = "library"
-    PAPERS = "papers"
 
 
 # ============================================================================

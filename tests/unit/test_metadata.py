@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 from llama_index.core.schema import Document
 
+from tensortruth.core.types import DocumentType
 from tensortruth.utils.metadata import (
     _parse_llm_json_response,
     extract_arxiv_metadata_from_config,
@@ -279,7 +280,6 @@ def test_format_authors_list_input():
 def test_get_document_type_from_config_library():
     """Test document type detection for libraries."""
     sources_config = {"libraries": {"pytorch": {"type": "sphinx", "version": "2.9"}}}
-    from tensortruth.utils.metadata import DocumentType
 
     assert (
         get_document_type_from_config("pytorch", sources_config) == DocumentType.LIBRARY
@@ -297,7 +297,6 @@ def test_get_document_type_from_config_library_with_version():
 def test_get_document_type_from_config_paper_arxiv():
     """Test document type for ArXiv papers."""
     sources_config = {"papers": {"dl_foundations": {"type": "arxiv", "items": {}}}}
-    from tensortruth.utils.metadata import DocumentType
 
     assert (
         get_document_type_from_config("dl_foundations", sources_config)
@@ -308,7 +307,6 @@ def test_get_document_type_from_config_paper_arxiv():
 def test_get_document_type_from_config_book():
     """Test document type for books."""
     sources_config = {"books": {"book_linear_algebra_cherney": {"type": "pdf_book"}}}
-    from tensortruth.utils.metadata import DocumentType
 
     assert (
         get_document_type_from_config("book_linear_algebra_cherney", sources_config)

@@ -9,29 +9,13 @@ import os
 import re
 import tempfile
 
+from ..core.types import DocType, SourceType
 from .detection import detect_css_selector, detect_doc_type, detect_objects_inv
 from .pdf import extract_pdf_metadata, generate_book_name
 from .sources_config import load_user_sources, update_sources_config
 from .validation import prompt_for_url, sanitize_config_key, validate_arxiv_id
 
 logger = logging.getLogger(__name__)
-
-
-class SourceType:
-    """Source configuration section names."""
-
-    LIBRARIES = "libraries"
-    PAPERS = "papers"
-    BOOKS = "books"
-
-
-class DocType:
-    """Documentation types."""
-
-    SPHINX = "sphinx"
-    DOXYGEN = "doxygen"
-    ARXIV = "arxiv"
-    PDF_BOOK = "pdf_book"
 
 
 def add_library_interactive(sources_config_path, library_docs_dir, args):

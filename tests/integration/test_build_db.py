@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tensortruth.build_db import build_module, extract_metadata
 from tensortruth.build_db import main as build_main
-from tensortruth.utils.metadata import DocumentType
+from tensortruth.core.types import DocumentType
+from tensortruth.indexing.builder import build_module, extract_metadata
 
 
 @pytest.mark.integration
@@ -81,8 +81,8 @@ class TestBuildModule:
 
         return str(docs_dir)
 
-    @patch("tensortruth.build_db.get_embed_model")
-    @patch("tensortruth.build_db.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_build_library_module(
         self,
         mock_index,
@@ -111,8 +111,8 @@ class TestBuildModule:
         # Verify VectorStoreIndex was called
         mock_index.assert_called_once()
 
-    @patch("tensortruth.build_db.get_embed_model")
-    @patch("tensortruth.build_db.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_build_papers_module(
         self,
         mock_index,
@@ -136,8 +136,8 @@ class TestBuildModule:
         # Verify papers index was created
         assert Path(indexes_dir, "papers_test_papers").exists()
 
-    @patch("tensortruth.build_db.get_embed_model")
-    @patch("tensortruth.build_db.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_build_book_module(
         self,
         mock_index,
@@ -177,8 +177,8 @@ class TestBuildModule:
         # Should log error, not raise
         assert "missing" in caplog.text.lower()
 
-    @patch("tensortruth.build_db.get_embed_model")
-    @patch("tensortruth.build_db.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_rebuild_replaces_old_index(
         self,
         mock_index,
@@ -272,7 +272,7 @@ class TestExtractMetadata:
             },
         }
 
-    @patch("tensortruth.build_db.extract_library_module_metadata")
+    @patch("tensortruth.indexing.builder.extract_library_module_metadata")
     def test_library_metadata_extraction(
         self, mock_extract, mock_document, sources_config
     ):
@@ -299,7 +299,7 @@ class TestExtractMetadata:
         # Verify metadata was added to document
         assert "title" in mock_document.metadata
 
-    @patch("tensortruth.build_db.extract_arxiv_metadata_from_config")
+    @patch("tensortruth.indexing.builder.extract_arxiv_metadata_from_config")
     def test_papers_metadata_extraction(
         self, mock_extract, mock_document, sources_config
     ):
@@ -321,8 +321,8 @@ class TestExtractMetadata:
 
         mock_extract.assert_called_once()
 
-    @patch("tensortruth.build_db.extract_book_chapter_metadata")
-    @patch("tensortruth.build_db.get_book_metadata_from_config")
+    @patch("tensortruth.indexing.builder.extract_book_chapter_metadata")
+    @patch("tensortruth.indexing.builder.get_book_metadata_from_config")
     def test_book_metadata_extraction(
         self, mock_get_book, mock_extract, mock_document, sources_config
     ):
@@ -390,8 +390,8 @@ class TestBuildMainCLI:
             "indexes": str(indexes_dir),
         }
 
-    @patch("tensortruth.build_db.get_embed_model")
-    @patch("tensortruth.build_db.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_build_all_flag(self, mock_index, mock_embed, setup_build_env):
         """Test --all flag builds all modules."""
 
@@ -415,8 +415,8 @@ class TestBuildMainCLI:
         # Should succeed
         assert result == 0
 
-    @patch("tensortruth.build_db.get_embed_model")
-    @patch("tensortruth.build_db.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_build_specific_modules(self, mock_index, mock_embed, setup_build_env):
         """Test building specific modules."""
 

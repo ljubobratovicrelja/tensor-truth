@@ -8,6 +8,7 @@ from .ollama import (
     stop_model,
 )
 from .system import get_max_memory_gb
+from .types import DocType, DocumentType, SourceType
 
 __all__ = [
     "get_available_models",
@@ -16,4 +17,7 @@ __all__ = [
     "get_running_models_detailed",
     "stop_model",
     "get_max_memory_gb",
+    "DocType",
+    "DocumentType",
+    "SourceType",
 ]
