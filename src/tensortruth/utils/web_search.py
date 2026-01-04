@@ -5,6 +5,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 
 import aiohttp
+import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 from llama_index.llms.ollama import Ollama
@@ -388,6 +389,78 @@ async def fetch_pages_parallel(
     return successful, all_attempts
 
 
+async def get_model_context_window(
+    model_name: str, ollama_url: str, default: int = 8192
+) -> int:
+    """
+    Get the context window size for the specified Ollama model.
+
+    Args:
+        model_name: Name of the Ollama model
+        ollama_url: Ollama API base URL
+        default: Default context window if retrieval fails
+
+    Returns:
+        Context window size in tokens
+    """
+    try:
+        # Query Ollama API for model info
+        response = requests.post(
+            f"{ollama_url}/api/show",
+            json={"name": model_name},
+            timeout=5,
+        )
+
+        if response.status_code == 200:
+            model_info = response.json()
+            # Try to get num_ctx from model parameters
+            if "parameters" in model_info:
+                params_str = model_info.get("parameters", "")
+                # Parse parameters string for num_ctx
+                for line in params_str.split("\n"):
+                    if "num_ctx" in line.lower():
+                        try:
+                            # Extract number from line like "num_ctx 8192"
+                            parts = line.split()
+                            for i, part in enumerate(parts):
+                                if "num_ctx" in part.lower() and i + 1 < len(parts):
+                                    ctx_size = int(parts[i + 1])
+                                    logger.info(
+                                        f"Model {model_name} context window: {ctx_size}"
+                                    )
+                                    return ctx_size
+                        except (ValueError, IndexError):
+                            pass
+
+            # Try modelfile for num_ctx
+            if "modelfile" in model_info:
+                modelfile = model_info.get("modelfile", "")
+                for line in modelfile.split("\n"):
+                    if "num_ctx" in line.lower():
+                        try:
+                            parts = line.split()
+                            for i, part in enumerate(parts):
+                                if part.isdigit():
+                                    ctx_size = int(part)
+                                    logger.info(
+                                        f"Model {model_name} context window: {ctx_size}"
+                                    )
+                                    return ctx_size
+                        except ValueError:
+                            pass
+
+        logger.info(
+            f"Could not determine context window for {model_name}, using default: {default}"
+        )
+        return default
+
+    except Exception as e:
+        logger.warning(
+            f"Failed to get model context window: {e}, using default: {default}"
+        )
+        return default
+
+
 async def summarize_with_llm(
     query: str,
     pages: List[Tuple[str, str, str]],
@@ -414,11 +487,30 @@ async def summarize_with_llm(
     if not pages:
         return "❌ **No pages could be fetched.** Please try a different query."
 
+    # Get model's actual context window
+    context_window = await get_model_context_window(model_name, ollama_url)
+
+    # Calculate max chars based on context window
+    # Use ~60% of context for input (leaving room for prompt structure and output)
+    # Rough estimate: 1 token ≈ 4 chars
+    max_input_tokens = int(context_window * 0.6)
+    max_total_chars = max_input_tokens * 4
+    max_per_page = min(
+        max_total_chars // len(pages), 4000
+    )  # Distribute across pages, cap at 4k per page
+
+    logger.info(
+        (
+            f"Using context window: {context_window}, "
+            f"max_total_chars: {max_total_chars}, "
+            f"max_per_page: {max_per_page}"
+        )
+    )
+
     # Combine markdown content
     combined = []
     for url, title, content in pages:
-        # Truncate individual pages aggressively to reduce memory
-        max_per_page = 1500  # Reduced from 3000
+        # Truncate individual pages based on dynamic limit
         truncated = content[:max_per_page]
         if len(content) > max_per_page:
             truncated += "\n\n[Content truncated...]"
@@ -427,40 +519,49 @@ async def summarize_with_llm(
 
     combined_text = "\n".join(combined)
 
-    # Truncate total to prevent token overflow and KV cache explosion
-    max_total_chars = 6000  # Reduced from 12000 (~1.5-2K tokens)
+    # Truncate total to prevent token overflow
     if len(combined_text) > max_total_chars:
         combined_text = combined_text[:max_total_chars]
         combined_text += "\n\n[Additional content truncated for length...]"
 
-    # Build prompt - keep it concise to reduce memory usage
+    # Calculate appropriate response length based on content
+    # Use ~40% of context window for output
+    max_output_tokens = int(context_window * 0.4)
+    target_words = max_output_tokens  # Rough estimate: 1 token ≈ 1 word
+
+    # Build prompt with dynamic length guidance
     prompt = f"""You are a research assistant. User asked: "{query}"
 
-Web search results (truncated):
+Web search results:
 {combined_text}
 
-Provide a concise summary (200-300 words) answering the question.
+Provide a comprehensive, detailed summary answering the question. \
+Use approximately {target_words} words or more if needed to thoroughly \
+cover all important information from the sources.
 
-Format:
+Structure your response as follows:
+
 ### Summary
-[2-3 sentences overview]
+[Provide a thorough overview with key insights]
 
-### Key Findings
-- Point 1 [URL if relevant]
-- Point 2 [URL if relevant]
+### Detailed Findings
+[Organize information by topic or importance. Include relevant details, \
+examples, and cite sources with URLs when appropriate]
 
-Summary:"""
+### Key Takeaways
+[List the most important points to remember]
+
+Begin your response:"""
 
     try:
         # Create Ollama LLM (reuses already-loaded model in VRAM)
-        # Use smaller context to prevent KV cache explosion
         llm = Ollama(
             model=model_name,
             base_url=ollama_url,
             request_timeout=120.0,
             temperature=0.3,  # Low temperature for factual summarization
-            context_window=8192,  # Limit context to prevent memory explosion
-            num_ctx=8192,  # Ollama-specific parameter
+            context_window=context_window,
+            num_ctx=context_window,  # Ollama-specific parameter
         )
 
         # Generate summary
