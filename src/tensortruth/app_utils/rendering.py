@@ -26,6 +26,27 @@ def render_thinking(thinking_text: str, placeholder=None):
         st.markdown(html_content, unsafe_allow_html=True)
 
 
+def render_web_search_progress(progress_text: str, placeholder=None):
+    """Render web search progress with consistent formatting.
+
+    Args:
+        progress_text: The progress updates to display
+        placeholder: Optional Streamlit placeholder to render into (uses st.markdown if None)
+    """
+    html_content = f"""<div class="web-search-progress">
+
+**🔍 Web Search Progress:**
+
+{progress_text}
+
+</div>"""
+
+    if placeholder:
+        placeholder.markdown(html_content, unsafe_allow_html=True)
+    else:
+        st.markdown(html_content, unsafe_allow_html=True)
+
+
 def get_doc_type_icon(doc_type: str) -> str:
     """Get icon emoji for document type.
 

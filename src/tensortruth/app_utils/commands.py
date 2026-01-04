@@ -425,6 +425,75 @@ class DeviceCommand(Command):
             return True, response, update_llm_device
 
 
+class WebSearchCommand(Command):
+    """Command to search the web and get AI-generated summary."""
+
+    def __init__(self):
+        super().__init__(
+            name="websearch",
+            aliases=["web"],
+            usage="/websearch <query> - Search the web and get a summary",
+        )
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        if not args:
+            return True, "⚠️ Usage: `/search <query>`", None
+
+        query = " ".join(args)
+
+        # Import here to avoid circular deps
+        from tensortruth.core.ollama import get_ollama_url
+        from tensortruth.utils.web_search import web_search
+
+        try:
+            # Import rendering utilities
+            from tensortruth.app_utils.rendering import render_web_search_progress
+
+            # Use session's current model (reuses VRAM)
+            model_name = session["params"]["model"]
+            ollama_url = get_ollama_url()
+
+            # Get config (or use defaults)
+            max_results = session["params"].get("web_search_max_results", 5)
+            max_pages = session["params"].get("web_search_pages_to_fetch", 3)
+
+            # Create progress placeholder
+            progress_placeholder = st.empty()
+            progress_updates = []
+
+            def update_progress(message: str):
+                """Callback to update progress display."""
+                progress_updates.append(message)
+                render_web_search_progress(
+                    "\n\n".join(progress_updates), placeholder=progress_placeholder
+                )
+
+            # Execute search with real-time progress updates
+            response = web_search(
+                query=query,
+                model_name=model_name,
+                ollama_url=ollama_url,
+                max_results=max_results,
+                max_pages=max_pages,
+                progress_callback=update_progress,
+            )
+
+            # Clear progress display after completion
+            progress_placeholder.empty()
+
+            return True, response, None
+
+        except Exception as e:
+            error_msg = (
+                f"❌ **Web search failed:** {str(e)}\n\n"
+                f"This could be due to network issues, rate limiting, "
+                f"or unavailable web resources."
+            )
+            return True, error_msg, None
+
+
 class CommandRegistry:
     """Registry for managing and executing commands."""
 
@@ -454,6 +523,7 @@ class CommandRegistry:
             "- **/device rag <cpu|cuda|mps>** - Move RAG pipeline to specific hardware",
             "- **/device llm <cpu|gpu>** - Move LLM to specific hardware",
             "- **/conf <warning> [hard]** - Set confidence warning and optional hard cutoff",
+            "- **/search <query>** / **/web <query>** - Search the web and get AI summary",
             "- **/help** - Show command help",
         ]
         return "\n".join(lines)
@@ -468,6 +538,7 @@ _registry.register(UnloadCommand())
 _registry.register(ReloadCommand())
 _registry.register(ConfCommand())
 _registry.register(DeviceCommand())
+_registry.register(WebSearchCommand())
 _registry.register(HelpCommand(_registry))
 
 

@@ -136,6 +136,7 @@ class TestHelpCommand:
         assert "/reload" in response
         assert "/device" in response
         assert "/conf" in response
+        assert "/search" in response or "/web" in response
 
 
 # ============================================================================
@@ -571,6 +572,168 @@ class TestDeviceCommand:
         assert is_cmd is True
         assert state_modifier is None
         assert "Usage" in response
+
+
+# ============================================================================
+# Tests for /search command
+# ============================================================================
+
+
+@pytest.mark.unit
+class TestWebSearchCommand:
+    """Tests for /search and /web commands."""
+
+    @patch("tensortruth.utils.web_search.web_search")
+    @patch("tensortruth.core.ollama.get_ollama_url")
+    def test_search_command_basic(
+        self, mock_get_url, mock_web_search, base_session, available_modules
+    ):
+        """Test /search command with basic query."""
+        mock_get_url.return_value = "http://localhost:11434"
+        mock_web_search.return_value = (
+            '## Web Search: "PyTorch features"\n\n### Summary\nTest summary\n\n'
+            "### Sources\n1. [Test](https://example.com)"
+        )
+
+        is_cmd, response, state_modifier = process_command(
+            "/search PyTorch features", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        assert state_modifier is None
+        assert "Web Search" in response
+        assert "Test summary" in response
+        assert "Sources" in response
+        mock_web_search.assert_called_once()
+
+        # Verify it uses session's model
+        call_kwargs = mock_web_search.call_args[1]
+        assert call_kwargs["model_name"] == "deepseek-r1:8b"
+
+    @patch("tensortruth.utils.web_search.web_search")
+    @patch("tensortruth.core.ollama.get_ollama_url")
+    def test_search_web_alias(
+        self, mock_get_url, mock_web_search, base_session, available_modules
+    ):
+        """Test /web alias for /search command."""
+        mock_get_url.return_value = "http://localhost:11434"
+        mock_web_search.return_value = "## Web Search Results"
+
+        is_cmd, response, state_modifier = process_command(
+            "/web test query", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        assert "Web Search" in response
+        mock_web_search.assert_called_once()
+
+    def test_search_no_args(self, base_session, available_modules):
+        """Test /search without arguments."""
+        is_cmd, response, state_modifier = process_command(
+            "/search", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        assert state_modifier is None
+        assert "Usage" in response
+        assert "/search <query>" in response
+
+    @patch("tensortruth.utils.web_search.web_search")
+    @patch("tensortruth.core.ollama.get_ollama_url")
+    def test_search_multi_word_query(
+        self, mock_get_url, mock_web_search, base_session, available_modules
+    ):
+        """Test /search with multi-word query."""
+        mock_get_url.return_value = "http://localhost:11434"
+        mock_web_search.return_value = "## Results"
+
+        is_cmd, response, state_modifier = process_command(
+            "/search how to use PyTorch 2.9", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        # Verify query is properly joined
+        call_kwargs = mock_web_search.call_args[1]
+        assert call_kwargs["query"] == "how to use PyTorch 2.9"
+
+    @patch("tensortruth.utils.web_search.web_search")
+    @patch("tensortruth.core.ollama.get_ollama_url")
+    def test_search_uses_session_config(
+        self, mock_get_url, mock_web_search, base_session, available_modules
+    ):
+        """Test /search uses session configuration parameters."""
+        mock_get_url.return_value = "http://localhost:11434"
+        mock_web_search.return_value = "## Results"
+
+        # Add web search config to session
+        base_session["params"]["web_search_max_results"] = 10
+        base_session["params"]["web_search_pages_to_fetch"] = 7
+
+        is_cmd, response, state_modifier = process_command(
+            "/search test", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        call_kwargs = mock_web_search.call_args[1]
+        assert call_kwargs["max_results"] == 10
+        assert call_kwargs["max_pages"] == 7
+
+    @patch("tensortruth.utils.web_search.web_search")
+    @patch("tensortruth.core.ollama.get_ollama_url")
+    def test_search_uses_defaults_when_no_config(
+        self, mock_get_url, mock_web_search, base_session, available_modules
+    ):
+        """Test /search uses default values when not in session config."""
+        mock_get_url.return_value = "http://localhost:11434"
+        mock_web_search.return_value = "## Results"
+
+        is_cmd, response, state_modifier = process_command(
+            "/search test", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        call_kwargs = mock_web_search.call_args[1]
+        assert call_kwargs["max_results"] == 5  # Default
+        assert call_kwargs["max_pages"] == 3  # Default (reduced for memory)
+
+    @patch("tensortruth.utils.web_search.web_search")
+    @patch("tensortruth.core.ollama.get_ollama_url")
+    def test_search_handles_error(
+        self, mock_get_url, mock_web_search, base_session, available_modules
+    ):
+        """Test /search handles errors gracefully."""
+        mock_get_url.return_value = "http://localhost:11434"
+        mock_web_search.side_effect = Exception("Network error")
+
+        is_cmd, response, state_modifier = process_command(
+            "/search test", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        assert state_modifier is None
+        assert "Web search failed" in response
+        assert "Network error" in response
+
+    @patch("tensortruth.utils.web_search.web_search")
+    @patch("tensortruth.core.ollama.get_ollama_url")
+    def test_search_reuses_session_model(
+        self, mock_get_url, mock_web_search, base_session, available_modules
+    ):
+        """Test /search uses the current session model (reuses VRAM)."""
+        mock_get_url.return_value = "http://localhost:11434"
+        mock_web_search.return_value = "## Results"
+
+        # Change model in session
+        base_session["params"]["model"] = "llama2:7b"
+
+        is_cmd, response, state_modifier = process_command(
+            "/search test", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        call_kwargs = mock_web_search.call_args[1]
+        assert call_kwargs["model_name"] == "llama2:7b"
+        assert call_kwargs["ollama_url"] == "http://localhost:11434"
 
 
 # ============================================================================

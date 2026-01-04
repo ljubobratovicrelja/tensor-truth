@@ -428,3 +428,22 @@ hr {
     font-size: 0.85rem !important;
     line-height: 1.4 !important;
 }
+
+/* --- Web Search Progress Content --- */
+.web-search-progress {
+    font-size: 0.85rem !important;
+    line-height: 1.4 !important;
+    color: var(--text-secondary) !important;
+    background-color: #FFF8E1 !important; /* Light amber/yellow background */
+    border-left: 4px solid #FFA726 !important; /* Orange accent border */
+    border-radius: 6px !important;
+    padding: 1rem !important;
+    margin: 0.5rem 0 !important;
+}
+
+.web-search-progress p,
+.web-search-progress li,
+.web-search-progress span {
+    font-size: 0.85rem !important;
+    line-height: 1.4 !important;
+}
