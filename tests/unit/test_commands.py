@@ -696,8 +696,8 @@ class TestWebSearchCommand:
 
         assert is_cmd is False
         call_kwargs = mock_web_search.call_args[1]
-        assert call_kwargs["max_results"] == 5  # Default
-        assert call_kwargs["max_pages"] == 3  # Default (reduced for memory)
+        assert call_kwargs["max_results"] == 10  # Default
+        assert call_kwargs["max_pages"] == 5  # Default
 
     @patch("tensortruth.utils.web_search.web_search")
     @patch("tensortruth.core.ollama.get_ollama_url")

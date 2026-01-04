@@ -17,6 +17,7 @@ from tensortruth.core.ollama import check_thinking_support
 from . import arxiv_handler  # noqa: F401
 from . import github_handler  # noqa: F401
 from . import wikipedia_handler  # noqa: F401
+from . import youtube_handler  # noqa: F401
 from .domain_handlers import get_handler_for_url
 
 logger = logging.getLogger(__name__)
