@@ -10,6 +10,8 @@ from ddgs import DDGS
 from llama_index.llms.ollama import Ollama
 from markdownify import markdownify as md
 
+from .domain_handlers import get_handler_for_url
+
 logger = logging.getLogger(__name__)
 
 # Browser-like headers to bypass bot detection
@@ -65,7 +67,7 @@ async def search_duckduckgo(
                         query,
                         region="us-en",
                         safesearch="moderate",
-                        timelimit=None,  # All time (None), or 'd'/'w'/'m'/'y' for day/week/month/year
+                        timelimit=None,
                         max_results=max_results,
                     )
                 )
@@ -175,11 +177,13 @@ def clean_html_for_content(soup: BeautifulSoup) -> BeautifulSoup:
     return soup
 
 
-async def fetch_page_as_markdown(
+async def fetch_generic_html(
     url: str, session: aiohttp.ClientSession, timeout: int = 10
 ) -> Tuple[Optional[str], str, Optional[str]]:
     """
-    Fetch a web page and convert to clean markdown.
+    Fetch a generic HTML page and convert to markdown (fallback handler).
+
+    This is the default handler when no domain-specific handler matches.
 
     Args:
         url: URL to fetch
@@ -192,7 +196,7 @@ async def fetch_page_as_markdown(
         - status: "success", "http_error", "timeout", "parse_error", "too_short"
         - error_message: Human-readable error description or None
     """
-    logger.info(f"Fetching: {url}")
+    logger.info(f"Fetching generic HTML: {url}")
 
     try:
         timeout_obj = aiohttp.ClientTimeout(total=timeout)
@@ -257,6 +261,38 @@ async def fetch_page_as_markdown(
         error_msg = f"Parse error: {str(e)}"
         logger.warning(f"Error processing {url}: {e}")
         return None, "parse_error", error_msg
+
+
+async def fetch_page_as_markdown(
+    url: str, session: aiohttp.ClientSession, timeout: int = 10
+) -> Tuple[Optional[str], str, Optional[str]]:
+    """
+    Fetch a web page and convert to clean markdown.
+
+    Uses domain-specific handlers for special sites (Wikipedia, GitHub, etc.)
+    and falls back to generic HTML scraping for other sites.
+
+    Args:
+        url: URL to fetch
+        session: aiohttp ClientSession
+        timeout: Timeout in seconds
+
+    Returns:
+        Tuple of (markdown_content, status, error_message)
+        - markdown_content: Markdown string or None on failure
+        - status: "success", "http_error", "timeout", "parse_error", "too_short"
+        - error_message: Human-readable error description or None
+    """
+    logger.info(f"Fetching: {url}")
+
+    # Check for domain-specific handler
+    handler = get_handler_for_url(url)
+    if handler:
+        logger.info(f"Using {handler.name} handler for {url}")
+        return await handler.fetch(url, session, timeout)
+
+    # Fallback to generic HTML scraping
+    return await fetch_generic_html(url, session, timeout)
 
 
 async def fetch_pages_parallel(

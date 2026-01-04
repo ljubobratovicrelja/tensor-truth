@@ -431,7 +431,7 @@ class WebSearchCommand(Command):
     def __init__(self):
         super().__init__(
             name="websearch",
-            aliases=["web"],
+            aliases=["web", "search"],
             usage="/websearch <query> - Search the web and get a summary",
         )
 
