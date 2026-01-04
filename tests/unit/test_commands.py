@@ -599,7 +599,8 @@ class TestWebSearchCommand:
             "/search PyTorch features", base_session, available_modules
         )
 
-        assert is_cmd is True
+        # Websearch returns is_cmd=False to appear as assistant message
+        assert is_cmd is False
         assert state_modifier is None
         assert "Web Search" in response
         assert "Test summary" in response
@@ -623,7 +624,8 @@ class TestWebSearchCommand:
             "/web test query", base_session, available_modules
         )
 
-        assert is_cmd is True
+        # Websearch returns is_cmd=False to appear as assistant message
+        assert is_cmd is False
         assert "Web Search" in response
         mock_web_search.assert_called_once()
 
@@ -633,6 +635,7 @@ class TestWebSearchCommand:
             "/search", base_session, available_modules
         )
 
+        # Error case returns is_cmd=True (not added to history)
         assert is_cmd is True
         assert state_modifier is None
         assert "Usage" in response
@@ -651,7 +654,7 @@ class TestWebSearchCommand:
             "/search how to use PyTorch 2.9", base_session, available_modules
         )
 
-        assert is_cmd is True
+        assert is_cmd is False
         # Verify query is properly joined
         call_kwargs = mock_web_search.call_args[1]
         assert call_kwargs["query"] == "how to use PyTorch 2.9"
@@ -673,7 +676,7 @@ class TestWebSearchCommand:
             "/search test", base_session, available_modules
         )
 
-        assert is_cmd is True
+        assert is_cmd is False
         call_kwargs = mock_web_search.call_args[1]
         assert call_kwargs["max_results"] == 10
         assert call_kwargs["max_pages"] == 7
@@ -691,7 +694,7 @@ class TestWebSearchCommand:
             "/search test", base_session, available_modules
         )
 
-        assert is_cmd is True
+        assert is_cmd is False
         call_kwargs = mock_web_search.call_args[1]
         assert call_kwargs["max_results"] == 5  # Default
         assert call_kwargs["max_pages"] == 3  # Default (reduced for memory)
@@ -709,6 +712,7 @@ class TestWebSearchCommand:
             "/search test", base_session, available_modules
         )
 
+        # Errors return is_cmd=True (not added to history)
         assert is_cmd is True
         assert state_modifier is None
         assert "Web search failed" in response
@@ -730,7 +734,7 @@ class TestWebSearchCommand:
             "/search test", base_session, available_modules
         )
 
-        assert is_cmd is True
+        assert is_cmd is False
         call_kwargs = mock_web_search.call_args[1]
         assert call_kwargs["model_name"] == "llama2:7b"
         assert call_kwargs["ollama_url"] == "http://localhost:11434"

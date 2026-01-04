@@ -426,7 +426,11 @@ class DeviceCommand(Command):
 
 
 class WebSearchCommand(Command):
-    """Command to search the web and get AI-generated summary."""
+    """Command to search the web and get AI-generated summary.
+
+    Note: Returns is_cmd=False to make results appear as assistant messages
+    in chat history, ensuring they're included as context for follow-up questions.
+    """
 
     def __init__(self):
         super().__init__(
@@ -439,6 +443,7 @@ class WebSearchCommand(Command):
         self, args: List[str], session: dict, available_mods: List[str]
     ) -> CommandResult:
         if not args:
+            # Error case: still treated as command (not added to history)
             return True, "⚠️ Usage: `/search <query>`", None
 
         query = " ".join(args)
@@ -483,7 +488,9 @@ class WebSearchCommand(Command):
             # Clear progress display after completion
             progress_placeholder.empty()
 
-            return True, response, None
+            # Return is_cmd=False so websearch results appear as assistant
+            # messages, making them part of conversation history for context
+            return False, response, None
 
         except Exception as e:
             error_msg = (
@@ -491,6 +498,7 @@ class WebSearchCommand(Command):
                 f"This could be due to network issues, rate limiting, "
                 f"or unavailable web resources."
             )
+            # Errors still treated as commands (not added to history)
             return True, error_msg, None
 
 
