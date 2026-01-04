@@ -12,6 +12,7 @@ from llama_index.llms.ollama import Ollama
 from markdownify import markdownify as md
 
 # Import handlers to register them
+from . import arxiv_handler  # noqa: F401
 from . import github_handler  # noqa: F401
 from . import wikipedia_handler  # noqa: F401
 from .domain_handlers import get_handler_for_url
