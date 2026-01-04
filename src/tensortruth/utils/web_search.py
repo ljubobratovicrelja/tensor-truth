@@ -11,6 +11,8 @@ from ddgs import DDGS
 from llama_index.llms.ollama import Ollama
 from markdownify import markdownify as md
 
+from tensortruth.core.ollama import check_thinking_support
+
 # Import handlers to register them
 from . import arxiv_handler  # noqa: F401
 from . import github_handler  # noqa: F401
@@ -509,16 +511,23 @@ async def summarize_with_llm(
         )
     )
 
-    # Combine markdown content
+    # Build source list with numbered markdown links
+    sources_list = []
     combined = []
-    for url, title, content in pages:
+
+    for idx, (url, title, content) in enumerate(pages, 1):
+        # Add to sources list as markdown link
+        sources_list.append(f"{idx}. [{title}]({url})")
+
         # Truncate individual pages based on dynamic limit
         truncated = content[:max_per_page]
         if len(content) > max_per_page:
             truncated += "\n\n[Content truncated...]"
 
-        combined.append(f"## {title}\n**Source:** {url}\n\n{truncated}\n\n---\n")
+        # Format with source number and markdown link
+        combined.append(f"### Source {idx}: [{title}]({url})\n\n{truncated}\n\n---\n")
 
+    sources_text = "\n".join(sources_list)
     combined_text = "\n".join(combined)
 
     # Truncate total to prevent token overflow
@@ -534,28 +543,43 @@ async def summarize_with_llm(
     # Build prompt with dynamic length guidance
     prompt = f"""You are a research assistant. User asked: "{query}"
 
-Web search results:
+## Available Sources
+{sources_text}
+
+## Content from Sources
 {combined_text}
 
-Provide a comprehensive, detailed summary answering the question. \
-Use approximately {target_words} words or more if needed to thoroughly \
-cover all important information from the sources.
+CRITICAL CITATION RULES - READ CAREFULLY:
+1. **ALWAYS cite using markdown hyperlinks**, NEVER use plain [1] or [2] style
+2. **Correct citation format**: "According to [Source Title](url), the key point is..."
+3. **Example**: "The [YOLO algorithm](https://pjreddie.com/darknet/yolo/) \
+detects objects..."
+4. **WRONG**: "According to [1], the algorithm..." ❌
+5. **RIGHT**: "According to [YOLO Documentation]\
+(https://pjreddie.com/darknet/yolo/), the algorithm..." ✓
+6. **Preserve ALL existing hyperlinks** from the source content
+7. **Link technical terms** to their definitions when sources provide them
 
-Structure your response as follows:
+Provide a comprehensive summary ({target_words} words approx.) \
+answering the question.
 
 ### Summary
-[Provide a thorough overview with key insights]
+[Thorough overview with inline hyperlinked citations. Example: \
+"[Source 1]({pages[0][0]}) explains that..." or \
+"The main approach involves [technique name]({pages[0][0]})..."]
 
 ### Detailed Findings
-[Organize information by topic or importance. Include relevant details, \
-examples, and cite sources with URLs when appropriate]
+[Organize by topic. ALWAYS use hyperlinked citations like "[title](url)" - never bare [1] numbers. \
+Include relevant details and preserve all markdown links from sources.]
 
 ### Key Takeaways
-[List the most important points to remember]
+[Important points with inline hyperlinked sources where appropriate]
 
 Begin your response:"""
 
     try:
+        thinking_enabled = check_thinking_support(model_name)
+
         # Create Ollama LLM (reuses already-loaded model in VRAM)
         llm = Ollama(
             model=model_name,
@@ -564,6 +588,7 @@ Begin your response:"""
             temperature=0.3,  # Low temperature for factual summarization
             context_window=context_window,
             num_ctx=context_window,  # Ollama-specific parameter
+            thinking=thinking_enabled,
         )
 
         # Generate summary
