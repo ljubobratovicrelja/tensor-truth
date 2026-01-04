@@ -5,6 +5,31 @@ import streamlit as st
 from tensortruth import convert_latex_delimiters
 
 
+def _create_scrollable_box(
+    content: str, label: str, bg_color: str, border_color: str
+) -> str:
+    """Create HTML for a scrollable box with fixed height.
+
+    Args:
+        content: The content to display inside the box
+        label: The label/title for the box
+        bg_color: Background color (hex)
+        border_color: Border color (hex)
+
+    Returns:
+        HTML string with styled scrollable container
+    """
+    return f"""
+<div style="max-height: 200px; overflow-y: auto; overflow-x: hidden; \
+    padding: 0.75rem; margin: 0.5rem 0; background-color: {bg_color}; \
+        border-left: 3px solid {border_color}; border-radius: 4px;">
+<strong>{label}</strong>
+<div style="margin-top: 0.5rem;">
+{content}
+</div>
+</div>"""
+
+
 def render_thinking(thinking_text: str, placeholder=None):
     """Render thinking/reasoning content with consistent formatting.
 
@@ -12,13 +37,12 @@ def render_thinking(thinking_text: str, placeholder=None):
         thinking_text: The thinking content to display
         placeholder: Optional Streamlit placeholder to render into (uses st.markdown if None)
     """
-    html_content = f"""<div class="thinking-content">
-
-**🧠 Reasoning:**
-
-{convert_latex_delimiters(thinking_text)}
-
-</div>"""
+    html_content = _create_scrollable_box(
+        content=convert_latex_delimiters(thinking_text),
+        label="🧠 Reasoning:",
+        bg_color="#F0F4F8",
+        border_color="#082a48",
+    )
 
     if placeholder:
         placeholder.markdown(html_content, unsafe_allow_html=True)
@@ -33,13 +57,12 @@ def render_web_search_progress(progress_text: str, placeholder=None):
         progress_text: The progress updates to display
         placeholder: Optional Streamlit placeholder to render into (uses st.markdown if None)
     """
-    html_content = f"""<div class="web-search-progress">
-
-**🔍 Web Search Progress:**
-
-{progress_text}
-
-</div>"""
+    html_content = _create_scrollable_box(
+        content=progress_text,
+        label="🔍 Web Search Progress:",
+        bg_color="#FFF4E5",
+        border_color="#FF9800",
+    )
 
     if placeholder:
         placeholder.markdown(html_content, unsafe_allow_html=True)
