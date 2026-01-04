@@ -44,7 +44,7 @@ BROWSER_HEADERS = {
 
 
 async def search_duckduckgo(
-    query: str, max_results: int = 5, progress_callback=None
+    query: str, max_results: int = 10, progress_callback=None
 ) -> List[Dict[str, str]]:
     """
     Search DuckDuckGo and return top N results.
@@ -394,7 +394,7 @@ async def fetch_pages_parallel(
 
 
 async def get_model_context_window(
-    model_name: str, ollama_url: str, default: int = 8192
+    model_name: str, ollama_url: str, default: int = 16384
 ) -> int:
     """
     Get the context window size for the specified Ollama model.
@@ -471,6 +471,7 @@ async def summarize_with_llm(
     model_name: str,
     ollama_url: str,
     progress_callback=None,
+    context_window: Optional[int] = None,
 ) -> str:
     """
     Use Ollama LLM to summarize web search findings.
@@ -491,8 +492,17 @@ async def summarize_with_llm(
     if not pages:
         return "❌ **No pages could be fetched.** Please try a different query."
 
-    # Get model's actual context window
-    context_window = await get_model_context_window(model_name, ollama_url)
+    # Get model's actual context window (use provided or fetch from model)
+    if context_window is None:
+        context_window = await get_model_context_window(
+            model_name, ollama_url, default=16384
+        )
+    # If provided but still using default, warn
+    elif context_window == 8192:
+        logger.warning(
+            f"Using context_window={context_window}. "
+            f"Consider setting higher for web search (e.g., 16384)"
+        )
 
     # Calculate max chars based on context window
     # Use ~60% of context for input (leaving room for prompt structure and output)
@@ -607,9 +617,10 @@ async def web_search_async(
     query: str,
     model_name: str,
     ollama_url: str,
-    max_results: int = 5,
+    max_results: int = 10,
     max_pages: int = 5,
     progress_callback=None,
+    context_window: Optional[int] = None,
 ) -> str:
     """
     Complete web search pipeline: search → fetch → summarize.
@@ -618,9 +629,10 @@ async def web_search_async(
         query: Search query
         model_name: Ollama model name
         ollama_url: Ollama API base URL
-        max_results: Max search results to fetch
-        max_pages: Max pages to download and process
+        max_results: Max search results to fetch (default: 10)
+        max_pages: Max pages to download and process (default: 5)
         progress_callback: Optional callback for progress updates
+        context_window: Optional context window size. If None, fetches from model.
 
     Returns:
         Formatted markdown response for chat
@@ -661,7 +673,7 @@ async def web_search_async(
 
     # Step 3: LLM Summarization
     summary = await summarize_with_llm(
-        query, pages, model_name, ollama_url, progress_callback
+        query, pages, model_name, ollama_url, progress_callback, context_window
     )
 
     # Step 4: Format final response with ALL sources (successful and failed)
@@ -693,9 +705,10 @@ def web_search(
     query: str,
     model_name: str,
     ollama_url: str,
-    max_results: int = 5,
+    max_results: int = 10,
     max_pages: int = 5,
     progress_callback=None,
+    context_window: Optional[int] = None,
 ) -> str:
     """
     Sync wrapper for web search (Streamlit compatible).
@@ -704,15 +717,22 @@ def web_search(
         query: Search query
         model_name: Ollama model name
         ollama_url: Ollama API base URL
-        max_results: Max search results to fetch
-        max_pages: Max pages to download and process
+        max_results: Max search results to fetch (default: 10)
+        max_pages: Max pages to download and process (default: 5)
         progress_callback: Optional callback for progress updates
+        context_window: Optional context window size. If None, fetches from model.
 
     Returns:
         Formatted markdown response for chat
     """
     return asyncio.run(
         web_search_async(
-            query, model_name, ollama_url, max_results, max_pages, progress_callback
+            query,
+            model_name,
+            ollama_url,
+            max_results,
+            max_pages,
+            progress_callback,
+            context_window,
         )
     )

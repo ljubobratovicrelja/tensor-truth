@@ -461,8 +461,9 @@ class WebSearchCommand(Command):
             ollama_url = get_ollama_url()
 
             # Get config (or use defaults)
-            max_results = session["params"].get("web_search_max_results", 5)
-            max_pages = session["params"].get("web_search_pages_to_fetch", 3)
+            max_results = session["params"].get("web_search_max_results", 10)
+            max_pages = session["params"].get("web_search_pages_to_fetch", 5)
+            context_window = session["params"].get("context_window", 16384)
 
             # Create progress placeholder
             progress_placeholder = st.empty()
@@ -483,6 +484,7 @@ class WebSearchCommand(Command):
                 max_results=max_results,
                 max_pages=max_pages,
                 progress_callback=update_progress,
+                context_window=context_window,
             )
 
             # Clear progress display after completion
