@@ -58,6 +58,7 @@ dependencies = [
     "ddgs>=9.0.0",       # Web search functionality (formerly duckduckgo-search)
     "beautifulsoup4",    # HTML parsing (moved from [docs])
     "markdownify",       # HTML to markdown (moved from [docs])
+    "wikipedia>=1.4.0"   # Wikipedia content fetching
 ]
 
 [project.scripts]
