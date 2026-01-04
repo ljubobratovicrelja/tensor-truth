@@ -436,7 +436,10 @@ class WebSearchCommand(Command):
         super().__init__(
             name="websearch",
             aliases=["web", "search"],
-            usage="/websearch <query> - Search the web and get a summary",
+            usage=(
+                "/websearch <query>[, instructions] - Search the web "
+                "and get a summary with optional instructions",
+            ),
         )
 
     def execute(
@@ -444,9 +447,20 @@ class WebSearchCommand(Command):
     ) -> CommandResult:
         if not args:
             # Error case: still treated as command (not added to history)
-            return True, "⚠️ Usage: `/search <query>`", None
+            return True, "⚠️ Usage: `/search <query>[, instructions]`", None
 
-        query = " ".join(args)
+        full_text = " ".join(args)
+
+        # Parse query and optional instructions separated by comma or semicolon
+        query = full_text
+        custom_instructions = None
+
+        for separator in [",", ";"]:
+            if separator in full_text:
+                parts = full_text.split(separator, 1)
+                query = parts[0].strip()
+                custom_instructions = parts[1].strip() if len(parts) > 1 else None
+                break
 
         # Import here to avoid circular deps
         from tensortruth.core.ollama import get_ollama_url
@@ -485,6 +499,7 @@ class WebSearchCommand(Command):
                 max_pages=max_pages,
                 progress_callback=update_progress,
                 context_window=context_window,
+                custom_instructions=custom_instructions,
             )
 
             # Clear progress display after completion

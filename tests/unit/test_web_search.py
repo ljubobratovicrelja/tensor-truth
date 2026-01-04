@@ -650,7 +650,8 @@ class TestWebSearchAsync:
                         "http://localhost:11434",
                     )
 
-                    assert 'Web Search: "test query"' in result
+                    # Successful results don't include the "Web Search:" header
+                    # that's only in error cases
                     assert "Test summary" in result
                     assert "### Sources" in result
                     assert "✅" in result  # Success icon

@@ -473,6 +473,7 @@ async def summarize_with_llm(
     ollama_url: str,
     progress_callback=None,
     context_window: Optional[int] = None,
+    custom_instructions: Optional[str] = None,
 ) -> str:
     """
     Use Ollama LLM to summarize web search findings.
@@ -552,6 +553,12 @@ async def summarize_with_llm(
     target_words = max_output_tokens  # Rough estimate: 1 token ≈ 1 word
 
     # Build prompt with dynamic length guidance
+    custom_instruction_text = ""
+    if custom_instructions:
+        custom_instruction_text = (
+            f"\n\n**Additional Instructions:** {custom_instructions}"
+        )
+
     prompt = f"""You are a research assistant. User asked: "{query}"
 
 ## Available Sources
@@ -572,7 +579,7 @@ detects objects..."
 7. **Link technical terms** to their definitions when sources provide them
 
 Provide a comprehensive summary ({target_words} words approx.) \
-answering the question.
+answering the question.{custom_instruction_text}
 
 ### Summary
 [Thorough overview with inline hyperlinked citations. Example: \
@@ -622,6 +629,7 @@ async def web_search_async(
     max_pages: int = 5,
     progress_callback=None,
     context_window: Optional[int] = None,
+    custom_instructions: Optional[str] = None,
 ) -> str:
     """
     Complete web search pipeline: search → fetch → summarize.
@@ -634,6 +642,7 @@ async def web_search_async(
         max_pages: Max pages to download and process (default: 5)
         progress_callback: Optional callback for progress updates
         context_window: Optional context window size. If None, fetches from model.
+        custom_instructions: Optional custom instructions for LLM summarization
 
     Returns:
         Formatted markdown response for chat
@@ -674,7 +683,13 @@ async def web_search_async(
 
     # Step 3: LLM Summarization
     summary = await summarize_with_llm(
-        query, pages, model_name, ollama_url, progress_callback, context_window
+        query,
+        pages,
+        model_name,
+        ollama_url,
+        progress_callback,
+        context_window,
+        custom_instructions,
     )
 
     # Step 4: Format final response with ALL sources (successful and failed)
@@ -700,6 +715,7 @@ def web_search(
     max_pages: int = 5,
     progress_callback=None,
     context_window: Optional[int] = None,
+    custom_instructions: Optional[str] = None,
 ) -> str:
     """
     Sync wrapper for web search (Streamlit compatible).
@@ -712,6 +728,7 @@ def web_search(
         max_pages: Max pages to download and process (default: 5)
         progress_callback: Optional callback for progress updates
         context_window: Optional context window size. If None, fetches from model.
+        custom_instructions: Optional custom instructions for LLM summarization
 
     Returns:
         Formatted markdown response for chat
@@ -725,5 +742,6 @@ def web_search(
             max_pages,
             progress_callback,
             context_window,
+            custom_instructions,
         )
     )
