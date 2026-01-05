@@ -5,7 +5,6 @@ import logging
 from typing import Dict, List, Optional, Tuple
 
 import aiohttp
-import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 from llama_index.llms.ollama import Ollama
@@ -410,49 +409,52 @@ async def get_model_context_window(
     """
     try:
         # Query Ollama API for model info
-        response = requests.post(
-            f"{ollama_url}/api/show",
-            json={"name": model_name},
-            timeout=5,
-        )
+        timeout_obj = aiohttp.ClientTimeout(total=5)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{ollama_url}/api/show",
+                json={"name": model_name},
+                timeout=timeout_obj,
+            ) as response:
+                if response.status == 200:
+                    model_info = await response.json()
+                    # Try to get num_ctx from model parameters
+                    if "parameters" in model_info:
+                        params_str = model_info.get("parameters", "")
+                        # Parse parameters string for num_ctx
+                        for line in params_str.split("\n"):
+                            if "num_ctx" in line.lower():
+                                try:
+                                    # Extract number from line like "num_ctx 8192"
+                                    parts = line.split()
+                                    for i, part in enumerate(parts):
+                                        if "num_ctx" in part.lower() and i + 1 < len(
+                                            parts
+                                        ):
+                                            ctx_size = int(parts[i + 1])
+                                            logger.info(
+                                                f"Model {model_name} context window: {ctx_size}"
+                                            )
+                                            return ctx_size
+                                except (ValueError, IndexError):
+                                    pass
 
-        if response.status_code == 200:
-            model_info = response.json()
-            # Try to get num_ctx from model parameters
-            if "parameters" in model_info:
-                params_str = model_info.get("parameters", "")
-                # Parse parameters string for num_ctx
-                for line in params_str.split("\n"):
-                    if "num_ctx" in line.lower():
-                        try:
-                            # Extract number from line like "num_ctx 8192"
-                            parts = line.split()
-                            for i, part in enumerate(parts):
-                                if "num_ctx" in part.lower() and i + 1 < len(parts):
-                                    ctx_size = int(parts[i + 1])
-                                    logger.info(
-                                        f"Model {model_name} context window: {ctx_size}"
-                                    )
-                                    return ctx_size
-                        except (ValueError, IndexError):
-                            pass
-
-            # Try modelfile for num_ctx
-            if "modelfile" in model_info:
-                modelfile = model_info.get("modelfile", "")
-                for line in modelfile.split("\n"):
-                    if "num_ctx" in line.lower():
-                        try:
-                            parts = line.split()
-                            for i, part in enumerate(parts):
-                                if part.isdigit():
-                                    ctx_size = int(part)
-                                    logger.info(
-                                        f"Model {model_name} context window: {ctx_size}"
-                                    )
-                                    return ctx_size
-                        except ValueError:
-                            pass
+                    # Try modelfile for num_ctx
+                    if "modelfile" in model_info:
+                        modelfile = model_info.get("modelfile", "")
+                        for line in modelfile.split("\n"):
+                            if "num_ctx" in line.lower():
+                                try:
+                                    parts = line.split()
+                                    for i, part in enumerate(parts):
+                                        if part.isdigit():
+                                            ctx_size = int(part)
+                                            logger.info(
+                                                f"Model {model_name} context window: {ctx_size}"
+                                            )
+                                            return ctx_size
+                                except ValueError:
+                                    pass
 
         logger.info(
             f"Could not determine context window for {model_name}, using default: {default}"
