@@ -50,7 +50,7 @@ This Docker image provides a complete, minimal environment for running Tensor-Tr
 
 **`ljubobratovicrelja/tensor-truth:latest`** - ~5GB (base PyTorch image is 4.6GB)
 
-Includes `tensor-truth[docs]` extras for CLI tools (`tensor-truth-docs`, `tensor-truth-build`).
+Includes all dependencies for CLI tools (`tensor-truth-docs`, `tensor-truth-build`).
 
 Indexes are downloaded automatically on first run via HuggingFace Hub (fast download).
 
@@ -129,7 +129,7 @@ Access at **http://localhost:8080**
 
 ## Using CLI Tools (tensor-truth-docs, tensor-truth-build)
 
-The image includes `[docs]` extras, providing access to the full documentation pipeline:
+The image includes all dependencies for the full documentation pipeline:
 
 - **`tensor-truth-docs`** - Fetch documentation (libraries, papers, books) and convert to markdown
 - **`tensor-truth-build`** - Build vector indexes from the fetched documentation

@@ -1,8 +1,48 @@
 """Rendering utilities for Streamlit UI components."""
 
+import html
+
 import streamlit as st
 
 from tensortruth import convert_latex_delimiters
+
+
+def _create_scrollable_box(
+    content: str, label: str, bg_color: str, border_color: str, escape_html: bool = True
+) -> str:
+    """Create HTML for a scrollable box with fixed height.
+
+    Args:
+        content: The content to display inside the box
+        label: The label/title for the box
+        bg_color: Background color (hex)
+        border_color: Border color (hex)
+        escape_html: Whether to escape HTML in content (default: True for security)
+
+    Returns:
+        HTML string with styled scrollable container
+    """
+    # Escape content by default to prevent XSS
+    if escape_html:
+        content = html.escape(content)
+
+    style = (
+        "max-height: 200px; "
+        "overflow-y: auto; "
+        "overflow-x: hidden; "
+        "padding: 0.75rem; "
+        "margin: 0.5rem 0; "
+        f"background-color: {bg_color}; "
+        f"border-left: 3px solid {border_color}; "
+        "border-radius: 4px;"
+    )
+    return f"""
+<div style="{style}">
+<strong>{label}</strong>
+<div style="margin-top: 0.5rem;">
+{content}
+</div>
+</div>"""
 
 
 def render_thinking(thinking_text: str, placeholder=None):
@@ -12,13 +52,33 @@ def render_thinking(thinking_text: str, placeholder=None):
         thinking_text: The thinking content to display
         placeholder: Optional Streamlit placeholder to render into (uses st.markdown if None)
     """
-    html_content = f"""<div class="thinking-content">
+    html_content = _create_scrollable_box(
+        content=convert_latex_delimiters(thinking_text),
+        label="🧠 Reasoning:",
+        bg_color="#F0F4F8",
+        border_color="#082a48",
+        escape_html=False,  # LaTeX/markdown content, already sanitized
+    )
 
-**🧠 Reasoning:**
+    if placeholder:
+        placeholder.markdown(html_content, unsafe_allow_html=True)
+    else:
+        st.markdown(html_content, unsafe_allow_html=True)
 
-{convert_latex_delimiters(thinking_text)}
 
-</div>"""
+def render_web_search_progress(progress_text: str, placeholder=None):
+    """Render web search progress with consistent formatting.
+
+    Args:
+        progress_text: The progress updates to display
+        placeholder: Optional Streamlit placeholder to render into (uses st.markdown if None)
+    """
+    html_content = _create_scrollable_box(
+        content=progress_text,
+        label="🔍 Web Search Progress:",
+        bg_color="#FFF4E5",
+        border_color="#FF9800",
+    )
 
     if placeholder:
         placeholder.markdown(html_content, unsafe_allow_html=True)

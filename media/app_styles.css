@@ -347,3 +347,62 @@ button[kind="primary"] *,
 button[kind="primary"]:hover * {
     color: #FFFFFF !important;
 }
+
+/* Thinking/Reasoning Box Styling */
+.thinking-content {
+    max-height: 200px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 0.75rem !important;
+    margin: 0.5rem 0 !important;
+    background-color: #F0F4F8 !important;
+    border-left: 3px solid var(--accent-teal) !important;
+    border-radius: 4px !important;
+    display: block !important;
+}
+
+/* Ensure inner content doesn't override */
+.thinking-content > * {
+    max-width: 100% !important;
+}
+
+/* Web Search Progress Box Styling */
+.web-search-progress {
+    max-height: 200px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 0.75rem !important;
+    margin: 0.5rem 0 !important;
+    background-color: #FFF4E5 !important;
+    border-left: 3px solid #FF9800 !important;
+    border-radius: 4px !important;
+    display: block !important;
+}
+
+/* Ensure inner content doesn't override */
+.web-search-progress > * {
+    max-width: 100% !important;
+}
+
+/* Custom scrollbar for thinking and web search boxes */
+.thinking-content::-webkit-scrollbar,
+.web-search-progress::-webkit-scrollbar {
+    width: 8px;
+}
+
+.thinking-content::-webkit-scrollbar-track,
+.web-search-progress::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.thinking-content::-webkit-scrollbar-thumb,
+.web-search-progress::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.thinking-content::-webkit-scrollbar-thumb:hover,
+.web-search-progress::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}

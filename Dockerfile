@@ -12,10 +12,10 @@ FROM pytorch/pytorch:2.9.0-cuda12.8-cudnn9-runtime
 
 WORKDIR /app
 
-# Install tensor-truth with docs extras for CLI tools support
-# Includes: base package + documentation scraping (beautifulsoup4, markdownify,
+# Install tensor-truth with all dependencies
+# Includes: base package + web search/content fetching (beautifulsoup4, markdownify,
 # sphobjinv, arxiv) for tensor-truth-docs and tensor-truth-build commands
-RUN pip install --no-cache-dir tensor-truth[docs]
+RUN pip install --no-cache-dir tensor-truth
 
 # Set default Ollama host (can be overridden via -e flag)
 # Use host.docker.internal for Docker Desktop on Mac/Windows

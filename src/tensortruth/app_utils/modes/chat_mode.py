@@ -167,6 +167,7 @@ def render_chat_mode():
             )
 
             if is_cmd:
+                # Traditional command - display as command message (not in LLM history)
                 session["messages"].append({"role": "command", "content": response})
 
                 with st.chat_message("command", avatar=":material/settings:"):
@@ -177,6 +178,33 @@ def render_chat_mode():
                 if state_modifier is not None:
                     with st.spinner("⚙️ Applying changes..."):
                         state_modifier()
+
+                st.rerun()
+            elif response:
+                # Command returned is_cmd=False but provided a response
+                # (e.g., websearch) - treat as assistant message for LLM history
+
+                # Update title if this is the first message
+                if session.get("title_needs_update", False):
+                    with st.spinner("Generating title..."):
+                        from tensortruth.app_utils.session import update_title
+
+                        update_title(
+                            current_id,
+                            prompt,
+                            params.get("model"),
+                            st.session_state.sessions_file,
+                        )
+
+                session["messages"].append({"role": "user", "content": prompt})
+                session["messages"].append({"role": "assistant", "content": response})
+                save_sessions(st.session_state.sessions_file)
+
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+
+                with st.chat_message("assistant"):
+                    st.markdown(response)
 
                 st.rerun()
 

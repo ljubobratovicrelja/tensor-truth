@@ -425,6 +425,100 @@ class DeviceCommand(Command):
             return True, response, update_llm_device
 
 
+class WebSearchCommand(Command):
+    """Command to search the web and get AI-generated summary.
+
+    Note: Returns is_cmd=False to make results appear as assistant messages
+    in chat history, ensuring they're included as context for follow-up questions.
+    """
+
+    def __init__(self):
+        super().__init__(
+            name="websearch",
+            aliases=["web", "search"],
+            usage=(
+                "/websearch <query>[, instructions] - Search the web "
+                "and get a summary with optional instructions",
+            ),
+        )
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        if not args:
+            # Error case: still treated as command (not added to history)
+            return True, "⚠️ Usage: `/search <query>[, instructions]`", None
+
+        full_text = " ".join(args)
+
+        # Parse query and optional instructions separated by comma or semicolon
+        query = full_text
+        custom_instructions = None
+
+        for separator in [",", ";"]:
+            if separator in full_text:
+                parts = full_text.split(separator, 1)
+                query = parts[0].strip()
+                custom_instructions = parts[1].strip() if len(parts) > 1 else None
+                break
+
+        # Import here to avoid circular deps
+        from tensortruth.core.ollama import get_ollama_url
+        from tensortruth.utils.web_search import web_search
+
+        try:
+            # Import rendering utilities
+            from tensortruth.app_utils.rendering import render_web_search_progress
+
+            # Use session's current model (reuses VRAM)
+            model_name = session["params"]["model"]
+            ollama_url = get_ollama_url()
+
+            # Get config (or use defaults)
+            max_results = session["params"].get("web_search_max_results", 10)
+            max_pages = session["params"].get("web_search_pages_to_fetch", 5)
+            context_window = session["params"].get("context_window", 16384)
+
+            # Create progress placeholder
+            progress_placeholder = st.empty()
+            progress_updates = []
+
+            def update_progress(message: str):
+                """Callback to update progress display."""
+                progress_updates.append(message)
+                render_web_search_progress(
+                    "\n\n".join(progress_updates), placeholder=progress_placeholder
+                )
+
+            # Execute search with real-time progress updates
+            response = web_search(
+                query=query,
+                model_name=model_name,
+                ollama_url=ollama_url,
+                max_results=max_results,
+                max_pages=max_pages,
+                progress_callback=update_progress,
+                context_window=context_window,
+                custom_instructions=custom_instructions,
+            )
+
+            # Clear progress display after completion
+            progress_placeholder.empty()
+
+            # Return is_cmd=False so websearch results appear as assistant
+            # messages, making them part of conversation history for context
+            return False, response, None
+
+        except Exception as e:
+            error_msg = (
+                f"❌ **Web search failed:** {str(e)}\n\n"
+                f"This could be due to network issues, rate limiting, "
+                f"or unavailable web resources."
+            )
+            # Errors still treated as commands (not added to history)
+            return True, error_msg, None
+
+
 class CommandRegistry:
     """Registry for managing and executing commands."""
 
@@ -454,6 +548,7 @@ class CommandRegistry:
             "- **/device rag <cpu|cuda|mps>** - Move RAG pipeline to specific hardware",
             "- **/device llm <cpu|gpu>** - Move LLM to specific hardware",
             "- **/conf <warning> [hard]** - Set confidence warning and optional hard cutoff",
+            "- **/search <query>** / **/web <query>** - Search the web and get AI summary",
             "- **/help** - Show command help",
         ]
         return "\n".join(lines)
@@ -468,6 +563,7 @@ _registry.register(UnloadCommand())
 _registry.register(ReloadCommand())
 _registry.register(ConfCommand())
 _registry.register(DeviceCommand())
+_registry.register(WebSearchCommand())
 _registry.register(HelpCommand(_registry))
 
 
