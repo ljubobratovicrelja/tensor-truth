@@ -519,6 +519,109 @@ class WebSearchCommand(Command):
             return True, error_msg, None
 
 
+class BrowseAgentCommand(Command):
+    """Command for autonomous web browsing agent.
+
+    Note: Returns is_cmd=False to make results appear as assistant messages
+    in chat history, ensuring they're included as context for follow-up questions.
+    """
+
+    def __init__(self):
+        super().__init__(
+            name="browse",
+            aliases=["agent", "research"],
+            usage=(
+                "/browse <goal> - Autonomous web research agent that iteratively "
+                "searches and analyzes pages"
+            ),
+        )
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        if not args:
+            # Error case: still treated as command (not added to history)
+            return (
+                True,
+                "⚠️ Usage: `/browse <goal>`\n\n"
+                "Example: `/browse Find latest Python asyncio best practices`",
+                None,
+            )
+
+        goal = " ".join(args)
+
+        # Import here to avoid circular deps
+        from tensortruth.app_utils.rendering_agent import render_agent_progress
+        from tensortruth.core.ollama import get_ollama_url
+        from tensortruth.utils.browse_agent import browse_agent
+
+        try:
+            # Two-model strategy: fast for reasoning, quality for synthesis
+            main_model = session["params"]["model"]  # User's main model (for synthesis)
+            # NOTE: Agent requires 7b+ model for reliable reasoning
+            # 3b models struggle with structured output and logical action selection
+            reasoning_model = session["params"].get(
+                "agent_reasoning_model", "llama3.1:8b"
+            )  # Reasoning model (min 7b recommended)
+            ollama_url = get_ollama_url()
+
+            # Get config (or use defaults)
+            max_iterations = session["params"].get("agent_max_iterations", 10)
+            # Cap agent context window at 8k for efficiency (prevents waste on large models)
+            context_window = min(session["params"].get("context_window", 16384), 8192)
+
+            # Create progress placeholder (no thinking box)
+            progress_placeholder = st.empty()
+            progress_updates = []
+
+            def update_progress(message: str):
+                """Callback for progress updates."""
+                progress_updates.append(message)
+                # Show all updates with natural language
+                render_agent_progress(
+                    "\n\n".join(progress_updates), placeholder=progress_placeholder
+                )
+
+            # Execute agent with two-model strategy
+            # Fast model for reasoning/decisions, main model for final synthesis
+            state = browse_agent(
+                goal=goal,
+                model_name=reasoning_model,  # Fast model for iterations
+                synthesis_model=main_model,  # Quality model for final answer
+                ollama_url=ollama_url,
+                max_iterations=max_iterations,
+                thinking_callback=None,  # No thinking display
+                progress_callback=update_progress,
+                context_window=context_window,
+            )
+
+            # Keep progress visible after completion (don't clear)
+
+            # Get final answer
+            response = state.final_answer
+
+            # Ensure we have a response
+            if not response or not response.strip():
+                response = (
+                    "⚠️ **Agent completed but generated no response**\n\n"
+                    f"Termination reason: {state.termination_reason}\n"
+                    f"Searches: {len(state.searches_performed)}\n"
+                    f"Pages: {len(state.pages_visited)}"
+                )
+
+            # Return is_cmd=False so it appears as assistant message
+            return False, response, None
+
+        except Exception as e:
+            error_msg = (
+                f"❌ **Browsing agent failed:** {str(e)}\n\n"
+                f"This could be due to network issues, LLM errors, "
+                f"or configuration problems."
+            )
+            # Errors still treated as commands (not added to history)
+            return True, error_msg, None
+
+
 class CommandRegistry:
     """Registry for managing and executing commands."""
 
@@ -549,6 +652,7 @@ class CommandRegistry:
             "- **/device llm <cpu|gpu>** - Move LLM to specific hardware",
             "- **/conf <warning> [hard]** - Set confidence warning and optional hard cutoff",
             "- **/search <query>** / **/web <query>** - Search the web and get AI summary",
+            "- **/browse <goal>** / **/agent <goal>** - Autonomous web research agent",
             "- **/help** - Show command help",
         ]
         return "\n".join(lines)
@@ -564,6 +668,7 @@ _registry.register(ReloadCommand())
 _registry.register(ConfCommand())
 _registry.register(DeviceCommand())
 _registry.register(WebSearchCommand())
+_registry.register(BrowseAgentCommand())
 _registry.register(HelpCommand(_registry))
 
 
