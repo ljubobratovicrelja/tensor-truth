@@ -58,7 +58,7 @@ dependencies = [
     "ddgs>=9.0.0",       # Web search functionality (formerly duckduckgo-search)
     "beautifulsoup4",    # HTML parsing for web content
     "markdownify",       # HTML to markdown conversion
-    "wikipedia>=1.4.0",  # Wikipedia content fetching
+    "Wikipedia-API>=0.6.0",  # Wikipedia content fetching (imported as wikipediaapi)
     "youtube-transcript-api>=0.6.0",  # YouTube transcript fetching
     "sphobjinv",         # Sphinx inventory parsing for documentation scraping
     "arxiv",             # ArXiv API client for paper fetching
