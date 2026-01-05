@@ -19,10 +19,18 @@ def _create_scrollable_box(
     Returns:
         HTML string with styled scrollable container
     """
+    style = (
+        "max-height: 200px; "
+        "overflow-y: auto; "
+        "overflow-x: hidden; "
+        "padding: 0.75rem; "
+        "margin: 0.5rem 0; "
+        f"background-color: {bg_color}; "
+        f"border-left: 3px solid {border_color}; "
+        "border-radius: 4px;"
+    )
     return f"""
-<div style="max-height: 200px; overflow-y: auto; overflow-x: hidden; \
-    padding: 0.75rem; margin: 0.5rem 0; background-color: {bg_color}; \
-        border-left: 3px solid {border_color}; border-radius: 4px;">
+<div style="{style}">
 <strong>{label}</strong>
 <div style="margin-top: 0.5rem;">
 {content}
