@@ -567,6 +567,7 @@ class BrowseAgentCommand(Command):
 
             # Get config (or use defaults)
             max_iterations = session["params"].get("agent_max_iterations", 10)
+            min_required_pages = session["params"].get("agent_min_required_pages", 5)
             # Cap agent context window at 8k for efficiency (prevents waste on large models)
             context_window = min(session["params"].get("context_window", 16384), 8192)
 
@@ -590,6 +591,7 @@ class BrowseAgentCommand(Command):
                 synthesis_model=main_model,  # Quality model for final answer
                 ollama_url=ollama_url,
                 max_iterations=max_iterations,
+                min_required_pages=min_required_pages,
                 thinking_callback=None,  # No thinking display
                 progress_callback=update_progress,
                 context_window=context_window,

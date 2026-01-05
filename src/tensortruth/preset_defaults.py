@@ -45,6 +45,9 @@ def get_default_presets():
             "reranker_top_n": 5,
             "confidence_cutoff": 0.0,
             "confidence_cutoff_hard": 0.0,
+            "agent_min_required_pages": 7,  # More sources for research tasks
+            "agent_max_iterations": 12,
+            "agent_reasoning_model": "llama3.1:8b",
         },
         "DL Coder": {
             "description": "Write deep learning code with PyTorch and API documentation",
@@ -344,6 +347,9 @@ def get_default_presets():
                 "Answer ML/DL questions quickly. "
                 "Prioritize speed over exhaustive detail."
             ),
+            "agent_min_required_pages": 3,  # Fewer sources for speed
+            "agent_max_iterations": 6,
+            "agent_reasoning_model": "llama3.2:3b",
         },
     }
 

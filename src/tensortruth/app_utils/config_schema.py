@@ -32,12 +32,28 @@ class RAGConfig:
 
 
 @dataclass
+class AgentConfig:
+    """Autonomous agent configuration."""
+
+    # Minimum number of credible sources to fetch before allowing agent to conclude
+    min_required_pages: int = 5
+
+    # Maximum iterations for agent execution
+    max_iterations: int = 10
+
+    # Model to use for agent reasoning (fast model for decisions)
+    # Falls back to main chat model if not specified
+    reasoning_model: str = "llama3.1:8b"
+
+
+@dataclass
 class TensorTruthConfig:
     """Main configuration for Tensor-Truth application."""
 
     ollama: OllamaConfig
     ui: UIConfig
     rag: RAGConfig
+    agent: AgentConfig
 
     def to_dict(self) -> dict:
         """Convert config to dictionary for YAML serialization."""
@@ -45,6 +61,7 @@ class TensorTruthConfig:
             "ollama": asdict(self.ollama),
             "ui": asdict(self.ui),
             "rag": asdict(self.rag),
+            "agent": asdict(self.agent),
         }
 
     @classmethod
@@ -53,11 +70,13 @@ class TensorTruthConfig:
         ollama_data = data.get("ollama", {})
         ui_data = data.get("ui", {})
         rag_data = data.get("rag", {})
+        agent_data = data.get("agent", {})
 
         return cls(
             ollama=OllamaConfig(**ollama_data),
             ui=UIConfig(**ui_data),
             rag=RAGConfig(**rag_data),
+            agent=AgentConfig(**agent_data),
         )
 
     @classmethod
@@ -70,6 +89,7 @@ class TensorTruthConfig:
             ollama=OllamaConfig(),
             ui=UIConfig(),
             rag=RAGConfig(default_device=default_device),
+            agent=AgentConfig(),
         )
 
     @staticmethod

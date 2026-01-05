@@ -220,6 +220,17 @@ class BrowseAgent(BaseAgent):
     when to fetch specific pages, and when it has gathered enough information.
     """
 
+    def __init__(self, name: str, description: str, min_required_pages: int = 5):
+        """Initialize browse agent with configuration.
+
+        Args:
+            name: Agent name
+            description: Agent description
+            min_required_pages: Minimum pages to fetch before concluding
+        """
+        super().__init__(name, description)
+        self.min_required_pages = min_required_pages
+
     def _get_normalized_url_sets(
         self, state: AgentState
     ) -> tuple[set[str], set[str]]:
@@ -357,18 +368,20 @@ class BrowseAgent(BaseAgent):
             return "\n".join([f"- {info}" for info in state.information_gathered])
         return "No specific insights extracted yet"
 
-    def _determine_required_action(self, state: AgentState) -> str:
+    def _determine_required_action(
+        self, state: AgentState, min_required_pages: int = 5
+    ) -> str:
         """Determine what action the agent must/should take based on current state.
 
         Args:
             state: Current agent state
+            min_required_pages: Minimum number of pages to fetch before allowing conclusion
 
         Returns:
             Guidance string for the agent's next action
         """
         num_searches = len(state.searches_performed)
         num_pages = len(state.pages_visited)
-        min_required_pages = 5  # Target 5 credible sources
 
         if num_searches == 0:
             return "You MUST do SEARCH (you have no data yet)"
@@ -402,7 +415,7 @@ class BrowseAgent(BaseAgent):
         pages_summary = self._build_pages_summary(state)
         failed_fetches = self._build_failed_fetches_summary(state)
         gathered_info = self._build_gathered_info_summary(state)
-        required_action = self._determine_required_action(state)
+        required_action = self._determine_required_action(state, self.min_required_pages)
 
         # Build prompt
         prompt = REASONING_PROMPT_TEMPLATE.format(
@@ -773,6 +786,7 @@ def browse_agent(
     model_name: str,
     ollama_url: str,
     max_iterations: int = 10,
+    min_required_pages: int = 5,
     thinking_callback: Optional[Callable[[str], None]] = None,
     progress_callback: Optional[Callable[[str], None]] = None,
     context_window: int = 16384,
@@ -805,7 +819,11 @@ def browse_agent(
         )
         print(result.final_answer)
     """
-    agent = BrowseAgent(name="browse", description=BrowseAgent.__doc__)
+    agent = BrowseAgent(
+        name="browse",
+        description=BrowseAgent.__doc__,
+        min_required_pages=min_required_pages,
+    )
 
     # Run async agent in sync context
     return asyncio.run(
