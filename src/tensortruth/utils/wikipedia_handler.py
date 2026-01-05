@@ -81,8 +81,8 @@ class WikipediaHandler(ContentHandler):
                     and subdomain not in ["www", "m"]
                 ):
                     return subdomain
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to extract language from URL {url}: {e}")
         return "en"  # Default to English
 
     async def fetch(

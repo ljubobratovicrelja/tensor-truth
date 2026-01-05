@@ -436,8 +436,11 @@ async def get_model_context_window(
                                                 f"Model {model_name} context window: {ctx_size}"
                                             )
                                             return ctx_size
-                                except (ValueError, IndexError):
-                                    pass
+                                except (ValueError, IndexError) as e:
+                                    logger.debug(
+                                        f"Failed to parse num_ctx from line '{line}': {e}"
+                                    )
+                                    continue
 
                     # Try modelfile for num_ctx
                     if "modelfile" in model_info:
@@ -453,8 +456,11 @@ async def get_model_context_window(
                                                 f"Model {model_name} context window: {ctx_size}"
                                             )
                                             return ctx_size
-                                except ValueError:
-                                    pass
+                                except ValueError as e:
+                                    logger.debug(
+                                        f"Failed to parse num_ctx from modelfile line '{line}': {e}"
+                                    )
+                                    continue
 
         logger.info(
             f"Could not determine context window for {model_name}, using default: {default}"
