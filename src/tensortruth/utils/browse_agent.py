@@ -220,6 +220,21 @@ class BrowseAgent(BaseAgent):
     when to fetch specific pages, and when it has gathered enough information.
     """
 
+    def _get_normalized_url_sets(
+        self, state: AgentState
+    ) -> tuple[set[str], set[str]]:
+        """Get sets of normalized failed and visited URLs from state.
+
+        Args:
+            state: Current agent state
+
+        Returns:
+            Tuple of (failed_urls, visited_urls) as normalized sets
+        """
+        failed_urls = {normalize_url(url) for url, _ in state.failed_fetches}
+        visited_urls = {normalize_url(url) for url, _, _ in state.pages_visited}
+        return failed_urls, visited_urls
+
     def _build_search_history_summary(self, state: AgentState) -> str:
         """Build formatted search history with available URLs.
 
@@ -236,9 +251,8 @@ class BrowseAgent(BaseAgent):
         recent_searches = state.searches_performed[-3:]
         search_history_lines = []
 
-        # Normalize all URLs for duplicate detection
-        failed_urls = {normalize_url(url) for url, _ in state.failed_fetches}
-        visited_urls = {normalize_url(url) for url, _, _ in state.pages_visited}
+        # Get normalized URL sets once
+        failed_urls, visited_urls = self._get_normalized_url_sets(state)
 
         for query, results in recent_searches:
             search_history_lines.append(
@@ -588,7 +602,7 @@ class BrowseAgent(BaseAgent):
         """Fetch and summarize a web page."""
         # Check if URL already visited (defensive check)
         normalized_url = normalize_url(action.url)
-        visited_urls = {normalize_url(url) for url, _, _ in state.pages_visited}
+        _, visited_urls = self._get_normalized_url_sets(state)
 
         if normalized_url in visited_urls:
             logger.warning(f"Skipping duplicate URL: {action.url}")
