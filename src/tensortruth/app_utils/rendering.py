@@ -1,12 +1,14 @@
 """Rendering utilities for Streamlit UI components."""
 
+import html
+
 import streamlit as st
 
 from tensortruth import convert_latex_delimiters
 
 
 def _create_scrollable_box(
-    content: str, label: str, bg_color: str, border_color: str
+    content: str, label: str, bg_color: str, border_color: str, escape_html: bool = True
 ) -> str:
     """Create HTML for a scrollable box with fixed height.
 
@@ -15,10 +17,15 @@ def _create_scrollable_box(
         label: The label/title for the box
         bg_color: Background color (hex)
         border_color: Border color (hex)
+        escape_html: Whether to escape HTML in content (default: True for security)
 
     Returns:
         HTML string with styled scrollable container
     """
+    # Escape content by default to prevent XSS
+    if escape_html:
+        content = html.escape(content)
+
     style = (
         "max-height: 200px; "
         "overflow-y: auto; "
@@ -50,6 +57,7 @@ def render_thinking(thinking_text: str, placeholder=None):
         label="🧠 Reasoning:",
         bg_color="#F0F4F8",
         border_color="#082a48",
+        escape_html=False,  # LaTeX/markdown content, already sanitized
     )
 
     if placeholder:
