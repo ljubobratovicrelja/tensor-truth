@@ -111,7 +111,7 @@ class WikipediaHandler(ContentHandler):
         try:
             # Create Wikipedia API client with user agent
             wiki_wiki = wikipediaapi.Wikipedia(
-                user_agent="TensorTruth/1.0 (https://github.com/yourusername/tensor-truth)",
+                user_agent="TensorTruth/1.0 (https://github.com/ljubobratovicrelja/tensor-truth)",
                 language=language,
             )
 
