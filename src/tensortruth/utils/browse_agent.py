@@ -231,9 +231,7 @@ class BrowseAgent(BaseAgent):
         super().__init__(name, description)
         self.min_required_pages = min_required_pages
 
-    def _get_normalized_url_sets(
-        self, state: AgentState
-    ) -> tuple[set[str], set[str]]:
+    def _get_normalized_url_sets(self, state: AgentState) -> tuple[set[str], set[str]]:
         """Get sets of normalized failed and visited URLs from state.
 
         Args:
@@ -266,9 +264,7 @@ class BrowseAgent(BaseAgent):
         failed_urls, visited_urls = self._get_normalized_url_sets(state)
 
         for query, results in recent_searches:
-            search_history_lines.append(
-                f"- Query: '{query}' → {len(results)} results"
-            )
+            search_history_lines.append(f"- Query: '{query}' → {len(results)} results")
             # Show top URLs (filter out failed/visited ones, deprioritize YouTube)
             if results:
                 # Filter out failed URLs, already visited URLs, and prioritize non-YouTube
@@ -350,8 +346,7 @@ class BrowseAgent(BaseAgent):
         failed_fetches = "\n".join(failed_lines)
         if len(state.failed_fetches) > 5:
             failed_fetches = (
-                f"[{len(state.failed_fetches) - 5} earlier failures]\n"
-                + failed_fetches
+                f"[{len(state.failed_fetches) - 5} earlier failures]\n" + failed_fetches
             )
         return failed_fetches
 
@@ -415,7 +410,9 @@ class BrowseAgent(BaseAgent):
         pages_summary = self._build_pages_summary(state)
         failed_fetches = self._build_failed_fetches_summary(state)
         gathered_info = self._build_gathered_info_summary(state)
-        required_action = self._determine_required_action(state, self.min_required_pages)
+        required_action = self._determine_required_action(
+            state, self.min_required_pages
+        )
 
         # Build prompt
         prompt = REASONING_PROMPT_TEMPLATE.format(
