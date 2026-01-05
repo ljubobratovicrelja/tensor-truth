@@ -182,7 +182,7 @@ def render_chat_mode():
                 st.rerun()
             elif response:
                 # Command returned is_cmd=False but provided a response
-                # (e.g., websearch) - treat as assistant message for LLM history
+                # (e.g., websearch, browse agent) - treat as assistant message for LLM history
 
                 # Update title if this is the first message
                 if session.get("title_needs_update", False):
@@ -197,13 +197,34 @@ def render_chat_mode():
                         )
 
                 session["messages"].append({"role": "user", "content": prompt})
-                session["messages"].append({"role": "assistant", "content": response})
+
+                # Check if agent thinking metadata is available
+                agent_thinking = None
+                if hasattr(st.session_state, "last_agent_thinking"):
+                    agent_thinking = st.session_state.last_agent_thinking
+                    # Clear it after use
+                    delattr(st.session_state, "last_agent_thinking")
+
+                # Build assistant message with optional agent thinking
+                assistant_msg = {"role": "assistant", "content": response}
+                if agent_thinking:
+                    assistant_msg["agent_thinking"] = agent_thinking
+
+                session["messages"].append(assistant_msg)
                 save_sessions(st.session_state.sessions_file)
 
                 with st.chat_message("user"):
                     st.markdown(prompt)
 
                 with st.chat_message("assistant"):
+                    # Render agent thinking if present
+                    if agent_thinking:
+                        from tensortruth.app_utils.rendering_agent import (
+                            render_agent_thinking,
+                        )
+
+                        render_agent_thinking(agent_thinking)
+
                     st.markdown(response)
 
                 st.rerun()

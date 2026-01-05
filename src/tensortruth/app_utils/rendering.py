@@ -314,9 +314,15 @@ def render_chat_message(
                     0.0, confidence_threshold, has_sources=False
                 )
 
-        # Render thinking if present
+        # Render thinking if present (for RAG responses)
         if message.get("thinking"):
             render_thinking(message["thinking"])
+
+        # Render agent thinking if present (for agent responses)
+        if message.get("agent_thinking"):
+            from tensortruth.app_utils.rendering_agent import render_agent_thinking
+
+            render_agent_thinking(message["agent_thinking"])
 
         # Render message content
         st.markdown(convert_latex_delimiters(message["content"]))
