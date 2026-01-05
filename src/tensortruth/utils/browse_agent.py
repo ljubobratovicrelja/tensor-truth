@@ -220,6 +220,161 @@ class BrowseAgent(BaseAgent):
     when to fetch specific pages, and when it has gathered enough information.
     """
 
+    def _build_search_history_summary(self, state: AgentState) -> str:
+        """Build formatted search history with available URLs.
+
+        Args:
+            state: Current agent state
+
+        Returns:
+            Formatted search history string
+        """
+        if not state.searches_performed:
+            return "None yet"
+
+        # Only show last 3 searches to save tokens
+        recent_searches = state.searches_performed[-3:]
+        search_history_lines = []
+
+        # Normalize all URLs for duplicate detection
+        failed_urls = {normalize_url(url) for url, _ in state.failed_fetches}
+        visited_urls = {normalize_url(url) for url, _, _ in state.pages_visited}
+
+        for query, results in recent_searches:
+            search_history_lines.append(
+                f"- Query: '{query}' → {len(results)} results"
+            )
+            # Show top URLs (filter out failed/visited ones, deprioritize YouTube)
+            if results:
+                # Filter out failed URLs, already visited URLs, and prioritize non-YouTube
+                available_results = [
+                    r
+                    for r in results
+                    if normalize_url(r.get("url", "")) not in failed_urls
+                    and normalize_url(r.get("url", "")) not in visited_urls
+                ]
+                # Sort: non-YouTube first
+                prioritized = sorted(
+                    available_results[:5],
+                    key=lambda r: (
+                        "youtube.com" in r.get("url", "").lower(),
+                        r.get("url", ""),
+                    ),
+                )
+
+                for i, result in enumerate(prioritized[:3], 1):
+                    title = result.get("title", "No title")[:60]
+                    url = result.get("url", "")
+                    search_history_lines.append(f"  {i}. [{title}]({url})")
+
+        search_history = "\n".join(search_history_lines)
+        if len(state.searches_performed) > 3:
+            search_history = (
+                f"[{len(state.searches_performed) - 3} earlier searches]\n"
+                + search_history
+            )
+        return search_history
+
+    def _build_pages_summary(self, state: AgentState) -> str:
+        """Build formatted summary of visited pages.
+
+        Args:
+            state: Current agent state
+
+        Returns:
+            Formatted pages summary string
+        """
+        if not state.pages_visited:
+            return "None yet"
+
+        # Only show last 3 pages with very short summaries
+        recent_pages = state.pages_visited[-3:]
+        pages_summary = "\n".join(
+            [f"- [{title[:60]}]({url})" for url, title, _ in recent_pages]
+        )
+        if len(state.pages_visited) > 3:
+            pages_summary = (
+                f"[{len(state.pages_visited) - 3} earlier pages]\n" + pages_summary
+            )
+        return pages_summary
+
+    def _build_failed_fetches_summary(self, state: AgentState) -> str:
+        """Build formatted summary of failed page fetches.
+
+        Args:
+            state: Current agent state
+
+        Returns:
+            Formatted failed fetches summary string
+        """
+        if not state.failed_fetches:
+            return "None"
+
+        # Show recent failed fetches so agent knows what didn't work
+        recent_failed = state.failed_fetches[-5:]  # Last 5 failures
+        failed_lines = []
+        for url, error in recent_failed:
+            # Extract domain for cleaner display
+            from urllib.parse import urlparse
+
+            domain = urlparse(url).netloc or url
+            # Truncate error message
+            error_short = error[:50] if error else "Unknown error"
+            failed_lines.append(f"- {domain}: {error_short}")
+
+        failed_fetches = "\n".join(failed_lines)
+        if len(state.failed_fetches) > 5:
+            failed_fetches = (
+                f"[{len(state.failed_fetches) - 5} earlier failures]\n"
+                + failed_fetches
+            )
+        return failed_fetches
+
+    def _build_gathered_info_summary(self, state: AgentState) -> str:
+        """Build formatted summary of gathered information.
+
+        Args:
+            state: Current agent state
+
+        Returns:
+            Formatted gathered info summary string
+        """
+        if state.information_gathered:
+            return "\n".join([f"- {info}" for info in state.information_gathered])
+        return "No specific insights extracted yet"
+
+    def _determine_required_action(self, state: AgentState) -> str:
+        """Determine what action the agent must/should take based on current state.
+
+        Args:
+            state: Current agent state
+
+        Returns:
+            Guidance string for the agent's next action
+        """
+        num_searches = len(state.searches_performed)
+        num_pages = len(state.pages_visited)
+        min_required_pages = 5  # Target 5 credible sources
+
+        if num_searches == 0:
+            return "You MUST do SEARCH (you have no data yet)"
+        elif num_pages == 0:
+            return (
+                "You MUST do FETCH_PAGE (you have search results "
+                "but haven't fetched any pages)"
+            )
+        elif num_pages < min_required_pages:
+            return (
+                "You MUST do FETCH_PAGE (you need "
+                f"at least {min_required_pages} sources, "
+                f"currently have {num_pages})"
+            )
+        else:
+            return (
+                "You MAY do SEARCH or FETCH_PAGE to gather more "
+                f"information (you have {num_pages} sources)"
+            )
+
     async def reason_next_action(
         self,
         state: AgentState,
@@ -228,127 +383,20 @@ class BrowseAgent(BaseAgent):
         context_window: int,
     ) -> Tuple[str, AgentAction]:
         """Use LLM to reason about next action."""
-        # Build search history summary with available URLs to fetch
-        if state.searches_performed:
-            # Only show last 3 searches to save tokens
-            recent_searches = state.searches_performed[-3:]
-            search_history_lines = []
-            # Normalize all URLs for duplicate detection
-            failed_urls = {normalize_url(url) for url, _ in state.failed_fetches}
-            visited_urls = {normalize_url(url) for url, _, _ in state.pages_visited}
-
-            for query, results in recent_searches:
-                search_history_lines.append(
-                    f"- Query: '{query}' → {len(results)} results"
-                )
-                # Show top URLs (filter out failed/visited ones, deprioritize YouTube)
-                if results:
-                    # Filter out failed URLs, already visited URLs, and prioritize non-YouTube
-                    available_results = [
-                        r
-                        for r in results
-                        if normalize_url(r.get("url", "")) not in failed_urls
-                        and normalize_url(r.get("url", "")) not in visited_urls
-                    ]
-                    # Sort: non-YouTube first
-                    prioritized = sorted(
-                        available_results[:5],
-                        key=lambda r: (
-                            "youtube.com" in r.get("url", "").lower(),
-                            r.get("url", ""),
-                        ),
-                    )
-
-                    for i, result in enumerate(prioritized[:3], 1):
-                        title = result.get("title", "No title")[:60]
-                        url = result.get("url", "")
-                        search_history_lines.append(f"  {i}. [{title}]({url})")
-
-            search_history = "\n".join(search_history_lines)
-            if len(state.searches_performed) > 3:
-                search_history = (
-                    f"[{len(state.searches_performed) - 3} earlier searches]\n"
-                    + search_history
-                )
-        else:
-            search_history = "None yet"
-
-        # Build pages summary (very concise - just titles)
-        if state.pages_visited:
-            # Only show last 3 pages with very short summaries
-            recent_pages = state.pages_visited[-3:]
-            pages_summary = "\n".join(
-                [f"- [{title[:60]}]({url})" for url, title, _ in recent_pages]
-            )
-            if len(state.pages_visited) > 3:
-                pages_summary = (
-                    f"[{len(state.pages_visited) - 3} earlier pages]\n" + pages_summary
-                )
-        else:
-            pages_summary = "None yet"
-
-        # Build failed fetches summary
-        if state.failed_fetches:
-            # Show recent failed fetches so agent knows what didn't work
-            recent_failed = state.failed_fetches[-5:]  # Last 5 failures
-            failed_lines = []
-            for url, error in recent_failed:
-                # Extract domain for cleaner display
-                from urllib.parse import urlparse
-
-                domain = urlparse(url).netloc or url
-                # Truncate error message
-                error_short = error[:50] if error else "Unknown error"
-                failed_lines.append(f"- {domain}: {error_short}")
-
-            failed_fetches = "\n".join(failed_lines)
-            if len(state.failed_fetches) > 5:
-                failed_fetches = (
-                    f"[{len(state.failed_fetches) - 5} earlier failures]\n"
-                    + failed_fetches
-                )
-        else:
-            failed_fetches = "None"
-
-        # Build gathered info summary
-        if state.information_gathered:
-            gathered_info = "\n".join(
-                [f"- {info}" for info in state.information_gathered]
-            )
-        else:
-            gathered_info = "No specific insights extracted yet"
-
-        # Determine required action based on state
-        num_searches = len(state.searches_performed)
-        num_pages = len(state.pages_visited)
-        min_required_pages = 5  # Target 5 credible sources
-
-        if num_searches == 0:
-            required_action = "You MUST do SEARCH (you have no data yet)"
-        elif num_pages == 0:
-            required_action = (
-                "You MUST do FETCH_PAGE (you have search results "
-                "but haven't fetched any pages)"
-            )
-        elif num_pages < min_required_pages:
-            required_action = (
-                "You MUST do FETCH_PAGE (you need "
-                f"at least {min_required_pages} sources, "
-                "currently have {num_pages})"
-            )
-        else:
-            required_action = (
-                "You MAY do SEARCH or FETCH_PAGE to gather more "
-                "information (you have {num_pages} sources)"
-            )
+        # Build all prompt sections
+        search_history = self._build_search_history_summary(state)
+        pages_summary = self._build_pages_summary(state)
+        failed_fetches = self._build_failed_fetches_summary(state)
+        gathered_info = self._build_gathered_info_summary(state)
+        required_action = self._determine_required_action(state)
 
         # Build prompt
         prompt = REASONING_PROMPT_TEMPLATE.format(
             goal=state.goal,
             iteration=state.current_iteration + 1,
             max_iterations=state.max_iterations,
-            num_searches=num_searches,
-            num_pages=num_pages,
+            num_searches=len(state.searches_performed),
+            num_pages=len(state.pages_visited),
             num_failed=len(state.failed_fetches),
             search_history=search_history,
             pages_summary=pages_summary,
