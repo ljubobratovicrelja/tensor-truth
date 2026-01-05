@@ -141,8 +141,8 @@ markers = [
     "e2e: End-to-end tests (slow, full system)",
     "slow: Tests that take significant time",
     "requires_gpu: Tests requiring CUDA/MPS",
-    "requires_ollama: Tests requiring Ollama server",
-    "requires_network: Tests requiring internet connection",
+    "requires_ollama: Tests requiring Ollama server (skipped by default, use --run-ollama to run)",
+    "requires_network: Tests requiring internet connection (skipped by default, use --run-network to run)",
 ]
 
 # Output options

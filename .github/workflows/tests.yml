@@ -43,7 +43,8 @@ jobs:
 
       - name: Run integration tests
         run: |
-          pytest tests/integration/ -v -m "not slow"
+          # Run integration tests with network but without Ollama (--run-network flag allows network tests)
+          pytest tests/integration/ -v --run-network -m "not slow"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
