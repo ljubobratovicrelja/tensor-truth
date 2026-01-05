@@ -1,5 +1,6 @@
 """Tests for ArXiv handler."""
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -188,19 +189,15 @@ class TestArxivHandler:
         assert "Could not extract ArXiv ID" in error
 
     @pytest.mark.asyncio
+    @patch("tensortruth.utils.arxiv_handler.asyncio.wait_for")
     @patch("tensortruth.utils.arxiv_handler.arxiv.Search")
-    async def test_fetch_timeout(self, mock_search_class, handler):
+    async def test_fetch_timeout(self, mock_search_class, mock_wait_for, handler):
         """Test handling of API timeouts."""
-        # Mock search that takes too long
+        # Mock asyncio.wait_for to raise TimeoutError
+        mock_wait_for.side_effect = asyncio.TimeoutError()
+
+        # Mock search (not actually called due to timeout)
         mock_search = Mock()
-
-        def slow_results():
-            import time
-
-            time.sleep(20)  # Longer than timeout
-            return iter([])
-
-        mock_search.results = slow_results
         mock_search_class.return_value = mock_search
 
         mock_session = AsyncMock()
