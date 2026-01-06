@@ -270,6 +270,12 @@ class BaseAgent(ABC):
         Returns:
             Final agent state with answer and execution history
         """
+        # Validate inputs
+        if not goal or not goal.strip():
+            raise ValueError("goal cannot be empty or whitespace-only")
+        if max_iterations <= 0:
+            raise ValueError(f"max_iterations must be positive, got {max_iterations}")
+
         self.logger.info(f"Starting {self.name} agent for goal: {goal}")
 
         # Initialize state
@@ -293,7 +299,8 @@ class BaseAgent(ABC):
                     state, model_name, ollama_url, context_window
                 )
 
-                # Store thinking in history
+                # Store thinking in history (bounded to prevent memory issues)
+                MAX_THINKING_HISTORY = 20
                 thinking_record = {
                     "iteration": state.current_iteration + 1,
                     "thinking": thinking,
@@ -301,6 +308,12 @@ class BaseAgent(ABC):
                     "reasoning": next_action.reasoning or "",
                 }
                 state.thinking_history.append(thinking_record)
+
+                # Keep only last N entries to prevent unbounded growth
+                if len(state.thinking_history) > MAX_THINKING_HISTORY:
+                    state.thinking_history = state.thinking_history[
+                        -MAX_THINKING_HISTORY:
+                    ]
 
                 # Stream thinking to UI (if callback provided)
                 if thinking_callback:

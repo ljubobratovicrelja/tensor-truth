@@ -415,3 +415,25 @@ class TestBrowseAgentPublicAPI:
 
         assert mock_asyncio_run.called
         assert result.final_answer == "Test answer"
+
+    def test_browse_agent_with_empty_goal(self):
+        """Test that empty goal is rejected."""
+        from tensortruth.utils.browse_agent import browse_agent
+
+        with pytest.raises(ValueError, match="goal cannot be empty"):
+            browse_agent(
+                goal="",
+                model_name="test-model",
+                ollama_url="http://localhost:11434",
+            )
+
+    def test_browse_agent_with_whitespace_goal(self):
+        """Test that whitespace-only goal is rejected."""
+        from tensortruth.utils.browse_agent import browse_agent
+
+        with pytest.raises(ValueError, match="goal cannot be empty"):
+            browse_agent(
+                goal="   \n\t  ",
+                model_name="test-model",
+                ollama_url="http://localhost:11434",
+            )

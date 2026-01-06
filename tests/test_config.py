@@ -57,6 +57,38 @@ class TestConfigSchema:
         config = RAGConfig()
         assert config.default_device == "cpu"
 
+    def test_agent_config_defaults(self):
+        """Test AgentConfig default values."""
+        config = AgentConfig()
+        assert config.min_required_pages == 5
+        assert config.max_iterations == 10
+        assert config.reasoning_model == "llama3.1:8b"
+
+    def test_agent_config_with_zero_min_pages(self):
+        """Test that zero min_required_pages is rejected."""
+        with pytest.raises(ValueError, match="min_required_pages must be positive"):
+            AgentConfig(min_required_pages=0)
+
+    def test_agent_config_with_negative_min_pages(self):
+        """Test that negative min_required_pages is rejected."""
+        with pytest.raises(ValueError, match="min_required_pages must be positive"):
+            AgentConfig(min_required_pages=-1)
+
+    def test_agent_config_with_excessive_min_pages(self):
+        """Test that unreasonably high min_required_pages is rejected."""
+        with pytest.raises(ValueError, match="min_required_pages too high"):
+            AgentConfig(min_required_pages=1000)
+
+    def test_agent_config_with_zero_max_iterations(self):
+        """Test that zero max_iterations is rejected."""
+        with pytest.raises(ValueError, match="max_iterations must be positive"):
+            AgentConfig(max_iterations=0)
+
+    def test_agent_config_with_negative_max_iterations(self):
+        """Test that negative max_iterations is rejected."""
+        with pytest.raises(ValueError, match="max_iterations must be positive"):
+            AgentConfig(max_iterations=-5)
+
     def test_config_to_dict(self):
         """Test TensorTruthConfig serialization to dict."""
         config = TensorTruthConfig(

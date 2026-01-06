@@ -45,6 +45,21 @@ class AgentConfig:
     # Falls back to main chat model if not specified
     reasoning_model: str = "llama3.1:8b"
 
+    def __post_init__(self):
+        """Validate configuration values."""
+        if self.min_required_pages <= 0:
+            raise ValueError(
+                f"min_required_pages must be positive, got {self.min_required_pages}"
+            )
+        if self.min_required_pages > 100:
+            raise ValueError(
+                f"min_required_pages too high (max 100), got {self.min_required_pages}"
+            )
+        if self.max_iterations <= 0:
+            raise ValueError(
+                f"max_iterations must be positive, got {self.max_iterations}"
+            )
+
 
 @dataclass
 class TensorTruthConfig:

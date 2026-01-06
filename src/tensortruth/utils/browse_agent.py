@@ -818,6 +818,10 @@ def browse_agent(
         )
         print(result.final_answer)
     """
+    # Validate goal (validation in agent.run() will catch this, but fail early)
+    if not goal or not goal.strip():
+        raise ValueError("goal cannot be empty or whitespace-only")
+
     agent = BrowseAgent(
         name="browse",
         description=BrowseAgent.__doc__,

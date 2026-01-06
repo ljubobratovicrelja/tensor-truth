@@ -185,6 +185,92 @@ class TestBaseAgent:
         assert state.termination_reason == "goal_satisfied"
         assert len(state.thinking_history) == 1
 
+    @pytest.mark.asyncio
+    async def test_run_with_zero_max_iterations(self):
+        """Test that zero max_iterations is rejected."""
+        agent = MockAgent(name="test", description="Test")
+
+        with pytest.raises(ValueError, match="max_iterations must be positive"):
+            await agent.run(
+                goal="Test goal",
+                model_name="test-model",
+                ollama_url="http://localhost:11434",
+                max_iterations=0,
+            )
+
+    @pytest.mark.asyncio
+    async def test_run_with_negative_max_iterations(self):
+        """Test that negative max_iterations is rejected."""
+        agent = MockAgent(name="test", description="Test")
+
+        with pytest.raises(ValueError, match="max_iterations must be positive"):
+            await agent.run(
+                goal="Test goal",
+                model_name="test-model",
+                ollama_url="http://localhost:11434",
+                max_iterations=-5,
+            )
+
+    @pytest.mark.asyncio
+    async def test_run_with_empty_goal(self):
+        """Test that empty goal is rejected."""
+        agent = MockAgent(name="test", description="Test")
+
+        with pytest.raises(ValueError, match="goal cannot be empty"):
+            await agent.run(
+                goal="",
+                model_name="test-model",
+                ollama_url="http://localhost:11434",
+                max_iterations=10,
+            )
+
+    @pytest.mark.asyncio
+    async def test_run_with_whitespace_goal(self):
+        """Test that whitespace-only goal is rejected."""
+        agent = MockAgent(name="test", description="Test")
+
+        with pytest.raises(ValueError, match="goal cannot be empty"):
+            await agent.run(
+                goal="   \n\t  ",
+                model_name="test-model",
+                ollama_url="http://localhost:11434",
+                max_iterations=10,
+            )
+
+    @pytest.mark.asyncio
+    async def test_thinking_history_bounded(self):
+        """Test that thinking history doesn't grow unbounded."""
+
+        class LoopingAgent(MockAgent):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.iteration_count = 0
+
+            async def reason_next_action(
+                self, state, model_name, ollama_url, context_window
+            ):
+                self.iteration_count += 1
+                # Loop until max iterations
+                if self.iteration_count >= 50:
+                    return "Concluding", AgentAction(type=AgentActionType.CONCLUDE)
+                return "Thinking", AgentAction(
+                    type=AgentActionType.SEARCH, query="test"
+                )
+
+            async def execute_action(self, action, state, progress_callback=None):
+                state.searches_performed.append(("test", []))
+
+        agent = LoopingAgent(name="test", description="Test")
+        state = await agent.run(
+            goal="Test",
+            model_name="test-model",
+            ollama_url="http://localhost:11434",
+            max_iterations=50,
+        )
+
+        # Thinking history should be bounded to reasonable size
+        assert len(state.thinking_history) <= 20
+
 
 class TestAgentRegistry:
     """Test AgentRegistry class."""
