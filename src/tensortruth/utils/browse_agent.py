@@ -577,6 +577,11 @@ class BrowseAgent(BaseAgent):
         progress_callback: Optional[Callable[[str], None]] = None,
     ) -> None:
         """Execute a web search."""
+        # Defensive check for missing query
+        if not action.query:
+            logger.warning("SEARCH action received with no query, skipping")
+            return
+
         # Check if query already searched (case-insensitive, normalized)
         normalized_query = action.query.lower().strip()
         previous_queries = {q.lower().strip() for q, _ in state.searches_performed}
