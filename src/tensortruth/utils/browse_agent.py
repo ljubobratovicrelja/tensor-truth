@@ -8,7 +8,7 @@ Usage:
 
     result = browse_agent(
         goal="Find Python documentation for asyncio",
-        model_name="llama3.2:3b",
+        model_name="llama3.1:8b",
         ollama_url="http://localhost:11434",
     )
     print(result.final_answer)

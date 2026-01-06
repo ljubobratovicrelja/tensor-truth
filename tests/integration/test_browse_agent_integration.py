@@ -3,7 +3,7 @@
 These tests require:
 - Ollama running locally
 - Network connectivity
-- Real LLM model (e.g., llama3.2:3b)
+- Real LLM model (e.g., llama3.1:8b)
 """
 
 import pytest
@@ -21,7 +21,7 @@ class TestBrowseAgentIntegration:
         """Test agent with simple factual goal."""
         result = browse_agent(
             goal="What is the capital of France?",
-            model_name="llama3.2:3b",
+            model_name="llama3.1:8b",
             ollama_url="http://localhost:11434",
             max_iterations=3,  # Should conclude quickly
             context_window=16384,
@@ -48,7 +48,7 @@ class TestBrowseAgentIntegration:
         """Test agent with goal requiring multiple iterations."""
         result = browse_agent(
             goal="Compare Python and JavaScript for web development",
-            model_name="llama3.2:3b",
+            model_name="llama3.1:8b",
             ollama_url="http://localhost:11434",
             max_iterations=5,
             context_window=16384,
@@ -72,7 +72,7 @@ class TestBrowseAgentIntegration:
         """Test that agent respects iteration limit."""
         result = browse_agent(
             goal="Comprehensive analysis of artificial intelligence history and future",
-            model_name="llama3.2:3b",
+            model_name="llama3.1:8b",
             ollama_url="http://localhost:11434",
             max_iterations=2,  # Very low limit
             context_window=16384,
@@ -95,7 +95,7 @@ class TestBrowseAgentIntegration:
         """Test searching for technical documentation."""
         result = browse_agent(
             goal="Find Python asyncio documentation and explain coroutines",
-            model_name="llama3.2:3b",
+            model_name="llama3.1:8b",
             ollama_url="http://localhost:11434",
             max_iterations=5,
             context_window=16384,
@@ -121,7 +121,7 @@ class TestBrowseAgentIntegration:
 
         result = browse_agent(
             goal="What is Node.js?",
-            model_name="llama3.2:3b",
+            model_name="llama3.1:8b",
             ollama_url="http://localhost:11434",
             max_iterations=3,
             thinking_callback=thinking_callback,
@@ -154,7 +154,7 @@ class TestBrowseAgentEdgeCases:
         """Test with very specific technical query."""
         result = browse_agent(
             goal="What are the parameters of Python's asyncio.gather function?",
-            model_name="llama3.2:3b",
+            model_name="llama3.1:8b",
             ollama_url="http://localhost:11434",
             max_iterations=4,
             context_window=16384,
@@ -168,7 +168,7 @@ class TestBrowseAgentEdgeCases:
         """Test with somewhat ambiguous goal."""
         result = browse_agent(
             goal="Tell me about Rust",
-            model_name="llama3.2:3b",
+            model_name="llama3.1:8b",
             ollama_url="http://localhost:11434",
             max_iterations=4,
             context_window=16384,
@@ -182,7 +182,7 @@ class TestBrowseAgentEdgeCases:
         """Test that thinking history is properly recorded."""
         result = browse_agent(
             goal="What is Docker?",
-            model_name="llama3.2:3b",
+            model_name="llama3.1:8b",
             ollama_url="http://localhost:11434",
             max_iterations=3,
             context_window=16384,

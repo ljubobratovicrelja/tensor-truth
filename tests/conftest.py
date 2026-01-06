@@ -455,15 +455,15 @@ def skip_if_ollama_required(request):
         if not check_ollama_available():
             pytest.skip("Ollama server not available")
 
-        # Check if test uses llama3.2:3b specifically
+        # Check if test uses llama3.1:8b specifically
         if hasattr(request, "function"):
             # Try to get the test source to check for model name
             import inspect
 
             source = inspect.getsource(request.function)
-            if "llama3.2:3b" in source or "llama3.2" in source:
-                if not check_ollama_model_available("llama3.2:3b"):
-                    pytest.skip("llama3.2:3b model not available in Ollama")
+            if "llama3.1:8b" in source or "llama3.1" in source:
+                if not check_ollama_model_available("llama3.1:8b"):
+                    pytest.skip("llama3.1:8b model not available in Ollama")
 
 
 @pytest.fixture(autouse=True)

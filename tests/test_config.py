@@ -437,12 +437,12 @@ class TestConfigFileOperations:
         update_config(
             models_default_rag_model="llama3:8b",
             models_default_fallback_model="llama3:8b",
-            models_default_agent_reasoning_model="llama3.2:3b",
+            models_default_agent_reasoning_model="llama3.1:8b",
         )
         config = load_config()
         assert config.models.default_rag_model == "llama3:8b"
         assert config.models.default_fallback_model == "llama3:8b"
-        assert config.models.default_agent_reasoning_model == "llama3.2:3b"
+        assert config.models.default_agent_reasoning_model == "llama3.1:8b"
 
         # Restore original values
         update_config(

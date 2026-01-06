@@ -349,7 +349,7 @@ def get_default_presets():
             ),
             "agent_min_required_pages": 3,  # Fewer sources for speed
             "agent_max_iterations": 6,
-            "agent_reasoning_model": "llama3.2:3b",
+            "agent_reasoning_model": "llama3.1:8b",
         },
     }
 
