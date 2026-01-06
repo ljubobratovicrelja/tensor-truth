@@ -94,7 +94,15 @@ def get_available_models() -> List[str]:
             return sorted(models)
     except Exception:
         pass
-    return ["deepseek-r1:8b"]  # Default fallback
+
+    # Try to get fallback model from config, then use hardcoded default
+    try:
+        from tensortruth.app_utils.config import load_config
+
+        config = load_config()
+        return [config.models.default_fallback_model]
+    except Exception:
+        return ["deepseek-r1:8b"]  # Default fallback
 
 
 def get_running_models_detailed() -> List[Dict[str, Any]]:

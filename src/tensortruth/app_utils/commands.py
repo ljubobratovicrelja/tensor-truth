@@ -560,9 +560,15 @@ class BrowseAgentCommand(Command):
             main_model = session["params"]["model"]  # User's main model (for synthesis)
             # NOTE: Agent requires 7b+ model for reliable reasoning
             # 3b models struggle with structured output and logical action selection
-            reasoning_model = session["params"].get(
-                "agent_reasoning_model", "llama3.1:8b"
-            )  # Reasoning model (min 7b recommended)
+            reasoning_model = session["params"].get("agent_reasoning_model")
+            if reasoning_model is None:
+                try:
+                    from tensortruth.app_utils.config import load_config
+
+                    config = load_config()
+                    reasoning_model = config.models.default_agent_reasoning_model
+                except Exception:
+                    reasoning_model = "llama3.1:8b"  # Fallback default
             ollama_url = get_ollama_url()
 
             # Get config (or use defaults)

@@ -15,6 +15,7 @@ from tensortruth.app_utils.config import (
 )
 from tensortruth.app_utils.config_schema import (
     AgentConfig,
+    ModelsConfig,
     OllamaConfig,
     RAGConfig,
     TensorTruthConfig,
@@ -110,12 +111,20 @@ class TestConfigSchema:
         ):
             AgentConfig(reasoning_model=123)
 
+    def test_models_config_defaults(self):
+        """Test ModelsConfig has correct default values."""
+        config = ModelsConfig()
+        assert config.default_rag_model == "deepseek-r1:14b"
+        assert config.default_fallback_model == "deepseek-r1:8b"
+        assert config.default_agent_reasoning_model == "llama3.1:8b"
+
     def test_config_to_dict(self):
         """Test TensorTruthConfig serialization to dict."""
         config = TensorTruthConfig(
             ollama=OllamaConfig(),
             ui=UIConfig(),
             rag=RAGConfig(default_device="cuda"),
+            models=ModelsConfig(),
             agent=AgentConfig(),
         )
         data = config.to_dict()
@@ -344,6 +353,7 @@ class TestConfigFileOperations:
             ollama=OllamaConfig(base_url="http://custom:11434", timeout=600),
             ui=UIConfig(default_temperature=0.7, default_top_n=5),
             rag=RAGConfig(default_device="cuda"),
+            models=ModelsConfig(),
             agent=AgentConfig(min_required_pages=7, max_iterations=15),
         )
 
@@ -421,6 +431,25 @@ class TestConfigFileOperations:
         assert config.ollama.base_url == "http://custom:11434"
         assert config.ui.default_temperature == 0.5
         assert config.rag.default_device == "mps"
+
+    def test_update_config_models(self):
+        """Test updating models config section."""
+        update_config(
+            models_default_rag_model="llama3:8b",
+            models_default_fallback_model="llama3:8b",
+            models_default_agent_reasoning_model="llama3.2:3b",
+        )
+        config = load_config()
+        assert config.models.default_rag_model == "llama3:8b"
+        assert config.models.default_fallback_model == "llama3:8b"
+        assert config.models.default_agent_reasoning_model == "llama3.2:3b"
+
+        # Restore original values
+        update_config(
+            models_default_rag_model="deepseek-r1:14b",
+            models_default_fallback_model="deepseek-r1:8b",
+            models_default_agent_reasoning_model="llama3.1:8b",
+        )
 
     def test_update_config_ignores_invalid_keys(self, temp_config_dir):
         """Test that update_config ignores invalid keys gracefully."""

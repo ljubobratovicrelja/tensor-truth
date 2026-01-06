@@ -71,6 +71,10 @@ def update_config(**kwargs):
             attr_name = key.replace("agent_", "")
             if hasattr(config.agent, attr_name):
                 setattr(config.agent, attr_name, value)
+        elif key.startswith("models_"):
+            attr_name = key.replace("models_", "")
+            if hasattr(config.models, attr_name):
+                setattr(config.models, attr_name, value)
 
     save_config(config)
 

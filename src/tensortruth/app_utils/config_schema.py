@@ -32,6 +32,20 @@ class RAGConfig:
 
 
 @dataclass
+class ModelsConfig:
+    """Default model configurations."""
+
+    # Default model for RAG engine
+    default_rag_model: str = "deepseek-r1:14b"
+
+    # Default fallback model when no models are available
+    default_fallback_model: str = "deepseek-r1:8b"
+
+    # Default agent reasoning model (used in browse commands and autonomous agents)
+    default_agent_reasoning_model: str = "llama3.1:8b"
+
+
+@dataclass
 class AgentConfig:
     """Autonomous agent configuration."""
 
@@ -72,6 +86,7 @@ class TensorTruthConfig:
     ollama: OllamaConfig
     ui: UIConfig
     rag: RAGConfig
+    models: ModelsConfig
     agent: AgentConfig
 
     def to_dict(self) -> dict:
@@ -80,6 +95,7 @@ class TensorTruthConfig:
             "ollama": asdict(self.ollama),
             "ui": asdict(self.ui),
             "rag": asdict(self.rag),
+            "models": asdict(self.models),
             "agent": asdict(self.agent),
         }
 
@@ -89,12 +105,14 @@ class TensorTruthConfig:
         ollama_data = data.get("ollama", {})
         ui_data = data.get("ui", {})
         rag_data = data.get("rag", {})
+        models_data = data.get("models", {})
         agent_data = data.get("agent", {})
 
         return cls(
             ollama=OllamaConfig(**ollama_data),
             ui=UIConfig(**ui_data),
             rag=RAGConfig(**rag_data),
+            models=ModelsConfig(**models_data),
             agent=AgentConfig(**agent_data),
         )
 
@@ -108,6 +126,7 @@ class TensorTruthConfig:
             ollama=OllamaConfig(),
             ui=UIConfig(),
             rag=RAGConfig(default_device=default_device),
+            models=ModelsConfig(),
             agent=AgentConfig(),
         )
 
