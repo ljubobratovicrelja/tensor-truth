@@ -44,7 +44,7 @@ def _create_agent_scrollable_box(
     )
     return f"""
 <div style="{style}">
-<strong>{label}</strong>
+<strong>{html.escape(label)}</strong>
 <br>
 <div style="margin-top: 0.5rem;">
 {content}
@@ -108,7 +108,7 @@ def render_agent_thinking(thinking_sections: list, placeholder=None):
 <details style="margin: 0.5rem 0; padding: 0.5rem; background-color: \
     #F0F4F8; border-left: 3px solid #2C5282; border-radius: 4px;">
     <summary style="cursor: pointer; font-weight: bold; color: #2C5282;">
-        Iteration {iteration}: {action}
+        Iteration {html.escape(str(iteration))}: {action}
     </summary>
     <div style="padding: 0.75rem; margin-top: 0.5rem; \
         background-color: #FFFFFF; border-radius: 4px;">
