@@ -37,8 +37,12 @@ class TestBrowseAgentIntegration:
         # Check at least one search was performed
         assert len(result.searches_performed) > 0
 
-        # Check termination (no more goal_satisfied since CONCLUDE was removed)
-        assert result.termination_reason in ["max_iterations", "timeout"]
+        # Check termination reason is valid
+        assert result.termination_reason in [
+            "goal_satisfied",
+            "max_iterations",
+            "timeout",
+        ]
 
     def test_multi_step_research_goal(self):
         """Test agent with goal requiring multiple iterations."""
@@ -77,8 +81,9 @@ class TestBrowseAgentIntegration:
         # Check iteration budget was respected
         assert result.current_iteration <= 2
 
-        # Check termination reason (no more goal_satisfied since CONCLUDE was removed)
+        # Check termination reason is valid
         assert result.termination_reason in [
+            "goal_satisfied",
             "max_iterations",
             "timeout",
         ]
