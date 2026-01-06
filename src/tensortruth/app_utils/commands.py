@@ -438,7 +438,7 @@ class WebSearchCommand(Command):
             aliases=["web", "search"],
             usage=(
                 "/websearch <query>[, instructions] - Search the web "
-                "and get a summary with optional instructions",
+                "and get a summary with optional instructions"
             ),
         )
 
