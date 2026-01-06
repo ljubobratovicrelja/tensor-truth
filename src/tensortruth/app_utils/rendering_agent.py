@@ -105,14 +105,19 @@ def render_agent_thinking(thinking_sections: list, placeholder=None):
         # Create collapsible section for this iteration
         html_parts.append(
             f"""
-<details style="margin: 0.5rem 0; padding: 0.5rem; background-color: #F0F4F8; border-left: 3px solid #2C5282; border-radius: 4px;">
+<details style="margin: 0.5rem 0; padding: 0.5rem; background-color: \
+    #F0F4F8; border-left: 3px solid #2C5282; border-radius: 4px;">
     <summary style="cursor: pointer; font-weight: bold; color: #2C5282;">
         Iteration {iteration}: {action}
     </summary>
-    <div style="padding: 0.75rem; margin-top: 0.5rem; background-color: #FFFFFF; border-radius: 4px;">
+    <div style="padding: 0.75rem; margin-top: 0.5rem; \
+        background-color: #FFFFFF; border-radius: 4px;">
         <div style="margin-bottom: 0.5rem;">
             <strong>Thinking:</strong>
-            <pre style="white-space: pre-wrap; word-wrap: break-word; background-color: #F7FAFC; padding: 0.5rem; border-radius: 3px; font-family: monospace; font-size: 0.9em;">{thinking}</pre>
+            <pre style="white-space: pre-wrap; word-wrap: break-word;\
+                background-color: #F7FAFC; padding: 0.5rem; \
+                border-radius: 3px; font-family: monospace; \
+                    font-size: 0.9em;">{thinking}</pre>
         </div>
         {f'<div><strong>Reasoning:</strong> {reasoning}</div>' if reasoning else ''}
     </div>
