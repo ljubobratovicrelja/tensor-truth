@@ -18,6 +18,7 @@ import asyncio
 import logging
 import re
 from typing import Callable, Optional, Tuple
+from urllib.parse import urlparse, urlunparse
 
 import aiohttp
 from llama_index.llms.ollama import Ollama
@@ -54,8 +55,6 @@ def normalize_url(url: str) -> str:
     Returns:
         Normalized URL string
     """
-    from urllib.parse import urlparse, urlunparse
-
     # Parse URL
     parsed = urlparse(url.strip())
 
@@ -336,8 +335,6 @@ class BrowseAgent(BaseAgent):
         failed_lines = []
         for url, error in recent_failed:
             # Extract domain for cleaner display
-            from urllib.parse import urlparse
-
             domain = urlparse(url).netloc or url
             # Truncate error message
             error_short = error[:50] if error else "Unknown error"
