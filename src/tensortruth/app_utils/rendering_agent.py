@@ -117,7 +117,7 @@ def render_agent_thinking(thinking_sections: list, placeholder=None):
             <pre style="white-space: pre-wrap; word-wrap: break-word;\
                 background-color: #F7FAFC; padding: 0.5rem; \
                 border-radius: 3px; font-family: monospace; \
-                    font-size: 0.9em;">{thinking}</pre>
+                font-size: 0.9em;">{thinking}</pre>
         </div>
         {f'<div><strong>Reasoning:</strong> {reasoning}</div>' if reasoning else ''}
     </div>
