@@ -14,6 +14,8 @@ from tensortruth.app_utils.config import (
     update_config,
 )
 from tensortruth.app_utils.config_schema import (
+    AgentConfig,
+    ModelsConfig,
     OllamaConfig,
     RAGConfig,
     TensorTruthConfig,
@@ -56,18 +58,81 @@ class TestConfigSchema:
         config = RAGConfig()
         assert config.default_device == "cpu"
 
+    def test_agent_config_defaults(self):
+        """Test AgentConfig default values."""
+        config = AgentConfig()
+        assert config.min_required_pages == 5
+        assert config.max_iterations == 10
+        assert config.reasoning_model == "llama3.1:8b"
+
+    def test_agent_config_with_zero_min_pages(self):
+        """Test that zero min_required_pages is rejected."""
+        with pytest.raises(ValueError, match="min_required_pages must be positive"):
+            AgentConfig(min_required_pages=0)
+
+    def test_agent_config_with_negative_min_pages(self):
+        """Test that negative min_required_pages is rejected."""
+        with pytest.raises(ValueError, match="min_required_pages must be positive"):
+            AgentConfig(min_required_pages=-1)
+
+    def test_agent_config_with_excessive_min_pages(self):
+        """Test that unreasonably high min_required_pages is rejected."""
+        with pytest.raises(ValueError, match="min_required_pages too high"):
+            AgentConfig(min_required_pages=1000)
+
+    def test_agent_config_with_zero_max_iterations(self):
+        """Test that zero max_iterations is rejected."""
+        with pytest.raises(ValueError, match="max_iterations must be positive"):
+            AgentConfig(max_iterations=0)
+
+    def test_agent_config_with_negative_max_iterations(self):
+        """Test that negative max_iterations is rejected."""
+        with pytest.raises(ValueError, match="max_iterations must be positive"):
+            AgentConfig(max_iterations=-5)
+
+    def test_agent_config_with_empty_reasoning_model(self):
+        """Test that empty reasoning_model is rejected."""
+        with pytest.raises(
+            ValueError, match="reasoning_model must be a non-empty string"
+        ):
+            AgentConfig(reasoning_model="")
+
+    def test_agent_config_with_none_reasoning_model(self):
+        """Test that None reasoning_model is rejected."""
+        with pytest.raises(
+            ValueError, match="reasoning_model must be a non-empty string"
+        ):
+            AgentConfig(reasoning_model=None)
+
+    def test_agent_config_with_non_string_reasoning_model(self):
+        """Test that non-string reasoning_model is rejected."""
+        with pytest.raises(
+            ValueError, match="reasoning_model must be a non-empty string"
+        ):
+            AgentConfig(reasoning_model=123)
+
+    def test_models_config_defaults(self):
+        """Test ModelsConfig has correct default values."""
+        config = ModelsConfig()
+        assert config.default_rag_model == "deepseek-r1:14b"
+        assert config.default_fallback_model == "deepseek-r1:8b"
+        assert config.default_agent_reasoning_model == "llama3.1:8b"
+
     def test_config_to_dict(self):
         """Test TensorTruthConfig serialization to dict."""
         config = TensorTruthConfig(
             ollama=OllamaConfig(),
             ui=UIConfig(),
             rag=RAGConfig(default_device="cuda"),
+            models=ModelsConfig(),
+            agent=AgentConfig(),
         )
         data = config.to_dict()
 
         assert data["ollama"]["base_url"] == "http://localhost:11434"
         assert data["ui"]["default_temperature"] == 0.1
         assert data["rag"]["default_device"] == "cuda"
+        assert data["agent"]["min_required_pages"] == 5
 
     def test_config_from_dict(self):
         """Test TensorTruthConfig deserialization from dict."""
@@ -288,6 +353,8 @@ class TestConfigFileOperations:
             ollama=OllamaConfig(base_url="http://custom:11434", timeout=600),
             ui=UIConfig(default_temperature=0.7, default_top_n=5),
             rag=RAGConfig(default_device="cuda"),
+            models=ModelsConfig(),
+            agent=AgentConfig(min_required_pages=7, max_iterations=15),
         )
 
         # Save it
@@ -302,6 +369,8 @@ class TestConfigFileOperations:
         assert loaded_config.ui.default_temperature == 0.7
         assert loaded_config.ui.default_top_n == 5
         assert loaded_config.rag.default_device == "cuda"
+        assert loaded_config.agent.min_required_pages == 7
+        assert loaded_config.agent.max_iterations == 15
 
     def test_update_config_ollama(self, temp_config_dir):
         """Test updating Ollama config values."""
@@ -362,6 +431,25 @@ class TestConfigFileOperations:
         assert config.ollama.base_url == "http://custom:11434"
         assert config.ui.default_temperature == 0.5
         assert config.rag.default_device == "mps"
+
+    def test_update_config_models(self):
+        """Test updating models config section."""
+        update_config(
+            models_default_rag_model="llama3:8b",
+            models_default_fallback_model="llama3:8b",
+            models_default_agent_reasoning_model="llama3.1:8b",
+        )
+        config = load_config()
+        assert config.models.default_rag_model == "llama3:8b"
+        assert config.models.default_fallback_model == "llama3:8b"
+        assert config.models.default_agent_reasoning_model == "llama3.1:8b"
+
+        # Restore original values
+        update_config(
+            models_default_rag_model="deepseek-r1:14b",
+            models_default_fallback_model="deepseek-r1:8b",
+            models_default_agent_reasoning_model="llama3.1:8b",
+        )
 
     def test_update_config_ignores_invalid_keys(self, temp_config_dir):
         """Test that update_config ignores invalid keys gracefully."""
