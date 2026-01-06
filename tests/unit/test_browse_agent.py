@@ -302,6 +302,42 @@ class TestAgentExecution:
 
         assert "unable to gather information" in answer.lower()
 
+    async def test_reason_next_action_llm_error_with_existing_data(self):
+        """Test fallback to CONCLUDE when LLM fails but state has data."""
+        state = AgentState(goal="Test", max_iterations=5)
+        state.searches_performed.append(("query", [{"url": "test.com"}]))
+        # Has existing data
+
+        with patch("tensortruth.utils.browse_agent.Ollama") as mock_ollama:
+            mock_llm = AsyncMock()
+            mock_llm.acomplete.side_effect = Exception("LLM timeout")
+            mock_ollama.return_value = mock_llm
+
+            thinking, action = await self.agent.reason_next_action(
+                state, "test-model", "http://localhost:11434", 16384
+            )
+
+            assert action.type == AgentActionType.CONCLUDE
+            assert "timeout" in thinking.lower() or "error" in thinking.lower()
+
+    async def test_reason_next_action_llm_error_first_iteration(self):
+        """Test fallback to SEARCH when LLM fails on first iteration."""
+        state = AgentState(goal="Find Python docs", max_iterations=5)
+        # No existing data - first iteration
+
+        with patch("tensortruth.utils.browse_agent.Ollama") as mock_ollama:
+            mock_llm = AsyncMock()
+            mock_llm.acomplete.side_effect = Exception("LLM timeout")
+            mock_ollama.return_value = mock_llm
+
+            thinking, action = await self.agent.reason_next_action(
+                state, "test-model", "http://localhost:11434", 16384
+            )
+
+            assert action.type == AgentActionType.SEARCH
+            assert action.query == "Find Python docs"  # Falls back to goal
+            assert "fallback" in action.reasoning.lower()
+
 
 class TestDetermineRequiredAction:
     """Test _determine_required_action helper method."""
