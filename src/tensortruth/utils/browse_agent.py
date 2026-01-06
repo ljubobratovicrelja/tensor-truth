@@ -106,8 +106,9 @@ Choose ONE action:
 STRICT RULES - FOLLOW THESE:
 1. If searches=0 and pages=0: You MUST do SEARCH
 2. If searches>0 and pages=0: You MUST do FETCH_PAGE (pick a URL from search results)
-3. If pages<5: You MUST do FETCH_PAGE (need at least 5 credible sources)
-4. If pages>=5: You MAY do SEARCH or FETCH_PAGE to gather more information
+3. If pages<{min_required_pages}: You MUST do FETCH_PAGE (need at least \
+    {min_required_pages} credible sources)
+4. If pages>={min_required_pages}: You MAY do SEARCH or FETCH_PAGE to gather more information
 
 Your situation: Searches={num_searches}, Pages={num_pages}
 → {required_action}
@@ -419,6 +420,7 @@ class BrowseAgent(BaseAgent):
             num_searches=len(state.searches_performed),
             num_pages=len(state.pages_visited),
             num_failed=len(state.failed_fetches),
+            min_required_pages=self.min_required_pages,
             search_history=search_history,
             pages_summary=pages_summary,
             failed_fetches=failed_fetches,
