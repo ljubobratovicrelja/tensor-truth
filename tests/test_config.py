@@ -89,6 +89,27 @@ class TestConfigSchema:
         with pytest.raises(ValueError, match="max_iterations must be positive"):
             AgentConfig(max_iterations=-5)
 
+    def test_agent_config_with_empty_reasoning_model(self):
+        """Test that empty reasoning_model is rejected."""
+        with pytest.raises(
+            ValueError, match="reasoning_model must be a non-empty string"
+        ):
+            AgentConfig(reasoning_model="")
+
+    def test_agent_config_with_none_reasoning_model(self):
+        """Test that None reasoning_model is rejected."""
+        with pytest.raises(
+            ValueError, match="reasoning_model must be a non-empty string"
+        ):
+            AgentConfig(reasoning_model=None)
+
+    def test_agent_config_with_non_string_reasoning_model(self):
+        """Test that non-string reasoning_model is rejected."""
+        with pytest.raises(
+            ValueError, match="reasoning_model must be a non-empty string"
+        ):
+            AgentConfig(reasoning_model=123)
+
     def test_config_to_dict(self):
         """Test TensorTruthConfig serialization to dict."""
         config = TensorTruthConfig(

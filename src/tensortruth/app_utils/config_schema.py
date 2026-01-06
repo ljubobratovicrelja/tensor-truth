@@ -59,6 +59,10 @@ class AgentConfig:
             raise ValueError(
                 f"max_iterations must be positive, got {self.max_iterations}"
             )
+        if not self.reasoning_model or not isinstance(self.reasoning_model, str):
+            raise ValueError(
+                f"reasoning_model must be a non-empty string, got {self.reasoning_model!r}"
+            )
 
 
 @dataclass
