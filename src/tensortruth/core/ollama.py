@@ -159,3 +159,116 @@ def check_thinking_support(model_name: str) -> bool:
         logger.warning(f"Failed to check thinking support for {model_name}: {e}")
 
     return False
+
+
+def pull_model(model_name: str, callback=None) -> bool:
+    """Pull a model from Ollama repository.
+
+    Args:
+        model_name: Name of the model to pull (e.g., "llama3:8b")
+        callback: Optional callback function for progress updates
+                    Callback signature: callback(status: str, progress: float, message: str)
+
+    Returns:
+        True if pull was successful, False otherwise
+    """
+    ollama_url = get_ollama_url()
+    pull_url = f"{ollama_url}/api/pull"
+
+    try:
+        response = requests.post(
+            pull_url,
+            json={"name": model_name},
+            stream=True,
+            timeout=300,  # 5 minute timeout for large model downloads
+        )
+        response.raise_for_status()
+
+        # Process streaming response
+        for line in response.iter_lines():
+            if line:  # filter out keep-alive new lines
+                try:
+                    data = line.decode("utf-8")
+                    if data.startswith("{"):  # JSON line
+                        import json
+
+                        status_data = json.loads(data)
+
+                        if callback:
+                            # Extract progress information
+                            status = status_data.get("status", "unknown")
+                            total = status_data.get("total", 0)
+                            completed = status_data.get("completed", 0)
+
+                            if total > 0 and completed > 0:
+                                progress = completed / total
+                            else:
+                                progress = 0.0
+
+                            callback(status, progress, data)
+                except Exception as e:
+                    logger.debug(f"Error processing pull status: {e}")
+
+        return True
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to pull model {model_name}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error pulling model {model_name}: {e}")
+        return False
+
+
+def ensure_required_models_available() -> List[str]:
+    """Check and pull required models if they're not available.
+
+    Returns:
+        List of models that were successfully pulled
+    """
+    try:
+        from tensortruth.app_utils.config import load_config
+
+        # Get required models from config
+        config = load_config()
+        required_models = [
+            config.models.default_rag_model,
+            config.models.default_fallback_model,
+            config.models.default_agent_reasoning_model,
+        ]
+
+        # Remove duplicates while preserving order
+        required_models = list(dict.fromkeys(required_models))
+
+        # Get available models
+        available_models = get_available_models()
+
+        # Find missing models
+        missing_models = [
+            model for model in required_models if model not in available_models
+        ]
+
+        pulled_models = []
+
+        if missing_models:
+            logger.info(
+                (
+                    f"Found {len(missing_models)} required models that "
+                    f"need to be pulled: {missing_models}"
+                )
+            )
+
+            for model in missing_models:
+                logger.info(f"Pulling model: {model}")
+                if pull_model(model):
+                    pulled_models.append(model)
+                    logger.info(f"Successfully pulled: {model}")
+                else:
+                    logger.warning(f"Failed to pull: {model}")
+        else:
+            logger.info("All required models are already available")
+
+        return pulled_models
+
+    except Exception as e:
+        logger.error(f"Error ensuring required models: {e}")
+        return []
