@@ -14,6 +14,7 @@ from tensortruth.app_utils.config import (
     update_config,
 )
 from tensortruth.app_utils.config_schema import (
+    AgentConfig,
     OllamaConfig,
     RAGConfig,
     TensorTruthConfig,
@@ -62,12 +63,14 @@ class TestConfigSchema:
             ollama=OllamaConfig(),
             ui=UIConfig(),
             rag=RAGConfig(default_device="cuda"),
+            agent=AgentConfig(),
         )
         data = config.to_dict()
 
         assert data["ollama"]["base_url"] == "http://localhost:11434"
         assert data["ui"]["default_temperature"] == 0.1
         assert data["rag"]["default_device"] == "cuda"
+        assert data["agent"]["min_required_pages"] == 5
 
     def test_config_from_dict(self):
         """Test TensorTruthConfig deserialization from dict."""
@@ -288,6 +291,7 @@ class TestConfigFileOperations:
             ollama=OllamaConfig(base_url="http://custom:11434", timeout=600),
             ui=UIConfig(default_temperature=0.7, default_top_n=5),
             rag=RAGConfig(default_device="cuda"),
+            agent=AgentConfig(min_required_pages=7, max_iterations=15),
         )
 
         # Save it
@@ -302,6 +306,8 @@ class TestConfigFileOperations:
         assert loaded_config.ui.default_temperature == 0.7
         assert loaded_config.ui.default_top_n == 5
         assert loaded_config.rag.default_device == "cuda"
+        assert loaded_config.agent.min_required_pages == 7
+        assert loaded_config.agent.max_iterations == 15
 
     def test_update_config_ollama(self, temp_config_dir):
         """Test updating Ollama config values."""

@@ -303,6 +303,62 @@ class TestAgentExecution:
         assert "unable to gather information" in answer.lower()
 
 
+class TestDetermineRequiredAction:
+    """Test _determine_required_action helper method."""
+
+    def setup_method(self):
+        """Create agent instance for testing."""
+        self.agent = BrowseAgent(name="browse", description="Test")
+
+    def test_no_searches_requires_search(self):
+        """Test that agent must search when no searches performed."""
+        state = AgentState(goal="Test", max_iterations=10)
+        # No searches, no pages
+
+        result = self.agent._determine_required_action(state)
+
+        assert "MUST do SEARCH" in result
+        assert "no data yet" in result.lower()
+
+    def test_searches_but_no_pages_requires_fetch(self):
+        """Test that agent must fetch when searches exist but no pages."""
+        state = AgentState(goal="Test", max_iterations=10)
+        state.searches_performed.append(("query", [{"url": "test.com"}]))
+        # Has searches, no pages
+
+        result = self.agent._determine_required_action(state)
+
+        assert "MUST do FETCH_PAGE" in result
+        assert "haven't fetched any pages" in result.lower()
+
+    def test_few_pages_requires_more(self):
+        """Test that agent must fetch more when below minimum."""
+        state = AgentState(goal="Test", max_iterations=10)
+        state.searches_performed.append(("query", []))
+        state.pages_visited.append(("url1", "Title1", "Summary1"))
+        state.pages_visited.append(("url2", "Title2", "Summary2"))
+        # Has 2 pages, need 5
+
+        result = self.agent._determine_required_action(state, min_required_pages=5)
+
+        assert "MUST do FETCH_PAGE" in result
+        assert "at least 5 sources" in result.lower()
+        assert "currently have 2" in result.lower()
+
+    def test_enough_pages_allows_choice(self):
+        """Test that agent can choose when minimum pages reached."""
+        state = AgentState(goal="Test", max_iterations=10)
+        state.searches_performed.append(("query", []))
+        for i in range(5):
+            state.pages_visited.append((f"url{i}", f"Title{i}", f"Summary{i}"))
+        # Has 5 pages, meets minimum
+
+        result = self.agent._determine_required_action(state, min_required_pages=5)
+
+        assert "MAY do SEARCH or FETCH_PAGE" in result
+        assert "5 sources" in result.lower()
+
+
 class TestBrowseAgentPublicAPI:
     """Test public browse_agent function."""
 
