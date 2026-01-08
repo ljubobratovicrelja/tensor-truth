@@ -12,8 +12,7 @@ import streamlit as st
 def _create_agent_scrollable_box(
     content: str,
     label: str,
-    bg_color: str,
-    border_color: str,
+    css_class: str,
     escape_html: bool = True,
 ) -> str:
     """Create HTML for a scrollable box with fixed height.
@@ -21,8 +20,7 @@ def _create_agent_scrollable_box(
     Args:
         content: The content to display inside the box
         label: The label/title for the box
-        bg_color: Background color (hex)
-        border_color: Border color (hex)
+        css_class: CSS class name for styling
         escape_html: Whether to escape HTML in content (default: True for security)
 
     Returns:
@@ -32,18 +30,8 @@ def _create_agent_scrollable_box(
     if escape_html:
         content = html.escape(content)
 
-    style = (
-        "max-height: 200px; "
-        "overflow-y: auto; "
-        "overflow-x: hidden; "
-        "padding: 0.75rem; "
-        "margin: 0.5rem 0; "
-        f"background-color: {bg_color}; "
-        f"border-left: 3px solid {border_color}; "
-        "border-radius: 4px;"
-    )
     return f"""
-<div style="{style}">
+<div class="tt-scrollable-box {css_class}">
 <strong>{html.escape(label)}</strong>
 <br>
 <div style="margin-top: 0.5rem;">
@@ -66,8 +54,7 @@ def render_agent_progress(progress_text: str, placeholder=None):
     html_content = _create_agent_scrollable_box(
         content=progress_text,
         label="🤖 Agent Progress:",
-        bg_color="#FFF4E5",
-        border_color="#FF9800",
+        css_class="tt-agent-progress-box",
     )
 
     if placeholder:
@@ -94,7 +81,7 @@ def render_agent_thinking(thinking_sections: list, placeholder=None):
         return
 
     # Build HTML for collapsible sections
-    html_parts = ['<div style="margin: 0.5rem 0;">']
+    html_parts = ['<div class="tt-agent-thinking-content">']
 
     for section in thinking_sections:
         iteration = section.get("iteration", "?")
@@ -105,19 +92,14 @@ def render_agent_thinking(thinking_sections: list, placeholder=None):
         # Create collapsible section for this iteration
         html_parts.append(
             f"""
-<details style="margin: 0.5rem 0; padding: 0.5rem; background-color: \
-    #F0F4F8; border-left: 3px solid #2C5282; border-radius: 4px;">
-    <summary style="cursor: pointer; font-weight: bold; color: #2C5282;">
+<details class="tt-agent-thinking-iteration">
+    <summary class="tt-agent-thinking-summary">
         Iteration {html.escape(str(iteration))}: {action}
     </summary>
-    <div style="padding: 0.75rem; margin-top: 0.5rem; \
-        background-color: #FFFFFF; border-radius: 4px;">
+    <div class="tt-agent-thinking-content">
         <div style="margin-bottom: 0.5rem;">
             <strong>Thinking:</strong>
-            <pre style="white-space: pre-wrap; word-wrap: break-word;\
-                background-color: #F7FAFC; padding: 0.5rem; \
-                border-radius: 3px; font-family: monospace; \
-                font-size: 0.9em;">{thinking}</pre>
+            <pre class="tt-agent-thinking-pre">{thinking}</pre>
         </div>
         {f'<div><strong>Reasoning:</strong> {reasoning}</div>' if reasoning else ''}
     </div>
@@ -129,9 +111,7 @@ def render_agent_thinking(thinking_sections: list, placeholder=None):
 
     # Wrap in outer container with label
     outer_container = f"""
-<div style="max-height: 300px; overflow-y: auto; overflow-x: hidden; \
-padding: 0.75rem; margin: 0.5rem 0; background-color: #EDF2F7; \
-border-left: 3px solid #2C5282; border-radius: 4px;">
+<div class="tt-agent-thinking-outer">
 <strong>🧠 Agent Thinking:</strong>
 <div style="margin-top: 0.5rem;">
 {''.join(html_parts)}

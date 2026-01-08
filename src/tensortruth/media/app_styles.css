@@ -33,6 +33,67 @@
     --info-border: var(--accent-teal);
     --success-bg: #E8F5E9;
     --success-border: #4CAF50;
+
+    /* Component-specific variables for Python inline HTML */
+    --thinking-bg: #F0F4F8;
+    --thinking-border: #082a48;
+    --agent-thinking-bg: #EDF2F7;
+    --agent-thinking-border: #2C5282;
+    --agent-thinking-accent: #2C5282;
+    --agent-inner-bg: #FFFFFF;
+    --agent-pre-bg: #F7FAFC;
+    --agent-progress-bg: #FFF4E5;
+    --agent-progress-border: #FF9800;
+    --web-search-bg: #FFF8E1;
+    --web-search-border: #FFA726;
+    --shadow-light: rgba(0, 0, 0, 0.1);
+
+    /* Dark mode specific variables */
+    --shadow-dark: rgba(0, 0, 0, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        /* Core - brightened for dark backgrounds */
+        --navy-primary: #5B9BD5;
+        --accent-teal: #7EC8E3;
+
+        /* Backgrounds - dark variants */
+        --background-light: #1E1E1E;
+        --background-white: #252525;
+        --card-bg: #2a2a2ae5;
+        --sidebar-dark: #1a1a1a;
+        --code-bg: #1e2a35;
+        --user-msg-bg: #1e2a35;
+
+        /* Text - inverted */
+        --text-dark: #E8EEF2;
+        --text-secondary: #A8B8C4;
+        --text-on-dark: #1A1A1A;
+
+        /* Status - darker backgrounds, same accent borders */
+        --warn-bg: #2d261a;  /* Dark gold for sophisticated warnings */
+        --warn-border: #FFA726;  /* Gold accent border */
+        --error-bg: #3d1a1a;
+        --info-bg: #1a2633;
+        --success-bg: #1a3320;
+
+        /* Component-specific - dark variants */
+        --thinking-bg: #1e2a35;
+        --agent-thinking-bg: #1e2633;
+        --agent-inner-bg: #2a2a2a;
+        --agent-pre-bg: #1e1e1e;
+        --agent-progress-bg: #3d2e1a;
+        --web-search-bg: #3d361a;
+        /* Keep borders the same for consistency */
+        --thinking-border: #082a48;
+        --agent-thinking-border: #2C5282;
+        --agent-thinking-accent: #2C5282;
+        --agent-progress-border: #FF9800;
+        --web-search-border: #FFA726;
+        --shadow-light: rgba(255, 255, 255, 0.05);
+        --border-color: #333333;
+    }
 }
 
 /* --- Layout & Containers --- */
@@ -105,7 +166,7 @@ section[data-testid="stSidebar"] .stButton button {
 }
 
 section[data-testid="stSidebar"] hr {
-    border-color: rgba(221, 16, 16, 0.2);
+    border-color: var(--border-color);
 }
 
 /* Primary Form Submit Button */
@@ -318,7 +379,7 @@ button[kind="primary"]:hover * {
     padding: 1rem;
     border-radius: 8px;
     background-color: var(--card-bg);
-    box-shadow: 0 1px 3px rgba(214, 214, 214, 0.08);
+    box-shadow: 0 1px 3px var(--shadow-light);
     margin-bottom: 0.75rem;
 }
 
@@ -410,6 +471,265 @@ hr {
     opacity: 0.5;
 }
 
+/* --- Scrollable Box CSS Classes --- */
+.tt-scrollable-box {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    border-left: 3px solid;
+    border-radius: 4px;
+}
+
+.tt-thinking-box {
+    background-color: var(--thinking-bg);
+    border-color: var(--thinking-border);
+}
+
+.tt-web-search-box {
+    background-color: var(--web-search-bg);
+    border-color: var(--web-search-border);
+}
+
+.tt-agent-progress-box {
+    background-color: var(--agent-progress-bg);
+    border-color: var(--agent-progress-border);
+}
+
+.tt-agent-thinking-box {
+    background-color: var(--agent-thinking-bg);
+    border-color: var(--agent-thinking-border);
+}
+
+/* Agent thinking iteration styles */
+.tt-agent-thinking-iteration {
+    margin: 0.5rem 0;
+    padding: 0.5rem;
+    background-color: var(--agent-thinking-bg);
+    border-left: 3px solid var(--agent-thinking-border);
+    border-radius: 4px;
+}
+
+.tt-agent-thinking-summary {
+    cursor: pointer;
+    font-weight: bold;
+    color: var(--agent-thinking-accent);
+}
+
+.tt-agent-thinking-content {
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+    background-color: var(--agent-inner-bg);
+    border-radius: 4px;
+}
+
+.tt-agent-thinking-pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    background-color: var(--agent-pre-bg);
+    padding: 0.5rem;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+.tt-agent-thinking-outer {
+    max-height: 300px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    background-color: var(--agent-thinking-bg);
+    border-left: 3px solid var(--agent-thinking-border);
+    border-radius: 4px;
+}
+
+/* --- Streamlit Component Dark Mode Overrides --- */
+@media (prefers-color-scheme: dark) {
+    .stApp {
+        background-color: var(--background-light) !important;
+    }
+
+    .stTextInput input,
+    .stTextArea textarea,
+    .stNumberInput input {
+        background-color: var(--background-white) !important;
+        color: var(--text-dark) !important;
+    }
+
+    /* Buttons - create subtle borders that blend with backgrounds */
+    .stButton button,
+    .stDownloadButton button {
+        border-color: transparent !important;
+        box-shadow: 0 1px 1px var(--shadow-light) !important;
+    }
+
+    .stButton button:hover,
+    .stDownloadButton button:hover {
+        background-color: var(--sidebar-dark) !important;
+        box-shadow: 0 2px 3px var(--shadow-light) !important;
+    }
+
+    /* Sidebar buttons - create borderless flat design */
+    section[data-testid="stSidebar"] .stButton button {
+        background-color: var(--card-bg) !important;
+        border: none !important;
+        box-shadow: 0 1px 2px var(--shadow-light) !important;
+        transition: all 0.2s ease !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton button:hover {
+        background-color: var(--sidebar-dark) !important;
+        box-shadow: 0 2px 4px var(--shadow-light) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    /* Primary buttons - adjust for better visibility in dark mode */
+    .stButton button[kind="primary"],
+    button[kind="primary"] {
+        background-color: var(--navy-primary) !important;
+        border-color: var(--navy-primary) !important;
+    }
+
+    .stButton button[kind="primary"]:hover,
+    button[kind="primary"]:hover {
+        background-color: var(--accent-teal) !important;
+        border-color: var(--accent-teal) !important;
+    }
+
+    /* Active state buttons - improve visibility */
+    .stButton button[data-selected="true"] {
+        background-color: var(--navy-primary) !important;
+        border-left: 4px solid var(--accent-teal) !important;
+        color: white !important;
+    }
+
+    /* Secondary buttons - create subtle flat design */
+    .stButton button[kind="secondary"] {
+        background-color: var(--background-button-light) !important;
+        border-color: transparent !important;
+        box-shadow: 0 1px 1px var(--shadow-light) !important;
+        color: var(--text-dark) !important;
+    }
+
+    .stButton button[kind="secondary"]:hover,
+    button[kind="secondary"]:hover {
+        border-color: transparent !important;
+        color: var(--text-dark) !important;
+        background-color: var(--sidebar-dark) !important;
+        box-shadow: 0 2px 3px var(--shadow-light) !important;
+    }
+
+    /* Preset buttons - special styling for buttons inside expanders */
+    .stExpander .stButton button,
+    section[data-testid="stSidebar"] .stExpander .stButton button {
+        background-color: var(--card-bg) !important;
+        border: none !important;
+        box-shadow: 0 1px 2px var(--shadow-light) !important;
+        color: var(--text-dark) !important;
+        width: 100% !important;
+    }
+
+    .stExpander .stButton button:hover,
+    section[data-testid="stSidebar"] .stExpander .stButton button:hover {
+        background-color: var(--sidebar-dark) !important;
+        box-shadow: 0 2px 4px var(--shadow-light) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    /* Dialogs and modals */
+    div[data-testid="stDialog"]>div {
+        background-color: var(--card-bg) !important;
+    }
+
+    /* Dialog buttons - style buttons inside dialogs */
+    div[data-testid="stDialog"] .stButton button {
+        background-color: var(--card-bg) !important;
+        border: none !important;
+        box-shadow: 0 1px 2px var(--shadow-light) !important;
+        color: var(--text-dark) !important;
+        width: 100% !important;
+    }
+
+    div[data-testid="stDialog"] .stButton button:hover {
+        background-color: var(--sidebar-dark) !important;
+        box-shadow: 0 2px 4px var(--shadow-light) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    /* Primary buttons in dialogs */
+    div[data-testid="stDialog"] .stButton button[kind="primary"],
+    div[data-testid="stDialog"] button[kind="primary"] {
+        background-color: var(--navy-primary) !important;
+        border: none !important;
+        box-shadow: 0 1px 2px var(--shadow-light) !important;
+        color: white !important;
+    }
+
+    div[data-testid="stDialog"] .stButton button[kind="primary"]:hover,
+    div[data-testid="stDialog"] button[kind="primary"]:hover {
+        background-color: var(--accent-teal) !important;
+        box-shadow: 0 2px 4px var(--shadow-light) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    /* Alerts/Notifications inside dialogs - improve styling */
+    div[data-testid="stDialog"] div[data-baseweb="notification"] {
+        border-radius: 6px !important;
+        border-left-width: 3px !important;
+        margin: 1rem 0 !important;
+        box-shadow: 0 1px 2px var(--shadow-light) !important;
+    }
+
+    /* Warning alerts - sophisticated styling */
+    div[data-baseweb="notification"][kind="warning"] {
+        background: linear-gradient(135deg, #2d261a 0%, #3a3122 100%) !important;
+        color: #FFD700 !important;  /* Gold text for better contrast on dark background */
+        border-left-color: #FFA726 !important;
+    }
+
+    /* Warning alerts in dialogs - slightly softer gold */
+    div[data-testid="stDialog"] div[data-baseweb="notification"][kind="warning"] {
+        color: #FFE680 !important;  /* Light gold for dialog warnings */
+    }
+
+    /* Select boxes and multi-select */
+    .stSelectbox [data-baseweb="select"],
+    .stMultiSelect span[data-baseweb="tag"] {
+        background-color: var(--navy-primary) !important;
+        color: #FFFFFF !important;
+    }
+
+    /* Expanders */
+    .stExpander {
+        background-color: var(--card-bg) !important;
+        border-color: var(--border-color) !important;
+    }
+
+    /* Chat messages - improve contrast */
+    .stChatMessage {
+        background-color: var(--card-bg) !important;
+        border-color: var(--border-color) !important;
+    }
+
+    /* Form elements */
+    .stForm {
+        background-color: var(--card-bg) !important;
+        border-color: var(--border-color) !important;
+    }
+
+    /* Sliders - improve visibility */
+    div[data-baseweb="slider"] [role="presentation"] {
+        background-color: var(--border-color) !important;
+    }
+
+    /* Code blocks */
+    code {
+        background-color: var(--code-bg) !important;
+        border-color: var(--border-color) !important;
+    }
+}
+
 /* --- Thinking/Reasoning Content --- */
 .thinking-content {
     font-size: 0.85rem !important;
@@ -434,8 +754,8 @@ hr {
     font-size: 0.85rem !important;
     line-height: 1.4 !important;
     color: var(--text-secondary) !important;
-    background-color: #FFF8E1 !important; /* Light amber/yellow background */
-    border-left: 4px solid #FFA726 !important; /* Orange accent border */
+    background-color: var(--web-search-bg) !important;
+    border-left: 4px solid var(--web-search-border) !important;
     border-radius: 6px !important;
     padding: 1rem !important;
     margin: 0.5rem 0 !important;

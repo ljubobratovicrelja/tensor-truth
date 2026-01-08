@@ -81,7 +81,7 @@ def show_no_rag_warning_dialog(sessions_file: str):
 
     @st.dialog("No Knowledge Base Selected")
     def confirm_no_rag():
-        st.warning(
+        st.info(
             "You haven't selected any knowledge base modules. "
             "This will run as a **simple LLM chat without RAG** - "
             "the model won't have access to your indexed documents."
