@@ -477,6 +477,7 @@ hr {
 .tt-scrollable-box {
     max-height: 200px;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 0.75rem;
     margin: 0.5rem 0;
     border-left: 3px solid;
