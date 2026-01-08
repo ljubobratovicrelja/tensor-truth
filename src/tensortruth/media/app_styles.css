@@ -72,8 +72,10 @@
         --text-on-dark: #1A1A1A;
 
         /* Status - darker backgrounds, same accent borders */
-        --warn-bg: #2d261a;  /* Dark gold for sophisticated warnings */
-        --warn-border: #FFA726;  /* Gold accent border */
+        --warn-bg: #2d261a;
+        /* Dark gold for sophisticated warnings */
+        --warn-border: #FFA726;
+        /* Gold accent border */
         --error-bg: #3d1a1a;
         --info-bg: #1a2633;
         --success-bg: #1a3320;
@@ -85,10 +87,10 @@
         --agent-pre-bg: #1e1e1e;
         --agent-progress-bg: #3d2e1a;
         --web-search-bg: #3d361a;
-        /* Keep borders the same for consistency */
-        --thinking-border: #082a48;
-        --agent-thinking-border: #2C5282;
-        --agent-thinking-accent: #2C5282;
+        /* Brighter borders for better contrast in dark mode */
+        --thinking-border: #5B9BD5;
+        --agent-thinking-border: #4A8FD5;
+        --agent-thinking-accent: #4A8FD5;
         --agent-progress-border: #FF9800;
         --web-search-border: #FFA726;
         --shadow-light: rgba(255, 255, 255, 0.05);
@@ -684,13 +686,15 @@ hr {
     /* Warning alerts - sophisticated styling */
     div[data-baseweb="notification"][kind="warning"] {
         background: linear-gradient(135deg, #2d261a 0%, #3a3122 100%) !important;
-        color: #FFD700 !important;  /* Gold text for better contrast on dark background */
+        color: #FFD700 !important;
+        /* Gold text for better contrast on dark background */
         border-left-color: #FFA726 !important;
     }
 
     /* Warning alerts in dialogs - slightly softer gold */
     div[data-testid="stDialog"] div[data-baseweb="notification"][kind="warning"] {
-        color: #FFE680 !important;  /* Light gold for dialog warnings */
+        color: #FFE680 !important;
+        /* Light gold for dialog warnings */
     }
 
     /* Select boxes and multi-select */
