@@ -535,6 +535,12 @@ hr {
     font-size: 0.9em;
 }
 
+.tt-agent-thinking-container {
+    /* Container for all agent thinking iterations */
+    padding: 0.5rem;
+    margin: 0;
+}
+
 .tt-agent-thinking-outer {
     max-height: 300px;
     overflow-y: auto;

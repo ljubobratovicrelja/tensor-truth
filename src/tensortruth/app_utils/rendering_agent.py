@@ -81,7 +81,7 @@ def render_agent_thinking(thinking_sections: list, placeholder=None):
         return
 
     # Build HTML for collapsible sections
-    html_parts = ['<div class="tt-agent-thinking-content">']
+    html_parts = ['<div class="tt-agent-thinking-container">']
 
     for section in thinking_sections:
         iteration = section.get("iteration", "?")
