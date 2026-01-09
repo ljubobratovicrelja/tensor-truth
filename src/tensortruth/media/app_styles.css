@@ -171,6 +171,48 @@ section[data-testid="stSidebar"] hr {
     border-color: var(--border-color);
 }
 
+/* Session List Container - within scrollable container */
+section[data-testid="stSidebar"] .stContainer {
+    border: none !important;
+    background-color: var(--background-light) !important; /* Match main page background */
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 6px !important; /* Subtle rounded corners */
+}
+
+/* Session Buttons - target only secondary buttons (not primary like "Start New Chat") */
+section[data-testid="stSidebar"] .stButton button[kind="secondary"],
+section[data-testid="stSidebar"] button[kind="secondary"] {
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    height: 2rem !important;
+    min-height: 2rem !important;
+    padding: 0.25rem 0.5rem !important;
+    margin: 0.1rem 0 !important;
+    font-size: 0.875rem !important;
+    color: var(--text-on-dark) !important;
+    transition: all 0.2s ease !important;
+    text-align: left !important;
+    width: 100% !important;
+}
+
+/* Session Buttons - hover state */
+section[data-testid="stSidebar"] .stButton button[kind="secondary"]:hover,
+section[data-testid="stSidebar"] button[kind="secondary"]:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    transform: none !important;
+    box-shadow: none !important;
+    border: none !important;
+}
+
+/* Remove margins from button containers */
+section[data-testid="stSidebar"] .stButton,
+section[data-testid="stSidebar"] .stButton > div {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
 /* Primary Form Submit Button */
 .stFormSubmitButton button[kind="primaryFormSubmit"] {
     background-color: var(--navy-primary) !important;
@@ -591,6 +633,48 @@ hr {
         background-color: var(--sidebar-dark) !important;
         box-shadow: 0 2px 4px var(--shadow-light) !important;
         transform: translateY(-1px) !important;
+    }
+
+    /* Session List Container - dark mode */
+    section[data-testid="stSidebar"] .stContainer {
+        border: none !important;
+        background-color: var(--background-light) !important; /* Match main page background */
+        margin: 0 !important;
+        padding: 0 !important;
+        border-radius: 6px !important; /* Subtle rounded corners */
+    }
+
+    /* Session Buttons - dark mode (same as light mode for consistency) */
+    section[data-testid="stSidebar"] .stButton button[kind="secondary"],
+    section[data-testid="stSidebar"] button[kind="secondary"] {
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        height: 2rem !important;
+        min-height: 2rem !important;
+        padding: 0.25rem 0.5rem !important;
+        margin: 0.1rem 0 !important;
+        font-size: 0.875rem !important;
+        color: var(--text-on-dark) !important;
+        transition: all 0.2s ease !important;
+        text-align: left !important;
+        width: 100% !important;
+    }
+
+    /* Session Buttons - hover state - dark mode */
+    section[data-testid="stSidebar"] .stButton button[kind="secondary"]:hover,
+    section[data-testid="stSidebar"] button[kind="secondary"]:hover {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        transform: none !important;
+        box-shadow: none !important;
+        border: none !important;
+    }
+
+    /* Remove margins from button containers - dark mode */
+    section[data-testid="stSidebar"] .stButton,
+    section[data-testid="stSidebar"] .stButton > div {
+        margin: 0 !important;
+        padding: 0 !important;
     }
 
     /* Primary buttons - adjust for better visibility in dark mode */
