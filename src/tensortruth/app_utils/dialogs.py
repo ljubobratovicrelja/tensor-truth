@@ -24,11 +24,11 @@ def show_delete_session_dialog(sessions_file: str):
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Cancel", width="stretch"):
+            if st.button("Cancel", use_container_width=True):
                 st.session_state.show_delete_confirm = False
                 st.rerun()
         with col2:
-            if st.button("Delete", type="primary", width="stretch"):
+            if st.button("Delete", type="primary", use_container_width=True):
                 curr_id = st.session_state.chat_data["current_id"]
                 delete_session(curr_id, sessions_file)
                 st.session_state.chat_data["current_id"] = None
@@ -58,12 +58,12 @@ def show_delete_preset_dialog(presets_file: str):
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Cancel", width="stretch"):
+            if st.button("Cancel", use_container_width=True):
                 st.session_state.show_preset_delete_confirm = False
                 st.session_state.preset_to_delete = None
                 st.rerun()
         with col2:
-            if st.button("Delete", type="primary", width="stretch"):
+            if st.button("Delete", type="primary", use_container_width=True):
                 delete_preset(preset_name, presets_file)
                 st.session_state.show_preset_delete_confirm = False
                 st.session_state.preset_to_delete = None
@@ -91,12 +91,12 @@ def show_no_rag_warning_dialog(sessions_file: str):
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Cancel", width="stretch"):
+            if st.button("Cancel", use_container_width=True):
                 st.session_state.show_no_rag_warning = False
                 st.session_state.pending_params = None
                 st.rerun()
         with col2:
-            if st.button("Proceed", type="primary", width="stretch"):
+            if st.button("Proceed", type="primary", use_container_width=True):
                 # Create session with empty modules list (no RAG)
                 params = st.session_state.pending_params
                 create_session([], params, sessions_file)

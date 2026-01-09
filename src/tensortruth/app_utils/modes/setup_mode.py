@@ -238,7 +238,7 @@ def render_setup_mode():
                 st.markdown("---")
 
                 submitted_start = st.form_submit_button(
-                    "Start Session", type="primary", width="stretch"
+                    "Start Session", type="primary", use_container_width=True
                 )
 
             if submitted_start:
@@ -269,7 +269,7 @@ def render_setup_mode():
             )
             mark_as_favorite = st.checkbox("Mark as Favorite", value=False)
 
-            if st.button("Save Preset", width="stretch", type="primary"):
+            if st.button("Save Preset", use_container_width=True, type="primary"):
                 if new_preset_name:
                     # Build preset config from session_state
                     preset_config = build_params_from_session_state()

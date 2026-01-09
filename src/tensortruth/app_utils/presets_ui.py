@@ -50,7 +50,7 @@ def render_favorite_preset_cards(
                             "LAUNCH",
                             key=f"launch_{preset_name}",
                             type="primary",
-                            width="stretch",
+                            use_container_width=True,
                         ):
                             success, error = quick_launch_preset(
                                 preset_name,
@@ -98,7 +98,9 @@ def render_presets_manager(
             with col1:
                 st.markdown(f"**{preset_name}**")
             with col2:
-                if st.button("Load", key=f"load_{preset_name}", width="stretch"):
+                if st.button(
+                    "Load", key=f"load_{preset_name}", use_container_width=True
+                ):
                     apply_preset(
                         preset_name,
                         available_mods,
@@ -110,7 +112,9 @@ def render_presets_manager(
                     st.session_state.expand_config_section = True
                     st.rerun()
             with col3:
-                if st.button("Delete", key=f"del_{preset_name}", width="stretch"):
+                if st.button(
+                    "Delete", key=f"del_{preset_name}", use_container_width=True
+                ):
                     st.session_state.show_preset_delete_confirm = True
                     st.session_state.preset_to_delete = preset_name
                     st.rerun()
@@ -118,7 +122,7 @@ def render_presets_manager(
                 if st.button(
                     star_icon,
                     key=f"fav_{preset_name}",
-                    width="stretch",
+                    use_container_width=True,
                 ):
                     toggle_favorite(preset_name, presets_file)
                     st.rerun()

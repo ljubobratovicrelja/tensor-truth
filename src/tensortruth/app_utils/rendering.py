@@ -226,7 +226,7 @@ def render_execution_result(result: dict):
                             ".jpeg",
                             ".gif",
                         }:
-                            st.image(str(file_path), width="stretch")
+                            st.image(str(file_path), use_container_width=True)
                         elif file_path.suffix.lower() == ".svg":
                             with open(file_path, "r") as f:
                                 st.markdown(f.read(), unsafe_allow_html=True)
