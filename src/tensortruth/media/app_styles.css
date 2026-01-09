@@ -181,6 +181,9 @@ section[data-testid="stSidebar"] .stContainer {
 }
 
 /* Session Buttons - target only secondary buttons (not primary like "Start New Chat") */
+/* Higher specificity to override general secondary button styles */
+section[data-testid="stSidebar"] .stContainer .stButton button[kind="secondary"],
+section[data-testid="stSidebar"] .stVerticalBlock .stButton button[kind="secondary"],
 section[data-testid="stSidebar"] .stButton button[kind="secondary"],
 section[data-testid="stSidebar"] button[kind="secondary"] {
     background-color: transparent !important;
@@ -195,15 +198,22 @@ section[data-testid="stSidebar"] button[kind="secondary"] {
     transition: all 0.2s ease !important;
     text-align: left !important;
     width: 100% !important;
+    /* Override general secondary button background */
+    background-color: transparent !important;
 }
 
 /* Session Buttons - hover state */
+/* Higher specificity to override general secondary button hover styles */
+section[data-testid="stSidebar"] .stContainer .stButton button[kind="secondary"]:hover,
+section[data-testid="stSidebar"] .stVerticalBlock .stButton button[kind="secondary"]:hover,
 section[data-testid="stSidebar"] .stButton button[kind="secondary"]:hover,
 section[data-testid="stSidebar"] button[kind="secondary"]:hover {
     background-color: rgba(255, 255, 255, 0.1) !important;
     transform: none !important;
     box-shadow: none !important;
     border: none !important;
+    /* Override general secondary button hover color */
+    color: var(--text-on-dark) !important;
 }
 
 /* Remove margins from button containers */
