@@ -78,17 +78,18 @@ with st.sidebar:
     st.divider()
     st.empty()
 
-    # Session list
-    session_ids = list(st.session_state.chat_data["sessions"].keys())
-    for sess_id in reversed(session_ids):
-        sess = st.session_state.chat_data["sessions"][sess_id]
-        title = sess.get("title", "Untitled")
+    # Session list (scrollable container)
+    with st.container(height=300):
+        session_ids = list(st.session_state.chat_data["sessions"].keys())
+        for sess_id in reversed(session_ids):
+            sess = st.session_state.chat_data["sessions"][sess_id]
+            title = sess.get("title", "Untitled")
 
-        label = f" {title} "
-        if st.button(label, key=sess_id, use_container_width=True):
-            st.session_state.chat_data["current_id"] = sess_id
-            st.session_state.mode = "chat"
-            st.rerun()
+            label = f" {title} "
+            if st.button(label, key=sess_id, use_container_width=True):
+                st.session_state.chat_data["current_id"] = sess_id
+                st.session_state.mode = "chat"
+                st.rerun()
 
     st.divider()
 
