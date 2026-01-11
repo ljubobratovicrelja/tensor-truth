@@ -76,6 +76,18 @@ def _check_confidence_and_adjust_prompt(
     return low_confidence_warning, has_real_sources, context_nodes
 
 
+def _update_engine_memory(engine, prompt: str, full_response: str) -> None:
+    """Update engine's chat memory with user and assistant messages.
+
+    Args:
+        engine: Chat engine instance
+        prompt: User's prompt
+        full_response: Assistant's response
+    """
+    engine._memory.put(ChatMessage(content=prompt, role=MessageRole.USER))
+    engine._memory.put(ChatMessage(content=full_response, role=MessageRole.ASSISTANT))
+
+
 def _handle_rag_mode(
     engine,
     prompt: str,
@@ -111,7 +123,7 @@ def _handle_rag_mode(
         )
     )
 
-    # Phase 3: Stream response
+    # Phase 3: Stream response and measure time
     start_time = time.time()
     full_response, error, thinking, code_blocks = stream_rag_response(
         synthesizer, prompt, context_nodes
@@ -120,10 +132,10 @@ def _handle_rag_mode(
         raise error
     elapsed = time.time() - start_time
 
-    # Phase 4: Code Execution
+    # Phase 4: Execute code blocks
     execution_results = execute_code_blocks(current_id, code_blocks)
 
-    # Phase 5: Extract sources and render UI
+    # Phase 5: Prepare source data and render UI
     source_data = []
     if has_real_sources:
         source_data = [
@@ -139,11 +151,9 @@ def _handle_rag_mode(
         has_pdf_index=has_pdf_index,
     )
 
-    # Phase 6: Update engine memory
-    engine._memory.put(ChatMessage(content=prompt, role=MessageRole.USER))
-    engine._memory.put(ChatMessage(content=full_response, role=MessageRole.ASSISTANT))
+    # Phase 6: Update engine memory and build message data
+    _update_engine_memory(engine, prompt, full_response)
 
-    # Build message data
     message_data = build_message_data(
         full_response=full_response,
         elapsed=elapsed,
@@ -188,7 +198,7 @@ def _handle_simple_llm_mode(
     llm = st.session_state.simple_llm
     chat_history = build_chat_history(session["messages"])
 
-    # Stream response
+    # Stream response and measure time
     start_time = time.time()
     full_response, error, thinking, code_blocks = stream_simple_llm_response(
         llm, chat_history
@@ -197,13 +207,12 @@ def _handle_simple_llm_mode(
         raise error
     elapsed = time.time() - start_time
 
-    # Code Execution
+    # Execute code blocks
     execution_results = execute_code_blocks(current_id, code_blocks)
 
-    # Render simple footer
+    # Render simple footer and build message data
     st.caption(f"⏱️ {elapsed:.2f}s")
 
-    # Build message data
     message_data = build_message_data(
         full_response=full_response,
         elapsed=elapsed,

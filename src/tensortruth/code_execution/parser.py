@@ -170,11 +170,13 @@ class CodeBlockParser:
             self.backtick_count += 1
             return []
 
-        if char == "\n" or char == " " or self.backtick_count == self.fence_backticks:
+        # Check if we have a confirmed closing fence
+        is_closing_fence = (
+            char == "\n" or char == " " or self.backtick_count == self.fence_backticks
+        )
+
+        if is_closing_fence:
             # Confirmed closing fence - create completed block
-            # The backticks were NOT added to current_code
-            # (we detected them in _handle_accumulating)
-            # So current_code already has correct content without backticks
             code = self.current_code
 
             # Only create block if language is Python-related
@@ -187,12 +189,8 @@ class CodeBlockParser:
                 completed.append(block)
                 self.completed_blocks.append(block)
 
-            # Reset state
-            self.state = ParserState.OUTSIDE
-            self.current_code = ""
-            self.current_language = ""
-            self.backtick_count = 0
-            self.buffer = ""
+            # Reset state for next code block
+            self._reset_state()
             return completed
 
         # False alarm - not a closing fence, back to accumulating
@@ -200,6 +198,14 @@ class CodeBlockParser:
         self.backtick_count = 0
         self.state = ParserState.ACCUMULATING
         return []
+
+    def _reset_state(self):
+        """Reset parser state for next code block."""
+        self.state = ParserState.OUTSIDE
+        self.current_code = ""
+        self.current_language = ""
+        self.backtick_count = 0
+        self.buffer = ""
 
     def _is_python_language(self, language: str) -> bool:
         """Check if language identifier indicates Python code."""

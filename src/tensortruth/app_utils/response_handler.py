@@ -22,9 +22,9 @@ def execute_code_blocks(current_id: str, code_blocks: List[Any]) -> List[Any]:
     if not code_blocks or not st.session_state.get("code_execution_enabled", True):
         return []
 
-    from tensortruth.code_execution import ExecutionOrchestrator
-
     try:
+        from tensortruth.code_execution import ExecutionOrchestrator
+
         orchestrator = ExecutionOrchestrator()
         return orchestrator.execute_blocks(
             session_id=current_id,

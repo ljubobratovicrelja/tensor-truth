@@ -108,6 +108,7 @@ class CodeValidator:
             List of flake8 warning messages
         """
         warnings = []
+        temp_file_path = None
 
         try:
             # Write code to a temporary file
@@ -149,11 +150,12 @@ class CodeValidator:
             # Don't let linting errors block execution
             pass
         finally:
-            # Clean up temp file
-            try:
-                Path(temp_file_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+            # Clean up temp file if it was created
+            if temp_file_path:
+                try:
+                    Path(temp_file_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
 
         return warnings
 
