@@ -52,10 +52,14 @@ On first launch, pre-built indexes will auto-download from Google Drive (takes a
 
 ## Docker Deployment
 
-For easier deployment without managing virtual environments or CUDA installations, a pre-built Docker image is available. This approach is useful if you want to avoid setting up PyTorch with CUDA manually, though you still need a machine with NVIDIA GPU and drivers installed.
+For easier deployment without managing virtual environments or CUDA installations, a pre-built Docker image is available on Docker Hub. This approach is useful if you want to avoid setting up PyTorch with CUDA manually, though you still need a machine with NVIDIA GPU and drivers installed.
 
+**Pull the image:**
+```bash
+docker pull ljubobratovicrelja/tensor-truth:latest
+```
 
-**Quick start - Pull and run from Docker Hub:**
+**Run the container:**
 ```bash
 docker run -d \
   --name tensor-truth \
@@ -65,7 +69,10 @@ docker run -d \
   -e OLLAMA_HOST=http://host.docker.internal:11434 \
   ljubobratovicrelja/tensor-truth:latest
 ```
-**See [DOCKER.md](DOCKER.md) for complete Docker documentation, troubleshooting, and advanced usage.**
+
+Access the app at **http://localhost:8501**
+
+**See [DOCKER.md](docs/DOCKER.md) for complete Docker documentation, troubleshooting, and advanced usage.**
 
 
 ## Data Storage
@@ -109,24 +116,34 @@ ollama pull qwen2.5-coder:7b
 
 ## Building Your Own Indexes
 
-Pre-built indexes cover common libraries, but you can create custom knowledge bases.
+Pre-built indexes cover common libraries, but you can create custom knowledge bases for your specific needs.
 
-**Scrape Documentation:**
+### Quick Start
+
+**Interactive Mode (Recommended):**
 ```bash
-tensor-truth-docs --list                                    # Show all available sources
-tensor-truth-docs pytorch numpy                             # Scrape library docs
-tensor-truth-docs --type papers --category dl_foundations   # Fetch paper category
-tensor-truth-docs --type papers --category ml --ids 1706.03762 1810.04805  # Specific papers
+tensor-truth-docs --add    # Guided wizard for adding libraries, papers, or books
 ```
 
-**Build Vector Index:**
+**Command-Line Mode:**
 ```bash
-tensor-truth-build --modules module_name
+tensor-truth-docs --list                              # Show all available sources
+tensor-truth-docs pytorch_2.9 numpy_2.3               # Fetch library documentation
+tensor-truth-docs --type papers --category foundation_models --arxiv-ids 1706.03762  # Add specific papers
+tensor-truth-build --modules foundation_models        # Build vector index
 ```
 
 **Session PDFs:**
 
-Upload PDFs directly in the web UI to create per-session indexes. For now only standard PDF files are supported, but more formats may be added later.
+Upload PDFs directly in the web UI to create per-session indexes. Only standard PDF files are supported currently.
+
+### Detailed Documentation
+
+For comprehensive guides on building custom indexes, see [docs/INDEXES.md](docs/INDEXES.md), which covers:
+- Interactive source addition workflow
+- Adding libraries, papers, and books
+- Chunk size optimization strategies
+- Advanced workflows and troubleshooting
 
 ## License
 

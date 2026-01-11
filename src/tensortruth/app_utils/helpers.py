@@ -11,7 +11,7 @@ import torch
 
 # Constants for the Tensor Truth Indexes
 HF_REPO_ID = "ljubobratovicrelja/tensor-truth-indexes"
-HF_FILENAME = "indexes_v0.1.12.tar"
+HF_FILENAME = "indexes_v0.1.14.tar"
 
 
 def get_module_display_name(

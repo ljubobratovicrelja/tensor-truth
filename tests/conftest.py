@@ -2,10 +2,55 @@
 Pytest configuration and shared fixtures.
 """
 
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+# ============================================================================
+# Custom CLI Options
+# ============================================================================
+
+
+def pytest_addoption(parser):
+    """Add custom command line options."""
+    parser.addoption(
+        "--run-ollama",
+        action="store_true",
+        default=False,
+        help="Run tests that require Ollama server",
+    )
+    parser.addoption(
+        "--run-network",
+        action="store_true",
+        default=False,
+        help="Run tests that require network connection",
+    )
+
+
+def pytest_configure(config):
+    """Configure pytest with custom settings."""
+    config.addinivalue_line(
+        "markers",
+        "requires_ollama: mark test as requiring Ollama (skipped by default)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "requires_network: mark test as requiring network (skipped by default)",
+    )
+
+
+# Mock pymupdf.layout before any imports
+layout_mock = MagicMock()
+layout_mock.activate = MagicMock(return_value=None)
+sys.modules["pymupdf.layout"] = layout_mock
+
+# Create a mock pymupdf module with layout attribute and version
+pymupdf_mock = MagicMock()
+pymupdf_mock.layout = layout_mock
+pymupdf_mock.__version__ = "1.26.7"  # Match installed version
+sys.modules["pymupdf"] = pymupdf_mock
 
 # ============================================================================
 # Path Fixtures
@@ -71,7 +116,7 @@ def sample_paper_metadata():
         "abstract": "This is a test abstract for testing purposes.",
         "arxiv_id": "1234.56789",
         "year": 2023,
-        "url": "https://arxiv.org/abs/1234.56789",
+        "source": "https://arxiv.org/abs/1234.56789",
     }
 
 
@@ -288,7 +333,7 @@ def sample_papers_config():
                 {
                     "title": "Attention Is All You Need",
                     "arxiv_id": "1706.03762",
-                    "url": "https://arxiv.org/abs/1706.03762",
+                    "source": "https://arxiv.org/abs/1706.03762",
                 }
             ],
         }
@@ -366,3 +411,65 @@ def cleanup_temp_files():
     yield
     # Cleanup happens automatically with tmp_path fixture
     pass
+
+
+# ============================================================================
+# Integration Test Fixtures
+# ============================================================================
+
+
+def check_ollama_available():
+    """Check if Ollama server is running."""
+    import requests
+
+    try:
+        response = requests.get("http://localhost:11434/api/tags", timeout=2)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+def check_ollama_model_available(model_name: str):
+    """Check if a specific Ollama model is available."""
+    import requests
+
+    try:
+        response = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if response.status_code == 200:
+            models = response.json().get("models", [])
+            return any(m.get("name") == model_name for m in models)
+        return False
+    except Exception:
+        return False
+
+
+@pytest.fixture(autouse=True)
+def skip_if_ollama_required(request):
+    """Auto-skip tests marked with requires_ollama unless --run-ollama is specified."""
+    if "requires_ollama" in request.keywords:
+        # Skip by default unless --run-ollama flag is provided
+        if not request.config.getoption("--run-ollama"):
+            pytest.skip("Skipped: requires Ollama (use --run-ollama to run)")
+
+        # If flag is provided, check if Ollama is actually available
+        if not check_ollama_available():
+            pytest.skip("Ollama server not available")
+
+        # Check if test uses llama3.1:8b specifically
+        if hasattr(request, "function"):
+            # Try to get the test source to check for model name
+            import inspect
+
+            source = inspect.getsource(request.function)
+            if "llama3.1:8b" in source or "llama3.1" in source:
+                if not check_ollama_model_available("llama3.1:8b"):
+                    pytest.skip("llama3.1:8b model not available in Ollama")
+
+
+@pytest.fixture(autouse=True)
+def skip_if_network_required(request):
+    """Auto-skip tests marked with requires_network unless --run-network is specified."""
+    if "requires_network" in request.keywords:
+        # Skip by default unless --run-network flag is provided
+        if not request.config.getoption("--run-network"):
+            pytest.skip("Skipped: requires network (use --run-network to run)")

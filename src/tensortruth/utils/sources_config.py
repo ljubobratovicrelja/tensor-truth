@@ -46,7 +46,11 @@ def update_sources_config(config_path, source_type, name, entry):
         ... )
     """
     # Load existing or create new
-    config = load_user_sources(config_path)
+    try:
+        config = load_user_sources(config_path)
+    except IOError:
+        # File doesn't exist, create new config structure
+        config = {"libraries": {}, "papers": {}, "books": {}}
 
     # Ensure structure
     if source_type not in config:

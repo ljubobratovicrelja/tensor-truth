@@ -49,6 +49,7 @@ def update_config(**kwargs):
         update_config(ollama_base_url="http://192.168.1.100:11434")
         update_config(ui_default_temperature=0.5)
         update_config(rag_default_device="cuda")
+        update_config(agent_min_required_pages=10)
     """
     config = load_config()
 
@@ -66,6 +67,14 @@ def update_config(**kwargs):
             attr_name = key.replace("rag_", "")
             if hasattr(config.rag, attr_name):
                 setattr(config.rag, attr_name, value)
+        elif key.startswith("agent_"):
+            attr_name = key.replace("agent_", "")
+            if hasattr(config.agent, attr_name):
+                setattr(config.agent, attr_name, value)
+        elif key.startswith("models_"):
+            attr_name = key.replace("models_", "")
+            if hasattr(config.models, attr_name):
+                setattr(config.models, attr_name, value)
 
     save_config(config)
 

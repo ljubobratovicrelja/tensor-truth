@@ -8,6 +8,7 @@ import streamlit as st
 
 from tensortruth import convert_latex_delimiters
 from tensortruth.app_utils import get_random_generating_message
+from tensortruth.app_utils.rendering import render_thinking
 from tensortruth.code_execution.parser import CodeBlock, CodeBlockParser
 
 
@@ -103,17 +104,7 @@ def _stream_llm_with_thinking(
                 thinking_placeholder = st.empty()
 
             thinking_accumulated += thinking_delta
-            # Use markdown with custom CSS class for smaller font
-            thinking_placeholder.markdown(
-                f"""<div class="thinking-content">
-
-**🧠 Reasoning:**
-
-{convert_latex_delimiters(thinking_accumulated)}
-
-</div>""",
-                unsafe_allow_html=True,
-            )
+            render_thinking(thinking_accumulated, placeholder=thinking_placeholder)
 
         # Extract and display content delta
         if chunk.delta:
@@ -259,7 +250,10 @@ def stream_rag_response(
                         )
                     code_blocks = code_parser.get_all_blocks()
 
-        spinner_placeholder.empty()
+        # Spinner is already cleared by _stream_llm_with_thinking if thinking was present
+        # Only clear it if we took the fallback path
+        if not thinking_accumulated:
+            spinner_placeholder.empty()
 
     except Exception as e:
         error = e
@@ -302,7 +296,9 @@ def stream_simple_llm_response(
                     )
                 )
 
-        spinner_placeholder.empty()
+        # Spinner already cleared by _stream_llm_with_thinking if thinking was present
+        if not thinking_accumulated:
+            spinner_placeholder.empty()
 
     except Exception as e:
         error = e

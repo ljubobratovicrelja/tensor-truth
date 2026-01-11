@@ -79,7 +79,7 @@ class TestConfigBasedRebuilding:
         mock_fetch.return_value = {
             "title": "Test Paper",
             "arxiv_id": "1706.03762",
-            "url": "https://arxiv.org/abs/1706.03762",
+            "source": "https://arxiv.org/abs/1706.03762",
         }
 
         # This would normally process all papers in config

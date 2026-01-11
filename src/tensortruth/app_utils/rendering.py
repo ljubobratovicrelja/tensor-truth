@@ -1,10 +1,77 @@
 """Rendering utilities for Streamlit UI components."""
 
+import html
 import re
 
 import streamlit as st
 
 from tensortruth import convert_latex_delimiters
+
+
+def _create_scrollable_box(
+    content: str, label: str, css_class: str, escape_html: bool = True
+) -> str:
+    """Create HTML for a scrollable box with fixed height.
+
+    Args:
+        content: The content to display inside the box
+        label: The label/title for the box
+        css_class: CSS class name for styling
+        escape_html: Whether to escape HTML in content (default: True for security)
+
+    Returns:
+        HTML string with styled scrollable container
+    """
+    # Escape content by default to prevent XSS
+    if escape_html:
+        content = html.escape(content)
+
+    return f"""
+<div class="tt-scrollable-box {css_class}">
+<strong>{label}</strong>
+<div style="margin-top: 0.5rem;">
+{content}
+</div>
+</div>"""
+
+
+def render_thinking(thinking_text: str, placeholder=None):
+    """Render thinking/reasoning content with consistent formatting.
+
+    Args:
+        thinking_text: The thinking content to display
+        placeholder: Optional Streamlit placeholder to render into (uses st.markdown if None)
+    """
+    html_content = _create_scrollable_box(
+        content=convert_latex_delimiters(thinking_text),
+        label="🧠 Reasoning:",
+        css_class="tt-thinking-box",
+        escape_html=False,  # LaTeX/markdown content, already sanitized
+    )
+
+    if placeholder:
+        placeholder.markdown(html_content, unsafe_allow_html=True)
+    else:
+        st.markdown(html_content, unsafe_allow_html=True)
+
+
+def render_web_search_progress(progress_text: str, placeholder=None):
+    """Render web search progress with consistent formatting.
+
+    Args:
+        progress_text: The progress updates to display
+        placeholder: Optional Streamlit placeholder to render into (uses st.markdown if None)
+    """
+    html_content = _create_scrollable_box(
+        content=progress_text,
+        label="🔍 Web Search Progress:",
+        css_class="tt-web-search-box",
+    )
+
+    if placeholder:
+        placeholder.markdown(html_content, unsafe_allow_html=True)
+    else:
+        st.markdown(html_content, unsafe_allow_html=True)
 
 
 def get_doc_type_icon(doc_type: str) -> str:
@@ -268,40 +335,75 @@ def render_execution_result(result: dict):
             st.caption(f"⏱️ {result['execution_time']:.2f}s")
 
 
-def render_content_with_execution_results(content: str, execution_results: list = None):
+def render_content_with_execution_results(
+    content: str, execution_results: list = None, code_blocks: list = None
+):
     """Render markdown content with execution results injected after code blocks.
 
     Args:
         content: Markdown content from message
         execution_results: List of execution result dicts (one per code block)
+        code_blocks: List of code block dicts with position information
     """
     if not execution_results:
         # No execution results, render content normally
         st.markdown(convert_latex_delimiters(content))
         return
 
-    # Pattern to match code blocks (both ```python and ``` generic)
-    # Matches: ```language\ncode\n``` or ```language\ncode```
-    code_block_pattern = re.compile(r"(```[\w]*\n.*?```)", re.DOTALL)
+    if code_blocks and len(code_blocks) == len(execution_results):
+        # Use position-based matching when we have code block information
+        last_pos = 0
+        for i, (block, result) in enumerate(zip(code_blocks, execution_results)):
+            # Render content before this code block
+            before_block = content[last_pos : block["start_position"]]
+            if before_block.strip():
+                st.markdown(convert_latex_delimiters(before_block))
 
-    # Split content by code blocks while keeping the code blocks
-    parts = code_block_pattern.split(content)
+            # Render the code block
+            code_fence = f"```{block.get('language', 'python')}\n{block['code']}\n```"
+            st.markdown(convert_latex_delimiters(code_fence))
 
-    result_index = 0
+            # Render execution result immediately after
+            render_execution_result(result)
 
-    for part in parts:
-        if part.startswith("```"):
-            # This is a code block - render it
-            st.markdown(convert_latex_delimiters(part))
+            # Update position - account for code fence format: ```language\ncode\n```
+            language_spec = f"```{block.get('language', 'python')}\n"
+            closing_fence = "\n```"
+            last_pos = (
+                block["start_position"]
+                + len(language_spec)
+                + len(block["code"])
+                + len(closing_fence)
+            )
 
-            # Inject execution result if available
-            if result_index < len(execution_results):
-                render_execution_result(execution_results[result_index])
-                result_index += 1
-        else:
-            # This is regular text - render it
-            if part.strip():  # Only render non-empty parts
+        # Render remaining content after last code block
+        remaining = content[last_pos:]
+        if remaining.strip():
+            st.markdown(convert_latex_delimiters(remaining))
+    else:
+        # Fallback to regex-based parsing when we don't have position info
+        # Pattern to match code blocks (both ```python and ``` generic)
+        # Matches: ```language\ncode\n``` or ```language\ncode```
+        code_block_pattern = re.compile(r"(```[\w]*\n.*?```)", re.DOTALL)
+
+        # Split content by code blocks while keeping the code blocks
+        parts = code_block_pattern.split(content)
+
+        result_index = 0
+
+        for part in parts:
+            if part.startswith("```"):
+                # This is a code block - render it
                 st.markdown(convert_latex_delimiters(part))
+
+                # Inject execution result if available
+                if result_index < len(execution_results):
+                    render_execution_result(execution_results[result_index])
+                    result_index += 1
+            else:
+                # This is regular text - render it
+                if part.strip():  # Only render non-empty parts
+                    st.markdown(convert_latex_delimiters(part))
 
 
 def render_chat_message(
@@ -339,22 +441,22 @@ def render_chat_message(
                     0.0, confidence_threshold, has_sources=False
                 )
 
-        # Render thinking if present
+        # Render thinking if present (for RAG responses)
         if message.get("thinking"):
-            st.markdown(
-                f"""<div class="thinking-content">
+            render_thinking(message["thinking"])
 
-**🧠 Reasoning:**
+        # Render agent thinking if present (for agent responses)
+        if message.get("agent_thinking"):
+            from tensortruth.app_utils.rendering_agent import render_agent_thinking
 
-{convert_latex_delimiters(message['thinking'])}
-
-</div>""",
-                unsafe_allow_html=True,
-            )
+            render_agent_thinking(message["agent_thinking"])
 
         # Render message content with inline execution results
         execution_results = message.get("execution_results", [])
-        render_content_with_execution_results(message["content"], execution_results)
+        code_blocks = message.get("code_blocks", [])
+        render_content_with_execution_results(
+            message["content"], execution_results, code_blocks
+        )
 
         # Render footer (sources + metadata)
         meta_cols = st.columns([3, 1])

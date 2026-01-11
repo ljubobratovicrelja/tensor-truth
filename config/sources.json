@@ -3,7 +3,6 @@
     "pytorch_2.9": {
       "type": "sphinx",
       "version": "2.9",
-      "doc_type": "sphinx",
       "doc_root": "https://pytorch.org/docs/stable/",
       "inventory_url": "https://pytorch.org/docs/stable/objects.inv",
       "selector": "div[role='main']"
@@ -11,7 +10,6 @@
     "numpy_2.3": {
       "type": "sphinx",
       "version": "2.3",
-      "doc_type": "sphinx",
       "doc_root": "https://numpy.org/doc/stable/",
       "inventory_url": "https://numpy.org/doc/stable/objects.inv",
       "selector": "article[role='main']"
@@ -19,7 +17,6 @@
     "scipy_1.15": {
       "type": "sphinx",
       "version": "1.15",
-      "doc_type": "sphinx",
       "doc_root": "https://docs.scipy.org/doc/scipy/",
       "inventory_url": "https://docs.scipy.org/doc/scipy/objects.inv",
       "selector": "article[role='main']"
@@ -27,7 +24,6 @@
     "matplotlib_3.10": {
       "type": "sphinx",
       "version": "3.10",
-      "doc_type": "sphinx",
       "doc_root": "https://matplotlib.org/stable/",
       "inventory_url": "https://matplotlib.org/stable/objects.inv",
       "selector": "div[role='main']"
@@ -35,7 +31,6 @@
     "pandas_2.3": {
       "type": "sphinx",
       "version": "2.3",
-      "doc_type": "sphinx",
       "doc_root": "https://pandas.pydata.org/docs/",
       "inventory_url": "https://pandas.pydata.org/docs/objects.inv",
       "selector": "article[role='main']"
@@ -43,7 +38,6 @@
     "scikit-learn_1.8": {
       "type": "sphinx",
       "version": "1.8",
-      "doc_type": "sphinx",
       "doc_root": "https://scikit-learn.org/stable/",
       "inventory_url": "https://scikit-learn.org/stable/objects.inv",
       "selector": "div[role='main']"
@@ -51,7 +45,6 @@
     "seaborn_0.13": {
       "type": "sphinx",
       "version": "0.13",
-      "doc_type": "sphinx",
       "doc_root": "https://seaborn.pydata.org/",
       "inventory_url": "https://seaborn.pydata.org/objects.inv",
       "selector": "article[role='main']"
@@ -59,7 +52,6 @@
     "transformers_4.57": {
       "type": "sphinx",
       "version": "4.57",
-      "doc_type": "sphinx",
       "doc_root": "https://huggingface.co/docs/transformers/",
       "inventory_url": "https://huggingface.co/docs/transformers/main/en/objects.inv",
       "selector": "main"
@@ -67,7 +59,6 @@
     "pillow_12.0": {
       "type": "sphinx",
       "version": "12.0",
-      "doc_type": "sphinx",
       "doc_root": "https://pillow.readthedocs.io/en/stable/",
       "inventory_url": "https://pillow.readthedocs.io/en/stable/objects.inv",
       "selector": "div[role='main']"
@@ -75,7 +66,6 @@
     "opencv_4.12": {
       "type": "doxygen",
       "version": "4.12",
-      "doc_type": "doxygen",
       "doc_root": "https://docs.opencv.org/4.12.0/",
       "index_pages": [
         "annotated.html",
@@ -92,142 +82,142 @@
         "1512.03385": {
           "title": "Deep Residual Learning for Image Recognition",
           "arxiv_id": "1512.03385",
-          "url": "https://arxiv.org/abs/1512.03385",
           "authors": "Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun",
-          "year": "2015"
+          "year": "2015",
+          "source": "https://arxiv.org/abs/1512.03385"
         },
         "1409.1556": {
           "title": "Very Deep Convolutional Networks for Large-Scale Image Recognition",
           "arxiv_id": "1409.1556",
-          "url": "https://arxiv.org/abs/1409.1556",
           "authors": "Karen Simonyan, Andrew Zisserman",
-          "year": "2014"
+          "year": "2014",
+          "source": "https://arxiv.org/abs/1409.1556"
         },
         "1409.4842": {
           "title": "Going Deeper with Convolutions",
           "arxiv_id": "1409.4842",
-          "url": "https://arxiv.org/abs/1409.4842",
           "authors": "Christian Szegedy, Wei Liu, Yangqing Jia, Pierre Sermanet, Scott Reed, Dragomir Anguelov, Dumitru Erhan, Vincent Vanhoucke, Andrew Rabinovich",
-          "year": "2014"
+          "year": "2014",
+          "source": "https://arxiv.org/abs/1409.4842"
         },
         "1502.03167": {
           "title": "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift",
           "arxiv_id": "1502.03167",
-          "url": "https://arxiv.org/abs/1502.03167",
           "authors": "Sergey Ioffe, Christian Szegedy",
-          "year": "2015"
+          "year": "2015",
+          "source": "https://arxiv.org/abs/1502.03167"
         },
         "1412.6980": {
           "title": "Adam: A Method for Stochastic Optimization",
           "arxiv_id": "1412.6980",
-          "url": "https://arxiv.org/abs/1412.6980",
           "authors": "Diederik P. Kingma, Jimmy Ba",
-          "year": "2014"
+          "year": "2014",
+          "source": "https://arxiv.org/abs/1412.6980"
         },
         "1704.04861": {
           "title": "MobileNets: Efficient Convolutional Neural Networks for Mobile Vision Applications",
           "arxiv_id": "1704.04861",
-          "url": "https://arxiv.org/abs/1704.04861",
           "authors": "Andrew G. Howard, Menglong Zhu, Bo Chen, Dmitry Kalenichenko, Weijun Wang, Tobias Weyand, Marco Andreetto, Hartwig Adam",
-          "year": "2017"
+          "year": "2017",
+          "source": "https://arxiv.org/abs/1704.04861"
         },
         "1905.11946": {
           "title": "EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks",
           "arxiv_id": "1905.11946",
-          "url": "https://arxiv.org/abs/1905.11946",
           "authors": "Mingxing Tan, Quoc V. Le",
-          "year": "2019"
+          "year": "2019",
+          "source": "https://arxiv.org/abs/1905.11946"
         },
         "2201.03545": {
           "title": "A ConvNet for the 2020s",
           "arxiv_id": "2201.03545",
-          "url": "https://arxiv.org/abs/2201.03545",
           "authors": "Zhuang Liu, Hanzi Mao, Chao-Yuan Wu, Christoph Feichtenhofer, Trevor Darrell, Saining Xie",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2201.03545"
         },
         "1706.03762": {
           "title": "Attention Is All You Need",
           "arxiv_id": "1706.03762",
-          "url": "https://arxiv.org/abs/1706.03762",
           "authors": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, Illia Polosukhin",
-          "year": "2017"
+          "year": "2017",
+          "source": "https://arxiv.org/abs/1706.03762"
         },
         "2010.11929": {
           "title": "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
           "arxiv_id": "2010.11929",
-          "url": "https://arxiv.org/abs/2010.11929",
           "authors": "Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, Jakob Uszkoreit, Neil Houlsby",
-          "year": "2020"
+          "year": "2020",
+          "source": "https://arxiv.org/abs/2010.11929"
         },
         "1207.0580": {
           "title": "Improving neural networks by preventing co-adaptation of feature detectors",
           "arxiv_id": "1207.0580",
-          "url": "https://arxiv.org/abs/1207.0580",
           "authors": "Geoffrey E. Hinton, Nitish Srivastava, Alex Krizhevsky, Ilya Sutskever, Ruslan R. Salakhutdinov",
-          "year": "2012"
+          "year": "2012",
+          "source": "https://arxiv.org/abs/1207.0580"
         },
         "1607.06450": {
           "title": "Layer Normalization",
           "arxiv_id": "1607.06450",
-          "url": "https://arxiv.org/abs/1607.06450",
           "authors": "Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton",
-          "year": "2016"
+          "year": "2016",
+          "source": "https://arxiv.org/abs/1607.06450"
         },
         "1606.08415": {
           "title": "Gaussian Error Linear Units (GELUs)",
           "arxiv_id": "1606.08415",
-          "url": "https://arxiv.org/abs/1606.08415",
           "authors": "Dan Hendrycks, Kevin Gimpel",
-          "year": "2016"
+          "year": "2016",
+          "source": "https://arxiv.org/abs/1606.08415"
         },
         "1612.08083": {
           "title": "Language Modeling with Gated Convolutional Networks",
           "arxiv_id": "1612.08083",
-          "url": "https://arxiv.org/abs/1612.08083",
           "authors": "Yann N. Dauphin, Angela Fan, Michael Auli, David Grangier",
-          "year": "2016"
+          "year": "2016",
+          "source": "https://arxiv.org/abs/1612.08083"
         },
         "2103.14030": {
           "title": "Swin Transformer: Hierarchical Vision Transformer using Shifted Windows",
           "arxiv_id": "2103.14030",
-          "url": "https://arxiv.org/abs/2103.14030",
           "authors": "Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng Zhang, Stephen Lin, Baining Guo",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2103.14030"
         },
         "2111.06377": {
           "title": "Masked Autoencoders Are Scalable Vision Learners",
           "arxiv_id": "2111.06377",
-          "url": "https://arxiv.org/abs/2111.06377",
           "authors": "Kaiming He, Xinlei Chen, Saining Xie, Yanghao Li, Piotr Doll\u00e1r, Ross Girshick",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2111.06377"
         },
         "2105.01601": {
           "title": "MLP-Mixer: An all-MLP Architecture for Vision",
           "arxiv_id": "2105.01601",
-          "url": "https://arxiv.org/abs/2105.01601",
           "authors": "Ilya Tolstikhin, Neil Houlsby, Alexander Kolesnikov, Lucas Beyer, Xiaohua Zhai, Thomas Unterthiner, Jessica Yung, Andreas Steiner, Daniel Keysers, Jakob Uszkoreit, Mario Lucic, Alexey Dosovitskiy",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2105.01601"
         },
         "1711.05101": {
           "title": "Decoupled Weight Decay Regularization",
           "arxiv_id": "1711.05101",
-          "url": "https://arxiv.org/abs/1711.05101",
           "authors": "Ilya Loshchilov, Frank Hutter",
-          "year": "2017"
+          "year": "2017",
+          "source": "https://arxiv.org/abs/1711.05101"
         },
         "2205.14135": {
           "title": "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness",
           "arxiv_id": "2205.14135",
-          "url": "https://arxiv.org/abs/2205.14135",
           "authors": "Tri Dao, Daniel Y. Fu, Stefano Ermon, Atri Rudra, Christopher R\u00e9",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2205.14135"
         },
         "2104.09864": {
           "title": "RoFormer: Enhanced Transformer with Rotary Position Embedding",
           "arxiv_id": "2104.09864",
-          "url": "https://arxiv.org/abs/2104.09864",
           "authors": "Jianlin Su, Yu Lu, Shengfeng Pan, Ahmed Murtadha, Bo Wen, Yunfeng Liu",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2104.09864"
         }
       },
       "type": "arxiv"
@@ -239,142 +229,142 @@
         "1810.04805": {
           "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
           "arxiv_id": "1810.04805",
-          "url": "https://arxiv.org/abs/1810.04805",
           "authors": "Jacob Devlin, Ming-Wei Chang, Kenton Lee, Kristina Toutanova",
-          "year": "2018"
+          "year": "2018",
+          "source": "https://arxiv.org/abs/1810.04805"
         },
         "2103.00020": {
           "title": "Learning Transferable Visual Models From Natural Language Supervision",
           "arxiv_id": "2103.00020",
-          "url": "https://arxiv.org/abs/2103.00020",
           "authors": "Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, Ilya Sutskever",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2103.00020"
         },
         "2304.02643": {
           "title": "Segment Anything",
           "arxiv_id": "2304.02643",
-          "url": "https://arxiv.org/abs/2304.02643",
           "authors": "Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao, Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer Whitehead, Alexander C. Berg, Wan-Yen Lo, Piotr Doll\u00e1r, Ross Girshick",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2304.02643"
         },
         "2211.10831": {
           "title": "Joint Embedding Predictive Architectures Focus on Slow Features",
           "arxiv_id": "2211.10831",
-          "url": "https://arxiv.org/abs/2211.10831",
           "authors": "Vlad Sobal, Jyothir S, Siddhartha Jalagam, Nicolas Carion, Kyunghyun Cho, Yann LeCun",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2211.10831"
         },
         "2005.14165": {
           "title": "Language Models are Few-Shot Learners",
           "arxiv_id": "2005.14165",
-          "url": "https://arxiv.org/abs/2005.14165",
           "authors": "Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, Sandhini Agarwal, Ariel Herbert-Voss, Gretchen Krueger, Tom Henighan, Rewon Child, Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu, Clemens Winter, Christopher Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, Dario Amodei",
-          "year": "2020"
+          "year": "2020",
+          "source": "https://arxiv.org/abs/2005.14165"
         },
         "2302.13971": {
           "title": "LLaMA: Open and Efficient Foundation Language Models",
           "arxiv_id": "2302.13971",
-          "url": "https://arxiv.org/abs/2302.13971",
           "authors": "Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne Lachaux, Timoth\u00e9e Lacroix, Baptiste Rozi\u00e8re, Naman Goyal, Eric Hambro, Faisal Azhar, Aurelien Rodriguez, Armand Joulin, Edouard Grave, Guillaume Lample",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2302.13971"
         },
         "2203.02155": {
           "title": "Training language models to follow instructions with human feedback",
           "arxiv_id": "2203.02155",
-          "url": "https://arxiv.org/abs/2203.02155",
           "authors": "Long Ouyang, Jeff Wu, Xu Jiang, Diogo Almeida, Carroll L. Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, John Schulman, Jacob Hilton, Fraser Kelton, Luke Miller, Maddie Simens, Amanda Askell, Peter Welinder, Paul Christiano, Jan Leike, Ryan Lowe",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2203.02155"
         },
         "2106.09685": {
           "title": "LoRA: Low-Rank Adaptation of Large Language Models",
           "arxiv_id": "2106.09685",
-          "url": "https://arxiv.org/abs/2106.09685",
           "authors": "Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2106.09685"
         },
         "2001.08361": {
           "title": "Scaling Laws for Neural Language Models",
           "arxiv_id": "2001.08361",
-          "url": "https://arxiv.org/abs/2001.08361",
           "authors": "Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B. Brown, Benjamin Chess, Rewon Child, Scott Gray, Alec Radford, Jeffrey Wu, Dario Amodei",
-          "year": "2020"
+          "year": "2020",
+          "source": "https://arxiv.org/abs/2001.08361"
         },
         "2201.11903": {
           "title": "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models",
           "arxiv_id": "2201.11903",
-          "url": "https://arxiv.org/abs/2201.11903",
           "authors": "Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian Ichter, Fei Xia, Ed Chi, Quoc Le, Denny Zhou",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2201.11903"
         },
         "2204.14198": {
           "title": "Flamingo: a Visual Language Model for Few-Shot Learning",
           "arxiv_id": "2204.14198",
-          "url": "https://arxiv.org/abs/2204.14198",
           "authors": "Jean-Baptiste Alayrac, Jeff Donahue, Pauline Luc, Antoine Miech, Iain Barr, Yana Hasson, Karel Lenc, Arthur Mensch, Katie Millican, Malcolm Reynolds, Roman Ring, Eliza Rutherford, Serkan Cabi, Tengda Han, Zhitao Gong, Sina Samangooei, Marianne Monteiro, Jacob Menick, Sebastian Borgeaud, Andrew Brock, Aida Nematzadeh, Sahand Sharifzadeh, Mikolaj Binkowski, Ricardo Barreira, Oriol Vinyals, Andrew Zisserman, Karen Simonyan",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2204.14198"
         },
         "2201.12086": {
           "title": "BLIP: Bootstrapping Language-Image Pre-training for Unified Vision-Language Understanding and Generation",
           "arxiv_id": "2201.12086",
-          "url": "https://arxiv.org/abs/2201.12086",
           "authors": "Junnan Li, Dongxu Li, Caiming Xiong, Steven Hoi",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2201.12086"
         },
         "2104.14294": {
           "title": "Emerging Properties in Self-Supervised Vision Transformers",
           "arxiv_id": "2104.14294",
-          "url": "https://arxiv.org/abs/2104.14294",
           "authors": "Mathilde Caron, Hugo Touvron, Ishan Misra, Herv\u00e9 J\u00e9gou, Julien Mairal, Piotr Bojanowski, Armand Joulin",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2104.14294"
         },
         "2304.07193": {
           "title": "DINOv2: Learning Robust Visual Features without Supervision",
           "arxiv_id": "2304.07193",
-          "url": "https://arxiv.org/abs/2304.07193",
           "authors": "Maxime Oquab, Timoth\u00e9e Darcet, Th\u00e9o Moutakanni, Huy Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, Mahmoud Assran, Nicolas Ballas, Wojciech Galuba, Russell Howes, Po-Yao Huang, Shang-Wen Li, Ishan Misra, Michael Rabbat, Vasu Sharma, Gabriel Synnaeve, Hu Xu, Herv\u00e9 Jegou, Julien Mairal, Patrick Labatut, Armand Joulin, Piotr Bojanowski",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2304.07193"
         },
         "2107.03374": {
           "title": "Evaluating Large Language Models Trained on Code",
           "arxiv_id": "2107.03374",
-          "url": "https://arxiv.org/abs/2107.03374",
           "authors": "Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman, Alex Ray, Raul Puri, Gretchen Krueger, Michael Petrov, Heidy Khlaaf, Girish Sastry, Pamela Mishkin, Brooke Chan, Scott Gray, Nick Ryder, Mikhail Pavlov, Alethea Power, Lukasz Kaiser, Mohammad Bavarian, Clemens Winter, Philippe Tillet, Felipe Petroski Such, Dave Cummings, Matthias Plappert, Fotios Chantzis, Elizabeth Barnes, Ariel Herbert-Voss, William Hebgen Guss, Alex Nichol, Alex Paino, Nikolas Tezak, Jie Tang, Igor Babuschkin, Suchir Balaji, Shantanu Jain, William Saunders, Christopher Hesse, Andrew N. Carr, Jan Leike, Josh Achiam, Vedant Misra, Evan Morikawa, Alec Radford, Matthew Knight, Miles Brundage, Mira Murati, Katie Mayer, Peter Welinder, Bob McGrew, Dario Amodei, Sam McCandlish, Ilya Sutskever, Wojciech Zaremba",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2107.03374"
         },
         "2305.14314": {
           "title": "QLoRA: Efficient Finetuning of Quantized LLMs",
           "arxiv_id": "2305.14314",
-          "url": "https://arxiv.org/abs/2305.14314",
           "authors": "Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, Luke Zettlemoyer",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2305.14314"
         },
         "2101.03961": {
           "title": "Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity",
           "arxiv_id": "2101.03961",
-          "url": "https://arxiv.org/abs/2101.03961",
           "authors": "William Fedus, Barret Zoph, Noam Shazeer",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2101.03961"
         },
         "2507.00711": {
           "title": "Large Reasoning Models are not thinking straight: on the unreliability of thinking trajectories",
           "arxiv_id": "2507.00711",
-          "url": "https://arxiv.org/abs/2507.00711",
           "authors": "Jhouben Cuesta-Ramirez, Samuel Beaussant, Mehdi Mounsif",
-          "year": "2025"
+          "year": "2025",
+          "source": "https://arxiv.org/abs/2507.00711"
         },
         "2512.00218": {
           "title": "Reasoning Under Pressure: How do Training Incentives Influence Chain-of-Thought Monitorability?",
           "arxiv_id": "2512.00218",
-          "url": "https://arxiv.org/abs/2512.00218",
           "authors": "Matt MacDermott, Qiyao Wei, Rada Djoneva, Francis Rhys Ward",
-          "year": "2025"
+          "year": "2025",
+          "source": "https://arxiv.org/abs/2512.00218"
         },
         "2402.15391": {
           "title": "Genie: Generative Interactive Environments",
           "arxiv_id": "2402.15391",
-          "url": "https://arxiv.org/abs/2402.15391",
           "authors": "Jake Bruce, Michael Dennis, Ashley Edwards, Jack Parker-Holder, Yuge Shi, Edward Hughes, Matthew Lai, Aditi Mavalankar, Richie Steigerwald, Chris Apps, Yusuf Aytar, Sarah Bechtle, Feryal Behbahani, Stephanie Chan, Nicolas Heess, Lucy Gonzalez, Simon Osindero, Sherjil Ozair, Scott Reed, Jingwei Zhang, Konrad Zolna, Jeff Clune, Nando de Freitas, Satinder Singh, Tim Rockt\u00e4schel",
-          "year": "2024"
+          "year": "2024",
+          "source": "https://arxiv.org/abs/2402.15391"
         }
       },
       "type": "arxiv"
@@ -386,142 +376,142 @@
         "1506.02640": {
           "title": "You Only Look Once: Unified, Real-Time Object Detection",
           "arxiv_id": "1506.02640",
-          "url": "https://arxiv.org/abs/1506.02640",
           "authors": "Joseph Redmon, Santosh Divvala, Ross Girshick, Ali Farhadi",
-          "year": "2015"
+          "year": "2015",
+          "source": "https://arxiv.org/abs/1506.02640"
         },
         "1506.01497": {
           "title": "Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks",
           "arxiv_id": "1506.01497",
-          "url": "https://arxiv.org/abs/1506.01497",
           "authors": "Shaoqing Ren, Kaiming He, Ross Girshick, Jian Sun",
-          "year": "2015"
+          "year": "2015",
+          "source": "https://arxiv.org/abs/1506.01497"
         },
         "1703.06870": {
           "title": "Mask R-CNN",
           "arxiv_id": "1703.06870",
-          "url": "https://arxiv.org/abs/1703.06870",
           "authors": "Kaiming He, Georgia Gkioxari, Piotr Doll\u00e1r, Ross Girshick",
-          "year": "2017"
+          "year": "2017",
+          "source": "https://arxiv.org/abs/1703.06870"
         },
         "2005.12872": {
           "title": "End-to-End Object Detection with Transformers",
           "arxiv_id": "2005.12872",
-          "url": "https://arxiv.org/abs/2005.12872",
           "authors": "Nicolas Carion, Francisco Massa, Gabriel Synnaeve, Nicolas Usunier, Alexander Kirillov, Sergey Zagoruyko",
-          "year": "2020"
+          "year": "2020",
+          "source": "https://arxiv.org/abs/2005.12872"
         },
         "1911.09070": {
           "title": "EfficientDet: Scalable and Efficient Object Detection",
           "arxiv_id": "1911.09070",
-          "url": "https://arxiv.org/abs/1911.09070",
           "authors": "Mingxing Tan, Ruoming Pang, Quoc V. Le",
-          "year": "2019"
+          "year": "2019",
+          "source": "https://arxiv.org/abs/1911.09070"
         },
         "1406.2661": {
           "title": "Generative Adversarial Networks",
           "arxiv_id": "1406.2661",
-          "url": "https://arxiv.org/abs/1406.2661",
           "authors": "Ian J. Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, Yoshua Bengio",
-          "year": "2014"
+          "year": "2014",
+          "source": "https://arxiv.org/abs/1406.2661"
         },
         "1611.07004": {
           "title": "Image-to-Image Translation with Conditional Adversarial Networks",
           "arxiv_id": "1611.07004",
-          "url": "https://arxiv.org/abs/1611.07004",
           "authors": "Phillip Isola, Jun-Yan Zhu, Tinghui Zhou, Alexei A. Efros",
-          "year": "2016"
+          "year": "2016",
+          "source": "https://arxiv.org/abs/1611.07004"
         },
         "1703.10593": {
           "title": "Unpaired Image-to-Image Translation using Cycle-Consistent Adversarial Networks",
           "arxiv_id": "1703.10593",
-          "url": "https://arxiv.org/abs/1703.10593",
           "authors": "Jun-Yan Zhu, Taesung Park, Phillip Isola, Alexei A. Efros",
-          "year": "2017"
+          "year": "2017",
+          "source": "https://arxiv.org/abs/1703.10593"
         },
         "1812.04948": {
           "title": "A Style-Based Generator Architecture for Generative Adversarial Networks",
           "arxiv_id": "1812.04948",
-          "url": "https://arxiv.org/abs/1812.04948",
           "authors": "Tero Karras, Samuli Laine, Timo Aila",
-          "year": "2018"
+          "year": "2018",
+          "source": "https://arxiv.org/abs/1812.04948"
         },
         "1912.04958": {
           "title": "Analyzing and Improving the Image Quality of StyleGAN",
           "arxiv_id": "1912.04958",
-          "url": "https://arxiv.org/abs/1912.04958",
           "authors": "Tero Karras, Samuli Laine, Miika Aittala, Janne Hellsten, Jaakko Lehtinen, Timo Aila",
-          "year": "2019"
+          "year": "2019",
+          "source": "https://arxiv.org/abs/1912.04958"
         },
         "2006.11239": {
           "title": "Denoising Diffusion Probabilistic Models",
           "arxiv_id": "2006.11239",
-          "url": "https://arxiv.org/abs/2006.11239",
           "authors": "Jonathan Ho, Ajay Jain, Pieter Abbeel",
-          "year": "2020"
+          "year": "2020",
+          "source": "https://arxiv.org/abs/2006.11239"
         },
         "2112.10752": {
           "title": "High-Resolution Image Synthesis with Latent Diffusion Models",
           "arxiv_id": "2112.10752",
-          "url": "https://arxiv.org/abs/2112.10752",
           "authors": "Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, Bj\u00f6rn Ommer",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2112.10752"
         },
         "2204.06125": {
           "title": "Hierarchical Text-Conditional Image Generation with CLIP Latents",
           "arxiv_id": "2204.06125",
-          "url": "https://arxiv.org/abs/2204.06125",
           "authors": "Aditya Ramesh, Prafulla Dhariwal, Alex Nichol, Casey Chu, Mark Chen",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2204.06125"
         },
         "1312.6114": {
           "title": "Auto-Encoding Variational Bayes",
           "arxiv_id": "1312.6114",
-          "url": "https://arxiv.org/abs/1312.6114",
           "authors": "Diederik P Kingma, Max Welling",
-          "year": "2013"
+          "year": "2013",
+          "source": "https://arxiv.org/abs/1312.6114"
         },
         "2010.02502": {
           "title": "Denoising Diffusion Implicit Models",
           "arxiv_id": "2010.02502",
-          "url": "https://arxiv.org/abs/2010.02502",
           "authors": "Jiaming Song, Chenlin Meng, Stefano Ermon",
-          "year": "2020"
+          "year": "2020",
+          "source": "https://arxiv.org/abs/2010.02502"
         },
         "2302.05543": {
           "title": "Adding Conditional Control to Text-to-Image Diffusion Models",
           "arxiv_id": "2302.05543",
-          "url": "https://arxiv.org/abs/2302.05543",
           "authors": "Lvmin Zhang, Anyi Rao, Maneesh Agrawala",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2302.05543"
         },
         "2212.09748": {
           "title": "Scalable Diffusion Models with Transformers",
           "arxiv_id": "2212.09748",
-          "url": "https://arxiv.org/abs/2212.09748",
           "authors": "William Peebles, Saining Xie",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2212.09748"
         },
         "2011.13456": {
           "title": "Score-Based Generative Modeling through Stochastic Differential Equations",
           "arxiv_id": "2011.13456",
-          "url": "https://arxiv.org/abs/2011.13456",
           "authors": "Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, Ben Poole",
-          "year": "2020"
+          "year": "2020",
+          "source": "https://arxiv.org/abs/2011.13456"
         },
         "2208.12242": {
           "title": "DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation",
           "arxiv_id": "2208.12242",
-          "url": "https://arxiv.org/abs/2208.12242",
           "authors": "Nataniel Ruiz, Yuanzhen Li, Varun Jampani, Yael Pritch, Michael Rubinstein, Kfir Aberman",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2208.12242"
         },
         "2511.16719": {
           "title": "SAM 3: Segment Anything with Concepts",
           "arxiv_id": "2511.16719",
-          "url": "https://arxiv.org/abs/2511.16719",
           "authors": "Nicolas Carion, Laura Gustafson, Yuan-Ting Hu, Shoubhik Debnath, Ronghang Hu, Didac Suris, Chaitanya Ryali, Kalyan Vasudev Alwala, Haitham Khedr, Andrew Huang, Jie Lei, Tengyu Ma, Baishan Guo, Arpit Kalla, Markus Marks, Joseph Greer, Meng Wang, Peize Sun, Roman R\u00e4dle, Triantafyllos Afouras, Effrosyni Mavroudi, Katherine Xu, Tsung-Han Wu, Yu Zhou, Liliane Momeni, Rishi Hazra, Shuangrui Ding, Sagar Vaze, Francois Porcher, Feng Li, Siyuan Li, Aishwarya Kamath, Ho Kei Cheng, Piotr Doll\u00e1r, Nikhila Ravi, Kate Saenko, Pengchuan Zhang, Christoph Feichtenhofer",
-          "year": "2025"
+          "year": "2025",
+          "source": "https://arxiv.org/abs/2511.16719"
         }
       },
       "type": "arxiv"
@@ -533,142 +523,142 @@
         "2003.08934": {
           "title": "NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis",
           "arxiv_id": "2003.08934",
-          "url": "https://arxiv.org/abs/2003.08934",
           "authors": "Ben Mildenhall, Pratul P. Srinivasan, Matthew Tancik, Jonathan T. Barron, Ravi Ramamoorthi, Ren Ng",
-          "year": "2020"
+          "year": "2020",
+          "source": "https://arxiv.org/abs/2003.08934"
         },
         "2201.05989": {
           "title": "Instant Neural Graphics Primitives with a Multiresolution Hash Encoding",
           "arxiv_id": "2201.05989",
-          "url": "https://arxiv.org/abs/2201.05989",
           "authors": "Thomas M\u00fcller, Alex Evans, Christoph Schied, Alexander Keller",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2201.05989"
         },
         "2308.04079": {
           "title": "3D Gaussian Splatting for Real-Time Radiance Field Rendering",
           "arxiv_id": "2308.04079",
-          "url": "https://arxiv.org/abs/2308.04079",
           "authors": "Bernhard Kerbl, Georgios Kopanas, Thomas Leimk\u00fchler, George Drettakis",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2308.04079"
         },
         "2310.08528": {
           "title": "4D Gaussian Splatting for Real-Time Dynamic Scene Rendering",
           "arxiv_id": "2310.08528",
-          "url": "https://arxiv.org/abs/2310.08528",
           "authors": "Guanjun Wu, Taoran Yi, Jiemin Fang, Lingxi Xie, Xiaopeng Zhang, Wei Wei, Wenyu Liu, Qi Tian, Xinggang Wang",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2310.08528"
         },
         "2309.13101": {
           "title": "Deformable 3D Gaussians for High-Fidelity Monocular Dynamic Scene Reconstruction",
           "arxiv_id": "2309.13101",
-          "url": "https://arxiv.org/abs/2309.13101",
           "authors": "Ziyi Yang, Xinyu Gao, Wen Zhou, Shaohui Jiao, Yuqing Zhang, Xiaogang Jin",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2309.13101"
         },
         "2402.03307": {
           "title": "4D-Rotor Gaussian Splatting: Towards Efficient Novel View Synthesis for Dynamic Scenes",
           "arxiv_id": "2402.03307",
-          "url": "https://arxiv.org/abs/2402.03307",
           "authors": "Yuanxing Duan, Fangyin Wei, Qiyu Dai, Yuhang He, Wenzheng Chen, Baoquan Chen",
-          "year": "2024"
+          "year": "2024",
+          "source": "https://arxiv.org/abs/2402.03307"
         },
         "2406.08759": {
           "title": "GaussianForest: Hierarchical-Hybrid 3D Gaussian Splatting for Compressed Scene Modeling",
           "arxiv_id": "2406.08759",
-          "url": "https://arxiv.org/abs/2406.08759",
           "authors": "Fengyi Zhang, Yadan Luo, Tianjun Zhang, Lin Zhang, Zi Huang",
-          "year": "2024"
+          "year": "2024",
+          "source": "https://arxiv.org/abs/2406.08759"
         },
         "2311.16043": {
           "title": "Relightable 3D Gaussians: Realistic Point Cloud Relighting with BRDF Decomposition and Ray Tracing",
           "arxiv_id": "2311.16043",
-          "url": "https://arxiv.org/abs/2311.16043",
           "authors": "Jian Gao, Chun Gu, Youtian Lin, Zhihao Li, Hao Zhu, Xun Cao, Li Zhang, Yao Yao",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2311.16043"
         },
         "2311.12775": {
           "title": "SuGaR: Surface-Aligned Gaussian Splatting for Efficient 3D Mesh Reconstruction and High-Quality Mesh Rendering",
           "arxiv_id": "2311.12775",
-          "url": "https://arxiv.org/abs/2311.12775",
           "authors": "Antoine Gu\u00e9don, Vincent Lepetit",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2311.12775"
         },
         "2312.03203": {
           "title": "Feature 3DGS: Supercharging 3D Gaussian Splatting to Enable Distilled Feature Fields",
           "arxiv_id": "2312.03203",
-          "url": "https://arxiv.org/abs/2312.03203",
           "authors": "Shijie Zhou, Haoran Chang, Sicheng Jiang, Zhiwen Fan, Zehao Zhu, Dejia Xu, Pradyumna Chari, Suya You, Zhangyang Wang, Achuta Kadambi",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2312.03203"
         },
         "2311.17977": {
           "title": "GaussianShader: 3D Gaussian Splatting with Shading Functions for Reflective Surfaces",
           "arxiv_id": "2311.17977",
-          "url": "https://arxiv.org/abs/2311.17977",
           "authors": "Yingwenqi Jiang, Jiadong Tu, Yuan Liu, Xifeng Gao, Xiaoxiao Long, Wenping Wang, Yuexin Ma",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2311.17977"
         },
         "2312.02121": {
           "title": "Mathematical Supplement for the $\\texttt{gsplat}$ Library",
           "arxiv_id": "2312.02121",
-          "url": "https://arxiv.org/abs/2312.02121",
           "authors": "Vickie Ye, Angjoo Kanazawa",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2312.02121"
         },
         "1901.05103": {
           "title": "DeepSDF: Learning Continuous Signed Distance Functions for Shape Representation",
           "arxiv_id": "1901.05103",
-          "url": "https://arxiv.org/abs/1901.05103",
           "authors": "Jeong Joon Park, Peter Florence, Julian Straub, Richard Newcombe, Steven Lovegrove",
-          "year": "2019"
+          "year": "2019",
+          "source": "https://arxiv.org/abs/1901.05103"
         },
         "1612.00593": {
           "title": "PointNet: Deep Learning on Point Sets for 3D Classification and Segmentation",
           "arxiv_id": "1612.00593",
-          "url": "https://arxiv.org/abs/1612.00593",
           "authors": "Charles R. Qi, Hao Su, Kaichun Mo, Leonidas J. Guibas",
-          "year": "2016"
+          "year": "2016",
+          "source": "https://arxiv.org/abs/1612.00593"
         },
         "2209.14988": {
           "title": "DreamFusion: Text-to-3D using 2D Diffusion",
           "arxiv_id": "2209.14988",
-          "url": "https://arxiv.org/abs/2209.14988",
           "authors": "Ben Poole, Ajay Jain, Jonathan T. Barron, Ben Mildenhall",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2209.14988"
         },
         "2103.13415": {
           "title": "Mip-NeRF: A Multiscale Representation for Anti-Aliasing Neural Radiance Fields",
           "arxiv_id": "2103.13415",
-          "url": "https://arxiv.org/abs/2103.13415",
           "authors": "Jonathan T. Barron, Ben Mildenhall, Matthew Tancik, Peter Hedman, Ricardo Martin-Brualla, Pratul P. Srinivasan",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2103.13415"
         },
         "2111.12077": {
           "title": "Mip-NeRF 360: Unbounded Anti-Aliased Neural Radiance Fields",
           "arxiv_id": "2111.12077",
-          "url": "https://arxiv.org/abs/2111.12077",
           "authors": "Jonathan T. Barron, Ben Mildenhall, Dor Verbin, Pratul P. Srinivasan, Peter Hedman",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2111.12077"
         },
         "2303.11328": {
           "title": "Zero-1-to-3: Zero-shot One Image to 3D Object",
           "arxiv_id": "2303.11328",
-          "url": "https://arxiv.org/abs/2303.11328",
           "authors": "Ruoshi Liu, Rundi Wu, Basile Van Hoorick, Pavel Tokmakov, Sergey Zakharov, Carl Vondrick",
-          "year": "2023"
+          "year": "2023",
+          "source": "https://arxiv.org/abs/2303.11328"
         },
         "2106.10689": {
           "title": "NeuS: Learning Neural Implicit Surfaces by Volume Rendering for Multi-view Reconstruction",
           "arxiv_id": "2106.10689",
-          "url": "https://arxiv.org/abs/2106.10689",
           "authors": "Peng Wang, Lingjie Liu, Yuan Liu, Christian Theobalt, Taku Komura, Wenping Wang",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2106.10689"
         },
         "2503.11651": {
           "title": "VGGT: Visual Geometry Grounded Transformer",
           "arxiv_id": "2503.11651",
-          "url": "https://arxiv.org/abs/2503.11651",
           "authors": "Jianyuan Wang, Minghao Chen, Nikita Karaev, Andrea Vedaldi, Christian Rupprecht, David Novotny",
-          "year": "2025"
+          "year": "2025",
+          "source": "https://arxiv.org/abs/2503.11651"
         }
       },
       "type": "arxiv"
@@ -680,142 +670,142 @@
         "1312.5602": {
           "title": "Playing Atari with Deep Reinforcement Learning",
           "arxiv_id": "1312.5602",
-          "url": "https://arxiv.org/abs/1312.5602",
           "authors": "Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Alex Graves, Ioannis Antonoglou, Daan Wierstra, Martin Riedmiller",
-          "year": "2013"
+          "year": "2013",
+          "source": "https://arxiv.org/abs/1312.5602"
         },
         "1509.02971": {
           "title": "Continuous control with deep reinforcement learning",
           "arxiv_id": "1509.02971",
-          "url": "https://arxiv.org/abs/1509.02971",
           "authors": "Timothy P. Lillicrap, Jonathan J. Hunt, Alexander Pritzel, Nicolas Heess, Tom Erez, Yuval Tassa, David Silver, Daan Wierstra",
-          "year": "2015"
+          "year": "2015",
+          "source": "https://arxiv.org/abs/1509.02971"
         },
         "1707.06347": {
           "title": "Proximal Policy Optimization Algorithms",
           "arxiv_id": "1707.06347",
-          "url": "https://arxiv.org/abs/1707.06347",
           "authors": "John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, Oleg Klimov",
-          "year": "2017"
+          "year": "2017",
+          "source": "https://arxiv.org/abs/1707.06347"
         },
         "1801.01290": {
           "title": "Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor",
           "arxiv_id": "1801.01290",
-          "url": "https://arxiv.org/abs/1801.01290",
           "authors": "Tuomas Haarnoja, Aurick Zhou, Pieter Abbeel, Sergey Levine",
-          "year": "2018"
+          "year": "2018",
+          "source": "https://arxiv.org/abs/1801.01290"
         },
         "1803.10122": {
           "title": "World Models",
           "arxiv_id": "1803.10122",
-          "url": "https://arxiv.org/abs/1803.10122",
           "authors": "David Ha, J\u00fcrgen Schmidhuber",
-          "year": "2018"
+          "year": "2018",
+          "source": "https://arxiv.org/abs/1803.10122"
         },
         "2106.01345": {
           "title": "Decision Transformer: Reinforcement Learning via Sequence Modeling",
           "arxiv_id": "2106.01345",
-          "url": "https://arxiv.org/abs/2106.01345",
           "authors": "Lili Chen, Kevin Lu, Aravind Rajeswaran, Kimin Lee, Aditya Grover, Michael Laskin, Pieter Abbeel, Aravind Srinivas, Igor Mordatch",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2106.01345"
         },
         "1502.05477": {
           "title": "Trust Region Policy Optimization",
           "arxiv_id": "1502.05477",
-          "url": "https://arxiv.org/abs/1502.05477",
           "authors": "John Schulman, Sergey Levine, Philipp Moritz, Michael I. Jordan, Pieter Abbeel",
-          "year": "2015"
+          "year": "2015",
+          "source": "https://arxiv.org/abs/1502.05477"
         },
         "1602.01783": {
           "title": "Asynchronous Methods for Deep Reinforcement Learning",
           "arxiv_id": "1602.01783",
-          "url": "https://arxiv.org/abs/1602.01783",
           "authors": "Volodymyr Mnih, Adri\u00e0 Puigdom\u00e8nech Badia, Mehdi Mirza, Alex Graves, Timothy P. Lillicrap, Tim Harley, David Silver, Koray Kavukcuoglu",
-          "year": "2016"
+          "year": "2016",
+          "source": "https://arxiv.org/abs/1602.01783"
         },
         "1812.05905": {
           "title": "Soft Actor-Critic Algorithms and Applications",
           "arxiv_id": "1812.05905",
-          "url": "https://arxiv.org/abs/1812.05905",
           "authors": "Tuomas Haarnoja, Aurick Zhou, Kristian Hartikainen, George Tucker, Sehoon Ha, Jie Tan, Vikash Kumar, Henry Zhu, Abhishek Gupta, Pieter Abbeel, Sergey Levine",
-          "year": "2018"
+          "year": "2018",
+          "source": "https://arxiv.org/abs/1812.05905"
         },
         "1907.02057": {
           "title": "Benchmarking Model-Based Reinforcement Learning",
           "arxiv_id": "1907.02057",
-          "url": "https://arxiv.org/abs/1907.02057",
           "authors": "Tingwu Wang, Xuchan Bao, Ignasi Clavera, Jerrick Hoang, Yeming Wen, Eric Langlois, Shunshi Zhang, Guodong Zhang, Pieter Abbeel, Jimmy Ba",
-          "year": "2019"
+          "year": "2019",
+          "source": "https://arxiv.org/abs/1907.02057"
         },
         "1706.02275": {
           "title": "Multi-Agent Actor-Critic for Mixed Cooperative-Competitive Environments",
           "arxiv_id": "1706.02275",
-          "url": "https://arxiv.org/abs/1706.02275",
           "authors": "Ryan Lowe, Yi Wu, Aviv Tamar, Jean Harb, Pieter Abbeel, Igor Mordatch",
-          "year": "2017"
+          "year": "2017",
+          "source": "https://arxiv.org/abs/1706.02275"
         },
         "2005.01643": {
           "title": "Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems",
           "arxiv_id": "2005.01643",
-          "url": "https://arxiv.org/abs/2005.01643",
           "authors": "Sergey Levine, Aviral Kumar, George Tucker, Justin Fu",
-          "year": "2020"
+          "year": "2020",
+          "source": "https://arxiv.org/abs/2005.01643"
         },
         "1906.08253": {
           "title": "When to Trust Your Model: Model-Based Policy Optimization",
           "arxiv_id": "1906.08253",
-          "url": "https://arxiv.org/abs/1906.08253",
           "authors": "Michael Janner, Justin Fu, Marvin Zhang, Sergey Levine",
-          "year": "2019"
+          "year": "2019",
+          "source": "https://arxiv.org/abs/1906.08253"
         },
         "2210.14201": {
           "title": "Bayesian mixture models (in)consistency for the number of clusters",
           "arxiv_id": "2210.14201",
-          "url": "https://arxiv.org/abs/2210.14201",
           "authors": "Louise Alamichel, Daria Bystrova, Julyan Arbel, Guillaume Kon Kam King",
-          "year": "2022"
+          "year": "2022",
+          "source": "https://arxiv.org/abs/2210.14201"
         },
         "1606.01540": {
           "title": "OpenAI Gym",
           "arxiv_id": "1606.01540",
-          "url": "https://arxiv.org/abs/1606.01540",
           "authors": "Greg Brockman, Vicki Cheung, Ludwig Pettersson, Jonas Schneider, John Schulman, Jie Tang, Wojciech Zaremba",
-          "year": "2016"
+          "year": "2016",
+          "source": "https://arxiv.org/abs/1606.01540"
         },
         "1707.01495": {
           "title": "Hindsight Experience Replay",
           "arxiv_id": "1707.01495",
-          "url": "https://arxiv.org/abs/1707.01495",
           "authors": "Marcin Andrychowicz, Filip Wolski, Alex Ray, Jonas Schneider, Rachel Fong, Peter Welinder, Bob McGrew, Josh Tobin, Pieter Abbeel, Wojciech Zaremba",
-          "year": "2017"
+          "year": "2017",
+          "source": "https://arxiv.org/abs/1707.01495"
         },
         "1805.00909": {
           "title": "Reinforcement Learning and Control as Probabilistic Inference: Tutorial and Review",
           "arxiv_id": "1805.00909",
-          "url": "https://arxiv.org/abs/1805.00909",
           "authors": "Sergey Levine",
-          "year": "2018"
+          "year": "2018",
+          "source": "https://arxiv.org/abs/1805.00909"
         },
         "2106.02039": {
           "title": "Offline Reinforcement Learning as One Big Sequence Modeling Problem",
           "arxiv_id": "2106.02039",
-          "url": "https://arxiv.org/abs/2106.02039",
           "authors": "Michael Janner, Qiyang Li, Sergey Levine",
-          "year": "2021"
+          "year": "2021",
+          "source": "https://arxiv.org/abs/2106.02039"
         },
         "1511.05952": {
           "title": "Prioritized Experience Replay",
           "arxiv_id": "1511.05952",
-          "url": "https://arxiv.org/abs/1511.05952",
           "authors": "Tom Schaul, John Quan, Ioannis Antonoglou, David Silver",
-          "year": "2015"
+          "year": "2015",
+          "source": "https://arxiv.org/abs/1511.05952"
         },
         "1611.02779": {
           "title": "RL$^2$: Fast Reinforcement Learning via Slow Reinforcement Learning",
           "arxiv_id": "1611.02779",
-          "url": "https://arxiv.org/abs/1611.02779",
           "authors": "Yan Duan, John Schulman, Xi Chen, Peter L. Bartlett, Ilya Sutskever, Pieter Abbeel",
-          "year": "2016"
+          "year": "2016",
+          "source": "https://arxiv.org/abs/1611.02779"
         }
       },
       "type": "arxiv"

@@ -54,6 +54,15 @@ dependencies = [
     "pymupdf4llm",    # PDF to markdown conversion (required for session PDFs)
     "marker-pdf",     # Advanced PDF conversion with math support
     "tqdm",           # Progress bars for PDF processing
+
+    # --- Web Search & Content Fetching ---
+    "ddgs>=9.0.0",       # Web search functionality (formerly duckduckgo-search)
+    "beautifulsoup4",    # HTML parsing for web content
+    "markdownify",       # HTML to markdown conversion
+    "Wikipedia-API>=0.6.0",  # Wikipedia content fetching (imported as wikipediaapi)
+    "youtube-transcript-api>=0.6.0",  # YouTube transcript fetching
+    "sphobjinv",         # Sphinx inventory parsing for documentation scraping
+    "arxiv",             # ArXiv API client for paper fetching
 ]
 
 [project.scripts]
@@ -62,24 +71,12 @@ tensor-truth-docs = "tensortruth.cli:scrape_docs"
 tensor-truth-build = "tensortruth.cli:build_db"
 
 [project.optional-dependencies]
-# Documentation and paper scraping tools (tensor-truth-docs)
-# Note: PDF processing deps (pymupdf4llm, marker-pdf, tqdm) are now in core dependencies
-# because they're required for session PDF upload feature in the main app
-docs = [
-    "beautifulsoup4",
-    "markdownify",
-    "sphobjinv",      # Sphinx inventory parsing
-    "arxiv",          # ArXiv API client (for paper fetching)
-]
-
 # Development and testing dependencies
 dev = [
-    # Documentation/paper scraping tools
-    "tensor-truth[docs]",
-
     # Testing Framework
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
+    "pytest-asyncio>=0.24.0",
 
     # Property-based Testing
     "hypothesis>=6.82.0",
@@ -105,6 +102,7 @@ tensortruth = ["media/*.css", "media/*.png"]
 DEP002 = [
     "pytest",
     "pytest-cov",
+    "pytest-asyncio",
     "hypothesis",
     "black",
     "mypy",
@@ -144,8 +142,8 @@ markers = [
     "e2e: End-to-end tests (slow, full system)",
     "slow: Tests that take significant time",
     "requires_gpu: Tests requiring CUDA/MPS",
-    "requires_ollama: Tests requiring Ollama server",
-    "requires_network: Tests requiring internet connection",
+    "requires_ollama: Tests requiring Ollama server (skipped by default, use --run-ollama to run)",
+    "requires_network: Tests requiring internet connection (skipped by default, use --run-network to run)",
 ]
 
 # Output options

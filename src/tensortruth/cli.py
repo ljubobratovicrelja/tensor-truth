@@ -31,6 +31,27 @@ def main():
     package_dir = Path(__file__).parent.resolve()
     app_path = package_dir / "app.py"
 
+    # Check and pull required Ollama models before starting the app
+    try:
+        from tensortruth.core.ollama import ensure_required_models_available
+
+        print("🔍 Checking for required Ollama models...")
+        pulled_models = ensure_required_models_available()
+        if pulled_models:
+            print(
+                f"✅ Successfully pulled {len(pulled_models)} models: {', '.join(pulled_models)}"
+            )
+        else:
+            print("✅ All required models are already available")
+    except ImportError:
+        print("⚠️  Could not import Ollama utilities - model auto-pulling disabled")
+    except Exception as e:
+        print(f"⚠️  Error checking/pulling models: {e}")
+        print("💡 You can manually pull required models with:")
+        print("   ollama pull deepseek-r1:14b")
+        print("   ollama pull deepseek-r1:8b")
+        print("   ollama pull llama3.1:8b")
+
     if not app_path.exists():
         print(f"Error: Could not find app.py at {app_path}", file=sys.stderr)
         sys.exit(1)

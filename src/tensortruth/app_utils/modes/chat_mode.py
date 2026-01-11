@@ -2,37 +2,17 @@
 
 import os
 import threading
-import time
 
 import streamlit as st
 
-from tensortruth.app_utils.chat_utils import build_chat_history, preserve_chat_history
+from tensortruth.app_utils.chat_handler import handle_chat_response
+from tensortruth.app_utils.chat_utils import preserve_chat_history
 from tensortruth.app_utils.config import compute_config_hash
-from tensortruth.app_utils.helpers import (
-    free_memory,
-    get_available_modules,
-    get_random_rag_processing_message,
-)
+from tensortruth.app_utils.helpers import free_memory, get_available_modules
 from tensortruth.app_utils.paths import get_session_index_dir
-from tensortruth.app_utils.rendering import (
-    extract_source_metadata,
-    render_chat_message,
-    render_low_confidence_warning,
-    render_message_footer,
-)
-from tensortruth.app_utils.response_handler import (
-    build_message_data,
-    execute_code_blocks,
-    maybe_update_title,
-    save_response_to_session,
-    update_engine_memory,
-)
+from tensortruth.app_utils.rendering import render_chat_message
 from tensortruth.app_utils.session import save_sessions
 from tensortruth.app_utils.setup_state import get_session_params_with_defaults
-from tensortruth.app_utils.streaming import (
-    stream_rag_response,
-    stream_simple_llm_response,
-)
 
 from ..commands import process_command
 
@@ -189,6 +169,7 @@ def render_chat_mode():
             )
 
             if is_cmd:
+                # Traditional command - display as command message (not in LLM history)
                 session["messages"].append({"role": "command", "content": response})
 
                 with st.chat_message("command", avatar=":material/settings:"):
@@ -202,256 +183,71 @@ def render_chat_mode():
                 save_sessions(st.session_state.sessions_file)
 
                 st.rerun()
+            elif response:
+                # Command returned is_cmd=False but provided a response
+                # (e.g., websearch, browse agent) - treat as assistant message for LLM history
+
+                # Update title if this is the first message
+                if session.get("title_needs_update", False):
+                    with st.spinner("Generating title..."):
+                        from tensortruth.app_utils.session import update_title
+
+                        update_title(
+                            current_id,
+                            prompt,
+                            params.get("model"),
+                            st.session_state.sessions_file,
+                        )
+
+                session["messages"].append({"role": "user", "content": prompt})
+
+                # Check if agent thinking metadata is available
+                agent_thinking = None
+                if hasattr(st.session_state, "last_agent_thinking"):
+                    agent_thinking = st.session_state.last_agent_thinking
+                    # Clear it after use
+                    delattr(st.session_state, "last_agent_thinking")
+
+                # Build assistant message with optional agent thinking
+                assistant_msg = {"role": "assistant", "content": response}
+                if agent_thinking:
+                    assistant_msg["agent_thinking"] = agent_thinking
+
+                session["messages"].append(assistant_msg)
+                save_sessions(st.session_state.sessions_file)
+
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+
+                with st.chat_message("assistant"):
+                    # Render agent thinking if present
+                    if agent_thinking:
+                        from tensortruth.app_utils.rendering_agent import (
+                            render_agent_thinking,
+                        )
+
+                        render_agent_thinking(agent_thinking)
+
+                    st.markdown(response)
+
+                st.rerun()
 
         # STANDARD CHAT PROCESSING
         session["messages"].append({"role": "user", "content": prompt})
         save_sessions(st.session_state.sessions_file)
 
-        # Check if title needs updating
-        # (avoid race conditions by doing it after response)
-        should_update_title = session.get("title_needs_update", False)
-
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            if engine:
-                # DEBUG: Check engine memory at start of turn
-                print("\n=== START OF TURN - Engine Memory Check ===")
-                print(f"Engine object ID: {id(engine)}")
-                print(
-                    f"Engine in session_state ID: {id(st.session_state.get('engine'))}"
-                )
-                print(
-                    f"Are they same object? {engine is st.session_state.get('engine')}"
-                )
-                if hasattr(engine, "_memory"):
-                    initial_memory = list(engine._memory.get())
-                    print(f"Memory has {len(initial_memory)} messages at turn start")
-                    for i, msg in enumerate(initial_memory):
-                        role = (
-                            msg.role.value
-                            if hasattr(msg.role, "value")
-                            else str(msg.role)
-                        )
-                        preview = msg.content[:60]
-                        print(f"  [{i}] {role}: {preview}...")
-                else:
-                    print("Engine has no _memory attribute!")
-                print("=" * 80)
-
-                start_time = time.time()
-                try:
-                    # Phase 1: RAG Retrieval
-                    with st.spinner(get_random_rag_processing_message()):
-                        synthesizer, context_source, context_nodes = engine._run_c3(
-                            prompt, chat_history=None, streaming=True
-                        )
-
-                    # Check confidence threshold
-                    low_confidence_warning = False
-                    has_real_sources = True  # Track if we have actual retrieved sources
-                    confidence_threshold = params.get("confidence_cutoff", 0.0)
-
-                    if (
-                        context_nodes
-                        and len(context_nodes) > 0
-                        and confidence_threshold > 0
-                    ):
-                        best_score = max(
-                            (node.score for node in context_nodes if node.score),
-                            default=0.0,
-                        )
-
-                        if best_score < confidence_threshold:
-                            from tensortruth.rag_engine import (
-                                CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE,
-                            )
-
-                            synthesizer._context_prompt_template = (
-                                CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE
-                            )
-
-                            render_low_confidence_warning(
-                                best_score, confidence_threshold, has_sources=True
-                            )
-                            low_confidence_warning = True
-                    elif not context_nodes or len(context_nodes) == 0:
-                        from tensortruth.rag_engine import (
-                            CUSTOM_CONTEXT_PROMPT_NO_SOURCES,
-                        )
-
-                        render_low_confidence_warning(
-                            0.0, confidence_threshold, has_sources=False
-                        )
-
-                        # Leave context_nodes empty - no synthetic nodes
-                        context_nodes = []
-                        low_confidence_warning = True
-                        has_real_sources = False  # No real sources
-
-                        synthesizer._context_prompt_template = (
-                            CUSTOM_CONTEXT_PROMPT_NO_SOURCES
-                        )
-
-                    # Phase 2: LLM Streaming (pass engine for memory access)
-                    full_response, error, thinking, code_blocks = stream_rag_response(
-                        synthesizer, prompt, context_nodes, engine=engine
-                    )
-
-                    if error:
-                        raise error
-
-                    elapsed = time.time() - start_time
-
-                    # Phase 3: Code Execution
-                    execution_results = execute_code_blocks(current_id, code_blocks)
-
-                    # Extract source metadata (only for real sources)
-                    source_data = []
-                    if has_real_sources:
-                        for node in context_nodes:
-                            metadata = extract_source_metadata(node, is_node=True)
-                            source_data.append(metadata)
-
-                    # Render footer (only show sources if we have real ones)
-                    render_message_footer(
-                        sources_or_nodes=context_nodes if has_real_sources else None,
-                        is_nodes=True,
-                        time_taken=elapsed,
-                        low_confidence=low_confidence_warning,
-                        modules=modules,
-                        has_pdf_index=has_pdf_index,
-                    )
-
-                    # Update engine memory with user/assistant messages
-                    update_engine_memory(engine, prompt, full_response)
-
-                    # Build and save response to session
-                    message_data = build_message_data(
-                        full_response=full_response,
-                        elapsed=elapsed,
-                        thinking=thinking,
-                        code_blocks=code_blocks,
-                        execution_results=execution_results,
-                        sources=source_data,
-                        low_confidence=low_confidence_warning,
-                    )
-
-                    save_response_to_session(
-                        session=session,
-                        prompt=prompt,
-                        message_data=message_data,
-                        execution_results=execution_results,
-                        sessions_file=st.session_state.sessions_file,
-                        engine=engine,
-                    )
-
-                    # Update title if needed
-                    maybe_update_title(
-                        should_update_title,
-                        current_id,
-                        prompt,
-                        params.get("model"),
-                        st.session_state.sessions_file,
-                    )
-
-                    # DEBUG: Check engine memory right before rerun
-                    print("\n=== END OF TURN - Before Rerun (RAG Mode) ===")
-                    print(f"Engine object ID: {id(engine)}")
-                    print(
-                        f"Session state engine ID: {id(st.session_state.get('engine'))}"
-                    )
-                    if hasattr(engine, "_memory"):
-                        final_memory = list(engine._memory.get())
-                        print(
-                            f"Engine memory has {len(final_memory)} messages before rerun"
-                        )
-                    if hasattr(st.session_state.engine, "_memory"):
-                        ss_memory = list(st.session_state.engine._memory.get())
-                        print(
-                            f"Session state engine memory has {len(ss_memory)} messages"
-                        )
-                    print("=" * 80)
-
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"Engine Error: {e}")
-
-            elif not modules:
-                # NO RAG MODE
-                start_time = time.time()
-                try:
-                    # Check if simple_llm needs to be reloaded due to param changes
-                    from tensortruth.rag_engine import get_llm
-
-                    # Compute a simple hash of relevant params for simple LLM
-                    simple_llm_config = (
-                        params.get("model"),
-                        params.get("temperature"),
-                        params.get("llm_device"),
-                        params.get("max_tokens"),
-                    )
-
-                    # Reload if config changed or LLM doesn't exist
-                    if (
-                        "simple_llm" not in st.session_state
-                        or st.session_state.get("simple_llm_config")
-                        != simple_llm_config
-                    ):
-                        st.session_state.simple_llm = get_llm(params)
-                        st.session_state.simple_llm_config = simple_llm_config
-
-                    llm = st.session_state.simple_llm
-
-                    chat_history = build_chat_history(session["messages"])
-
-                    # Stream response
-                    full_response, error, thinking, code_blocks = (
-                        stream_simple_llm_response(llm, chat_history)
-                    )
-
-                    if error:
-                        raise error
-
-                    elapsed = time.time() - start_time
-
-                    # Code Execution
-                    execution_results = execute_code_blocks(current_id, code_blocks)
-
-                    st.caption(f"⏱️ {elapsed:.2f}s | 🔴 No RAG")
-
-                    # Build and save response to session
-                    message_data = build_message_data(
-                        full_response=full_response,
-                        elapsed=elapsed,
-                        thinking=thinking,
-                        code_blocks=code_blocks,
-                        execution_results=execution_results,
-                    )
-
-                    save_response_to_session(
-                        session=session,
-                        prompt=prompt,
-                        message_data=message_data,
-                        execution_results=execution_results,
-                        sessions_file=st.session_state.sessions_file,
-                        engine=None,  # No engine in non-RAG mode
-                    )
-
-                    # Update title if needed
-                    maybe_update_title(
-                        should_update_title,
-                        current_id,
-                        prompt,
-                        params.get("model"),
-                        st.session_state.sessions_file,
-                    )
-
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"LLM Error: {e}")
-            else:
-                st.error("Engine not loaded!")
+            # Unified handler for both RAG and simple LLM modes
+            handle_chat_response(
+                prompt=prompt,
+                session=session,
+                params=params,
+                current_id=current_id,
+                sessions_file=st.session_state.sessions_file,
+                modules=modules,
+                has_pdf_index=has_pdf_index,
+                engine=engine,
+            )

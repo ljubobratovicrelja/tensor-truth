@@ -12,22 +12,15 @@ Extraction strategy:
 import json
 import logging
 import re
-from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import requests
 from llama_index.core.schema import Document
 
+from ..core.types import DocumentType
+
 logger = logging.getLogger(__name__)
-
-
-class DocumentType(Enum):
-    """Document types, as groups of sources defined in sources.json."""
-
-    BOOK = "book"
-    LIBRARY = "library"
-    PAPERS = "papers"
 
 
 # ============================================================================
@@ -365,7 +358,7 @@ def _get_arxiv_metadata_from_config(
         "title": item.get("title"),
         "authors": item.get("authors"),
         "year": item.get("year"),
-        "source_url": item.get("url"),
+        "source_url": item.get("source"),
         "arxiv_id": arxiv_id,
     }
 
@@ -601,7 +594,7 @@ def extract_library_metadata_from_config(
     return {
         "title": title,
         "authors": None,
-        "generator_type": lib_info.get("doc_type"),
+        "generator_type": lib_info.get("type"),
         "library_display_name": library_dispay_name,
         "source_url": lib_info.get("doc_root"),
         "doc_type": "library_doc",

@@ -100,7 +100,7 @@ def fetch_paper_category(
         output_format: Output format - 'pdf' or 'markdown'
         converter: Markdown converter if output_format='markdown' ('marker' or 'pymupdf')
     """
-    output_dir = os.path.join(output_base_dir, category_name)
+    output_dir = os.path.join(output_base_dir, f"papers_{category_name}")
     os.makedirs(output_dir, exist_ok=True)
 
     items = category_config.get("items", {})

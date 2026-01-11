@@ -21,6 +21,8 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
+# Config import for model defaults
+from tensortruth.app_utils.config import load_config
 from tensortruth.core.ollama import check_thinking_support, get_ollama_url
 
 # --- GLOBAL CONFIG ---
@@ -212,7 +214,15 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
     Returns:
         Ollama LLM instance
     """
-    model_name = params.get("model", "deepseek-r1:14b")
+    # Try to get model from params, then from config, then use default
+    model_name = params.get("model")
+    if model_name is None:
+        try:
+            config = load_config()
+            model_name = config.models.default_rag_model
+        except Exception:
+            model_name = "deepseek-r1:14b"  # Fallback default
+
     user_system_prompt = params.get("system_prompt", "").strip()
     device_mode = params.get("llm_device", "gpu")  # 'gpu' or 'cpu'
 

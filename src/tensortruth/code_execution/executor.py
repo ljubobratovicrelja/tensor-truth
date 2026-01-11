@@ -54,6 +54,7 @@ class ExecutionOrchestrator:
         code_blocks: List[CodeBlock],
         timeout: int = 60,
         enabled: bool = True,
+        reset_session: bool = False,
     ) -> List[ExecutionResult]:
         """Execute multiple code blocks sequentially.
 
@@ -62,6 +63,7 @@ class ExecutionOrchestrator:
             code_blocks: List of CodeBlock objects to execute
             timeout: Maximum execution time per block in seconds
             enabled: Whether code execution is enabled (if False, returns empty results)
+            reset_session: Whether to reset the execution session before running code
 
         Returns:
             List of ExecutionResult objects (one per code block)
@@ -72,6 +74,15 @@ class ExecutionOrchestrator:
 
         if not code_blocks:
             return []
+
+        # Reset session if requested (clears persistent state between different chat messages)
+        if reset_session:
+            logger.info(f"Resetting execution session for {session_id}")
+            try:
+                self.container_manager.cleanup_session(session_id)
+            except Exception as e:
+                logger.warning(f"Failed to reset session: {e}")
+                # Continue execution even if reset fails
 
         logger.info(
             f"Executing {len(code_blocks)} code block(s) for session {session_id}"

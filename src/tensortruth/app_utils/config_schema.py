@@ -36,12 +36,62 @@ class RAGConfig:
 
 
 @dataclass
+class ModelsConfig:
+    """Default model configurations."""
+
+    # Default model for RAG engine
+    default_rag_model: str = "deepseek-r1:14b"
+
+    # Default fallback model when no models are available
+    default_fallback_model: str = "deepseek-r1:8b"
+
+    # Default agent reasoning model (used in browse commands and autonomous agents)
+    default_agent_reasoning_model: str = "llama3.1:8b"
+
+
+@dataclass
+class AgentConfig:
+    """Autonomous agent configuration."""
+
+    # Minimum number of credible sources to fetch before allowing agent to conclude
+    min_required_pages: int = 5
+
+    # Maximum iterations for agent execution
+    max_iterations: int = 10
+
+    # Model to use for agent reasoning (fast model for decisions)
+    # Falls back to main chat model if not specified
+    reasoning_model: str = "llama3.1:8b"
+
+    def __post_init__(self):
+        """Validate configuration values."""
+        if self.min_required_pages <= 0:
+            raise ValueError(
+                f"min_required_pages must be positive, got {self.min_required_pages}"
+            )
+        if self.min_required_pages > 100:
+            raise ValueError(
+                f"min_required_pages too high (max 100), got {self.min_required_pages}"
+            )
+        if self.max_iterations <= 0:
+            raise ValueError(
+                f"max_iterations must be positive, got {self.max_iterations}"
+            )
+        if not self.reasoning_model or not isinstance(self.reasoning_model, str):
+            raise ValueError(
+                f"reasoning_model must be a non-empty string, got {self.reasoning_model!r}"
+            )
+
+
+@dataclass
 class TensorTruthConfig:
     """Main configuration for Tensor-Truth application."""
 
     ollama: OllamaConfig
     ui: UIConfig
     rag: RAGConfig
+    models: ModelsConfig
+    agent: AgentConfig
 
     def to_dict(self) -> dict:
         """Convert config to dictionary for YAML serialization."""
@@ -49,6 +99,8 @@ class TensorTruthConfig:
             "ollama": asdict(self.ollama),
             "ui": asdict(self.ui),
             "rag": asdict(self.rag),
+            "models": asdict(self.models),
+            "agent": asdict(self.agent),
         }
 
     @classmethod
@@ -57,11 +109,15 @@ class TensorTruthConfig:
         ollama_data = data.get("ollama", {})
         ui_data = data.get("ui", {})
         rag_data = data.get("rag", {})
+        models_data = data.get("models", {})
+        agent_data = data.get("agent", {})
 
         return cls(
             ollama=OllamaConfig(**ollama_data),
             ui=UIConfig(**ui_data),
             rag=RAGConfig(**rag_data),
+            models=ModelsConfig(**models_data),
+            agent=AgentConfig(**agent_data),
         )
 
     @classmethod
@@ -74,6 +130,8 @@ class TensorTruthConfig:
             ollama=OllamaConfig(),
             ui=UIConfig(),
             rag=RAGConfig(default_device=default_device),
+            models=ModelsConfig(),
+            agent=AgentConfig(),
         )
 
     @staticmethod

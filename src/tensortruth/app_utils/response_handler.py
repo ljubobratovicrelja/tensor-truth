@@ -31,6 +31,7 @@ def execute_code_blocks(current_id: str, code_blocks: List[Any]) -> List[Any]:
             code_blocks=code_blocks,
             timeout=st.session_state.get("code_exec_timeout", 30),
             enabled=True,
+            reset_session=True,  # Reset session for each new chat message
         )
     except Exception as exec_error:
         st.warning(f"Code execution error: {exec_error}")
