@@ -43,10 +43,16 @@ def render_setup_mode():
 
         # Set default model if not already set
         if st.session_state.setup_model is None and available_models:
+            # Use cached config from session_state
+            config = st.session_state.config
+            default_model_name = config.models.default_rag_model
+
+            # Find the default model in available models, or use first available
             default_model_idx = 0
             for i, m in enumerate(available_models):
-                if "deepseek-r1:8b" in m:
+                if default_model_name in m:
                     default_model_idx = i
+                    break
             st.session_state.setup_model = available_models[default_model_idx]
 
         st.markdown("### Start a New Research Session")

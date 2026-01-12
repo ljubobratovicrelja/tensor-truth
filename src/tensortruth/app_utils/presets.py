@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 from typing import Union
 
+# Local imports (placed here to avoid circular imports)
+from tensortruth.app_utils.config import load_config
+
 # UI constraints - these define the valid values for preset parameters
 ALLOWED_CONTEXT_WINDOWS = [2048, 4096, 8192, 16384, 32768, 65536, 131072]
 ALLOWED_MAX_TOKENS = [1024, 2048, 4096, 8192, 16384]
@@ -226,8 +229,10 @@ def quick_launch_preset(
         return False, "None of the preset modules are available"
 
     # Build params from preset
+    # Load config to get default_rag_model
+    config = load_config()
     params = {
-        "model": preset.get("model", "deepseek-r1:8b"),
+        "model": preset.get("model", config.models.default_rag_model),
         "temperature": preset.get("temperature", 0.3),
         "context_window": preset.get("context_window", 16384),
         "max_tokens": preset.get("max_tokens", 4096),
