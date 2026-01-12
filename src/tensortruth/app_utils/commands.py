@@ -563,9 +563,7 @@ class BrowseAgentCommand(Command):
             reasoning_model = session["params"].get("agent_reasoning_model")
             if reasoning_model is None:
                 try:
-                    from tensortruth.app_utils.config import load_config
-
-                    config = load_config()
+                    config = st.session_state.config
                     reasoning_model = config.models.default_agent_reasoning_model
                 except Exception:
                     reasoning_model = "llama3.1:8b"  # Fallback default
