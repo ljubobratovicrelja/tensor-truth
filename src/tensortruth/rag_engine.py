@@ -221,7 +221,9 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
             config = load_config()
             model_name = config.models.default_rag_model
         except Exception:
-            model_name = "deepseek-r1:14b"  # Fallback default
+            from tensortruth.core.constants import DEFAULT_RAG_MODEL
+
+            model_name = DEFAULT_RAG_MODEL  # Fallback default
 
     user_system_prompt = params.get("system_prompt", "").strip()
     device_mode = params.get("llm_device", "gpu")  # 'gpu' or 'cpu'

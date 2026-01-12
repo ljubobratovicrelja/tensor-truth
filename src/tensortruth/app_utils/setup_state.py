@@ -119,7 +119,7 @@ def get_session_params_with_defaults(session_params: dict) -> dict:
         ]
 
     return {
-        "model": session_params.get("model", "deepseek-r1:8b"),
+        "model": session_params.get("model", config.models.default_rag_model),
         "temperature": session_params.get("temperature", config.ui.default_temperature),
         "context_window": session_params.get(
             "context_window", config.ui.default_context_window

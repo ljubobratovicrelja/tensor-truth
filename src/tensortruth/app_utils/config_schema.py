@@ -2,6 +2,12 @@
 
 from dataclasses import asdict, dataclass
 
+from tensortruth.core.constants import (
+    DEFAULT_AGENT_REASONING_MODEL,
+    DEFAULT_FALLBACK_MODEL,
+    DEFAULT_RAG_MODEL,
+)
+
 
 @dataclass
 class OllamaConfig:
@@ -40,13 +46,13 @@ class ModelsConfig:
     """Default model configurations."""
 
     # Default model for RAG engine
-    default_rag_model: str = "deepseek-r1:14b"
+    default_rag_model: str = DEFAULT_RAG_MODEL
 
     # Default fallback model when no models are available
-    default_fallback_model: str = "deepseek-r1:8b"
+    default_fallback_model: str = DEFAULT_FALLBACK_MODEL
 
     # Default agent reasoning model (used in browse commands and autonomous agents)
-    default_agent_reasoning_model: str = "llama3.1:8b"
+    default_agent_reasoning_model: str = DEFAULT_AGENT_REASONING_MODEL
 
 
 @dataclass

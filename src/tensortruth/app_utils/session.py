@@ -51,10 +51,31 @@ def load_sessions(sessions_file: Union[str, Path]) -> Dict[str, Any]:
 def save_sessions(sessions_file: Union[str, Path]) -> None:
     """Save chat sessions to JSON file.
 
+    Only saves sessions that have messages or meaningful content.
+    Empty sessions (with no messages) are not saved, except for the current session.
+
     Args:
         sessions_file: Path to sessions file (str or Path)
     """
     sessions_file = Path(sessions_file)
+
+    # Filter out empty sessions (sessions with no messages)
+    sessions = st.session_state.chat_data["sessions"]
+    current_id = st.session_state.chat_data.get("current_id")
+
+    # Create filtered sessions dict
+    filtered_sessions = {}
+    for session_id, session in sessions.items():
+        messages = session.get("messages", [])
+
+        # Always keep the current session (user might be actively working on it)
+        # Also keep sessions that have any messages
+        if session_id == current_id or messages:
+            filtered_sessions[session_id] = session
+
+    # Update session state to match what we're saving
+    st.session_state.chat_data["sessions"] = filtered_sessions
+
     with open(sessions_file, "w", encoding="utf-8") as f:
         json.dump(st.session_state.chat_data, f, indent=2)
 
