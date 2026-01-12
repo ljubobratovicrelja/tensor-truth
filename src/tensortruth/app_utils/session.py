@@ -73,8 +73,6 @@ def save_sessions(sessions_file: Union[str, Path]) -> None:
         if session_id == current_id or messages:
             filtered_sessions[session_id] = session
 
-    print("Saving sessions:", list(filtered_sessions.keys()))
-
     # Update session state to match what we're saving
     st.session_state.chat_data["sessions"] = filtered_sessions
 
