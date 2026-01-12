@@ -48,9 +48,15 @@ def main():
     except Exception as e:
         print(f"⚠️  Error checking/pulling models: {e}")
         print("💡 You can manually pull required models with:")
-        print("   ollama pull deepseek-r1:14b")
-        print("   ollama pull deepseek-r1:8b")
-        print("   ollama pull llama3.1:8b")
+        from tensortruth.core.constants import (
+            DEFAULT_AGENT_REASONING_MODEL,
+            DEFAULT_FALLBACK_MODEL,
+            DEFAULT_RAG_MODEL,
+        )
+
+        print(f"   ollama pull {DEFAULT_RAG_MODEL}")
+        print(f"   ollama pull {DEFAULT_FALLBACK_MODEL}")
+        print(f"   ollama pull {DEFAULT_AGENT_REASONING_MODEL}")
 
     if not app_path.exists():
         print(f"Error: Could not find app.py at {app_path}", file=sys.stderr)

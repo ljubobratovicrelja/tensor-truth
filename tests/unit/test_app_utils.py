@@ -230,5 +230,138 @@ class TestPresets:
 # ============================================================================
 # Tests for Session Module
 # ============================================================================
-# Note: Session module tests require streamlit and are better suited for
-# integration tests. Skipped in unit tests to avoid streamlit dependency.
+
+
+@pytest.mark.unit
+class TestSessionModule:
+    """Tests for app_utils.session module."""
+
+    def test_save_sessions_filters_empty_sessions(self, tmp_path, monkeypatch):
+        """Test that save_sessions filters out empty sessions but keeps current session."""
+        import json
+
+        import streamlit as st
+
+        from tensortruth.app_utils.session import save_sessions
+
+        # Mock streamlit session state as an object with chat_data attribute
+        class MockSessionState:
+            def __init__(self):
+                self.chat_data = {
+                    "current_id": None,
+                    "sessions": {
+                        "empty1": {"title": "Empty Session 1", "messages": []},
+                        "with_content": {
+                            "title": "Session with content",
+                            "messages": [{"role": "user", "content": "Hello"}],
+                        },
+                        "empty2": {"title": "Empty Session 2", "messages": []},
+                    },
+                }
+
+        # Mock st.session_state
+        monkeypatch.setattr(st, "session_state", MockSessionState())
+
+        sessions_file = tmp_path / "test_sessions.json"
+
+        # Call save_sessions
+        save_sessions(str(sessions_file))
+
+        # Verify the file was created and contains filtered sessions
+        assert sessions_file.exists()
+
+        with open(sessions_file, "r") as f:
+            saved_data = json.load(f)
+
+        # Should only have the session with content
+        assert len(saved_data["sessions"]) == 1
+        assert "with_content" in saved_data["sessions"]
+        assert "empty1" not in saved_data["sessions"]
+        assert "empty2" not in saved_data["sessions"]
+
+    def test_save_sessions_preserves_current_session(self, tmp_path, monkeypatch):
+        """Test that save_sessions preserves current session even if empty."""
+        import json
+
+        import streamlit as st
+
+        from tensortruth.app_utils.session import save_sessions
+
+        # Mock streamlit session state with current session
+        class MockSessionState:
+            def __init__(self):
+                self.chat_data = {
+                    "current_id": "empty1",  # This is the current session
+                    "sessions": {
+                        "empty1": {"title": "Current Empty Session", "messages": []},
+                        "with_content": {
+                            "title": "Session with content",
+                            "messages": [{"role": "user", "content": "Hello"}],
+                        },
+                        "empty2": {"title": "Empty Session 2", "messages": []},
+                    },
+                }
+
+        # Mock st.session_state
+        monkeypatch.setattr(st, "session_state", MockSessionState())
+
+        sessions_file = tmp_path / "test_sessions.json"
+
+        # Call save_sessions
+        save_sessions(str(sessions_file))
+
+        # Verify the file was created and contains current session + session with content
+        assert sessions_file.exists()
+
+        with open(sessions_file, "r") as f:
+            saved_data = json.load(f)
+
+        # Should have current session and session with content
+        assert len(saved_data["sessions"]) == 2
+        assert "empty1" in saved_data["sessions"]  # Current session preserved
+        assert (
+            "with_content" in saved_data["sessions"]
+        )  # Session with content preserved
+        assert (
+            "empty2" not in saved_data["sessions"]
+        )  # Other empty session filtered out
+
+    def test_save_sessions_all_empty_except_current(self, tmp_path, monkeypatch):
+        """Test edge case where only current session exists and it's empty."""
+        import json
+
+        import streamlit as st
+
+        from tensortruth.app_utils.session import save_sessions
+
+        # Mock streamlit session state with only current empty session
+        class MockSessionState:
+            def __init__(self):
+                self.chat_data = {
+                    "current_id": "only_session",
+                    "sessions": {
+                        "only_session": {"title": "Only Empty Session", "messages": []}
+                    },
+                }
+
+        # Mock st.session_state
+        monkeypatch.setattr(st, "session_state", MockSessionState())
+
+        sessions_file = tmp_path / "test_sessions.json"
+
+        # Call save_sessions
+        save_sessions(str(sessions_file))
+
+        # Verify the file was created and contains the current session
+        assert sessions_file.exists()
+
+        with open(sessions_file, "r") as f:
+            saved_data = json.load(f)
+
+        # Should still have the current session even though it's empty
+        assert len(saved_data["sessions"]) == 1
+        assert "only_session" in saved_data["sessions"]
+
+
+# Note: Additional session tests that require full streamlit context are
+# better suited for integration tests.

@@ -21,6 +21,11 @@ from tensortruth.app_utils.config_schema import (
     TensorTruthConfig,
     UIConfig,
 )
+from tensortruth.core.constants import (
+    DEFAULT_AGENT_REASONING_MODEL,
+    DEFAULT_FALLBACK_MODEL,
+    DEFAULT_RAG_MODEL,
+)
 
 
 @pytest.fixture
@@ -114,9 +119,9 @@ class TestConfigSchema:
     def test_models_config_defaults(self):
         """Test ModelsConfig has correct default values."""
         config = ModelsConfig()
-        assert config.default_rag_model == "deepseek-r1:14b"
-        assert config.default_fallback_model == "deepseek-r1:8b"
-        assert config.default_agent_reasoning_model == "llama3.1:8b"
+        assert config.default_rag_model == DEFAULT_RAG_MODEL
+        assert config.default_fallback_model == DEFAULT_FALLBACK_MODEL
+        assert config.default_agent_reasoning_model == DEFAULT_AGENT_REASONING_MODEL
 
     def test_config_to_dict(self):
         """Test TensorTruthConfig serialization to dict."""
