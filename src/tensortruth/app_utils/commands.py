@@ -566,7 +566,9 @@ class BrowseAgentCommand(Command):
                     config = st.session_state.config
                     reasoning_model = config.models.default_agent_reasoning_model
                 except Exception:
-                    reasoning_model = "llama3.1:8b"  # Fallback default
+                    from tensortruth.core.constants import DEFAULT_AGENT_REASONING_MODEL
+
+                    reasoning_model = DEFAULT_AGENT_REASONING_MODEL  # Fallback default
             ollama_url = get_ollama_url()
 
             # Get config (or use defaults)
