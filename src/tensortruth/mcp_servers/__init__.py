@@ -26,6 +26,6 @@ def configure_mcp_logging() -> None:
     logging.getLogger("mcp").setLevel(logging.WARNING)
 
 
-from .web_tools_server import create_server, run_server
+from .web_tools_server import create_server, run_server  # noqa: E402
 
 __all__ = ["configure_mcp_logging", "create_server", "run_server"]

@@ -129,7 +129,8 @@ class ToolTracker:
 
 
 # System prompt for the web research agent
-AGENT_SYSTEM_PROMPT = """You are a web research agent with access to tools for searching and fetching web content.
+AGENT_SYSTEM_PROMPT = """\
+You are a web research agent with access to tools for searching and fetching web content.
 
 IMPORTANT: You MUST use the available tools to gather information. Do NOT answer from memory.
 

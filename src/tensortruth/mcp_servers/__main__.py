@@ -12,9 +12,9 @@ from tensortruth.mcp_servers import configure_mcp_logging
 configure_mcp_logging()
 
 # Now import and run the server
-import asyncio
+import asyncio  # noqa: E402
 
-from tensortruth.mcp_servers.web_tools_server import run_server
+from tensortruth.mcp_servers.web_tools_server import run_server  # noqa: E402
 
 if __name__ == "__main__":
     asyncio.run(run_server())

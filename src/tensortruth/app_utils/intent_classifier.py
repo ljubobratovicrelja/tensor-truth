@@ -23,7 +23,8 @@ SEARCH_TRIGGERS = re.compile(
 )
 
 # Classification prompt template
-CLASSIFICATION_PROMPT = """You are an intent classifier. Analyze the user's message and classify their intent.
+CLASSIFICATION_PROMPT = """\
+You are an intent classifier. Analyze the user's message and classify their intent.
 
 Recent conversation context:
 {context}
@@ -31,26 +32,26 @@ Recent conversation context:
 User message: "{message}"
 
 Classify the intent as one of:
-- "browse": User wants autonomous web research (browse, research, find out, look up, investigate)
+- "browse": User wants autonomous web research (browse, research, find out, look up)
 - "search": User wants a quick web search with summary (search, google, look online)
-- "chat": Normal conversation, questions about loaded documents, or follow-up discussion
+- "chat": Normal conversation, questions about loaded documents, or follow-up
 
 Output ONLY valid JSON (no markdown, no explanation):
-{{"intent": "chat|browse|search", "query": "extracted search query or null", "reason": "brief explanation"}}
+{{"intent": "chat|browse|search", "query": "extracted query or null", "reason": "brief"}}
 
 Rules:
-- If message contains "browse", "research", "find out", "look up", "investigate" + a topic → browse
+- If message contains "browse", "research", "find out", "look up" + a topic → browse
 - If message contains "search", "google", "web search" + a topic → search
 - If message is a follow-up or question about existing context → chat
 - If ambiguous, default to chat
-- Extract the research/search query from the message (remove the trigger words)
+- Extract the research/search query from the message (remove trigger words)
 
 Examples:
-- "Browse the latest AI news" → {{"intent": "browse", "query": "latest AI news", "reason": "explicit browse request"}}
-- "Can you research transformer architectures?" → {{"intent": "browse", "query": "transformer architectures", "reason": "research keyword"}}
-- "Search for Python 3.12 features" → {{"intent": "search", "query": "Python 3.12 features", "reason": "search keyword"}}
-- "What does the documentation say about tensors?" → {{"intent": "chat", "query": null, "reason": "question about loaded docs"}}
-- "Tell me more about that" → {{"intent": "chat", "query": null, "reason": "follow-up question"}}
+- "Browse the latest AI news" → {{"intent": "browse", "query": "latest AI news"}}
+- "Research transformers" → {{"intent": "browse", "query": "transformers"}}
+- "Search for Python 3.12 features" → {{"intent": "search", "query": "Python 3.12 features"}}
+- "What does the docs say about tensors?" → {{"intent": "chat", "query": null}}
+- "Tell me more about that" → {{"intent": "chat", "query": null}}
 """
 
 
@@ -214,7 +215,8 @@ def enhance_query_with_context(
 
 The user wants to research: "{query}"
 
-The query references something from the context. Extract what they're referring to and create a complete, standalone search query.
+The query references something from the context. Extract what they're referring to
+and create a complete, standalone search query.
 
 Output ONLY the enhanced query (no explanation, no quotes):"""
 
