@@ -45,8 +45,7 @@ def get_default_presets():
             "reranker_top_n": 5,
             "confidence_cutoff": 0.0,
             "confidence_cutoff_hard": 0.0,
-            "agent_min_required_pages": 7,  # More sources for research tasks
-            "agent_max_iterations": 12,
+            "agent_max_iterations": 12,  # More iterations for thorough research
             "agent_reasoning_model": None,  # Will use config default
         },
         "DL Coder": {
@@ -347,8 +346,7 @@ def get_default_presets():
                 "Answer ML/DL questions quickly. "
                 "Prioritize speed over exhaustive detail."
             ),
-            "agent_min_required_pages": 3,  # Fewer sources for speed
-            "agent_max_iterations": 6,
+            "agent_max_iterations": 6,  # Fewer iterations for speed
             "agent_reasoning_model": None,  # Will use config default
         },
     }

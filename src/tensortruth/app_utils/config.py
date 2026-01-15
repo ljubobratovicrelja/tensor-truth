@@ -49,7 +49,7 @@ def update_config(**kwargs):
         update_config(ollama_base_url="http://192.168.1.100:11434")
         update_config(ui_default_temperature=0.5)
         update_config(rag_default_device="cuda")
-        update_config(agent_min_required_pages=10)
+        update_config(agent_max_iterations=15)
     """
     config = load_config()
 
