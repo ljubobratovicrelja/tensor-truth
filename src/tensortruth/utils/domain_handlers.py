@@ -74,7 +74,7 @@ class ContentHandlerRegistry:
             handler: ContentHandler instance to register
         """
         self._handlers.append(handler)
-        logger.info(f"Registered content handler: {handler.name}")
+        logger.debug(f"Registered content handler: {handler.name}")
 
     def get_handler(self, url: str) -> Optional[ContentHandler]:
         """

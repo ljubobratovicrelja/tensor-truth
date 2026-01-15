@@ -551,9 +551,10 @@ class BrowseAgentCommand(Command):
         goal = " ".join(args)
 
         # Import here to avoid circular deps
+        from tensortruth import convert_latex_delimiters
+        from tensortruth.agents.mcp_agent import browse_agent
         from tensortruth.app_utils.rendering_agent import render_agent_progress
         from tensortruth.core.ollama import get_ollama_url
-        from tensortruth.utils.browse_agent import browse_agent
 
         try:
             # Two-model strategy: fast for reasoning, quality for synthesis
@@ -573,7 +574,6 @@ class BrowseAgentCommand(Command):
 
             # Get config (or use defaults)
             max_iterations = session["params"].get("agent_max_iterations", 10)
-            min_required_pages = session["params"].get("agent_min_required_pages", 5)
             # Cap agent context window at 8k for efficiency (prevents waste on large models)
             context_window = min(session["params"].get("context_window", 16384), 8192)
 
@@ -589,32 +589,44 @@ class BrowseAgentCommand(Command):
                     "\n\n".join(progress_updates), placeholder=progress_placeholder
                 )
 
+            # Create response streaming placeholder
+            response_placeholder = st.empty()
+            accumulated_response = {"text": ""}
+
+            def stream_token(token: str):
+                """Callback for streaming response tokens."""
+                accumulated_response["text"] += token
+                response_placeholder.markdown(
+                    convert_latex_delimiters(accumulated_response["text"])
+                )
+
             # Execute agent with two-model strategy
             # Fast model for reasoning/decisions, main model for final synthesis
-            state = browse_agent(
+            result = browse_agent(
                 goal=goal,
                 model_name=reasoning_model,  # Fast model for iterations
                 synthesis_model=main_model,  # Quality model for final answer
                 ollama_url=ollama_url,
                 max_iterations=max_iterations,
-                min_required_pages=min_required_pages,
-                thinking_callback=None,  # No thinking display
                 progress_callback=update_progress,
+                stream_callback=stream_token,  # Stream final answer tokens
                 context_window=context_window,
             )
+
+            # Clear the streaming placeholder since we'll return the full response
+            response_placeholder.empty()
 
             # Keep progress visible after completion (don't clear)
 
             # Get final answer
-            response = state.final_answer
+            response = result.final_answer
 
             # Ensure we have a response
             if not response or not response.strip():
                 response = (
                     "⚠️ **Agent completed but generated no response**\n\n"
-                    f"Termination reason: {state.termination_reason}\n"
-                    f"Searches: {len(state.searches_performed)}\n"
-                    f"Pages: {len(state.pages_visited)}"
+                    f"Error: {result.error or 'Unknown error'}\n"
+                    f"Iterations: {result.iterations}"
                 )
 
             # Return is_cmd=False so it appears as assistant message

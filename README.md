@@ -114,6 +114,17 @@ Or, the smaller qwen2.5-coder, holds up well with API docs on coding aid.
 ollama pull qwen2.5-coder:7b 
 ````
 
+## Autonomous Agents
+
+Tensor-Truth supports autonomous agents via [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) integration. Agents can use external tools to complete tasks beyond the knowledge base.
+
+**Example - Web Research Agent:**
+```
+/browse What are the latest features in Python 3.13?
+```
+
+Agents can also be triggered through natural language (e.g., "Research the latest transformer papers"). For documentation on available agents, configuration, and extending with custom MCP servers, see [docs/AGENTS.md](docs/AGENTS.md).
+
 ## Building Your Own Indexes
 
 Pre-built indexes cover common libraries, but you can create custom knowledge bases for your specific needs.

@@ -62,6 +62,10 @@ dependencies = [
     "youtube-transcript-api>=0.6.0",  # YouTube transcript fetching
     "sphobjinv",         # Sphinx inventory parsing for documentation scraping
     "arxiv",             # ArXiv API client for paper fetching
+
+    # --- MCP (Model Context Protocol) ---
+    "llama-index-tools-mcp>=0.1.0",  # MCP tools for LlamaIndex
+    "mcp>=1.0.0",                 # Model Context Protocol server
 ]
 
 [project.scripts]

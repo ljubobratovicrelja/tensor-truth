@@ -9,12 +9,278 @@ from tensortruth.app_utils.chat_handler import handle_chat_response
 from tensortruth.app_utils.chat_utils import preserve_chat_history
 from tensortruth.app_utils.config import compute_config_hash
 from tensortruth.app_utils.helpers import free_memory, get_available_modules
+from tensortruth.app_utils.intent_classifier import (
+    detect_and_classify,
+    has_agent_triggers,
+)
 from tensortruth.app_utils.paths import get_session_index_dir
 from tensortruth.app_utils.rendering import render_chat_message
 from tensortruth.app_utils.session import save_sessions
 from tensortruth.app_utils.setup_state import get_session_params_with_defaults
 
 from ..commands import process_command
+
+
+def _should_route_to_agent(prompt: str, session: dict, params: dict) -> bool:
+    """Check if message should be routed to an agent via natural language.
+
+    Args:
+        prompt: User's input message
+        session: Current session data
+        params: Session parameters
+
+    Returns:
+        True if message should be classified for potential agent routing
+    """
+    # Check if natural language agents are enabled
+    try:
+        config = st.session_state.config
+        if not config.agent.enable_natural_language_agents:
+            return False
+    except (AttributeError, KeyError):
+        # Config not available, use default (enabled)
+        pass
+
+    # Quick trigger word check (no LLM call)
+    return has_agent_triggers(prompt)
+
+
+def _handle_natural_language_agent(
+    prompt: str,
+    session: dict,
+    params: dict,
+    current_id: str,
+) -> None:
+    """Handle natural language agent routing.
+
+    Classifies the user's intent and routes to appropriate agent.
+
+    Args:
+        prompt: User's input message
+        session: Current session data
+        params: Session parameters
+        current_id: Current session ID
+    """
+    from tensortruth.core.ollama import get_ollama_url
+
+    # Get config
+    try:
+        config = st.session_state.config
+        classifier_model = config.agent.intent_classifier_model
+    except (AttributeError, KeyError):
+        classifier_model = "llama3.2:3b"
+
+    ollama_url = get_ollama_url()
+
+    # Classify intent
+    with st.spinner("🤔 Understanding your request..."):
+        intent_result = detect_and_classify(
+            message=prompt,
+            recent_messages=session.get("messages", [])[-4:],
+            ollama_url=ollama_url,
+            classifier_model=classifier_model,
+        )
+
+    # Route based on intent
+    if intent_result.intent == "browse":
+        # Route to browse agent
+        query = intent_result.query or prompt
+        _execute_browse_agent(query, session, params, current_id)
+
+    elif intent_result.intent == "search":
+        # Route to web search
+        query = intent_result.query or prompt
+        _execute_web_search(query, session, params, current_id)
+
+    else:
+        # Intent is "chat" - let it fall through to standard processing
+        # This shouldn't happen since we checked triggers, but handle gracefully
+        # by adding message to history and letting standard handler process it
+        session["messages"].append({"role": "user", "content": prompt})
+        save_sessions(st.session_state.sessions_file)
+
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Note: We return without rerun, so standard chat will NOT run
+        # because we're in an elif block. We need to handle chat here.
+        with st.chat_message("assistant"):
+            engine = st.session_state.get("engine")
+            modules = session.get("modules", [])
+            has_pdf_index = session.get("has_temp_index", False)
+            handle_chat_response(
+                prompt=prompt,
+                session=session,
+                params=params,
+                current_id=current_id,
+                sessions_file=st.session_state.sessions_file,
+                modules=modules,
+                has_pdf_index=has_pdf_index,
+                engine=engine,
+            )
+
+
+def _execute_browse_agent(
+    query: str,
+    session: dict,
+    params: dict,
+    current_id: str,
+) -> None:
+    """Execute the browse agent with the given query.
+
+    Args:
+        query: Research query extracted from user message
+        session: Current session data
+        params: Session parameters
+        current_id: Current session ID
+    """
+    from tensortruth import convert_latex_delimiters
+    from tensortruth.agents.mcp_agent import browse_agent
+    from tensortruth.app_utils.rendering_agent import render_agent_progress
+    from tensortruth.app_utils.session import update_title
+    from tensortruth.core.ollama import get_ollama_url
+
+    # Get models - check session params first, then config, then defaults
+    main_model = params.get("model")
+
+    # Check for per-session reasoning model (from presets)
+    reasoning_model = params.get("agent_reasoning_model")
+    if reasoning_model is None:
+        try:
+            config = st.session_state.config
+            reasoning_model = config.agent.reasoning_model
+        except (AttributeError, KeyError):
+            from tensortruth.core.constants import DEFAULT_AGENT_REASONING_MODEL
+
+            reasoning_model = DEFAULT_AGENT_REASONING_MODEL
+
+    ollama_url = get_ollama_url()
+    context_window = min(params.get("context_window", 16384), 8192)
+
+    # Update title if needed
+    if session.get("title_needs_update", False):
+        with st.spinner("Generating title..."):
+            update_title(
+                current_id,
+                f"Research: {query}",
+                params.get("model"),
+                st.session_state.sessions_file,
+            )
+
+    # Show what we're doing
+    st.info(f"🔍 **Researching:** {query}")
+
+    # Progress tracking
+    progress_placeholder = st.empty()
+    progress_updates = []
+
+    def update_progress(message: str):
+        progress_updates.append(message)
+        render_agent_progress(
+            "\n\n".join(progress_updates), placeholder=progress_placeholder
+        )
+
+    # Streaming placeholder
+    response_placeholder = st.empty()
+    accumulated_response = {"text": ""}
+
+    def stream_token(token: str):
+        accumulated_response["text"] += token
+        response_placeholder.markdown(
+            convert_latex_delimiters(accumulated_response["text"])
+        )
+
+    # Execute agent
+    result = browse_agent(
+        goal=query,
+        model_name=reasoning_model,
+        synthesis_model=main_model,
+        ollama_url=ollama_url,
+        max_iterations=params.get("agent_max_iterations", 10),
+        progress_callback=update_progress,
+        stream_callback=stream_token,
+        context_window=context_window,
+    )
+
+    response_placeholder.empty()
+
+    # Add to history
+    # Use original prompt as user message
+    session["messages"].append({"role": "user", "content": f"Research: {query}"})
+
+    response = result.final_answer or "No results found."
+    session["messages"].append({"role": "assistant", "content": response})
+    save_sessions(st.session_state.sessions_file)
+
+    # Display
+    with st.chat_message("user"):
+        st.markdown(f"Research: {query}")
+
+    with st.chat_message("assistant"):
+        st.markdown(response)
+
+
+def _execute_web_search(
+    query: str,
+    session: dict,
+    params: dict,
+    current_id: str,
+) -> None:
+    """Execute web search with the given query.
+
+    Args:
+        query: Search query extracted from user message
+        session: Current session data
+        params: Session parameters
+        current_id: Current session ID
+    """
+    from tensortruth.app_utils.rendering import render_web_search_progress
+    from tensortruth.app_utils.session import update_title
+    from tensortruth.utils.web_search import web_search
+
+    # Update title if needed
+    if session.get("title_needs_update", False):
+        with st.spinner("Generating title..."):
+            update_title(
+                current_id,
+                f"Search: {query}",
+                params.get("model"),
+                st.session_state.sessions_file,
+            )
+
+    # Show what we're doing
+    st.info(f"🔎 **Searching:** {query}")
+
+    # Progress tracking
+    progress_placeholder = st.empty()
+    progress_updates = []
+
+    def update_progress(message: str):
+        progress_updates.append(message)
+        render_web_search_progress(
+            "\n\n".join(progress_updates), placeholder=progress_placeholder
+        )
+
+    # Execute search
+    response = web_search(
+        query=query,
+        llm_model=params.get("model"),
+        top_k=5,
+        progress_callback=update_progress,
+        max_concurrent=5,
+    )
+
+    # Add to history
+    session["messages"].append({"role": "user", "content": f"Search: {query}"})
+    session["messages"].append({"role": "assistant", "content": response})
+    save_sessions(st.session_state.sessions_file)
+
+    # Display
+    with st.chat_message("user"):
+        st.markdown(f"Search: {query}")
+
+    with st.chat_message("assistant"):
+        st.markdown(response)
 
 
 def render_chat_mode():
@@ -228,6 +494,12 @@ def render_chat_mode():
                     st.markdown(response)
 
                 st.rerun()
+
+        # NATURAL LANGUAGE AGENT ROUTING
+        # Check if message contains trigger words and NL agents are enabled
+        elif _should_route_to_agent(prompt, session, params):
+            _handle_natural_language_agent(prompt, session, params, current_id)
+            st.rerun()
 
         # STANDARD CHAT PROCESSING
         session["messages"].append({"role": "user", "content": prompt})

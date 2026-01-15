@@ -55,9 +55,6 @@ class ModelsConfig:
 class AgentConfig:
     """Autonomous agent configuration."""
 
-    # Minimum number of credible sources to fetch before allowing agent to conclude
-    min_required_pages: int = 5
-
     # Maximum iterations for agent execution
     max_iterations: int = 10
 
@@ -65,16 +62,15 @@ class AgentConfig:
     # Falls back to main chat model if not specified
     reasoning_model: str = "llama3.1:8b"
 
+    # Natural language agent routing
+    # When enabled, messages with trigger words are classified to route to agents
+    enable_natural_language_agents: bool = True
+
+    # Model for intent classification (should be fast, small model)
+    intent_classifier_model: str = "llama3.2:3b"
+
     def __post_init__(self):
         """Validate configuration values."""
-        if self.min_required_pages <= 0:
-            raise ValueError(
-                f"min_required_pages must be positive, got {self.min_required_pages}"
-            )
-        if self.min_required_pages > 100:
-            raise ValueError(
-                f"min_required_pages too high (max 100), got {self.min_required_pages}"
-            )
         if self.max_iterations <= 0:
             raise ValueError(
                 f"max_iterations must be positive, got {self.max_iterations}"
