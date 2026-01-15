@@ -66,24 +66,10 @@ class TestConfigSchema:
     def test_agent_config_defaults(self):
         """Test AgentConfig default values."""
         config = AgentConfig()
-        assert config.min_required_pages == 5
         assert config.max_iterations == 10
         assert config.reasoning_model == "llama3.1:8b"
-
-    def test_agent_config_with_zero_min_pages(self):
-        """Test that zero min_required_pages is rejected."""
-        with pytest.raises(ValueError, match="min_required_pages must be positive"):
-            AgentConfig(min_required_pages=0)
-
-    def test_agent_config_with_negative_min_pages(self):
-        """Test that negative min_required_pages is rejected."""
-        with pytest.raises(ValueError, match="min_required_pages must be positive"):
-            AgentConfig(min_required_pages=-1)
-
-    def test_agent_config_with_excessive_min_pages(self):
-        """Test that unreasonably high min_required_pages is rejected."""
-        with pytest.raises(ValueError, match="min_required_pages too high"):
-            AgentConfig(min_required_pages=1000)
+        assert config.enable_natural_language_agents is True
+        assert config.intent_classifier_model == "llama3.2:3b"
 
     def test_agent_config_with_zero_max_iterations(self):
         """Test that zero max_iterations is rejected."""
@@ -137,7 +123,7 @@ class TestConfigSchema:
         assert data["ollama"]["base_url"] == "http://localhost:11434"
         assert data["ui"]["default_temperature"] == 0.1
         assert data["rag"]["default_device"] == "cuda"
-        assert data["agent"]["min_required_pages"] == 5
+        assert data["agent"]["max_iterations"] == 10
 
     def test_config_from_dict(self):
         """Test TensorTruthConfig deserialization from dict."""
@@ -359,7 +345,7 @@ class TestConfigFileOperations:
             ui=UIConfig(default_temperature=0.7, default_top_n=5),
             rag=RAGConfig(default_device="cuda"),
             models=ModelsConfig(),
-            agent=AgentConfig(min_required_pages=7, max_iterations=15),
+            agent=AgentConfig(max_iterations=15),
         )
 
         # Save it
@@ -374,7 +360,6 @@ class TestConfigFileOperations:
         assert loaded_config.ui.default_temperature == 0.7
         assert loaded_config.ui.default_top_n == 5
         assert loaded_config.rag.default_device == "cuda"
-        assert loaded_config.agent.min_required_pages == 7
         assert loaded_config.agent.max_iterations == 15
 
     def test_update_config_ollama(self, temp_config_dir):
