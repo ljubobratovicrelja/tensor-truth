@@ -49,14 +49,21 @@ def mock_streamlit():
 class TestListStatusCommands:
     """Tests for /list, /ls, and /status commands."""
 
+    @patch("tensortruth.app_utils.commands.get_memory_summary")
     @patch("tensortruth.app_utils.helpers.get_ollama_ps")
     @patch("tensortruth.app_utils.commands.get_system_devices")
     def test_list_command(
-        self, mock_get_devices, mock_get_ps, base_session, available_modules
+        self,
+        mock_get_devices,
+        mock_get_ps,
+        mock_memory,
+        base_session,
+        available_modules,
     ):
         """Test /list command shows status correctly."""
         mock_get_devices.return_value = ["cpu", "cuda"]
         mock_get_ps.return_value = []
+        mock_memory.return_value = "VRAM: 4.00 / 8.00 GB (50%) | RAM: 8.00 / 32.00 GB"
 
         is_cmd, response, state_modifier = process_command(
             "/list", base_session, available_modules
@@ -68,6 +75,8 @@ class TestListStatusCommands:
         assert "pytorch" in response
         assert "✅" in response  # Active module marker
         assert "deepseek-r1:8b" in response
+        assert "Memory" in response
+        assert "/memory" in response
 
     @patch("tensortruth.app_utils.helpers.get_ollama_ps")
     @patch("tensortruth.app_utils.commands.get_system_devices")
@@ -112,6 +121,80 @@ class TestListStatusCommands:
 
 
 # ============================================================================
+# Tests for /memory command
+# ============================================================================
+
+
+@pytest.mark.unit
+class TestMemoryCommand:
+    """Tests for /memory, /mem, and /vram commands."""
+
+    @patch("tensortruth.core.system.get_all_memory_info")
+    def test_memory_command(self, mock_get_all, base_session, available_modules):
+        """Test /memory command shows memory usage."""
+        from tensortruth.core.system import MemoryInfo
+
+        mock_get_all.return_value = [
+            MemoryInfo("CUDA VRAM", 4.0, 8.0, "Reserved: 5.0 GB"),
+            MemoryInfo("System RAM", 8.0, 32.0),
+        ]
+
+        is_cmd, response, state_modifier = process_command(
+            "/memory", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        assert state_modifier is None
+        assert "Memory Usage" in response
+        assert "CUDA VRAM" in response
+        assert "System RAM" in response
+
+    @patch("tensortruth.core.system.get_all_memory_info")
+    def test_mem_alias(self, mock_get_all, base_session, available_modules):
+        """Test /mem alias for /memory command."""
+        from tensortruth.core.system import MemoryInfo
+
+        mock_get_all.return_value = [MemoryInfo("System RAM", 8.0, 32.0)]
+
+        is_cmd, response, state_modifier = process_command(
+            "/mem", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        assert "Memory Usage" in response
+
+    @patch("tensortruth.core.system.get_all_memory_info")
+    def test_vram_alias(self, mock_get_all, base_session, available_modules):
+        """Test /vram alias for /memory command."""
+        from tensortruth.core.system import MemoryInfo
+
+        mock_get_all.return_value = [MemoryInfo("CUDA VRAM", 4.0, 8.0)]
+
+        is_cmd, response, state_modifier = process_command(
+            "/vram", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        assert "Memory Usage" in response
+
+    @patch("tensortruth.core.system.get_all_memory_info")
+    def test_memory_shows_tips(self, mock_get_all, base_session, available_modules):
+        """Test /memory command includes helpful tips."""
+        from tensortruth.core.system import MemoryInfo
+
+        mock_get_all.return_value = [MemoryInfo("System RAM", 8.0, 32.0)]
+
+        is_cmd, response, state_modifier = process_command(
+            "/memory", base_session, available_modules
+        )
+
+        assert is_cmd is True
+        assert "Tips:" in response
+        assert "/reload" in response
+        assert "/device" in response
+
+
+# ============================================================================
 # Tests for /help command
 # ============================================================================
 
@@ -130,6 +213,7 @@ class TestHelpCommand:
         assert state_modifier is None
         assert "Command Reference" in response
         assert "/list" in response
+        assert "/memory" in response
         assert "/model" in response
         assert "/load" in response
         assert "/unload" in response
