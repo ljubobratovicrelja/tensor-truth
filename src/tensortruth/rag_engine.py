@@ -320,6 +320,14 @@ class MultiIndexRetriever(BaseRetriever):
         """
         return self._retrieve_cached(query_bundle.query_str)
 
+    def clear_cache(self) -> None:
+        """Clear the LRU cache to release GPU tensor references.
+
+        Should be called before deleting the retriever to prevent VRAM leaks.
+        """
+        if self.enable_cache and hasattr(self._retrieve_cached, "cache_clear"):
+            self._retrieve_cached.cache_clear()
+
 
 def load_engine_for_modules(
     selected_modules: List[str],
