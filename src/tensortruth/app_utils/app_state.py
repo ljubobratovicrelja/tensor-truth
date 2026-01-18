@@ -5,6 +5,7 @@ storing them in st.session_state to avoid recomputation and simplify
 function signatures across the application.
 """
 
+import logging
 from pathlib import Path
 
 import streamlit as st
@@ -20,6 +21,22 @@ from .paths import (
 )
 from .session import load_sessions
 
+logger = logging.getLogger(__name__)
+
+# Module-level flag to track if models have been loaded in this process.
+# This survives Streamlit reruns but resets on browser refresh (new process).
+_MODELS_LOADED = False
+
+
+def mark_models_loaded():
+    """Mark that GPU models have been loaded in this process.
+
+    Call this after successfully loading the RAG engine to enable
+    browser refresh detection.
+    """
+    global _MODELS_LOADED
+    _MODELS_LOADED = True
+
 
 def init_app_state():
     """Initialize application state once at startup.
@@ -29,7 +46,21 @@ def init_app_state():
     - Simplify function signatures (no need to pass paths everywhere)
     - Provide single source of truth for app-wide constants
     - Cache config file to avoid repeated reads
+
+    Also detects browser refresh and cleans up GPU memory from previous session.
     """
+    global _MODELS_LOADED
+
+    # Detect browser refresh: models were loaded but session_state is fresh.
+    # This happens when user refreshes the page - Streamlit session resets
+    # but the Python process (with loaded GPU models) continues running.
+    if _MODELS_LOADED and "app_initialized" not in st.session_state:
+        logger.info("Browser refresh detected - cleaning up GPU memory")
+        from tensortruth.app_utils.helpers import free_memory
+
+        free_memory()
+        _MODELS_LOADED = False
+
     if "app_initialized" in st.session_state:
         return  # Already initialized
 

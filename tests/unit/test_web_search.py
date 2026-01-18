@@ -300,11 +300,13 @@ class TestFetchPageAsMarkdown:
         mock_response = AsyncMock()
         mock_response.status = 200
         # Add enough content to pass the 100 char minimum
-        mock_response.text = AsyncMock(return_value="""<html><body><main>
+        mock_response.text = AsyncMock(
+            return_value="""<html><body><main>
                 <h1>Title</h1>
                 <p>This is enough content to pass the minimum length requirement
                 for the page fetcher. It needs to be at least 100 characters long.</p>
-            </main></body></html>""")
+            </main></body></html>"""
+        )
 
         # Properly mock async context manager
         mock_cm = AsyncMock()

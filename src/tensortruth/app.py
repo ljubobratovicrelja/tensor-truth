@@ -69,6 +69,11 @@ with st.sidebar:
     st.image(str(st.session_state.logo_path), width=500)
 
     if st.button("Start New Chat", type="primary", use_container_width=True):
+        # Free GPU memory before starting new session
+        if st.session_state.get("engine") is not None:
+            from tensortruth.app_utils.helpers import free_memory
+
+            free_memory()
         st.session_state.mode = "setup"
         st.session_state.chat_data["current_id"] = None
         st.session_state.expand_config_section = False
@@ -87,6 +92,9 @@ with st.sidebar:
 
             label = f" {title} "
             if st.button(label, key=sess_id, use_container_width=True):
+                # Force engine reload if switching to a different session
+                if st.session_state.chat_data.get("current_id") != sess_id:
+                    st.session_state.loaded_config = None
                 st.session_state.chat_data["current_id"] = sess_id
                 st.session_state.mode = "chat"
                 st.rerun()

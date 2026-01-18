@@ -408,6 +408,12 @@ def render_chat_mode():
                         elif load_result.get("engine"):
                             st.session_state.engine = load_result["engine"]
                             st.session_state.loaded_config = load_result["config"]
+                            # Mark models as loaded for browser refresh detection
+                            from tensortruth.app_utils.app_state import (
+                                mark_models_loaded,
+                            )
+
+                            mark_models_loaded()
                         st.session_state.engine_loading = False
 
         # Check if background loading completed
@@ -419,6 +425,10 @@ def render_chat_mode():
             if load_result.get("engine") and not st.session_state.get("engine"):
                 st.session_state.engine = load_result["engine"]
                 st.session_state.loaded_config = load_result["config"]
+                # Mark models as loaded for browser refresh detection
+                from tensortruth.app_utils.app_state import mark_models_loaded
+
+                mark_models_loaded()
             if load_result.get("error") and not st.session_state.engine_load_error:
                 st.session_state.engine_load_error = load_result["error"]
 

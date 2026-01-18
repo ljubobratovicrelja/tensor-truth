@@ -318,12 +318,37 @@ def free_memory(engine=None):
         if "engine" in st.session_state:
             _clear_retriever_cache(st.session_state["engine"])
             del st.session_state["engine"]
+
+        # Reset loaded_config to force engine reload on next use
+        if "loaded_config" in st.session_state:
+            st.session_state.loaded_config = None
     except (ImportError, AttributeError):
         # Streamlit not available or session_state not initialized
         pass
 
+    # Clear LlamaIndex Settings embedding model (~1-2GB VRAM)
+    # Note: Access _embed_model directly to avoid auto-initialization of default model
+    try:
+        from llama_index.core import Settings
+
+        if getattr(Settings, "_embed_model", None) is not None:
+            Settings._embed_model = None
+    except (ImportError, AttributeError):
+        pass
+
+    # Clear MARKER_CONVERTER GPU models (~2-4GB VRAM)
+    try:
+        from tensortruth.utils.pdf import clear_marker_converter
+
+        clear_marker_converter()
+    except (ImportError, Exception) as e:
+        logger.debug(f"Could not clear marker converter: {e}")
+
     gc.collect()
+
+    # Synchronize CUDA before clearing cache to ensure all operations complete
     if torch.cuda.is_available():
+        torch.cuda.synchronize()
         torch.cuda.empty_cache()
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         torch.mps.empty_cache()

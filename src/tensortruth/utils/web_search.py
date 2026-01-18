@@ -708,9 +708,7 @@ async def web_search_async(
         else:
             # Format error message
             error_display = error_msg if error_msg else status
-            sources_section_lines.append(
-                f"{i+1}. ⚠️ [{title}]({url}) - {error_display}"
-            )
+            sources_section_lines.append(f"{i+1}. ⚠️ [{title}]({url}) - {error_display}")
 
     sources_section = "\n".join(sources_section_lines)
 

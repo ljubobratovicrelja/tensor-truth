@@ -20,6 +20,18 @@ logger = logging.getLogger(__name__)
 MARKER_CONVERTER = None
 
 
+def clear_marker_converter():
+    """Release MARKER_CONVERTER GPU models to free VRAM."""
+    global MARKER_CONVERTER
+    if MARKER_CONVERTER is not None:
+        try:
+            del MARKER_CONVERTER
+        except Exception as e:
+            logger.warning(f"Failed to clear MARKER_CONVERTER: {e}")
+        finally:
+            MARKER_CONVERTER = None
+
+
 def clean_filename(title: str) -> str:
     """Sanitize title for file system.
 

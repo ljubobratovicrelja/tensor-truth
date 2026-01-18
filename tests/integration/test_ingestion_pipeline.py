@@ -33,7 +33,8 @@ class TestDatabaseBuilding:
         module_dir.mkdir()
 
         sample_md = module_dir / "sample.md"
-        sample_md.write_text("""
+        sample_md.write_text(
+            """
 # Sample Document
 
 This is a sample document for testing the database building process.
@@ -45,7 +46,8 @@ Some content here about PyTorch tensors.
 ## Section 2
 
 More content about neural networks.
-""")
+"""
+        )
 
         # Build the module
         # Note: This will actually try to load embedding models
