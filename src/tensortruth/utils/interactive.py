@@ -321,8 +321,7 @@ def add_book_interactive(sources_config_path, library_docs_dir, args):
             "To define custom chapters, you need to manually edit the sources.json file."
         )
         print("\nExample configuration for splitting a book into 3 equal sections:")
-        print(
-            """
+        print("""
   "your_book_name": {
     "type": "pdf_book",
     "title": "Your Book Title",
@@ -336,8 +335,7 @@ def add_book_interactive(sources_config_path, library_docs_dir, args):
       {"name": "Part 3 (Pages 201-300)", "pages": [201, 300]}
     ]
   }
-"""
-        )
+""")
         print("Please choose a different split method for now:")
         print("  1. Split by table of contents (recommended)")
         print("  2. Keep as single document")
