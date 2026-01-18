@@ -90,8 +90,7 @@ def render_agent_thinking(thinking_sections: list, placeholder=None):
         reasoning = html.escape(section.get("reasoning", ""))
 
         # Create collapsible section for this iteration
-        html_parts.append(
-            f"""
+        html_parts.append(f"""
 <details class="tt-agent-thinking-iteration">
     <summary class="tt-agent-thinking-summary">
         Iteration {html.escape(str(iteration))}: {action}
@@ -104,8 +103,7 @@ def render_agent_thinking(thinking_sections: list, placeholder=None):
         {f'<div><strong>Reasoning:</strong> {reasoning}</div>' if reasoning else ''}
     </div>
 </details>
-"""
-        )
+""")
 
     html_parts.append("</div>")
 
