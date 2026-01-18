@@ -37,14 +37,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Run unit tests
-        run: |
-          pytest tests/unit/ -v --cov=tensortruth --cov-report=xml --cov-report=term
-
-      - name: Run integration tests
-        run: |
-          # Run integration tests with network but without Ollama (--run-network flag allows network tests)
-          pytest tests/integration/ -v --run-network -m "not slow"
+      - name: Run tests
+        run: ./scripts/test.sh
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
@@ -70,16 +64,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Run black
-        run: black --check src/tensortruth scripts tests
-
-      - name: Run flake8
-        run: flake8 src/tensortruth scripts tests
-        continue-on-error: true
-
-      - name: Run isort
-        run: isort --check-only src/tensortruth scripts tests
-
-      - name: Run mypy
-        run: mypy src/tensortruth --ignore-missing-imports
-        continue-on-error: true
+      - name: Run linters
+        run: ./scripts/lint.sh
