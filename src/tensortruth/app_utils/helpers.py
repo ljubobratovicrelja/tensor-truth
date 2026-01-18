@@ -341,8 +341,12 @@ def free_memory(engine=None):
         from tensortruth.utils.pdf import clear_marker_converter
 
         clear_marker_converter()
-    except (ImportError, Exception) as e:
-        logger.debug(f"Could not clear marker converter: {e}")
+    except ImportError as e:
+        # Optional dependency not available
+        logger.debug(f"Could not import clear_marker_converter: {e}")
+    except Exception as e:
+        # Unexpected error during VRAM cleanup
+        logger.warning(f"Error while clearing marker converter: {e}", exc_info=True)
 
     gc.collect()
 
