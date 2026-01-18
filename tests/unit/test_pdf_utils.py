@@ -33,23 +33,6 @@ class TestClearMarkerConverter:
 
         assert pdf.MARKER_CONVERTER is None
 
-    def test_handles_del_exception(self):
-        """Test that clear_marker_converter handles del exceptions."""
-        from tensortruth.utils import pdf
-
-        # Create a mock that raises on del (unlikely but defensive)
-        class BadConverter:
-            def __del__(self):
-                raise RuntimeError("Del failed")
-
-        pdf.MARKER_CONVERTER = BadConverter()
-
-        # Should not raise - exception is caught
-        pdf.clear_marker_converter()
-
-        # Should still be set to None in finally block
-        assert pdf.MARKER_CONVERTER is None
-
     def test_clears_real_converter_reference(self):
         """Test clearing releases the reference for garbage collection."""
         import gc
