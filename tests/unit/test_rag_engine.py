@@ -110,6 +110,53 @@ class TestMultiIndexRetriever:
         assert results[:3] == nodes[:3]
         assert results[3:] == nodes[3:]
 
+    def test_clear_cache_with_caching_enabled(self):
+        """Test that clear_cache clears the LRU cache when caching is enabled."""
+        mock_node = MagicMock()
+        mock_retriever = MagicMock()
+        mock_retriever.retrieve.return_value = [mock_node]
+
+        # Create retriever with caching enabled (default)
+        multi_retriever = MultiIndexRetriever([mock_retriever], enable_cache=True)
+
+        # Perform a retrieval to populate the cache
+        query_bundle = QueryBundle(query_str="test query")
+        multi_retriever._retrieve(query_bundle)
+
+        # Verify cache has entries
+        cache_info = multi_retriever._retrieve_cached.cache_info()
+        assert cache_info.currsize > 0
+
+        # Clear the cache
+        multi_retriever.clear_cache()
+
+        # Verify cache is empty
+        cache_info = multi_retriever._retrieve_cached.cache_info()
+        assert cache_info.currsize == 0
+
+    def test_clear_cache_with_caching_disabled(self):
+        """Test that clear_cache is safe to call when caching is disabled."""
+        mock_retriever = MagicMock()
+        mock_retriever.retrieve.return_value = []
+
+        # Create retriever with caching disabled
+        multi_retriever = MultiIndexRetriever([mock_retriever], enable_cache=False)
+
+        # Should not raise when cache is disabled
+        multi_retriever.clear_cache()
+
+    def test_clear_cache_idempotent(self):
+        """Test that multiple clear_cache calls don't raise."""
+        mock_retriever = MagicMock()
+        mock_retriever.retrieve.return_value = []
+
+        multi_retriever = MultiIndexRetriever([mock_retriever], enable_cache=True)
+
+        # Multiple calls should be safe
+        multi_retriever.clear_cache()
+        multi_retriever.clear_cache()
+        multi_retriever.clear_cache()
+
 
 # ============================================================================
 # Tests for get_embed_model (mocked)

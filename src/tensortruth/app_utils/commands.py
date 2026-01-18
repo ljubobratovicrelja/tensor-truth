@@ -5,6 +5,8 @@ from typing import Callable, List, Optional, Tuple
 
 import streamlit as st
 
+from tensortruth.core.system import format_memory_report, get_memory_summary
+
 from .helpers import (
     format_ollama_runtime_info,
     free_memory,
@@ -104,6 +106,12 @@ class ListCommand(Command):
         )
         lines.append(f"**LLM Device:** `{current_params.get('llm_device', 'gpu')}`")
 
+        # Memory Summary Section
+        lines.append("\n#### Memory")
+        memory_summary = get_memory_summary()
+        lines.append(f"`{memory_summary}`")
+        lines.append("*Use `/memory` for detailed breakdown*")
+
         # Ollama Runtime Info Section
         runtime_info = format_ollama_runtime_info()
         if runtime_info:
@@ -112,8 +120,25 @@ class ListCommand(Command):
 
         lines.append(
             "\n**Commands:** `/load <name>`, `/device rag <cpu|cuda|mps>`, "
-            "`/device llm <cpu|gpu>`, `/conf <val>`"
+            "`/device llm <cpu|gpu>`, `/conf <val>`, `/memory`"
         )
+        return True, "\n".join(lines), None
+
+
+class MemoryCommand(Command):
+    """Command to show detailed memory usage."""
+
+    def __init__(self):
+        super().__init__(
+            name="memory",
+            aliases=["mem", "vram"],
+            usage="/memory - Show detailed memory usage breakdown",
+        )
+
+    def execute(
+        self, args: List[str], session: dict, available_mods: List[str]
+    ) -> CommandResult:
+        lines = format_memory_report()
         return True, "\n".join(lines), None
 
 
@@ -664,6 +689,7 @@ class CommandRegistry:
         lines = [
             "### Available Commands",
             "- **/list** / **/status** - Show active indices & hardware usage",
+            "- **/memory** / **/mem** - Show detailed memory usage breakdown",
             "- **/model [name]** - Show current model or switch to different model",
             "- **/load <index>** - Load a knowledge base",
             "- **/unload <index>** - Unload a knowledge base",
@@ -681,6 +707,7 @@ class CommandRegistry:
 # Initialize global command registry
 _registry = CommandRegistry()
 _registry.register(ListCommand())
+_registry.register(MemoryCommand())
 _registry.register(ModelCommand())
 _registry.register(LoadCommand())
 _registry.register(UnloadCommand())

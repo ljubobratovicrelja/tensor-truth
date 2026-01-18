@@ -1,13 +1,16 @@
 """General helper functions for the Streamlit app."""
 
 import gc
+import logging
 import os
 import tarfile
 import time
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import torch
+
+logger = logging.getLogger(__name__)
 
 # Constants for the Tensor Truth Indexes
 HF_REPO_ID = "ljubobratovicrelja/tensor-truth-indexes"
@@ -278,6 +281,24 @@ def get_system_devices():
     return devices
 
 
+def _clear_retriever_cache(engine: Any) -> None:
+    """Clear LRU cache from engine's retriever to release GPU tensor references.
+
+    Args:
+        engine: Chat engine that may contain a retriever with cached data.
+    """
+    if engine is None:
+        return
+
+    try:
+        # CondensePlusContextChatEngine stores retriever in _retriever attribute
+        retriever = getattr(engine, "_retriever", None)
+        if retriever is not None and hasattr(retriever, "clear_cache"):
+            retriever.clear_cache()
+    except Exception as e:
+        logger.warning(f"Failed to clear retriever cache: {e}")
+
+
 def free_memory(engine=None):
     """Free GPU/MPS memory by clearing caches.
 
@@ -285,8 +306,9 @@ def free_memory(engine=None):
         engine: Optional engine reference to delete. If None, will try to clean
                 up from st.session_state if streamlit is available.
     """
-    # If engine provided, delete it
+    # Clear retriever LRU cache before deleting engine to release GPU tensors
     if engine is not None:
+        _clear_retriever_cache(engine)
         del engine
 
     # Also try to clean up from streamlit session_state if available
@@ -294,6 +316,7 @@ def free_memory(engine=None):
         import streamlit as st
 
         if "engine" in st.session_state:
+            _clear_retriever_cache(st.session_state["engine"])
             del st.session_state["engine"]
     except (ImportError, AttributeError):
         # Streamlit not available or session_state not initialized

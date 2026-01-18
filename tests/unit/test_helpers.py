@@ -3,14 +3,16 @@ Unit tests for tensortruth.app_utils.helpers module.
 """
 
 import tarfile
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from tensortruth.app_utils.helpers import (
     HF_FILENAME,
     HF_REPO_ID,
+    _clear_retriever_cache,
     download_and_extract_indexes,
+    free_memory,
 )
 
 
@@ -94,3 +96,120 @@ class TestDownloadAndExtractIndexes:
                 download_and_extract_indexes(tmp_path)
 
             assert "Network error" in str(exc_info.value)
+
+
+@pytest.mark.unit
+class TestFreeMemory:
+    """Tests for free_memory function and cache clearing."""
+
+    def test_free_memory_clears_retriever_cache(self):
+        """Test that free_memory calls clear_cache on the engine's retriever."""
+        mock_retriever = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine._retriever = mock_retriever
+
+        with patch("tensortruth.app_utils.helpers.gc.collect"):
+            with patch("tensortruth.app_utils.helpers.torch") as mock_torch:
+                mock_torch.cuda.is_available.return_value = False
+                mock_torch.backends.mps.is_available.return_value = False
+
+                free_memory(engine=mock_engine)
+
+        mock_retriever.clear_cache.assert_called_once()
+
+    def test_free_memory_handles_missing_retriever(self):
+        """Test that free_memory handles engines without _retriever attribute."""
+        mock_engine = MagicMock(spec=[])  # No _retriever attribute
+
+        with patch("tensortruth.app_utils.helpers.gc.collect"):
+            with patch("tensortruth.app_utils.helpers.torch") as mock_torch:
+                mock_torch.cuda.is_available.return_value = False
+                mock_torch.backends.mps.is_available.return_value = False
+
+                # Should not raise
+                free_memory(engine=mock_engine)
+
+    def test_free_memory_handles_retriever_without_clear_cache(self):
+        """Test that free_memory handles retrievers without clear_cache method."""
+        mock_retriever = MagicMock(spec=[])  # No clear_cache method
+        mock_engine = MagicMock()
+        mock_engine._retriever = mock_retriever
+
+        with patch("tensortruth.app_utils.helpers.gc.collect"):
+            with patch("tensortruth.app_utils.helpers.torch") as mock_torch:
+                mock_torch.cuda.is_available.return_value = False
+                mock_torch.backends.mps.is_available.return_value = False
+
+                # Should not raise
+                free_memory(engine=mock_engine)
+
+    def test_free_memory_clears_streamlit_session_retriever_cache(self):
+        """Test that free_memory clears cache from st.session_state engine."""
+        mock_retriever = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine._retriever = mock_retriever
+
+        mock_session_state = {"engine": mock_engine}
+
+        with patch("tensortruth.app_utils.helpers.gc.collect"):
+            with patch("tensortruth.app_utils.helpers.torch") as mock_torch:
+                mock_torch.cuda.is_available.return_value = False
+                mock_torch.backends.mps.is_available.return_value = False
+
+                with patch.dict(
+                    "sys.modules",
+                    {"streamlit": MagicMock(session_state=mock_session_state)},
+                ):
+                    free_memory(engine=None)
+
+        mock_retriever.clear_cache.assert_called_once()
+
+    def test_free_memory_handles_cache_clear_exception(self):
+        """Test that free_memory continues cleanup even if clear_cache raises."""
+        mock_retriever = MagicMock()
+        mock_retriever.clear_cache.side_effect = RuntimeError("Cache error")
+        mock_engine = MagicMock()
+        mock_engine._retriever = mock_retriever
+
+        with patch("tensortruth.app_utils.helpers.gc.collect") as mock_gc:
+            with patch("tensortruth.app_utils.helpers.torch") as mock_torch:
+                mock_torch.cuda.is_available.return_value = True
+                mock_torch.backends.mps.is_available.return_value = False
+
+                # Should not raise despite cache error
+                free_memory(engine=mock_engine)
+
+        # gc.collect should still be called
+        mock_gc.assert_called_once()
+        # CUDA cache should still be cleared
+        mock_torch.cuda.empty_cache.assert_called_once()
+
+
+@pytest.mark.unit
+class TestClearRetrieverCache:
+    """Tests for _clear_retriever_cache helper function."""
+
+    def test_clear_retriever_cache_with_valid_engine(self):
+        """Test _clear_retriever_cache calls clear_cache on retriever."""
+        mock_retriever = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine._retriever = mock_retriever
+
+        _clear_retriever_cache(mock_engine)
+
+        mock_retriever.clear_cache.assert_called_once()
+
+    def test_clear_retriever_cache_with_none_engine(self):
+        """Test _clear_retriever_cache handles None engine."""
+        # Should not raise
+        _clear_retriever_cache(None)
+
+    def test_clear_retriever_cache_suppresses_exceptions(self):
+        """Test _clear_retriever_cache suppresses exceptions."""
+        mock_retriever = MagicMock()
+        mock_retriever.clear_cache.side_effect = Exception("Test error")
+        mock_engine = MagicMock()
+        mock_engine._retriever = mock_retriever
+
+        # Should not raise
+        _clear_retriever_cache(mock_engine)
