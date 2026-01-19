@@ -87,10 +87,10 @@ def _handle_rag_mode(
     Returns:
         Tuple of (thinking, message_data_dict)
     """
-    # Phase 1: RAG Retrieval
+    # Phase 1: RAG Retrieval (uses engine's memory for query condensing)
     with st.spinner(get_random_rag_processing_message()):
-        synthesizer, _, context_nodes = engine._run_c3(
-            prompt, chat_history=None, streaming=True
+        synthesizer, condensed_query, context_nodes = engine._run_c3(
+            prompt, streaming=True
         )
 
     # Phase 2: Confidence checking and prompt adjustment
@@ -100,6 +100,106 @@ def _handle_rag_mode(
             synthesizer, context_nodes, confidence_threshold
         )
     )
+
+    # Capture debug data (if enabled)
+    debug_data = None
+    if st.session_state.get("debug_context", False):
+        best_score = max(
+            (node.score for node in context_nodes if node.score), default=0.0
+        )
+
+        # Build the ACTUAL context string that goes to the LLM (same as streaming.py:148)
+        actual_context_str = (
+            "\n\n".join([n.get_content() for n in context_nodes])
+            if has_real_sources
+            else ""
+        )
+        actual_formatted_prompt = (
+            (
+                f"Context information:\n{actual_context_str}\n\n"
+                f"Query: {prompt}\n\nAnswer:"
+            )
+            if has_real_sources
+            else f"Query: {prompt}\n\nAnswer:"
+        )
+
+        # Get chat history that will be sent to LLM (same as streaming.py:155-157)
+        # Check both synthesizer and engine for memory
+        chat_history_messages = []
+        if hasattr(synthesizer, "_memory") and synthesizer._memory:
+            chat_history_messages = list(synthesizer._memory.get())
+        elif hasattr(engine, "_memory") and engine._memory:
+            chat_history_messages = list(engine._memory.get())
+
+        # Build complete conversation view (history + current prompt)
+        complete_conversation = ""
+        if chat_history_messages:
+            complete_conversation += (
+                f"=== CHAT HISTORY ({len(chat_history_messages)} messages) ===\n\n"
+            )
+            for idx, msg in enumerate(chat_history_messages, 1):
+                role = (
+                    str(msg.role).split(".")[-1]
+                    if hasattr(msg.role, "__str__")
+                    else str(msg.role)
+                )
+                complete_conversation += f"Message {idx} [{role}]:\n{msg.content}\n\n"
+            complete_conversation += "=== CURRENT PROMPT (sent as USER role with system-formatted context) ===\n\n"
+        else:
+            complete_conversation += "=== NO CHAT HISTORY (First message or memory not persisted) ===\n\n=== CURRENT PROMPT (sent as USER role with system-formatted context) ===\n\n"
+        complete_conversation += actual_formatted_prompt
+
+        # Store debug data for message history
+        debug_data = {
+            "mode": "rag",
+            "best_score": float(
+                best_score
+            ),  # Convert numpy.float32 to Python float for JSON
+            "confidence_threshold": float(confidence_threshold),
+            "has_real_sources": has_real_sources,
+            "num_nodes": len(context_nodes) if has_real_sources else 0,
+            "node_scores": (
+                [
+                    {
+                        "display_name": extract_source_metadata(node, is_node=True)[
+                            "display_name"
+                        ],
+                        "score": (
+                            float(node.score) if node.score else 0.0
+                        ),  # Convert numpy.float32 to Python float
+                    }
+                    for node in context_nodes
+                ]
+                if has_real_sources
+                else []
+            ),
+            "user_query": prompt,  # Original user input
+            "condensed_query": (
+                str(condensed_query) if condensed_query else prompt
+            ),  # Query after LLM condensing (used for retrieval)
+            "actual_context_str": actual_context_str,  # RAW text sent to LLM
+            "actual_formatted_prompt": actual_formatted_prompt,  # Current prompt with context
+            "complete_conversation": complete_conversation,  # Full conversation: history + current prompt
+        }
+
+        # Render live during streaming
+        from tensortruth.app_utils.rendering_debug import (
+            render_debug_context as render_debug_rag,
+        )
+
+        render_debug_rag(
+            context_nodes=context_nodes,
+            best_score=best_score,
+            confidence_threshold=confidence_threshold,
+            synthesizer=synthesizer,
+            low_confidence_warning=low_confidence_warning,
+            has_real_sources=has_real_sources,
+            actual_context_str=actual_context_str,
+            actual_formatted_prompt=actual_formatted_prompt,
+            complete_conversation=complete_conversation,
+            user_query=prompt,
+            condensed_query=str(condensed_query) if condensed_query else prompt,
+        )
 
     # Phase 3: Stream response
     start_time = time.time()
@@ -126,28 +226,36 @@ def _handle_rag_mode(
         has_pdf_index=has_pdf_index,
     )
 
-    # Phase 5: Update engine memory
+    # Phase 5: Update engine memory (only content, no metadata)
     engine._memory.put(ChatMessage(content=prompt, role=MessageRole.USER))
     engine._memory.put(ChatMessage(content=full_response, role=MessageRole.ASSISTANT))
 
-    # Build message data
+    # Build message data with metadata (for UI display and history storage only)
+    # NOTE: Metadata fields below are NEVER passed to LLM inference
     message_data = {
         "role": "assistant",
         "content": full_response,
-        "sources": source_data,
-        "time_taken": elapsed,
-        "low_confidence": low_confidence_warning,
+        "sources": source_data,  # UI metadata only
+        "time_taken": elapsed,  # UI metadata only
+        "low_confidence": low_confidence_warning,  # UI metadata only
     }
+
+    # Add debug data if captured (UI metadata only, never passed to LLM)
+    if debug_data:
+        message_data["debug_data"] = debug_data
 
     return thinking, message_data
 
 
-def _handle_simple_llm_mode(session: dict, params: dict) -> Tuple[str, dict]:
+def _handle_simple_llm_mode(
+    session: dict, params: dict, prompt: str
+) -> Tuple[str, dict]:
     """Handle simple LLM mode: loading, streaming, and UI rendering.
 
     Args:
         session: Current session dictionary
         params: Session parameters
+        prompt: User prompt (for debug display)
 
     Returns:
         Tuple of (thinking, message_data_dict)
@@ -170,6 +278,56 @@ def _handle_simple_llm_mode(session: dict, params: dict) -> Tuple[str, dict]:
     llm = st.session_state.simple_llm
     chat_history = build_chat_history(session["messages"])
 
+    # Capture debug data (if enabled)
+    debug_data = None
+    if st.session_state.get("debug_context", False):
+        from tensortruth.app_utils.rendering_debug import render_debug_simple_llm
+
+        # Get system prompt
+        system_prompt = None
+        if hasattr(llm, "system_prompt"):
+            system_prompt = llm.system_prompt
+        elif hasattr(llm, "_system_prompt"):
+            system_prompt = llm._system_prompt
+
+        # Build chat history summary for storage
+        chat_history_summary = [
+            {
+                "role": (
+                    str(msg.role).split(".")[-1]
+                    if hasattr(msg.role, "__str__")
+                    else str(msg.role)
+                ),
+                "content": msg.content,
+            }
+            for msg in chat_history
+        ]
+
+        # Store debug data for message history
+        debug_data = {
+            "mode": "simple_llm",
+            "model": params.get("model", "Unknown"),
+            "temperature": float(
+                params.get("temperature", 0.7)
+            ),  # Ensure Python float for JSON
+            "max_tokens": int(params.get("max_tokens", 2048)),
+            "device": params.get("llm_device", "auto"),
+            "chat_history": chat_history_summary,
+            "prompt": prompt,
+            "system_prompt": str(system_prompt) if system_prompt else None,
+        }
+
+        # Render live during streaming
+        render_debug_simple_llm(
+            model_name=debug_data["model"],
+            temperature=debug_data["temperature"],
+            max_tokens=debug_data["max_tokens"],
+            device=debug_data["device"],
+            chat_history_summary=chat_history_summary,
+            prompt=prompt,
+            system_prompt=debug_data["system_prompt"],
+        )
+
     # Stream response
     start_time = time.time()
     full_response, error, thinking = stream_simple_llm_response(llm, chat_history)
@@ -180,12 +338,17 @@ def _handle_simple_llm_mode(session: dict, params: dict) -> Tuple[str, dict]:
     # Render simple footer
     st.caption(f"⏱️ {elapsed:.2f}s")
 
-    # Build message data
+    # Build message data with metadata (for UI display and history storage only)
+    # NOTE: Metadata fields below are NEVER passed to LLM inference
     message_data = {
         "role": "assistant",
         "content": full_response,
-        "time_taken": elapsed,
+        "time_taken": elapsed,  # UI metadata only
     }
+
+    # Add debug data if captured (UI metadata only, never passed to LLM)
+    if debug_data:
+        message_data["debug_data"] = debug_data
 
     return thinking, message_data
 
@@ -229,7 +392,7 @@ def handle_chat_response(
                 engine, prompt, params, modules, has_pdf_index
             )
         else:
-            thinking, message_data = _handle_simple_llm_mode(session, params)
+            thinking, message_data = _handle_simple_llm_mode(session, params, prompt)
 
         # Add thinking if present
         if thinking:

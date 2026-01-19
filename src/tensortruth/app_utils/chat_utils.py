@@ -10,6 +10,10 @@ def build_chat_history(
 ) -> List[ChatMessage]:
     """Convert session messages to LlamaIndex ChatMessage format.
 
+    IMPORTANT: This function only extracts 'content' and 'role' fields.
+    All metadata fields (sources, time_taken, debug_data, thinking, etc.)
+    are intentionally excluded and never passed to LLM inference.
+
     Args:
         session_messages: List of message dicts from session history
         max_messages: Optional limit on number of messages to include
@@ -21,14 +25,16 @@ def build_chat_history(
 
     for msg in session_messages:
         if msg["role"] == "user":
+            # Only extract content - metadata is never passed to LLM
             chat_messages.append(
                 ChatMessage(content=msg["content"], role=MessageRole.USER)
             )
         elif msg["role"] == "assistant":
+            # Only extract content - metadata (debug_data, sources, etc.) excluded
             chat_messages.append(
                 ChatMessage(content=msg["content"], role=MessageRole.ASSISTANT)
             )
-        # Skip command messages
+        # Skip command messages and all metadata fields
 
     # Apply max_messages limit if specified
     if max_messages is not None and len(chat_messages) > max_messages:

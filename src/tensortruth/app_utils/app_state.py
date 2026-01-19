@@ -6,6 +6,7 @@ function signatures across the application.
 """
 
 import logging
+import os
 from pathlib import Path
 
 import streamlit as st
@@ -99,6 +100,9 @@ def init_app_state():
         st.session_state.loaded_config = None
     if "engine" not in st.session_state:
         st.session_state.engine = None
+
+    # Initialize debug flags from environment
+    st.session_state.debug_context = os.environ.get("TENSOR_TRUTH_DEBUG_CONTEXT") == "1"
 
     # Mark as initialized
     st.session_state.app_initialized = True

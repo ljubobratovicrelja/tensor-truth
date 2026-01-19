@@ -270,6 +270,203 @@ def render_low_confidence_warning(
         )
 
 
+def render_debug_from_stored_data(debug_data: dict):
+    """Render debug information from stored message data.
+
+    Args:
+        debug_data: Debug data dict stored in message history
+    """
+    if not debug_data:
+        return
+
+    mode = debug_data.get("mode", "unknown")
+
+    if mode == "rag":
+        # Render RAG debug data
+        st.markdown("### 🔍 DEBUG: RAG Context (What the LLM Sees)")
+
+        # Section 1: Retrieval Query
+        user_query = debug_data.get("user_query") or debug_data.get(
+            "retrieval_query"
+        )  # Backward compatibility
+        condensed_query = debug_data.get("condensed_query")
+
+        if user_query:
+            st.markdown("#### 🔎 Retrieval Query")
+
+            # Show user's original input
+            st.markdown("**User Input:**")
+            st.text_area(
+                "Original Query (read-only)",
+                value=user_query,
+                height=60,
+                disabled=True,
+                key=f"debug_stored_user_query_{hash(user_query[:100])}",
+            )
+
+            # Show condensed query if different
+            if condensed_query and user_query != condensed_query:
+                st.markdown("**Condensed Query (used for retrieval):**")
+                st.info(
+                    "🔄 Engine condensed the query with chat history to create a standalone search query"
+                )
+                st.text_area(
+                    "Condensed Query (read-only)",
+                    value=condensed_query,
+                    height=80,
+                    disabled=True,
+                    key=f"debug_stored_condensed_query_{hash(condensed_query[:100])}",
+                )
+            else:
+                st.markdown(
+                    "*No condensing needed (first message or query already standalone)*"
+                )
+
+            st.markdown("---")
+
+        # Section 2: Retrieval Summary
+        st.markdown("#### 📊 Retrieval Summary")
+        num_nodes = debug_data.get("num_nodes", 0)
+        best_score = debug_data.get("best_score", 0.0)
+        confidence_threshold = debug_data.get("confidence_threshold", 0.0)
+        has_real_sources = debug_data.get("has_real_sources", True)
+
+        status_icon = "✅" if best_score >= confidence_threshold else "❌"
+        status_text = "Good" if best_score >= confidence_threshold else "Low Confidence"
+        if not has_real_sources:
+            status_icon = "⚠️"
+            status_text = "No Sources (Fallback Mode)"
+
+        st.markdown(f"""
+- **Nodes Retrieved:** {num_nodes}
+- **Best Score:** {best_score:.4f}
+- **Threshold:** {confidence_threshold:.4f}
+- **Status:** {status_icon} {status_text}
+""")
+
+        if has_real_sources and debug_data.get("node_scores"):
+            st.markdown("**Sources:**")
+            for idx, node_info in enumerate(debug_data["node_scores"], 1):
+                st.markdown(
+                    f"{idx}. {node_info['display_name']} (score: {node_info['score']:.4f})"
+                )
+
+        st.markdown("---")
+
+        # Section 3: ACTUAL CONTEXT STRING
+        st.markdown("#### 📝 Context String Sent to LLM")
+        st.markdown(
+            "*This is the EXACT raw text passed as context (nodes joined by `\\n\\n`):*"
+        )
+
+        if has_real_sources and debug_data.get("actual_context_str"):
+            st.text_area(
+                "Raw Context (read-only)",
+                value=debug_data["actual_context_str"],
+                height=300,
+                disabled=True,
+                key=f"debug_stored_context_{hash(debug_data['actual_context_str'][:100])}",
+            )
+        else:
+            st.info("No context (fallback mode - LLM had no retrieved documents)")
+
+        st.markdown("---")
+
+        # Section 4: CURRENT PROMPT (just this turn)
+        st.markdown("#### 📝 Current Prompt (This Turn)")
+        st.markdown("*The formatted prompt for this specific query (context + query):*")
+
+        if debug_data.get("actual_formatted_prompt"):
+            st.text_area(
+                "Current Prompt (read-only)",
+                value=debug_data["actual_formatted_prompt"],
+                height=150,
+                disabled=True,
+                key=f"debug_stored_prompt_{hash(debug_data['actual_formatted_prompt'][:100])}",
+            )
+
+        st.markdown("---")
+
+        # Section 5: COMPLETE CONVERSATION (history + current)
+        st.markdown("#### 💬 Complete Conversation Sent to LLM")
+        st.markdown("*The FULL conversation including chat history + current prompt:*")
+
+        if debug_data.get("complete_conversation"):
+            st.text_area(
+                "Complete Conversation (read-only)",
+                value=debug_data["complete_conversation"],
+                height=300,
+                disabled=True,
+                key=f"debug_stored_conversation_{hash(debug_data['complete_conversation'][:100])}",
+            )
+
+    elif mode == "simple_llm":
+        # Render Simple LLM debug data (clean, no HTML)
+        st.markdown("### 🔍 DEBUG: Simple LLM Mode (No RAG)")
+
+        # Section 1: Mode Info
+        st.info(
+            "**Mode:** Simple LLM (No RAG) - No document retrieval, pure LLM response based on chat history only"
+        )
+
+        # Section 2: Model Configuration
+        st.markdown("#### ⚙️ Model Configuration")
+        st.markdown(f"""
+- **Model:** {debug_data.get("model", "Unknown")}
+- **Temperature:** {debug_data.get("temperature", 0.7)}
+- **Max Tokens:** {debug_data.get("max_tokens", 2048)}
+- **Device:** {debug_data.get("device", "auto")}
+""")
+
+        st.markdown("---")
+
+        # Section 3: Chat History
+        st.markdown("#### 💬 Chat History Sent to LLM")
+        chat_history = debug_data.get("chat_history", [])
+        st.markdown(f"*Total messages: {len(chat_history)}*")
+
+        if chat_history:
+            history_text = ""
+            for idx, msg in enumerate(chat_history, 1):
+                role_icon = "👤" if "USER" in msg.get("role", "").upper() else "🤖"
+                history_text += f"Message {idx} [{role_icon} {msg.get('role', 'unknown')}]:\n{msg.get('content', '')}\n\n"
+
+            st.text_area(
+                "Chat History (read-only)",
+                value=history_text.strip(),
+                height=200,
+                disabled=True,
+                key=f"debug_stored_llm_history_{hash(history_text[:100])}",
+            )
+        else:
+            st.info("No chat history (first message in session)")
+
+        st.markdown("---")
+
+        # Section 4: Current Prompt
+        if debug_data.get("prompt"):
+            st.markdown("#### 📝 Current User Prompt")
+            st.text_area(
+                "User Prompt (read-only)",
+                value=debug_data["prompt"],
+                height=100,
+                disabled=True,
+                key=f"debug_stored_llm_prompt_{hash(debug_data['prompt'][:100])}",
+            )
+
+        # Section 5: System Prompt
+        if debug_data.get("system_prompt"):
+            st.markdown("---")
+            st.markdown("#### 🔧 System Prompt")
+            st.text_area(
+                "System Prompt (read-only)",
+                value=debug_data["system_prompt"],
+                height=150,
+                disabled=True,
+                key=f"debug_stored_llm_system_{hash(debug_data['system_prompt'][:100])}",
+            )
+
+
 def render_chat_message(
     message: dict, params: dict, modules: list, has_pdf_index: bool = False
 ):
@@ -300,6 +497,10 @@ def render_chat_message(
                 render_low_confidence_warning(
                     0.0, confidence_threshold, has_sources=False
                 )
+
+        # Render debug data if present (BEFORE other content)
+        if message.get("debug_data"):
+            render_debug_from_stored_data(message["debug_data"])
 
         # Render thinking if present (for RAG responses)
         if message.get("thinking"):

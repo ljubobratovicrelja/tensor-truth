@@ -4,6 +4,7 @@
 Unified CLI for managing documentation, papers, databases, and the web interface.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -62,6 +63,20 @@ def main():
         print(f"Error: Could not find app.py at {app_path}", file=sys.stderr)
         sys.exit(1)
 
+    # Extract custom flags before passing to Streamlit
+    filtered_args = []
+    debug_context = False
+
+    for arg in sys.argv[1:]:
+        if arg == "--debug-context":
+            debug_context = True
+        else:
+            filtered_args.append(arg)
+
+    # Set environment variable for app to read
+    if debug_context:
+        os.environ["TENSOR_TRUTH_DEBUG_CONTEXT"] = "1"
+
     # Import streamlit.web.cli as st_cli to avoid loading the entire streamlit module
     try:
         from streamlit.web import cli as st_cli
@@ -73,7 +88,7 @@ def main():
         sys.exit(1)
 
     # Run the Streamlit app
-    sys.argv = ["streamlit", "run", str(app_path)] + sys.argv[1:]
+    sys.argv = ["streamlit", "run", str(app_path)] + filtered_args
     sys.exit(st_cli.main())
 
 
