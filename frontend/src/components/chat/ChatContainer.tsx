@@ -188,6 +188,8 @@ export function ChatContainer() {
             onModulesChange={handleModulesChange}
             selectedModel={currentModel}
             onModelChange={handleModelChange}
+            sessionId={urlSessionId}
+            sessionParams={sessionData?.params ?? {}}
           />
         </div>
       </div>

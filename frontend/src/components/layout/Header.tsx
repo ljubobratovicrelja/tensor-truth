@@ -1,3 +1,4 @@
+import { useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeft, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/stores";
@@ -7,8 +8,10 @@ import { ThemeToggle } from "./ThemeToggle";
 import { cn } from "@/lib/utils";
 
 export function Header() {
+  const location = useLocation();
   const { sidebarOpen, toggleSidebar, headerHidden } = useUIStore();
   const isMobile = useIsMobile();
+  const isInChat = location.pathname.startsWith("/chat/");
 
   // Choose icon based on mobile state and sidebar state
   const getIcon = () => {
@@ -39,7 +42,7 @@ export function Header() {
         <h1 className="hidden text-lg font-semibold sm:block">TensorTruth</h1>
       </div>
       <ThemeToggle />
-      <ConfigPanel />
+      {!isInChat && <ConfigPanel />}
     </header>
   );
 }

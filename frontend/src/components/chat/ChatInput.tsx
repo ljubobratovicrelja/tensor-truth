@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useModels } from "@/hooks";
 import { ModuleSelector } from "./ModuleSelector";
+import { SessionSettingsPanel } from "@/components/config";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -21,6 +22,8 @@ interface ChatInputProps {
   onModulesChange?: (modules: string[]) => void;
   selectedModel?: string;
   onModelChange?: (model: string | null) => void;
+  sessionId?: string;
+  sessionParams?: Record<string, unknown>;
 }
 
 export function ChatInput({
@@ -32,6 +35,8 @@ export function ChatInput({
   onModulesChange,
   selectedModel,
   onModelChange,
+  sessionId,
+  sessionParams = {},
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const { data: modelsData, isLoading: modelsLoading } = useModels();
@@ -91,12 +96,19 @@ export function ChatInput({
 
         {/* Bottom toolbar */}
         <div className="absolute right-2 bottom-2 left-2 flex items-center justify-between">
-          {/* Left side - module selector and model selector */}
+          {/* Left side - module selector, session settings, and model selector */}
           <div className="flex items-center gap-1">
             {onModulesChange && (
               <ModuleSelector
                 selectedModules={selectedModules}
                 onModulesChange={onModulesChange}
+                disabled={isStreaming}
+              />
+            )}
+            {sessionId && (
+              <SessionSettingsPanel
+                sessionId={sessionId}
+                currentParams={sessionParams}
                 disabled={isStreaming}
               />
             )}

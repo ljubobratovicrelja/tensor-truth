@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings, Loader2 } from "lucide-react";
+import { Settings, Loader2, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,11 +15,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { useConfig, useUpdateConfig, useModels } from "@/hooks";
 import type { ConfigResponse } from "@/api/types";
+
+function HelpTooltip({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <HelpCircle className="text-muted-foreground ml-1 inline h-3.5 w-3.5 cursor-help" />
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 interface ConfigFormProps {
   config: ConfigResponse;
@@ -27,36 +45,69 @@ interface ConfigFormProps {
   isSaving: boolean;
 }
 
+const RERANKER_OPTIONS = [
+  "BAAI/bge-reranker-v2-m3",
+  "BAAI/bge-reranker-base",
+  "cross-encoder/ms-marco-MiniLM-L-6-v2",
+];
+
+const DEVICE_OPTIONS = ["cpu", "cuda", "mps"];
+
+const CONTEXT_WINDOW_OPTIONS = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
+
 function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   const { data: modelsData } = useModels();
 
-  const [temperature, setTemperature] = useState(config.ui.default_temperature);
-  const [contextWindow, setContextWindow] = useState(config.ui.default_context_window);
-  const [maxTokens, setMaxTokens] = useState(config.ui.default_max_tokens);
-  const [topN, setTopN] = useState(config.ui.default_top_n);
+  // Models
   const [ragModel, setRagModel] = useState(config.models.default_rag_model);
   const [fallbackModel, setFallbackModel] = useState(
     config.models.default_fallback_model
   );
 
+  // Generation
+  const [temperature, setTemperature] = useState(config.ui.default_temperature);
+  const [contextWindow, setContextWindow] = useState(config.ui.default_context_window);
+  const [maxTokens, setMaxTokens] = useState(config.ui.default_max_tokens);
+
+  // Retrieval
+  const [reranker, setReranker] = useState(config.ui.default_reranker);
+  const [topN, setTopN] = useState(config.ui.default_top_n);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(
+    config.ui.default_confidence_threshold
+  );
+  const [confidenceCutoffHard, setConfidenceCutoffHard] = useState(
+    config.ui.default_confidence_cutoff_hard
+  );
+
+  // Hardware
+  const [device, setDevice] = useState(config.rag.default_device);
+
   const handleSave = async () => {
     await onSave({
+      models_default_rag_model: ragModel,
+      models_default_fallback_model: fallbackModel,
       ui_default_temperature: temperature,
       ui_default_context_window: contextWindow,
       ui_default_max_tokens: maxTokens,
+      ui_default_reranker: reranker,
       ui_default_top_n: topN,
-      models_default_rag_model: ragModel,
-      models_default_fallback_model: fallbackModel,
+      ui_default_confidence_threshold: confidenceThreshold,
+      ui_default_confidence_cutoff_hard: confidenceCutoffHard,
+      rag_default_device: device,
     });
   };
 
   return (
     <div className="space-y-6">
+      {/* Models Section */}
       <div className="space-y-4">
         <h3 className="text-sm font-medium">Models</h3>
         <div className="space-y-3">
           <div className="space-y-2">
-            <Label>RAG Model</Label>
+            <Label>
+              RAG Model
+              <HelpTooltip text="Primary model for retrieval-augmented generation. Used when answering questions with document context." />
+            </Label>
             <Select value={ragModel} onValueChange={setRagModel}>
               <SelectTrigger>
                 <SelectValue placeholder="Select model" />
@@ -71,7 +122,10 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Fallback Model</Label>
+            <Label>
+              Fallback Model
+              <HelpTooltip text="Backup model used when the primary model is unavailable or Ollama fails to list models." />
+            </Label>
             <Select value={fallbackModel} onValueChange={setFallbackModel}>
               <SelectTrigger>
                 <SelectValue placeholder="Select model" />
@@ -90,8 +144,9 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
       <Separator />
 
+      {/* Generation Section */}
       <div className="space-y-4">
-        <h3 className="text-sm font-medium">Generation Parameters</h3>
+        <h3 className="text-sm font-medium">Generation</h3>
         <div className="space-y-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -107,17 +162,22 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
             />
           </div>
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Context Window</Label>
-              <span className="text-muted-foreground text-sm">{contextWindow}</span>
-            </div>
-            <Slider
-              value={[contextWindow]}
-              onValueChange={([v]) => setContextWindow(v)}
-              min={2048}
-              max={32768}
-              step={1024}
-            />
+            <Label>Context Window</Label>
+            <Select
+              value={String(contextWindow)}
+              onValueChange={(v) => setContextWindow(Number(v))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select context window" />
+              </SelectTrigger>
+              <SelectContent>
+                {CONTEXT_WINDOW_OPTIONS.map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size.toLocaleString()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -128,9 +188,36 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
               value={[maxTokens]}
               onValueChange={([v]) => setMaxTokens(v)}
               min={256}
-              max={8192}
+              max={16384}
               step={256}
             />
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Retrieval Section */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium">Retrieval</h3>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>
+              Reranker Model
+              <HelpTooltip text="Cross-encoder model that re-scores retrieved documents for better relevance ranking." />
+            </Label>
+            <Select value={reranker} onValueChange={setReranker}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select reranker" />
+              </SelectTrigger>
+              <SelectContent>
+                {RERANKER_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -145,6 +232,61 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
               step={1}
             />
           </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Confidence Threshold</Label>
+              <span className="text-muted-foreground text-sm">
+                {confidenceThreshold.toFixed(2)}
+              </span>
+            </div>
+            <Slider
+              value={[confidenceThreshold]}
+              onValueChange={([v]) => setConfidenceThreshold(v)}
+              min={0}
+              max={1}
+              step={0.05}
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Hard Cutoff</Label>
+              <span className="text-muted-foreground text-sm">
+                {confidenceCutoffHard.toFixed(2)}
+              </span>
+            </div>
+            <Slider
+              value={[confidenceCutoffHard]}
+              onValueChange={([v]) => setConfidenceCutoffHard(v)}
+              min={0}
+              max={1}
+              step={0.05}
+            />
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Hardware Section */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium">Hardware</h3>
+        <div className="space-y-2">
+          <Label>RAG Device</Label>
+          <Select value={device} onValueChange={setDevice}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select device" />
+            </SelectTrigger>
+            <SelectContent>
+              {DEVICE_OPTIONS.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option.toUpperCase()}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-muted-foreground text-xs">
+            Device for embedding model and reranker
+          </p>
         </div>
       </div>
 
@@ -172,6 +314,7 @@ export function ConfigPanel() {
   const handleSave = async (updates: Record<string, unknown>) => {
     try {
       await updateConfig.mutateAsync(updates);
+      setOpen(false);
     } catch (error) {
       console.error("Failed to save config:", error);
     }

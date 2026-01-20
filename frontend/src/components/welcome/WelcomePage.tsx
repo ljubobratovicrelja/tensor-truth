@@ -14,12 +14,14 @@ import { cn } from "@/lib/utils";
 import { useModels, useCreateSession, useFavoritePresets } from "@/hooks";
 import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
+import { SessionSettingsPanel } from "@/components/config";
 import type { PresetInfo } from "@/api/types";
 
 export function WelcomePage() {
   const [message, setMessage] = useState("");
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
+  const [sessionParams, setSessionParams] = useState<Record<string, unknown>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: modelsData, isLoading: modelsLoading } = useModels();
@@ -41,11 +43,15 @@ export function WelcomePage() {
       const effectiveModules = selectedModules.length > 0 ? selectedModules : undefined;
       const effectiveModel = selectedModel && selectedModel !== "__none__" ? selectedModel : undefined;
 
+      // Build params: start with session settings, add model if selected
+      const baseParams = Object.keys(sessionParams).length > 0 ? { ...sessionParams } : {};
       const params = preset?.config
         ? { ...preset.config, model: presetModel }
         : effectiveModel
-          ? { model: effectiveModel }
-          : undefined;
+          ? { ...baseParams, model: effectiveModel }
+          : Object.keys(baseParams).length > 0
+            ? baseParams
+            : undefined;
 
       const result = await createSession.mutateAsync({
         modules: presetModules ?? effectiveModules,
@@ -122,6 +128,13 @@ export function WelcomePage() {
                 <ModuleSelector
                   selectedModules={selectedModules}
                   onModulesChange={setSelectedModules}
+                  disabled={isSubmitting}
+                />
+
+                {/* Session settings */}
+                <SessionSettingsPanel
+                  currentParams={sessionParams}
+                  onChange={setSessionParams}
                   disabled={isSubmitting}
                 />
 
