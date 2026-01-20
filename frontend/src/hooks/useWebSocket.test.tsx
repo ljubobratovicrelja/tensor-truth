@@ -21,6 +21,7 @@ class MockWebSocket {
   sentMessages: string[] = [];
   readyState = 1; // OPEN
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_url: string) {
     MockWebSocket.instances.push(this);
     // Simulate async connection

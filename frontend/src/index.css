@@ -343,3 +343,40 @@
     @apply rounded-lg my-4 max-w-full;
   }
 }
+
+/* Streaming text animation */
+@layer components {
+  /* Streaming cursor - blinking indicator at end of text */
+  .streaming-cursor {
+    @apply inline-block h-5 w-0.5 align-middle ml-0.5;
+    background: currentColor;
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%,
+    50% {
+      opacity: 1;
+    }
+    51%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  /* Streaming text - fade in animation on content updates */
+  .streaming-text {
+    animation: text-fade-in 350ms ease-out;
+  }
+
+  @keyframes text-fade-in {
+    0% {
+      opacity: 0.4;
+      filter: blur(1px);
+    }
+    100% {
+      opacity: 1;
+      filter: blur(0);
+    }
+  }
+}

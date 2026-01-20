@@ -16,7 +16,10 @@ export function Header() {
           <PanelLeft className="h-5 w-5" />
         )}
       </Button>
-      <h1 className="flex-1 text-lg font-semibold">TensorTruth</h1>
+      <div className="flex flex-1 items-center gap-2">
+        <img src="/logo.png" alt="TensorTruth" className="h-7 w-7" />
+        <h1 className="text-lg font-semibold">TensorTruth</h1>
+      </div>
       <ThemeToggle />
       <ConfigPanel />
     </header>

@@ -79,6 +79,7 @@ export function MessageList({
                 message={{ role: "assistant", content: streamingContent }}
                 sources={streamingSources}
                 thinking={streamingThinking}
+                isStreaming
               />
             )}
           </div>
