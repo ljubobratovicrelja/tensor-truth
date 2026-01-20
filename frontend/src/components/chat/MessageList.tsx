@@ -53,9 +53,13 @@ export function MessageList({
             {messages.map((message, index) => (
               <MessageItem key={index} message={message} />
             ))}
-            {pendingUserMessage && (
-              <MessageItem message={{ role: "user", content: pendingUserMessage }} />
-            )}
+            {/* Show pending message only if not already in fetched messages (dedup) */}
+            {pendingUserMessage &&
+              !messages.some(
+                (m) => m.role === "user" && m.content === pendingUserMessage
+              ) && (
+                <MessageItem message={{ role: "user", content: pendingUserMessage }} />
+              )}
             {isStreaming && !streamingContent && <StreamingIndicator />}
             {isStreaming && streamingContent && (
               <MessageItem

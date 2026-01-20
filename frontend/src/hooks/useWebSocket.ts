@@ -20,7 +20,6 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
     appendToken,
     setSources,
     finishStreaming,
-    clearPendingUserMessage,
     setError,
     reset,
     isStreaming,
@@ -73,10 +72,10 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
           switch (data.type) {
             case "token":
               // On first token, fetch messages (backend has saved user message)
-              // and clear optimistic UI since real data is coming
+              // Don't clear pendingUserMessage here - let MessageList deduplicate
+              // to avoid flash when query is refetching
               if (!didFetchUserMessage) {
                 didFetchUserMessage = true;
-                clearPendingUserMessage();
                 queryClient.invalidateQueries({
                   queryKey: QUERY_KEYS.messages(sessionId),
                 });
@@ -147,7 +146,6 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       appendToken,
       setSources,
       finishStreaming,
-      clearPendingUserMessage,
       setError,
       onError,
     ]
