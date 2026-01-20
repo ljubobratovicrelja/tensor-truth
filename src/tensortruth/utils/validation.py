@@ -303,7 +303,7 @@ def validate_url(url: str) -> bool:
             return False
 
 
-def prompt_for_url(prompt_message: str, examples: list[str] = None) -> str:
+def prompt_for_url(prompt_message: str, examples: list[str] | None = None) -> str:
     """Prompt user for URL with validation and retry loop.
 
     Args:

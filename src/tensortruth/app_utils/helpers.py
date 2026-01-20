@@ -19,7 +19,7 @@ HF_FILENAME = "indexes_v0.1.14.tar"
 
 def get_module_display_name(
     index_dir: Union[str, Path], module_name: str
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, int]:
     """Extract display_name and category from module's ChromaDB index.
 
     Args:
@@ -27,10 +27,11 @@ def get_module_display_name(
         module_name: Module folder name
 
     Returns:
-        Tuple of (display_name, doc_type, category_prefix) where:
+        Tuple of (display_name, doc_type, category_prefix, sort_order) where:
         - display_name: Human-readable name
         - doc_type: Type from metadata (book, paper, library_doc, etc.)
         - category_prefix: Formatted prefix for grouping (e.g., "📚 Books")
+        - sort_order: Integer for sorting (1-4)
     """
     try:
         import re
@@ -50,7 +51,7 @@ def get_module_display_name(
         results = collection.peek(limit=1)
         if results["metadatas"] and len(results["metadatas"]) > 0:
             metadata = results["metadatas"][0]
-            doc_type = metadata.get("doc_type", "unknown")
+            doc_type = str(metadata.get("doc_type", "unknown"))
 
             # Prioritize group/book display names for UI (same across all items in group/book)
             # Otherwise use individual display_name (for libraries, uploaded PDFs)
@@ -62,6 +63,8 @@ def get_module_display_name(
             )
 
             if display_name:
+                # Ensure display_name is a string
+                display_name = str(display_name)
                 # Remove chapter info like "Ch.01", "Ch.1-3", etc.
                 # Pattern: "Ch." followed by numbers/dashes and a separator
                 display_name = re.sub(r"\s+Ch\.\s*[\d\-]+\s*-\s*", " - ", display_name)

@@ -74,7 +74,7 @@ def _check_confidence_and_adjust_prompt(
 
 def _handle_rag_mode(
     engine, prompt: str, params: dict, modules: list, has_pdf_index: bool
-) -> Tuple[str, dict]:
+) -> Tuple[str | None, dict]:
     """Handle RAG mode: retrieval, confidence checking, streaming, and UI rendering.
 
     Args:
@@ -142,7 +142,7 @@ def _handle_rag_mode(
     return thinking, message_data
 
 
-def _handle_simple_llm_mode(session: dict, params: dict) -> Tuple[str, dict]:
+def _handle_simple_llm_mode(session: dict, params: dict) -> Tuple[str | None, dict]:
     """Handle simple LLM mode: loading, streaming, and UI rendering.
 
     Args:
@@ -221,7 +221,9 @@ def handle_chat_response(
             with st.spinner("Generating title..."):
                 from tensortruth.app_utils.session import update_title
 
-                update_title(current_id, prompt, params.get("model"), sessions_file)
+                update_title(
+                    current_id, prompt, params.get("model", "llama3.2"), sessions_file
+                )
 
         # Delegate to mode-specific handler
         if engine:

@@ -99,12 +99,18 @@ class MCPServerRegistry:
                 # Build connection parameters based on server type
                 if config.type == MCPServerType.STDIO:
                     # For stdio, command is the executable, args are passed separately
+                    if not config.command:
+                        logger.warning(f"STDIO server {name} has no command configured")
+                        continue
                     client = BasicMCPClient(
                         command_or_url=config.command,
                         args=config.args or [],
                     )
                 elif config.type == MCPServerType.SSE:
                     # For SSE, just pass the URL
+                    if not config.url:
+                        logger.warning(f"SSE server {name} has no URL configured")
+                        continue
                     client = BasicMCPClient(command_or_url=config.url)
                 else:
                     logger.warning(f"Unknown server type for {name}: {config.type}")

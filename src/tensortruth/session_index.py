@@ -36,7 +36,7 @@ class SessionIndexBuilder:
         self.session_index_dir = get_session_index_dir(session_id)
         self.session_markdown_dir = get_session_markdown_dir(session_id)
         self.metadata_cache = metadata_cache or {}
-        self._chroma_client = None
+        self._chroma_client: Optional[chromadb.ClientAPI] = None
 
     def _extract_pdf_id_from_filename(self, filename: str) -> str:
         """Extract PDF ID from markdown filename (e.g., 'pdf_abc123.md' -> 'pdf_abc123')."""
@@ -61,7 +61,7 @@ class SessionIndexBuilder:
         return chroma_db.exists() and docstore.exists()
 
     def build_index_from_pdfs(
-        self, pdf_files: List[Path], chunk_sizes: List[int] = None
+        self, pdf_files: List[Path], chunk_sizes: List[int] | None = None
     ) -> None:
         """
         Build ChromaDB vector index directly from PDF files (fast path).
@@ -99,7 +99,7 @@ class SessionIndexBuilder:
 
             for pdf_file in pdf_files:
                 logger.info(f"Loading PDF: {pdf_file.name}")
-                docs = reader.load_data(str(pdf_file))
+                docs = reader.load_data(pdf_file)
 
                 # Set file_path metadata for each document (needed for metadata extraction)
                 for doc in docs:
@@ -230,7 +230,9 @@ class SessionIndexBuilder:
         logger.info(f"✅ Session index built successfully: {self.session_index_dir}")
 
     def build_index(
-        self, markdown_files: Optional[List[Path]] = None, chunk_sizes: List[int] = None
+        self,
+        markdown_files: Optional[List[Path]] = None,
+        chunk_sizes: List[int] | None = None,
     ) -> None:
         """
         Build ChromaDB vector index from markdown files.
@@ -287,7 +289,7 @@ class SessionIndexBuilder:
             logger.error(f"Failed to build session index: {e}")
             raise
 
-    def rebuild_index(self, chunk_sizes: List[int] = None) -> None:
+    def rebuild_index(self, chunk_sizes: List[int] | None = None) -> None:
         """
         Rebuild index from all markdown files in session directory.
 

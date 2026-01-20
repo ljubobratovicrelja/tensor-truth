@@ -103,7 +103,7 @@ class YouTubeHandler(ContentHandler):
         Returns:
             Dict with title, channel, upload_date, description
         """
-        metadata = {
+        metadata: dict[str, str | None] = {
             "title": None,
             "channel": None,
             "upload_date": None,

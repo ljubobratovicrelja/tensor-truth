@@ -34,15 +34,22 @@ def _create_scrollable_box(
 </div>"""
 
 
-def render_thinking(thinking_text: str, placeholder=None):
+def render_thinking(thinking_text: str | None, placeholder=None):
     """Render thinking/reasoning content with consistent formatting.
 
     Args:
-        thinking_text: The thinking content to display
+        thinking_text: The thinking content to display (None is silently ignored)
         placeholder: Optional Streamlit placeholder to render into (uses st.markdown if None)
     """
+    if not thinking_text:
+        return
+
+    converted = convert_latex_delimiters(thinking_text)
+    if not converted:
+        return
+
     html_content = _create_scrollable_box(
-        content=convert_latex_delimiters(thinking_text),
+        content=converted,
         label="🧠 Reasoning:",
         css_class="tt-thinking-box",
         escape_html=False,  # LaTeX/markdown content, already sanitized
@@ -205,9 +212,9 @@ def render_message_metadata(
 def render_message_footer(
     sources_or_nodes=None,
     is_nodes: bool = False,
-    time_taken: float = None,
+    time_taken: float | None = None,
     low_confidence: bool = False,
-    modules: list = None,
+    modules: list | None = None,
     has_pdf_index: bool = False,
 ):
     """Render the footer section of a message with sources and metadata.

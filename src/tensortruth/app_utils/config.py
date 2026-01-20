@@ -83,7 +83,7 @@ def compute_config_hash(
     modules: list,
     params: dict,
     has_pdf_index: bool = False,
-    session_id: str = None,
+    session_id: str | None = None,
 ):
     """Compute a hashable configuration tuple for cache invalidation.
 

@@ -222,7 +222,7 @@ def _execute_browse_agent(
             update_title(
                 current_id,
                 f"Research: {query}",
-                params.get("model"),
+                params.get("model", "llama3.2"),
                 st.session_state.sessions_file,
             )
 
@@ -315,7 +315,7 @@ def _execute_web_search(
             update_title(
                 current_id,
                 f"Search: {query}",
-                params.get("model"),
+                params.get("model", "llama3.2"),
                 st.session_state.sessions_file,
             )
 
@@ -333,12 +333,14 @@ def _execute_web_search(
         )
 
     # Execute search
+    from tensortruth.core.ollama import get_ollama_url
+
     response = web_search(
         query=query,
-        llm_model=params.get("model"),
-        top_k=5,
+        model_name=params.get("model", "llama3.2"),
+        ollama_url=get_ollama_url(),
+        max_pages=5,
         progress_callback=update_progress,
-        max_concurrent=5,
     )
 
     # Add to history
@@ -539,7 +541,7 @@ def render_chat_mode():
                         update_title(
                             current_id,
                             prompt,
-                            params.get("model"),
+                            params.get("model", "llama3.2"),
                             st.session_state.sessions_file,
                         )
 
