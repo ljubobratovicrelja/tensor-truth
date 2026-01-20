@@ -1,0 +1,11 @@
+export const QUERY_KEYS = {
+  sessions: ["sessions"] as const,
+  session: (id: string) => ["sessions", id] as const,
+  messages: (sessionId: string) => ["sessions", sessionId, "messages"] as const,
+  modules: ["modules"] as const,
+  models: ["models"] as const,
+  presets: ["presets"] as const,
+  favoritePresets: ["presets", "favorites"] as const,
+  config: ["config"] as const,
+  pdfs: (sessionId: string) => ["sessions", sessionId, "pdfs"] as const,
+};

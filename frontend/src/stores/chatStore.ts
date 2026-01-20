@@ -19,6 +19,7 @@ interface ChatStore {
   setStatus: (status: PipelineStatus) => void;
   setSources: (sources: SourceNode[]) => void;
   finishStreaming: (content: string, confidenceLevel: string) => void;
+  setPendingUserMessage: (message: string | null) => void;
   clearPendingUserMessage: () => void;
   setError: (error: string) => void;
   reset: () => void;
@@ -69,6 +70,8 @@ export const useChatStore = create<ChatStore>((set) => ({
       pendingUserMessage: null,
     }),
 
+  setPendingUserMessage: (message) => set({ pendingUserMessage: message }),
+
   clearPendingUserMessage: () => set({ pendingUserMessage: null }),
 
   setError: (error) =>
@@ -88,6 +91,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       confidenceLevel: null,
       pipelineStatus: null,
       error: null,
-      pendingUserMessage: null,
+      // Note: pendingUserMessage is NOT cleared here - it's needed for auto-send
+      // from welcome page. It's cleared by finishStreaming, setError, or explicitly.
     }),
 }));

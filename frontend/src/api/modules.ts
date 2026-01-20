@@ -12,3 +12,7 @@ export async function listModels(): Promise<ModelsResponse> {
 export async function listPresets(): Promise<PresetsResponse> {
   return apiGet<PresetsResponse>("/presets");
 }
+
+export async function listFavoritePresets(): Promise<PresetsResponse> {
+  return apiGet<PresetsResponse>("/presets/favorites");
+}

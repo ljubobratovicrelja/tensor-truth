@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useSessionStore, useChatStore } from "@/stores";
 import { useSessionMessages, useSession, useWebSocketChat } from "@/hooks";
@@ -9,9 +9,10 @@ import { ChatInput } from "./ChatInput";
 
 export function ChatContainer() {
   const { sessionId: urlSessionId } = useParams<{ sessionId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { activeSessionId, setActiveSessionId } = useSessionStore();
+  const { setActiveSessionId } = useSessionStore();
   const {
     streamingContent,
     streamingThinking,
@@ -21,19 +22,22 @@ export function ChatContainer() {
     error,
     pendingUserMessage,
   } = useChatStore();
+  const autoSendTriggered = useRef(false);
 
-  // Sync URL param with store
+  // Sync URL param with store (for other components that need it)
   useEffect(() => {
-    if (urlSessionId && urlSessionId !== activeSessionId) {
-      setActiveSessionId(urlSessionId);
-    } else if (!urlSessionId && activeSessionId) {
-      setActiveSessionId(null);
-    }
-  }, [urlSessionId, activeSessionId, setActiveSessionId]);
+    setActiveSessionId(urlSessionId ?? null);
+  }, [urlSessionId, setActiveSessionId]);
 
-  const { data: sessionData, error: sessionError } = useSession(activeSessionId);
+  // Reset autoSend trigger when session changes
+  useEffect(() => {
+    autoSendTriggered.current = false;
+  }, [urlSessionId]);
+
+  // Use urlSessionId directly for queries (source of truth is the URL)
+  const { data: sessionData, error: sessionError } = useSession(urlSessionId ?? null);
   const { data: messagesData, isLoading: messagesLoading } =
-    useSessionMessages(activeSessionId);
+    useSessionMessages(urlSessionId ?? null);
 
   // Redirect to home if session doesn't exist
   useEffect(() => {
@@ -55,11 +59,36 @@ export function ChatContainer() {
   }, [messagesLoading, location.hash]);
 
   const { sendMessage, cancelStreaming } = useWebSocketChat({
-    sessionId: activeSessionId,
+    sessionId: urlSessionId ?? null,
     onError: (err) => toast.error(err),
   });
 
-  if (!activeSessionId) {
+  // Keep sendMessage in a ref to avoid effect re-runs when it changes
+  const sendMessageRef = useRef(sendMessage);
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  }, [sendMessage]);
+
+  // Auto-send pending message when coming from welcome page
+  // Wait for session data to confirm session exists before sending
+  useEffect(() => {
+    const shouldAutoSend = searchParams.get("autoSend") === "true";
+    if (
+      shouldAutoSend &&
+      pendingUserMessage &&
+      urlSessionId &&
+      sessionData && // Wait for session to be loaded
+      !autoSendTriggered.current
+    ) {
+      autoSendTriggered.current = true;
+      // Use ref to get the latest sendMessage function
+      sendMessageRef.current(pendingUserMessage);
+      // Clear the autoSend param from URL
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, pendingUserMessage, urlSessionId, sessionData, setSearchParams]);
+
+  if (!urlSessionId) {
     return (
       <div className="text-muted-foreground flex h-full items-center justify-center">
         <p>Select or create a chat session to get started</p>
@@ -77,7 +106,7 @@ export function ChatContainer() {
         <h2 className="text-muted-foreground text-sm font-medium">
           {sessionData?.title ?? "Chat"}
         </h2>
-        <PdfDialog sessionId={activeSessionId} />
+        <PdfDialog sessionId={urlSessionId} />
       </div>
       <MessageList
         messages={messagesData?.messages ?? []}

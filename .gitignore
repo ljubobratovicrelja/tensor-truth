@@ -228,3 +228,6 @@ nul
 frontend/dist/
 frontend/node_modules/
 frontend/.vite/
+
+# Don't ignore frontend lib folder (overrides lib/ rule above)
+!frontend/src/lib/

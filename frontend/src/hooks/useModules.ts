@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { QUERY_KEYS } from "@/lib/constants";
-import { listModules, listModels, listPresets } from "@/api/modules";
+import { listModules, listModels, listPresets, listFavoritePresets } from "@/api/modules";
 
 export function useModules() {
   return useQuery({
@@ -20,5 +20,12 @@ export function usePresets() {
   return useQuery({
     queryKey: QUERY_KEYS.presets,
     queryFn: listPresets,
+  });
+}
+
+export function useFavoritePresets() {
+  return useQuery({
+    queryKey: QUERY_KEYS.favoritePresets,
+    queryFn: listFavoritePresets,
   });
 }

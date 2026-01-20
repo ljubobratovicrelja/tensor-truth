@@ -131,3 +131,16 @@ async def list_presets() -> PresetsResponse:
             pass
 
     return PresetsResponse(presets=presets)
+
+
+@router.get("/presets/favorites", response_model=PresetsResponse)
+async def list_favorite_presets() -> PresetsResponse:
+    """List favorite presets sorted by favorite_order."""
+    from tensortruth.app_utils.presets import get_favorites
+
+    presets_file = get_presets_file()
+    favorites = get_favorites(presets_file)
+
+    return PresetsResponse(
+        presets=[PresetInfo(name=name, config=config) for name, config in favorites.items()]
+    )
