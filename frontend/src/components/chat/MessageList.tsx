@@ -7,6 +7,7 @@ import type { MessageResponse, SourceNode } from "@/api/types";
 interface MessageListProps {
   messages: MessageResponse[];
   isLoading?: boolean;
+  pendingUserMessage?: string | null;
   streamingContent?: string;
   streamingSources?: SourceNode[];
   isStreaming?: boolean;
@@ -15,6 +16,7 @@ interface MessageListProps {
 export function MessageList({
   messages,
   isLoading,
+  pendingUserMessage,
   streamingContent,
   streamingSources,
   isStreaming,
@@ -25,7 +27,7 @@ export function MessageList({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, streamingContent]);
+  }, [messages, pendingUserMessage, streamingContent]);
 
   if (isLoading) {
     return (
@@ -42,7 +44,7 @@ export function MessageList({
   return (
     <div className="flex-1 overflow-y-auto" ref={scrollRef}>
       <div className="chat-content-width py-4">
-        {messages.length === 0 && !isStreaming ? (
+        {messages.length === 0 && !isStreaming && !pendingUserMessage ? (
           <div className="text-muted-foreground flex h-full min-h-[200px] items-center justify-center">
             <p>Send a message to start the conversation</p>
           </div>
@@ -51,6 +53,9 @@ export function MessageList({
             {messages.map((message, index) => (
               <MessageItem key={index} message={message} />
             ))}
+            {pendingUserMessage && (
+              <MessageItem message={{ role: "user", content: pendingUserMessage }} />
+            )}
             {isStreaming && !streamingContent && <StreamingIndicator />}
             {isStreaming && streamingContent && (
               <MessageItem

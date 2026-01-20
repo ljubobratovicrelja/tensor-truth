@@ -12,7 +12,8 @@ export function ChatContainer() {
   const navigate = useNavigate();
   const location = useLocation();
   const { activeSessionId, setActiveSessionId } = useSessionStore();
-  const { streamingContent, streamingSources, isStreaming, error } = useChatStore();
+  const { streamingContent, streamingSources, isStreaming, error, pendingUserMessage } =
+    useChatStore();
 
   // Sync URL param with store
   useEffect(() => {
@@ -46,7 +47,7 @@ export function ChatContainer() {
     }
   }, [messagesLoading, location.hash]);
 
-  const { sendMessage } = useWebSocketChat({
+  const { sendMessage, cancelStreaming } = useWebSocketChat({
     sessionId: activeSessionId,
     onError: (err) => toast.error(err),
   });
@@ -74,6 +75,7 @@ export function ChatContainer() {
       <MessageList
         messages={messagesData?.messages ?? []}
         isLoading={messagesLoading}
+        pendingUserMessage={pendingUserMessage}
         streamingContent={streamingContent || undefined}
         streamingSources={streamingSources.length > 0 ? streamingSources : undefined}
         isStreaming={isStreaming}
@@ -87,7 +89,8 @@ export function ChatContainer() {
         <div className="chat-content-width">
           <ChatInput
             onSend={handleSend}
-            disabled={isStreaming}
+            onStop={cancelStreaming}
+            isStreaming={isStreaming}
             placeholder={isStreaming ? "Generating response..." : undefined}
           />
         </div>

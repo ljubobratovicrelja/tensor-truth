@@ -12,6 +12,7 @@ interface UseWebSocketChatOptions {
 
 export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions) {
   const wsRef = useRef<WebSocket | null>(null);
+  const manualCloseRef = useRef(false);
   const queryClient = useQueryClient();
 
   const {
@@ -19,6 +20,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
     appendToken,
     setSources,
     finishStreaming,
+    clearPendingUserMessage,
     setError,
     reset,
     isStreaming,
@@ -41,11 +43,15 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
 
       // Close any existing connection
       if (wsRef.current) {
+        manualCloseRef.current = true;
         wsRef.current.close();
       }
 
-      // Start streaming state
-      startStreaming();
+      // Reset manual close flag for new connection
+      manualCloseRef.current = false;
+
+      // Start streaming state with user message for optimistic UI
+      startStreaming(message);
 
       // Create new WebSocket connection
       const ws = createWebSocket(sessionId);
@@ -66,10 +72,11 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
 
           switch (data.type) {
             case "token":
-              // On first token, fetch messages to show the user message
-              // (backend saves it before streaming starts)
+              // On first token, fetch messages (backend has saved user message)
+              // and clear optimistic UI since real data is coming
               if (!didFetchUserMessage) {
                 didFetchUserMessage = true;
+                clearPendingUserMessage();
                 queryClient.invalidateQueries({
                   queryKey: QUERY_KEYS.messages(sessionId),
                 });
@@ -108,12 +115,16 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       };
 
       ws.onerror = () => {
-        setError("WebSocket connection error");
-        onError?.("Connection error");
+        // Only report error if not a manual close
+        if (!manualCloseRef.current) {
+          setError("WebSocket connection error");
+          onError?.("Connection error");
+        }
       };
 
       ws.onclose = () => {
         wsRef.current = null;
+        manualCloseRef.current = false;
       };
     },
     [
@@ -123,6 +134,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       appendToken,
       setSources,
       finishStreaming,
+      clearPendingUserMessage,
       setError,
       onError,
     ]
@@ -130,6 +142,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
 
   const cancelStreaming = useCallback(() => {
     if (wsRef.current) {
+      manualCloseRef.current = true;
       wsRef.current.close();
       wsRef.current = null;
     }

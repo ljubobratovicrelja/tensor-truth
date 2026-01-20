@@ -1,17 +1,19 @@
 import { useState, useRef, useEffect } from "react";
-import { Send } from "lucide-react";
+import { Send, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
-  disabled?: boolean;
+  onStop?: () => void;
+  isStreaming?: boolean;
   placeholder?: string;
 }
 
 export function ChatInput({
   onSend,
-  disabled = false,
+  onStop,
+  isStreaming = false,
   placeholder = "Type your message...",
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
@@ -20,49 +22,89 @@ export function ChatInput({
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+      const scrollHeight = textareaRef.current.scrollHeight;
+      // Clamp between min (80px) and max (200px)
+      textareaRef.current.style.height = `${Math.max(80, Math.min(scrollHeight, 200))}px`;
     }
   }, [message]);
 
   const handleSend = () => {
     const trimmed = message.trim();
-    if (trimmed && !disabled) {
+    if (trimmed && !isStreaming) {
       onSend(trimmed);
       setMessage("");
     }
   };
 
+  const handleStop = () => {
+    onStop?.();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Send on Enter (without Shift) or Cmd/Ctrl+Enter
-    if (e.key === "Enter" && (!e.shiftKey || e.metaKey || e.ctrlKey)) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      if (!isStreaming) {
+        handleSend();
+      }
     }
   };
 
+  const canSend = message.trim().length > 0 && !isStreaming;
+
   return (
     <div className="space-y-2">
-      <div className="flex items-end gap-2">
-        <Textarea
+      <div className="bg-muted/50 border-input relative rounded-2xl border">
+        {/* Textarea */}
+        <textarea
           ref={textareaRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          disabled={disabled}
-          className="max-h-[200px] min-h-[44px] resize-none"
+          disabled={isStreaming}
+          className={cn(
+            "w-full resize-none bg-transparent px-4 pt-4 pb-14 text-base",
+            "placeholder:text-muted-foreground focus:outline-none",
+            "disabled:cursor-not-allowed disabled:opacity-50"
+          )}
           rows={1}
         />
-        <Button
-          onClick={handleSend}
-          disabled={disabled || !message.trim()}
-          size="icon"
-          className="h-[44px] w-[44px] shrink-0"
-        >
-          <Send className="h-4 w-4" />
-        </Button>
+
+        {/* Bottom toolbar */}
+        <div className="absolute right-2 bottom-2 left-2 flex items-center justify-between">
+          {/* Left side - placeholder for future buttons (RAG index toggle, etc) */}
+          <div className="flex items-center gap-1">
+            {/* Future buttons will go here */}
+          </div>
+
+          {/* Right side - send/stop button */}
+          <div className="flex items-center gap-2">
+            {isStreaming ? (
+              <Button
+                onClick={handleStop}
+                size="icon"
+                variant="destructive"
+                className="h-9 w-9 rounded-xl"
+                title="Stop generating"
+              >
+                <Square className="h-4 w-4 fill-current" />
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSend}
+                disabled={!canSend}
+                size="icon"
+                className="h-9 w-9 rounded-xl"
+                title="Send message"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-center text-xs">
         Press Enter to send, Shift+Enter for new line
       </p>
     </div>

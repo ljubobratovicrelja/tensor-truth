@@ -7,11 +7,13 @@ interface ChatStore {
   streamingSources: SourceNode[];
   confidenceLevel: string | null;
   error: string | null;
+  pendingUserMessage: string | null;
 
-  startStreaming: () => void;
+  startStreaming: (userMessage: string) => void;
   appendToken: (token: string) => void;
   setSources: (sources: SourceNode[]) => void;
   finishStreaming: (content: string, confidenceLevel: string) => void;
+  clearPendingUserMessage: () => void;
   setError: (error: string) => void;
   reset: () => void;
 }
@@ -22,14 +24,16 @@ export const useChatStore = create<ChatStore>((set) => ({
   streamingSources: [],
   confidenceLevel: null,
   error: null,
+  pendingUserMessage: null,
 
-  startStreaming: () =>
+  startStreaming: (userMessage: string) =>
     set({
       isStreaming: true,
       streamingContent: "",
       streamingSources: [],
       confidenceLevel: null,
       error: null,
+      pendingUserMessage: userMessage,
     }),
 
   appendToken: (token) =>
@@ -44,12 +48,16 @@ export const useChatStore = create<ChatStore>((set) => ({
       isStreaming: false,
       streamingContent: content,
       confidenceLevel,
+      pendingUserMessage: null,
     }),
+
+  clearPendingUserMessage: () => set({ pendingUserMessage: null }),
 
   setError: (error) =>
     set({
       isStreaming: false,
       error,
+      pendingUserMessage: null,
     }),
 
   reset: () =>
@@ -59,5 +67,6 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingSources: [],
       confidenceLevel: null,
       error: null,
+      pendingUserMessage: null,
     }),
 }));
