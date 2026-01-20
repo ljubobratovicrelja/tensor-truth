@@ -20,6 +20,7 @@ export interface SessionListResponse {
 
 export interface SessionUpdate {
   title?: string | null;
+  modules?: string[] | null;
   params?: Record<string, unknown> | null;
 }
 
@@ -165,7 +166,9 @@ export interface ConfigUpdateRequest {
 // Module/Model types
 export interface ModuleInfo {
   name: string;
-  description: string;
+  display_name: string;
+  doc_type: string;
+  sort_order: number;
 }
 
 export interface ModulesResponse {

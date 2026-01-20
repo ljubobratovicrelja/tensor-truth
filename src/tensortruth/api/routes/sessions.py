@@ -69,7 +69,7 @@ async def get_session(
 async def update_session(
     session_id: str, body: SessionUpdate, session_service: SessionServiceDep
 ) -> SessionResponse:
-    """Update a session (title, params)."""
+    """Update a session (title, modules, params)."""
     data = session_service.load()
     session = session_service.get_session(session_id, data)
     if session is None:
@@ -79,12 +79,18 @@ async def update_session(
     if body.title is not None:
         data = session_service.update_title(session_id, body.title, data)
 
-    # Update params if provided
-    if body.params is not None:
+    # Update modules or params if provided
+    if body.modules is not None or body.params is not None:
+        from tensortruth.services import SessionData
+
         new_sessions = dict(data.sessions)
         new_sessions[session_id] = dict(new_sessions[session_id])
-        new_sessions[session_id]["params"] = body.params
-        from tensortruth.services import SessionData
+
+        if body.modules is not None:
+            new_sessions[session_id]["modules"] = body.modules
+
+        if body.params is not None:
+            new_sessions[session_id]["params"] = body.params
 
         data = SessionData(current_id=data.current_id, sessions=new_sessions)
 

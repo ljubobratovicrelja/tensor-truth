@@ -2,12 +2,15 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ModuleSelector } from "./ModuleSelector";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
   onStop?: () => void;
   isStreaming?: boolean;
   placeholder?: string;
+  selectedModules?: string[];
+  onModulesChange?: (modules: string[]) => void;
 }
 
 export function ChatInput({
@@ -15,6 +18,8 @@ export function ChatInput({
   onStop,
   isStreaming = false,
   placeholder = "Type your message...",
+  selectedModules = [],
+  onModulesChange,
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -73,9 +78,15 @@ export function ChatInput({
 
         {/* Bottom toolbar */}
         <div className="absolute right-2 bottom-2 left-2 flex items-center justify-between">
-          {/* Left side - placeholder for future buttons (RAG index toggle, etc) */}
+          {/* Left side - module selector */}
           <div className="flex items-center gap-1">
-            {/* Future buttons will go here */}
+            {onModulesChange && (
+              <ModuleSelector
+                selectedModules={selectedModules}
+                onModulesChange={onModulesChange}
+                disabled={isStreaming}
+              />
+            )}
           </div>
 
           {/* Right side - send/stop button */}

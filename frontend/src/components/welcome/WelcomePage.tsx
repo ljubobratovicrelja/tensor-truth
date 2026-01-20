@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Send, Database, Bot, Sparkles } from "lucide-react";
+import { Send, Bot, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -11,17 +11,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useModules, useModels, useCreateSession, useFavoritePresets } from "@/hooks";
+import { useModels, useCreateSession, useFavoritePresets } from "@/hooks";
 import { useChatStore } from "@/stores";
+import { ModuleSelector } from "@/components/chat/ModuleSelector";
 import type { PresetInfo } from "@/api/types";
 
 export function WelcomePage() {
   const [message, setMessage] = useState("");
-  const [selectedModule, setSelectedModule] = useState<string>("");
+  const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: modulesData, isLoading: modulesLoading } = useModules();
   const { data: modelsData, isLoading: modelsLoading } = useModels();
   const { data: favoritesData } = useFavoritePresets();
   const createSession = useCreateSession();
@@ -35,11 +35,10 @@ export function WelcomePage() {
     setIsSubmitting(true);
     try {
       // Use preset config or selected options
-      // Filter out __none__ placeholder values
       const presetModules = preset?.config?.modules as string[] | undefined;
       const presetModel = preset?.config?.model as string | undefined;
 
-      const effectiveModule = selectedModule && selectedModule !== "__none__" ? selectedModule : undefined;
+      const effectiveModules = selectedModules.length > 0 ? selectedModules : undefined;
       const effectiveModel = selectedModel && selectedModel !== "__none__" ? selectedModel : undefined;
 
       const params = preset?.config
@@ -49,7 +48,7 @@ export function WelcomePage() {
           : undefined;
 
       const result = await createSession.mutateAsync({
-        modules: presetModules ?? (effectiveModule ? [effectiveModule] : undefined),
+        modules: presetModules ?? effectiveModules,
         params,
       });
 
@@ -118,30 +117,13 @@ export function WelcomePage() {
             {/* Bottom toolbar */}
             <div className="absolute right-3 bottom-3 left-3 flex items-center justify-between">
               {/* Left side - RAG config */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 {/* Module selector */}
-                <Select value={selectedModule} onValueChange={setSelectedModule}>
-                  <SelectTrigger className="h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs hover:bg-muted">
-                    <Database className="h-3.5 w-3.5" />
-                    <SelectValue placeholder="Knowledge" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">
-                      <span className="text-muted-foreground">No module</span>
-                    </SelectItem>
-                    {modulesLoading ? (
-                      <SelectItem value="loading" disabled>
-                        Loading...
-                      </SelectItem>
-                    ) : (
-                      modulesData?.modules.map((module) => (
-                        <SelectItem key={module.name} value={module.name}>
-                          {module.name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <ModuleSelector
+                  selectedModules={selectedModules}
+                  onModulesChange={setSelectedModules}
+                  disabled={isSubmitting}
+                />
 
                 {/* Model selector */}
                 <Select value={selectedModel} onValueChange={setSelectedModel}>

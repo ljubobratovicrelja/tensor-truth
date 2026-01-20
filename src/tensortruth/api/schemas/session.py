@@ -39,6 +39,7 @@ class SessionUpdate(BaseModel):
     """Request body for updating a session."""
 
     title: Optional[str] = None
+    modules: Optional[List[str]] = None
     params: Optional[Dict[str, Any]] = None
 
 

@@ -16,7 +16,9 @@ class ModuleInfo(BaseModel):
     """Information about a knowledge module."""
 
     name: str
-    description: str = ""
+    display_name: str = ""
+    doc_type: str = "unknown"
+    sort_order: int = 4
 
 
 class ModulesResponse(BaseModel):
@@ -57,7 +59,10 @@ async def list_modules() -> ModulesResponse:
     """List available knowledge modules.
 
     Modules are vector indexes stored in ~/.tensortruth/indexes/.
+    Returns modules sorted by type (Books, Papers, Libraries, Other).
     """
+    from tensortruth.app_utils.helpers import get_module_display_name
+
     indexes_dir = get_indexes_dir()
     modules = []
 
@@ -66,12 +71,20 @@ async def list_modules() -> ModulesResponse:
             if path.is_dir():
                 # Check if it's a valid index (has chroma.sqlite3)
                 if (path / "chroma.sqlite3").exists():
+                    display_name, doc_type, _, sort_order = get_module_display_name(
+                        indexes_dir, path.name
+                    )
                     modules.append(
                         ModuleInfo(
                             name=path.name,
-                            description=f"Knowledge module: {path.name}",
+                            display_name=display_name,
+                            doc_type=doc_type,
+                            sort_order=sort_order,
                         )
                     )
+
+    # Sort by type (sort_order) then by display_name
+    modules.sort(key=lambda m: (m.sort_order, m.display_name.lower()))
 
     return ModulesResponse(modules=modules)
 

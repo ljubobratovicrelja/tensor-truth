@@ -2,7 +2,13 @@ import { useEffect, useRef } from "react";
 import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useSessionStore, useChatStore, useUIStore } from "@/stores";
-import { useSessionMessages, useSession, useWebSocketChat, useIsMobile } from "@/hooks";
+import {
+  useSessionMessages,
+  useSession,
+  useUpdateSession,
+  useWebSocketChat,
+  useIsMobile,
+} from "@/hooks";
 import { PdfDialog } from "@/components/pdfs";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
@@ -48,6 +54,7 @@ export function ChatContainer() {
   const { data: sessionData, error: sessionError } = useSession(urlSessionId ?? null);
   const { data: messagesData, isLoading: messagesLoading } =
     useSessionMessages(urlSessionId ?? null);
+  const updateSession = useUpdateSession();
 
   // Redirect to home if session doesn't exist
   useEffect(() => {
@@ -110,6 +117,18 @@ export function ChatContainer() {
     sendMessage(message);
   };
 
+  const handleModulesChange = (modules: string[]) => {
+    if (!urlSessionId) return;
+    updateSession.mutate(
+      { sessionId: urlSessionId, data: { modules } },
+      {
+        onError: () => toast.error("Failed to update modules"),
+      }
+    );
+  };
+
+  const currentModules = sessionData?.modules ?? [];
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b px-4 py-2">
@@ -140,6 +159,8 @@ export function ChatContainer() {
             onStop={cancelStreaming}
             isStreaming={isStreaming}
             placeholder={isStreaming ? "Generating response..." : undefined}
+            selectedModules={currentModules}
+            onModulesChange={handleModulesChange}
           />
         </div>
       </div>
