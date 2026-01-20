@@ -69,21 +69,8 @@ async def chat(
         index_path = pdf_service.get_index_path()
         session_index_path = str(index_path) if index_path else None
 
-    # Load engine if needed
-    if not modules and not session_index_path:
-        raise HTTPException(
-            status_code=400,
-            detail="Session has no modules or PDFs. Add modules or upload PDFs first.",
-        )
-
-    if rag_service.needs_reload(modules, params, session_index_path):
-        chat_history = rag_service.get_chat_history()
-        rag_service.load_engine(
-            modules=modules,
-            params=params,
-            session_index_path=session_index_path,
-            chat_history=chat_history,
-        )
+    # Determine if we're in LLM-only mode (no modules or PDFs)
+    llm_only_mode = not modules and not session_index_path
 
     # Add user message to session
     data = session_service.add_message(
@@ -91,14 +78,33 @@ async def chat(
     )
     session_service.save(data)
 
-    # Query RAG engine (collect full response)
+    # Query engine (collect full response)
     full_response = ""
     sources = []
-    for chunk in rag_service.query(body.prompt):
-        if chunk.is_complete:
-            sources = _extract_sources(chunk.source_nodes)
-        else:
-            full_response += chunk.text
+
+    if llm_only_mode:
+        # LLM-only mode: direct LLM query without RAG
+        for chunk in rag_service.query_llm_only(body.prompt, params):
+            if chunk.is_complete:
+                sources = []
+            elif chunk.text:
+                full_response += chunk.text
+    else:
+        # RAG mode: load engine if needed and query with retrieval
+        if rag_service.needs_reload(modules, params, session_index_path):
+            chat_history = rag_service.get_chat_history()
+            rag_service.load_engine(
+                modules=modules,
+                params=params,
+                session_index_path=session_index_path,
+                chat_history=chat_history,
+            )
+
+        for chunk in rag_service.query(body.prompt):
+            if chunk.is_complete:
+                sources = _extract_sources(chunk.source_nodes)
+            elif chunk.text:
+                full_response += chunk.text
 
     # Add assistant response to session
     data = session_service.load()  # Reload in case of concurrent updates
@@ -110,7 +116,7 @@ async def chat(
     return ChatResponse(
         content=full_response,
         sources=sources,
-        confidence_level="normal",
+        confidence_level="llm_only" if llm_only_mode else "normal",
     )
 
 
@@ -148,18 +154,13 @@ async def websocket_chat(
             index_path = pdf_service.get_index_path()
             session_index_path = str(index_path) if index_path else None
 
-        if not modules and not session_index_path:
-            await websocket.send_json(
-                {
-                    "type": "error",
-                    "detail": "Session has no modules or PDFs",
-                }
-            )
-            await websocket.close(code=1008)
-            return
+        # Determine if we're in LLM-only mode (no modules or PDFs)
+        llm_only_mode = not modules and not session_index_path
 
-        # Load engine if needed
-        if rag_service.needs_reload(modules, params, session_index_path):
+        # Load RAG engine if needed (only for non-LLM-only mode)
+        if not llm_only_mode and rag_service.needs_reload(
+            modules, params, session_index_path
+        ):
             chat_history = rag_service.get_chat_history()
             rag_service.load_engine(
                 modules=modules,
@@ -204,7 +205,13 @@ async def websocket_chat(
             full_thinking = ""
             sources = []
 
-            for chunk in rag_service.query(prompt):
+            # Choose query method based on mode
+            if llm_only_mode:
+                query_generator = rag_service.query_llm_only(prompt, params)
+            else:
+                query_generator = rag_service.query(prompt)
+
+            for chunk in query_generator:
                 if chunk.is_complete:
                     sources = _extract_sources(chunk.source_nodes)
                 elif chunk.status:
@@ -234,7 +241,7 @@ async def websocket_chat(
                         }
                     )
 
-            # Send sources
+            # Send sources (only in RAG mode)
             if sources:
                 await websocket.send_json(
                     {
@@ -248,7 +255,7 @@ async def websocket_chat(
                 {
                     "type": "done",
                     "content": full_response,
-                    "confidence_level": "normal",
+                    "confidence_level": "llm_only" if llm_only_mode else "normal",
                     "title_pending": title_task is not None,
                 }
             )

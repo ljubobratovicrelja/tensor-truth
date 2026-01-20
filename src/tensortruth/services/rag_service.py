@@ -12,6 +12,7 @@ from llama_index.llms.ollama import Ollama
 
 from tensortruth.app_utils.config_schema import TensorTruthConfig
 from tensortruth.rag_engine import (
+    LLM_ONLY_SYSTEM_PROMPT,
     MultiIndexRetriever,
     get_base_index_dir,
     get_llm,
@@ -240,8 +241,6 @@ class RAGService:
 
         # Update memory with the conversation
         if memory:
-            from llama_index.core.memory import ChatMemoryBuffer
-
             memory.put(ChatMessage(role=MessageRole.USER, content=prompt))
             memory.put(ChatMessage(role=MessageRole.ASSISTANT, content=full_response))
 
@@ -283,6 +282,79 @@ class RAGService:
             yield token
 
         return full_response
+
+    def query_llm_only(
+        self,
+        prompt: str,
+        params: Dict[str, Any],
+        chat_history: Optional[List] = None,
+    ) -> Generator[RAGChunk, None, RAGResponse]:
+        """Execute a streaming query using LLM only, without RAG retrieval.
+
+        Used when no modules or PDFs are attached to the session.
+        Includes appropriate disclaimers about lack of document verification.
+
+        Args:
+            prompt: User's query prompt.
+            params: Engine parameters (model, temperature, etc).
+            chat_history: Optional chat history for context.
+
+        Yields:
+            RAGChunk with status or text content.
+
+        Returns:
+            Final RAGResponse with complete text (no sources).
+        """
+        from llama_index.core.base.llms.types import ChatMessage, MessageRole
+
+        # Create LLM instance
+        llm = get_llm(params)
+
+        # Check if model supports thinking
+        thinking_enabled = getattr(llm, "thinking", False)
+
+        if thinking_enabled:
+            yield RAGChunk(status="thinking")
+        else:
+            yield RAGChunk(status="generating")
+
+        # Build messages with system prompt and history
+        messages = [
+            ChatMessage(role=MessageRole.SYSTEM, content=LLM_ONLY_SYSTEM_PROMPT)
+        ]
+
+        # Add chat history if provided
+        if chat_history:
+            messages.extend(chat_history)
+
+        # Add user prompt
+        messages.append(ChatMessage(role=MessageRole.USER, content=prompt))
+
+        # Stream from LLM
+        full_response = ""
+        full_thinking = ""
+        sent_generating_status = not thinking_enabled
+
+        for chunk in llm.stream_chat(messages):
+            # Extract thinking delta if present
+            thinking_delta = chunk.additional_kwargs.get("thinking_delta")
+            if thinking_delta:
+                full_thinking += thinking_delta
+                yield RAGChunk(thinking=thinking_delta)
+            elif not sent_generating_status and thinking_enabled:
+                # Transition from thinking to generating
+                yield RAGChunk(status="generating")
+                sent_generating_status = True
+
+            # Extract content delta
+            if chunk.delta:
+                full_response += chunk.delta
+                yield RAGChunk(text=chunk.delta)
+
+        # Yield final complete chunk (no sources in LLM-only mode)
+        yield RAGChunk(source_nodes=[], is_complete=True)
+
+        return RAGResponse(text=full_response, source_nodes=[])
 
     def get_llm(self) -> Optional[Ollama]:
         """Get the underlying LLM instance from the engine.

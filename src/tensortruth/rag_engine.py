@@ -129,6 +129,22 @@ NO_CONTEXT_FALLBACK_CONTEXT = (
     "Proceed with caution using internal knowledge only.]"
 )
 
+# Prompt used for LLM-only mode (no RAG modules attached)
+LLM_ONLY_SYSTEM_PROMPT = (
+    "You are a helpful AI assistant within TensorTruth, a RAG (Retrieval-Augmented Generation) "
+    "application for document intelligence.\n\n"
+    "CURRENT STATUS: No knowledge base is attached to this session.\n\n"
+    "GUIDELINES:\n"
+    "1. Answer questions helpfully using your general knowledge.\n"
+    "2. For factual or domain-specific questions where verified sources would help, "
+    "briefly mention that the user can:\n"
+    "   - Select a knowledge module when starting a new chat (using the Knowledge dropdown)\n"
+    "   - Upload PDFs to this session using the PDF button in the chat header\n"
+    "3. Keep disclaimers minimal and natural - a short note at the end is fine.\n"
+    "4. For coding, creative writing, or general conversation - no disclaimer needed.\n"
+    "5. Use Markdown formatting. Be concise and direct.\n"
+)
+
 CUSTOM_CONDENSE_PROMPT_TEMPLATE = (
     "Role: Technical Query Engineer.\n"
     "Task: Convert the user's follow-up input into a precise, standalone technical directive "
