@@ -1,9 +1,11 @@
 import { type ReactNode, useCallback, useRef, useEffect } from "react";
 import { useUIStore } from "@/stores";
+import { useIsMobile } from "@/hooks";
 import { cn } from "@/lib/utils";
 
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 480;
+const MOBILE_WIDTH = 300;
 
 interface SidebarProps {
   children: ReactNode;
@@ -13,15 +15,31 @@ export function Sidebar({ children }: SidebarProps) {
   const sidebarOpen = useUIStore((state) => state.sidebarOpen);
   const sidebarWidth = useUIStore((state) => state.sidebarWidth);
   const setSidebarWidth = useUIStore((state) => state.setSidebarWidth);
+  const setSidebarOpen = useUIStore((state) => state.setSidebarOpen);
 
+  const isMobile = useIsMobile();
   const isResizing = useRef(false);
+  const prevIsMobile = useRef(isMobile);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizing.current = true;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  }, []);
+  // Auto-close sidebar when transitioning to mobile
+  useEffect(() => {
+    if (isMobile && !prevIsMobile.current && sidebarOpen) {
+      setSidebarOpen(false);
+    }
+    prevIsMobile.current = isMobile;
+  }, [isMobile, sidebarOpen, setSidebarOpen]);
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      // Disable resize on mobile
+      if (isMobile) return;
+      e.preventDefault();
+      isResizing.current = true;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [isMobile]
+  );
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -47,6 +65,22 @@ export function Sidebar({ children }: SidebarProps) {
     };
   }, [setSidebarWidth]);
 
+  // Mobile: overlay/drawer mode
+  if (isMobile) {
+    return (
+      <aside
+        className={cn(
+          "bg-sidebar fixed inset-y-0 left-0 z-40 h-full shadow-xl transition-transform duration-300 ease-in-out",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+        style={{ width: MOBILE_WIDTH }}
+      >
+        <div className="flex h-full flex-col border-r border-border">{children}</div>
+      </aside>
+    );
+  }
+
+  // Desktop: inline resizable mode
   return (
     <aside
       className={cn(
@@ -61,7 +95,7 @@ export function Sidebar({ children }: SidebarProps) {
       >
         {children}
       </div>
-      {/* Resize handle */}
+      {/* Resize handle - desktop only */}
       {sidebarOpen && (
         <div
           onMouseDown={handleMouseDown}

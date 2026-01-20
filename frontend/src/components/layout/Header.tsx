@@ -1,24 +1,42 @@
-import { PanelLeftClose, PanelLeft } from "lucide-react";
+import { PanelLeftClose, PanelLeft, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/stores";
+import { useIsMobile } from "@/hooks";
 import { ConfigPanel } from "@/components/config";
 import { ThemeToggle } from "./ThemeToggle";
+import { cn } from "@/lib/utils";
 
 export function Header() {
-  const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { sidebarOpen, toggleSidebar, headerHidden } = useUIStore();
+  const isMobile = useIsMobile();
+
+  // Choose icon based on mobile state and sidebar state
+  const getIcon = () => {
+    if (isMobile) {
+      return sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />;
+    }
+    return sidebarOpen ? (
+      <PanelLeftClose className="h-5 w-5" />
+    ) : (
+      <PanelLeft className="h-5 w-5" />
+    );
+  };
 
   return (
-    <header className="border-border flex h-14 items-center gap-4 border-b px-4">
+    <header
+      className={cn(
+        "border-border flex h-14 items-center gap-2 border-b bg-background px-3 md:gap-4 md:px-4",
+        "transition-transform duration-300 ease-in-out",
+        // On mobile, slide up when hidden
+        isMobile && headerHidden && "-translate-y-full"
+      )}
+    >
       <Button variant="ghost" size="icon" onClick={toggleSidebar} className="shrink-0">
-        {sidebarOpen ? (
-          <PanelLeftClose className="h-5 w-5" />
-        ) : (
-          <PanelLeft className="h-5 w-5" />
-        )}
+        {getIcon()}
       </Button>
       <div className="flex flex-1 items-center gap-2">
         <img src="/logo.png" alt="TensorTruth" className="h-7 w-7" />
-        <h1 className="text-lg font-semibold">TensorTruth</h1>
+        <h1 className="hidden text-lg font-semibold sm:block">TensorTruth</h1>
       </div>
       <ThemeToggle />
       <ConfigPanel />

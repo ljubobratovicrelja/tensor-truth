@@ -111,6 +111,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
 
               // Close immediately if no title pending, otherwise wait for title
               if (!data.title_pending) {
+                manualCloseRef.current = true; // Suppress error on clean close
                 ws.close();
               }
               break;
@@ -118,6 +119,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
             case "error":
               setError(data.detail);
               onError?.(data.detail);
+              manualCloseRef.current = true; // We already showed the error
               ws.close();
               break;
 
@@ -128,6 +130,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
                 queryKey: QUERY_KEYS.session(sessionId),
               });
               // Now we can close the connection
+              manualCloseRef.current = true; // Suppress error on clean close
               ws.close();
               break;
           }

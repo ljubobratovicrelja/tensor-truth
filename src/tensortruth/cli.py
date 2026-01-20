@@ -97,9 +97,26 @@ def build_db():
 
 def run_ui():
     """Entry point for React frontend dev server."""
+    import argparse
     import os
     import subprocess
     import shutil
+
+    parser = argparse.ArgumentParser(
+        description="Start the TensorTruth React frontend dev server"
+    )
+    parser.add_argument(
+        "--host",
+        default="localhost",
+        help="Host to bind to (use 0.0.0.0 for network access). Default: localhost",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=5173,
+        help="Port to run on. Default: 5173",
+    )
+    args = parser.parse_args()
 
     # Find the frontend directory relative to the package
     package_dir = Path(__file__).parent.resolve()
@@ -132,15 +149,21 @@ def run_ui():
             print("Error: Failed to install dependencies.", file=sys.stderr)
             sys.exit(1)
 
+    # Build the URL for display
+    display_host = args.host if args.host != "0.0.0.0" else "localhost"
+    url = f"http://{display_host}:{args.port}"
+
     print("🚀 Starting frontend dev server...")
     print(f"   Directory: {frontend_dir}")
-    print("   URL: http://localhost:5173")
+    print(f"   URL: {url}")
+    if args.host == "0.0.0.0":
+        print("   Network: Available on all interfaces")
     print()
 
-    # Run npm run dev
+    # Run npm run dev with host and port arguments
     try:
         result = subprocess.run(
-            ["npm", "run", "dev"],
+            ["npm", "run", "dev", "--", "--host", args.host, "--port", str(args.port)],
             cwd=frontend_dir,
             env={**os.environ},
         )

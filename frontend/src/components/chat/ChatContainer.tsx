@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { useSessionStore, useChatStore } from "@/stores";
-import { useSessionMessages, useSession, useWebSocketChat } from "@/hooks";
+import { useSessionStore, useChatStore, useUIStore } from "@/stores";
+import { useSessionMessages, useSession, useWebSocketChat, useIsMobile } from "@/hooks";
 import { PdfDialog } from "@/components/pdfs";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
@@ -23,6 +23,16 @@ export function ChatContainer() {
     pendingUserMessage,
   } = useChatStore();
   const autoSendTriggered = useRef(false);
+  const isMobile = useIsMobile();
+  const setHeaderHidden = useUIStore((state) => state.setHeaderHidden);
+
+  // Hide header initially when entering chat on mobile
+  // The scroll logic in MessageList will show it if we're at top
+  useEffect(() => {
+    if (isMobile && urlSessionId) {
+      setHeaderHidden(true);
+    }
+  }, [isMobile, urlSessionId, setHeaderHidden]);
 
   // Sync URL param with store (for other components that need it)
   useEffect(() => {
@@ -123,7 +133,7 @@ export function ChatContainer() {
           <div className="chat-content-width">{error}</div>
         </div>
       )}
-      <div className="border-t py-4">
+      <div className="border-t py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
         <div className="chat-content-width">
           <ChatInput
             onSend={handleSend}

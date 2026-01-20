@@ -84,7 +84,7 @@ export function WelcomePage() {
   const canSend = message.trim().length > 0 && !isSubmitting;
 
   return (
-    <div className="flex h-full flex-col items-center justify-center px-4">
+    <div className="flex h-full flex-col items-center justify-center px-4 pb-[env(safe-area-inset-bottom)]">
       <div className="w-full max-w-2xl space-y-8">
         {/* Logo and Greeting */}
         <div className="text-center">

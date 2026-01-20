@@ -3,6 +3,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MessageItem } from "./MessageItem";
 import { StreamingIndicator } from "./StreamingIndicator";
 import { ThinkingBox } from "./ThinkingBox";
+import { useScrollDirection, useIsMobile } from "@/hooks";
+import { useUIStore } from "@/stores";
 import type { MessageResponse, SourceNode } from "@/api/types";
 import type { PipelineStatus } from "@/stores/chatStore";
 
@@ -27,11 +29,48 @@ export function MessageList({
   isStreaming,
   pipelineStatus,
 }: MessageListProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
+  const setHeaderHidden = useUIStore((state) => state.setHeaderHidden);
 
+  const { direction, isAtTop, isNearTop, isScrollable, scrollRef } = useScrollDirection({
+    threshold: 10,
+    topThreshold: 0.1,
+  });
+
+  // Combine refs - we need both for scroll tracking and auto-scroll
+  const combinedRef = (node: HTMLDivElement | null) => {
+    scrollContainerRef.current = node;
+    scrollRef(node);
+  };
+
+  // Update header visibility based on scroll (mobile only)
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (!isMobile) {
+      setHeaderHidden(false);
+      return;
+    }
+
+    // Show header unconditionally if at the very top or content not scrollable
+    if (isAtTop || !isScrollable) {
+      setHeaderHidden(false);
+      return;
+    }
+
+    // Otherwise: show on scroll up, hide on scroll down
+    const shouldHide = direction === "down" && !isNearTop;
+    setHeaderHidden(shouldHide);
+  }, [direction, isAtTop, isNearTop, isScrollable, isMobile, setHeaderHidden]);
+
+  // Reset header when unmounting or switching to desktop
+  useEffect(() => {
+    return () => setHeaderHidden(false);
+  }, [setHeaderHidden]);
+
+  // Auto-scroll to bottom on new content
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   }, [messages, pendingUserMessage, streamingContent, streamingThinking]);
 
@@ -48,7 +87,7 @@ export function MessageList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto" ref={scrollRef}>
+    <div className="flex-1 overflow-y-auto" ref={combinedRef}>
       <div className="chat-content-width py-4">
         {messages.length === 0 && !isStreaming && !pendingUserMessage ? (
           <div className="text-muted-foreground flex h-full min-h-[200px] items-center justify-center">

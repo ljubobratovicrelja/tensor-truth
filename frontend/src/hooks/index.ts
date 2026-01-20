@@ -4,3 +4,5 @@ export * from "./useChat";
 export * from "./useWebSocket";
 export * from "./usePdfs";
 export * from "./useConfig";
+export * from "./useMediaQuery";
+export * from "./useScrollDirection";
