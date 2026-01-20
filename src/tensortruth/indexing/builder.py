@@ -72,18 +72,27 @@ def extract_metadata(
             # Extract metadata based on document type
             if doc_type == DocumentType.BOOK:
                 # Book extraction with caching
+                if not root_metadata:
+                    raise ValueError(f"Missing root metadata for book: {module_name}")
                 metadata = extract_book_chapter_metadata(
                     file_path,
                     root_metadata,
                 )
             elif doc_type == DocumentType.LIBRARY:
                 # Library module extraction, handles per-module URL and display name.
+                if not root_metadata:
+                    raise ValueError(
+                        f"Missing root metadata for library: {module_name}"
+                    )
                 metadata = extract_library_module_metadata(file_path, root_metadata)
             elif doc_type == DocumentType.PAPERS:
                 # Per paper display name, authors, URL etc.
-                metadata = extract_arxiv_metadata_from_config(
+                maybe_metadata = extract_arxiv_metadata_from_config(
                     file_path, module_name, sources_config
                 )
+                if not maybe_metadata:
+                    raise ValueError(f"Missing metadata for paper: {file_path}")
+                metadata = maybe_metadata
             else:
                 raise ValueError(f"Unknown document type: {doc_type}")
 
@@ -123,8 +132,8 @@ def build_module(
     library_docs_dir: str,
     indexes_dir: str,
     sources_config: Dict,
-    extensions: List[str] = None,
-    chunk_sizes: List[int] = None,
+    extensions: List[str] | None = None,
+    chunk_sizes: List[int] | None = None,
     device: Optional[str] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
 ) -> bool:

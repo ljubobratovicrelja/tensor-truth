@@ -5,7 +5,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 
 import aiohttp
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from ddgs import DDGS
 from llama_index.llms.ollama import Ollama
 from markdownify import markdownify as md
@@ -106,12 +106,15 @@ async def search_duckduckgo(
                 else:
                     raise
 
+        # Should not reach here, but return empty list as fallback
+        return []
+
     except Exception as e:
         logger.error(f"DuckDuckGo search failed after retries: {e}")
         return []
 
 
-def clean_html_for_content(soup: BeautifulSoup) -> BeautifulSoup:
+def clean_html_for_content(soup: BeautifulSoup | Tag) -> BeautifulSoup | Tag:
     """
     Aggressively clean HTML to extract main content.
 
@@ -304,7 +307,7 @@ async def fetch_page_as_markdown(
 
 async def fetch_pages_parallel(
     results: List[Dict[str, str]], max_pages: int = 5, progress_callback=None
-) -> Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str]]]:
+) -> Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str | None]]]:
     """
     Fetch multiple pages with "look forward" strategy.
 
@@ -328,8 +331,8 @@ async def fetch_pages_parallel(
     if progress_callback:
         progress_callback(f"📥 Fetching up to {max_pages} pages...")
 
-    successful = []
-    all_attempts = []
+    successful: list[tuple[str, str, str]] = []
+    all_attempts: list[tuple[str, str, str, str | None]] = []
     current_idx = 0
 
     async with aiohttp.ClientSession() as session:
@@ -360,12 +363,12 @@ async def fetch_pages_parallel(
                 url = search_result["url"]
                 title = search_result["title"]
 
-                if isinstance(result, Exception):
-                    error_msg = str(result)
-                    all_attempts.append((url, title, "exception", error_msg))
+                if isinstance(result, BaseException):
+                    exception_msg = str(result)
+                    all_attempts.append((url, title, "exception", exception_msg))
                     logger.warning(f"Exception fetching {url}: {result}")
                     if progress_callback:
-                        progress_callback(f"❌ Failed: *{title}* - {error_msg}")
+                        progress_callback(f"❌ Failed: *{title}* - {exception_msg}")
                 else:
                     markdown, status, error_msg = result
 

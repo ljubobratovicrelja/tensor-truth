@@ -89,6 +89,8 @@ dev = [
     "isort>=7.0.0",
     "flake8>=7.3.0",
     "mypy>=1.4.0",
+    "types-requests>=2.31.0",
+    "types-PyYAML>=6.0.0",
 
     # Coverage Reporting
     "coverage[toml]>=7.2.0",

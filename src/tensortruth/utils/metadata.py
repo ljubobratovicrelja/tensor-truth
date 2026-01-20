@@ -676,6 +676,7 @@ def extract_uploaded_pdf_metadata(
     title = metadata["title"]
 
     # Format authors
+    formatted_authors: str | None
     if not metadata.get("authors"):
         logger.warning(f"No authors found in LLM extraction for {file_path.name}.")
         metadata["authors"] = ""

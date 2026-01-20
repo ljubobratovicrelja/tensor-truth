@@ -46,6 +46,7 @@ def get_default_presets():
             "confidence_cutoff": 0.0,
             "confidence_cutoff_hard": 0.0,
             "agent_max_iterations": 12,  # More iterations for thorough research
+            "agent_min_pages": 3,  # Require at least 3 pages for research depth
             "agent_reasoning_model": None,  # Will use config default
         },
         "DL Coder": {

@@ -31,27 +31,44 @@ Recent conversation context:
 
 User message: "{message}"
 
+CRITICAL: Check if the message contains these trigger words FIRST:
+- "browse", "research", "find out", "look up" → intent is "browse"
+- "search", "google", "web search", "look online" → intent is "search"
+
+If ANY of these words appear, ignore everything else and use that intent!
+
 Classify the intent as one of:
-- "browse": User wants autonomous web research (browse, research, find out, look up)
-- "search": User wants a quick web search with summary (search, google, look online)
-- "chat": Normal conversation, questions about loaded documents, or follow-up
+- "browse": User wants autonomous web research
+- "search": User wants a quick web search with summary
+- "chat": Normal conversation or questions about loaded documents
 
-Output ONLY valid JSON (no markdown, no explanation):
-{{"intent": "chat|browse|search", "query": "extracted query or null", "reason": "brief"}}
+Output ONLY valid JSON (no markdown, no code blocks, no explanation):
+{{"intent": "browse", "query": "extracted query", "reason": "brief"}}
 
-Rules:
-- If message contains "browse", "research", "find out", "look up" + a topic → browse
-- If message contains "search", "google", "web search" + a topic → search
-- If message is a follow-up or question about existing context → chat
-- If ambiguous, default to chat
-- Extract the research/search query from the message (remove trigger words)
+Rules (check in order, first match wins):
+1. Message contains "browse" OR "research" OR "find out" OR "look up" → intent = "browse"
+2. Message contains "search" OR "google" OR "web search" OR "look online" → intent = "search"
+3. Otherwise → intent = "chat"
 
-Examples:
-- "Browse the latest AI news" → {{"intent": "browse", "query": "latest AI news"}}
-- "Research transformers" → {{"intent": "browse", "query": "transformers"}}
-- "Search for Python 3.12 features" → {{"intent": "search", "query": "Python 3.12 features"}}
-- "What does the docs say about tensors?" → {{"intent": "chat", "query": null}}
-- "Tell me more about that" → {{"intent": "chat", "query": null}}
+Extract the query by removing trigger words ("browse", "search") from the message.
+
+Examples (copy this format exactly):
+Input: "Browse the latest AI news"
+Output: {{"intent": "browse", "query": "latest AI news", "reason": "explicit_browse"}}
+
+Input: "Browse online about X - try finding Y. Make a summary."
+Output: {{"intent": "browse", "query": "X", "reason": "explicit_browse"}}
+
+Input: "Research transformers"
+Output: {{"intent": "browse", "query": "transformers", "reason": "explicit_browse"}}
+
+Input: "Search for Python features"
+Output: {{"intent": "search", "query": "Python features", "reason": "explicit_search"}}
+
+Input: "What does the docs say?"
+Output: {{"intent": "chat", "query": null, "reason": "no_triggers"}}
+
+Now classify this message. Output ONLY the JSON, nothing else:
 """
 
 
@@ -126,6 +143,8 @@ def _parse_classification_response(response_text: str) -> IntentResult:
     try:
         # Clean up response - remove markdown code blocks if present
         text = response_text.strip()
+        logger.debug(f"Raw classification response: {text[:200]}")
+
         if text.startswith("```"):
             text = text.split("```")[1]
             if text.startswith("json"):
@@ -135,6 +154,12 @@ def _parse_classification_response(response_text: str) -> IntentResult:
         data = json.loads(text)
 
         intent = data.get("intent", "chat")
+        query = data.get("query")
+        reason = data.get("reason", "unknown")
+
+        logger.info(
+            f"Classification successful: intent={intent}, query={query}, reason={reason}"
+        )
         if intent not in ("chat", "browse", "search"):
             intent = "chat"
 
@@ -144,7 +169,8 @@ def _parse_classification_response(response_text: str) -> IntentResult:
             reason=data.get("reason", ""),
         )
     except (json.JSONDecodeError, KeyError, TypeError) as e:
-        logger.warning(f"Failed to parse classification response: {e}")
+        logger.error(f"Failed to parse classification response: {e}")
+        logger.error(f"Raw response was: {response_text[:500]}")
         return IntentResult(intent="chat", query=None, reason="parse_error")
 
 
@@ -213,12 +239,24 @@ def enhance_query_with_context(
     enhancement_prompt = f"""Given this conversation context:
 {context}
 
-The user wants to research: "{query}"
+The user's query: "{query}"
 
-The query references something from the context. Extract what they're referring to
-and create a complete, standalone search query.
+The query contains pronouns (this/that/it) or vague references. Replace the pronouns with
+the ACTUAL TOPIC from the conversation context.
 
-Output ONLY the enhanced query (no explanation, no quotes):"""
+Rules:
+- Extract the topic being discussed in the context
+- Replace pronouns with that specific topic
+- Keep the query minimal - just the topic/subject
+- Do NOT add extra words like "overview", "comprehensive", "methods"
+- Do NOT reformulate or expand the query
+
+Examples:
+- Query "more about it" + Context about "backpropagation" → "backpropagation"
+- Query "this concept" + Context about "neural networks" → "neural networks"
+- Query "browse it" + Context about "SGD" → "SGD"
+
+Output ONLY the topic name (no explanation, no quotes, no extra words):"""
 
     try:
         response = llm.complete(enhancement_prompt)
@@ -247,9 +285,9 @@ def detect_and_classify(
     Args:
         message: User's input message
         recent_messages: Recent conversation messages
-        llm: Optional pre-configured LLM (created if not provided)
+        llm: Optional pre-configured LLM (reuses already-loaded model)
         ollama_url: Ollama API URL (used if llm not provided)
-        classifier_model: Model to use for classification
+        classifier_model: Model name to create if llm not provided
 
     Returns:
         IntentResult with classified intent
@@ -258,16 +296,16 @@ def detect_and_classify(
     if not has_agent_triggers(message):
         return IntentResult(intent="chat", query=None, reason="no_triggers")
 
-    # Create LLM if not provided
+    # Create LLM only if not provided (fallback for fresh sessions)
     if llm is None:
         llm = Ollama(
             model=classifier_model,
             base_url=ollama_url,
-            temperature=0.0,  # Deterministic for classification
+            temperature=0.0,
             request_timeout=30.0,
         )
 
-    # Classify with LLM
+    # Classify with LLM (reused or created)
     result = classify_intent(message, recent_messages, llm)
 
     # Enhance query if needed

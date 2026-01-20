@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 import warnings
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 from llama_index.core.agent.workflow.function_agent import FunctionAgent
 from llama_index.core.tools import FunctionTool
@@ -97,8 +97,13 @@ class ToolTracker:
             # Report progress
             self._report_progress(f"📄 Fetching: {url}")
 
-            # Call original tool
-            return await original_tool.acall(url=url, timeout=timeout)
+            try:
+                # Call original tool
+                result = await original_tool.acall(url=url, timeout=timeout)
+                return result
+            except Exception as e:
+                self._report_progress(f"❌ Failed to fetch: {url} ({str(e)[:50]})")
+                raise
 
         return FunctionTool.from_defaults(
             async_fn=tracked_fetch_page,
@@ -129,27 +134,32 @@ class ToolTracker:
 
 
 # System prompt for the web research agent
-AGENT_SYSTEM_PROMPT = """\
+# {min_pages} will be replaced with actual minimum pages requirement
+AGENT_SYSTEM_PROMPT_TEMPLATE = """\
 You are a web research agent with access to tools for searching and fetching web content.
 
-IMPORTANT: You MUST use the available tools to gather information. Do NOT answer from memory.
+CRITICAL WORKFLOW - Follow these steps in order:
+
+Step 1: Call search_web to find relevant sources
+Step 2: Call fetch_page on the FIRST relevant URL and read it completely
+Step 3: Call fetch_page on the SECOND relevant URL and read it completely
+Step 4: Call fetch_page on the THIRD relevant URL (if query is complex)
+Step 5: ONLY THEN synthesize an answer from the fetched page content
+
+STRICT REQUIREMENTS:
+- You MUST call fetch_page AT LEAST {min_pages} times (minimum {min_pages} different URLs)
+- Do NOT stop after fetching only 1 page - fetch at least {min_pages}
+- Each page provides different perspectives and details
+- Search results alone are NOT sufficient - you MUST fetch the actual pages
+- Do NOT answer from memory or from search snippets
+- Include inline citations as markdown links: [Title](url)
 
 Available tools:
-- search_web: Search DuckDuckGo for information. Always start with this.
-- fetch_page: Fetch and read a specific URL to get detailed content.
+- search_web: Search DuckDuckGo for information
+- fetch_page: Fetch and read a specific URL (MUST call {min_pages}+ times)
 
-Required workflow:
-1. ALWAYS call search_web first to find relevant sources
-2. Call fetch_page on 2-3 of the most relevant URLs from search results
-3. Synthesize information from the fetched pages
-4. Include source citations as markdown links: [Title](url)
-
-Your final answer MUST include:
-- Information gathered from the web (not from memory)
-- Source citations with URLs for every fact
-- A "Sources:" section at the end listing all URLs consulted
-
-Never provide an answer without first using the tools to gather current information.
+REMINDER: Call fetch_page at least {min_pages} times before answering. One page is never enough.
+Sources will be added automatically - do NOT add a "Sources:" section.
 """
 
 
@@ -177,6 +187,7 @@ class MCPBrowseAgent:
         mcp_servers: Optional[list[MCPServerConfig]] = None,
         synthesis_model: Optional[str] = None,
         max_iterations: int = 10,
+        min_pages_required: int = 3,
         context_window: int = 8192,
         progress_callback: Optional[Callable[[str], None]] = None,
         stream_callback: Optional[Callable[[str], None]] = None,
@@ -190,6 +201,7 @@ class MCPBrowseAgent:
             synthesis_model: Optional different model for final synthesis.
                            If None, uses model_name for everything.
             max_iterations: Maximum reasoning iterations (default: 10)
+            min_pages_required: Minimum number of pages agent must fetch (default: 2)
             context_window: Context window size (default: 8192)
             progress_callback: Optional callback for progress updates
             stream_callback: Optional callback for streaming final answer tokens
@@ -198,6 +210,7 @@ class MCPBrowseAgent:
         self.ollama_url = ollama_url
         self.synthesis_model = synthesis_model or model_name
         self.max_iterations = max_iterations
+        self.min_pages_required = min_pages_required
         self.context_window = context_window
         self.progress_callback = progress_callback
         self.stream_callback = stream_callback
@@ -281,11 +294,22 @@ class MCPBrowseAgent:
 
         return "\n".join(parts)
 
-    async def run(self, goal: str) -> AgentResult:
+    async def run(
+        self,
+        goal: str,
+        original_request: Optional[str] = None,
+        chat_history: Optional[List] = None,
+    ) -> AgentResult:
         """Execute the agent with the given goal.
 
         Args:
-            goal: The research goal/question to answer
+            goal: The research goal/question
+                (enhanced query, e.g., "backpropagation")
+            original_request: Original user message with instructions
+                (e.g., "browse this, make overview")
+            chat_history: DEPRECATED - Query enhancement should happen
+                before calling agent.
+                         This parameter is kept for backward compatibility but is ignored.
 
         Returns:
             AgentResult with the final answer and metadata
@@ -295,6 +319,38 @@ class MCPBrowseAgent:
                 final_answer="Error: Please provide a research goal.",
                 error="Empty goal provided",
             )
+
+        # Check if user specified a custom minimum number of sources in their request
+        min_pages_for_this_query = self.min_pages_required
+        if original_request:
+            # Look for patterns like "find at least 10 sources", "check 5 pages", etc.
+            patterns = [
+                r"(?:at least|minimum|min)\s+(\d+)\s+(?:sources?|pages?|sites?|urls?)",
+                r"(?:find|check|fetch|get)\s+(\d+)\+?\s+(?:sources?|pages?|sites?|urls?)",
+                r"(\d+)\+?\s+(?:sources?|pages?|sites?|urls?)",
+            ]
+
+            for pattern in patterns:
+                match = re.search(pattern, original_request, re.IGNORECASE)
+                if match:
+                    requested_pages = int(match.group(1))
+                    if requested_pages > min_pages_for_this_query:
+                        min_pages_for_this_query = requested_pages
+                        self._report_progress(
+                            f"User requested {requested_pages} sources - "
+                            f"will fetch at least that many"
+                        )
+                        logger.info(
+                            f"User requested {requested_pages} sources, "
+                            f"overriding default {self.min_pages_required}"
+                        )
+                    break
+
+        # Note: chat_history is intentionally NOT used here.
+        # Query enhancement should happen in the caller
+        # (intent_classifier.enhance_query_with_context)
+        # to avoid the agent seeing conversation context and answering
+        # from memory instead of web.
 
         try:
             self._report_progress(f"Starting research: {goal}")
@@ -317,11 +373,16 @@ class MCPBrowseAgent:
 
             self._report_progress("Initializing reasoning agent...")
 
+            # Format system prompt with minimum pages requirement for this specific query
+            system_prompt = AGENT_SYSTEM_PROMPT_TEMPLATE.format(
+                min_pages=min_pages_for_this_query
+            )
+
             # Create FunctionAgent with reasoning model (uses native tool calling)
             self._agent = FunctionAgent(
                 tools=wrapped_tools,
                 llm=reasoning_llm,
-                system_prompt=AGENT_SYSTEM_PROMPT,
+                system_prompt=system_prompt,
             )
 
             self._report_progress("Executing research...")
@@ -355,22 +416,38 @@ class MCPBrowseAgent:
                 # Create synthesis LLM (quality model) for final answer refinement
                 synthesis_llm = self._create_synthesis_llm()
 
+                # Build synthesis prompt - include original user request if available
+                if original_request and original_request != goal:
+                    # User gave specific instructions beyond just the query
+                    request_section = (
+                        f"User's Original Request:\n{original_request}\n\n"
+                        f"Research Topic: {goal}\n\n"
+                    )
+                else:
+                    # Simple query, no special instructions
+                    request_section = f"Research Goal: {goal}\n\n"
+
                 # Create a synthesis prompt that includes the research findings
                 synthesis_prompt = (
                     "You are an expert research assistant. Refine and improve "
                     "the following research findings into a comprehensive, "
                     "well-structured final answer.\n\n"
-                    f"Research Goal: {goal}\n\n"
+                    f"{request_section}"
                     f"Research Findings:\n{intermediate_answer}\n\n"
                     "Guidelines:\n"
-                    "1. Organize the answer with clear sections\n"
-                    "2. Add proper citations and references\n"
-                    "3. Ensure the answer is comprehensive and addresses "
-                    "all aspects of the goal\n"
-                    "4. Improve readability and structure\n"
-                    "5. Add any missing context or explanations\n"
-                    "6. Keep the original facts but present them more "
-                    "professionally\n\n"
+                    "1. Follow ANY specific instructions in the user's "
+                    "original request (e.g., 'make an overview', "
+                    "'be sure to cite sources', 'compare methods')\n"
+                    "2. Organize the answer with clear sections\n"
+                    "3. Keep inline citations (URLs in markdown links)\n"
+                    "4. Ensure the answer is comprehensive and "
+                    "addresses all aspects of the request\n"
+                    "5. Improve readability and structure\n"
+                    "6. Add any missing context or explanations\n"
+                    "7. Keep the original facts and citations but "
+                    "present them more professionally\n"
+                    "8. Do NOT add a 'Sources:' section - sources "
+                    "will be appended automatically\n\n"
                     "Final Answer:"
                 )
 
@@ -390,11 +467,22 @@ class MCPBrowseAgent:
                 # Use the original response if same model
                 final_answer = intermediate_answer
 
-            # Inject sources section if URLs were browsed
+            # Inject organized sources section based on actual tool usage
             if self._tool_tracker and self._tool_tracker.urls_browsed:
-                sources_md = "\n\n---\n\n**Sources consulted:**\n"
+                sources_md = "\n\n---\n\n### Sources\n\n"
+
+                # Show search queries performed
+                if self._tool_tracker.search_queries:
+                    sources_md += "**Search queries:**\n"
+                    for query in self._tool_tracker.search_queries:
+                        sources_md += f"- {query}\n"
+                    sources_md += "\n"
+
+                # Show pages consulted
+                sources_md += "**Pages consulted:**\n"
                 for url in self._tool_tracker.urls_browsed:
                     sources_md += f"- {url}\n"
+
                 final_answer = final_answer + sources_md
 
                 # Stream the sources section too
@@ -420,6 +508,37 @@ class MCPBrowseAgent:
             # Get tracked values
             tools_called = self._tool_tracker.tools_called if self._tool_tracker else []
             urls_browsed = self._tool_tracker.urls_browsed if self._tool_tracker else []
+
+            # Debug: Report what tools were actually called
+            if self._tool_tracker:
+                fetch_count = self._tool_tracker.tools_called.count("fetch_page")
+                search_count = self._tool_tracker.tools_called.count("search_web")
+                logger.info(
+                    f"Agent completed: {search_count} searches, {fetch_count} fetches, "
+                    f"{len(urls_browsed)} unique URLs"
+                )
+
+                # Warn if no pages were fetched
+                if fetch_count == 0:
+                    logger.warning(
+                        "Agent completed WITHOUT fetching any pages! "
+                        "This may indicate the agent is answering from "
+                        "search snippets only."
+                    )
+                    self._report_progress(
+                        "Warning: Agent may have answered from search "
+                        "snippets without fetching pages"
+                    )
+                # Warn if fewer pages than required were fetched
+                elif fetch_count < min_pages_for_this_query:
+                    logger.warning(
+                        f"Agent fetched only {fetch_count} page(s) but {min_pages_for_this_query} "
+                        f"were required. Answer may be incomplete."
+                    )
+                    self._report_progress(
+                        f"Warning: Only {fetch_count}/"
+                        f"{min_pages_for_this_query} required pages fetched"
+                    )
 
             return AgentResult(
                 final_answer=final_answer,
@@ -447,8 +566,11 @@ def browse_agent(
     goal: str,
     model_name: str,
     ollama_url: str,
+    original_request: Optional[str] = None,
+    chat_history: Optional[list] = None,
     synthesis_model: Optional[str] = None,
     max_iterations: int = 10,
+    min_pages_required: int = 3,
     progress_callback: Optional[Callable[[str], None]] = None,
     stream_callback: Optional[Callable[[str], None]] = None,
     context_window: int = 8192,
@@ -460,14 +582,25 @@ def browse_agent(
 
     Args:
         goal: Research goal/question
+            (enhanced query, e.g., "backpropagation")
         model_name: Ollama model for reasoning
         ollama_url: Ollama API URL
+        original_request: Original user message with instructions
+            (e.g., "browse this, make overview")
+            Used by synthesis LLM to see user's specific
+            formatting/citation requests.
+        chat_history: DEPRECATED - Query enhancement should happen before calling this function.
+                     Passing conversation history to the agent causes it to answer from memory
+                     instead of using web tools. This parameter is kept for backward compatibility
+                     but is ignored.
         synthesis_model: Optional model for final synthesis
         max_iterations: Maximum reasoning iterations
+        min_pages_required: Minimum number of pages agent must fetch
+            (default: 2, tune higher for complex topics)
         progress_callback: Optional progress callback for status updates
         stream_callback: Optional callback for streaming final answer tokens
         context_window: Context window size
-        min_required_pages: (Deprecated, ignored)
+        min_required_pages: (Deprecated, use min_pages_required instead)
         thinking_callback: (Deprecated, ignored)
 
     Returns:
@@ -496,6 +629,7 @@ def browse_agent(
         ollama_url=ollama_url,
         synthesis_model=synthesis_model,
         max_iterations=max_iterations,
+        min_pages_required=min_pages_required,
         context_window=context_window,
         progress_callback=progress_callback,
         stream_callback=stream_callback,
@@ -506,6 +640,10 @@ def browse_agent(
     try:
         # Force default policy for subprocess compatibility
         asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
-        return asyncio.run(agent.run(goal))
+        return asyncio.run(
+            agent.run(
+                goal, original_request=original_request, chat_history=chat_history
+            )
+        )
     finally:
         asyncio.set_event_loop_policy(original_policy)

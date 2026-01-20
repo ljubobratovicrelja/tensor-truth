@@ -58,6 +58,10 @@ class AgentConfig:
     # Maximum iterations for agent execution
     max_iterations: int = 10
 
+    # Minimum pages agent must fetch during web research
+    # Higher values = more thorough research, but slower
+    min_pages_required: int = 3
+
     # Model to use for agent reasoning (fast model for decisions)
     # Falls back to main chat model if not specified
     reasoning_model: str = "llama3.1:8b"
@@ -74,6 +78,10 @@ class AgentConfig:
         if self.max_iterations <= 0:
             raise ValueError(
                 f"max_iterations must be positive, got {self.max_iterations}"
+            )
+        if self.min_pages_required < 1:
+            raise ValueError(
+                f"min_pages_required must be at least 1, got {self.min_pages_required}"
             )
         if not self.reasoning_model or not isinstance(self.reasoning_model, str):
             raise ValueError(

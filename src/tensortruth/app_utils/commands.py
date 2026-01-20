@@ -625,14 +625,27 @@ class BrowseAgentCommand(Command):
                     convert_latex_delimiters(accumulated_response["text"])
                 )
 
+            # Get min_pages from session params, falling back to config default
+            try:
+                config = st.session_state.config
+                default_min_pages = config.agent.min_pages_required
+            except (AttributeError, KeyError):
+                default_min_pages = 3  # Fallback if config unavailable
+
             # Execute agent with two-model strategy
             # Fast model for reasoning/decisions, main model for final synthesis
+            # Note: For /browse command, goal is used as-is without query enhancement
+            # since it's an explicit command, not natural language that needs interpretation
             result = browse_agent(
                 goal=goal,
+                original_request=goal,  # For /browse, the command args ARE the full request
                 model_name=reasoning_model,  # Fast model for iterations
                 synthesis_model=main_model,  # Quality model for final answer
                 ollama_url=ollama_url,
                 max_iterations=max_iterations,
+                min_pages_required=session["params"].get(
+                    "agent_min_pages", default_min_pages
+                ),
                 progress_callback=update_progress,
                 stream_callback=stream_token,  # Stream final answer tokens
                 context_window=context_window,

@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def detect_doc_type(doc_root: str) -> str:
+def detect_doc_type(doc_root: str) -> str | None:
     """Auto-detect documentation type (Sphinx or Doxygen).
 
     Args:
@@ -46,7 +46,7 @@ def detect_doc_type(doc_root: str) -> str:
     return None
 
 
-def detect_objects_inv(doc_root: str) -> str:
+def detect_objects_inv(doc_root: str) -> str | None:
     """Find objects.inv URL for Sphinx documentation.
 
     Args:
@@ -82,7 +82,7 @@ def detect_objects_inv(doc_root: str) -> str:
     return None
 
 
-def detect_css_selector(doc_root: str) -> str:
+def detect_css_selector(doc_root: str) -> str | None:
     """Auto-detect CSS selector for main content.
 
     Args:

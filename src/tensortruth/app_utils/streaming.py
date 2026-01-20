@@ -27,7 +27,7 @@ def stream_response_with_spinner(
     Returns:
         Tuple of (full_response_text, error_if_any)
     """
-    token_queue = queue.Queue()
+    token_queue: queue.Queue[str] = queue.Queue()
     streaming_done = threading.Event()
     error_holder = {"error": None}
 

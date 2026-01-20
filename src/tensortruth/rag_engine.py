@@ -26,7 +26,7 @@ from tensortruth.app_utils.config import load_config
 from tensortruth.core.ollama import check_thinking_support, get_ollama_url
 
 # --- GLOBAL CONFIG ---
-_BASE_INDEX_DIR_CACHE = None
+_BASE_INDEX_DIR_CACHE: str | None = None
 
 
 def get_base_index_dir() -> str:
@@ -40,7 +40,7 @@ def get_base_index_dir() -> str:
         try:
             from tensortruth.app_utils.paths import get_indexes_dir
 
-            _BASE_INDEX_DIR_CACHE = get_indexes_dir()
+            _BASE_INDEX_DIR_CACHE = str(get_indexes_dir())
         except (ImportError, AttributeError):
             # Fallback for standalone usage or during circular imports
             _BASE_INDEX_DIR_CACHE = "./indexes"
@@ -276,9 +276,12 @@ class MultiIndexRetriever(BaseRetriever):
 
         # Create LRU cache for retrieve operations if enabled
         if self.enable_cache:
-            self._retrieve_cached = lru_cache(maxsize=cache_size)(self._retrieve_impl)
+            # lru_cache wrapper compatibility
+            self._retrieve_cached = lru_cache(maxsize=cache_size)(
+                self._retrieve_impl
+            )  # type: ignore[assignment]
         else:
-            self._retrieve_cached = self._retrieve_impl
+            self._retrieve_cached = self._retrieve_impl  # type: ignore[assignment]
 
     def _retrieve_impl(self, query_text: str):
         """Actual retrieval implementation that can be cached.
@@ -366,9 +369,9 @@ def load_engine_for_modules(
 
     # Set Global Settings for this session (Embedder)
     embed_model = get_embed_model(rag_device)
-    Settings.embedding_model = embed_model
+    Settings.embed_model = embed_model
 
-    active_retrievers = []
+    active_retrievers: list[BaseRetriever] = []
     print(
         f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} | "
         f"RAG DEVICE: {rag_device} | RETRIEVAL: {similarity_top_k} per index → "
@@ -392,7 +395,9 @@ def load_engine_for_modules(
         index = load_index_from_storage(storage_context, embed_model=embed_model)
 
         base = index.as_retriever(similarity_top_k=similarity_top_k)
-        am_retriever = AutoMergingRetriever(base, index.storage_context, verbose=False)
+        am_retriever = AutoMergingRetriever(
+            base, index.storage_context, verbose=False  # type: ignore[arg-type]
+        )
         active_retrievers.append(am_retriever)
 
     # Load session-specific PDF index if provided
@@ -411,7 +416,7 @@ def load_engine_for_modules(
 
             base = index.as_retriever(similarity_top_k=similarity_top_k)
             am_retriever = AutoMergingRetriever(
-                base, index.storage_context, verbose=False
+                base, index.storage_context, verbose=False  # type: ignore[arg-type]
             )
             active_retrievers.append(am_retriever)
             print("Session index loaded successfully")
@@ -435,7 +440,7 @@ def load_engine_for_modules(
 
     # Build node postprocessors chain
     # Order: Reranker first, then hard cutoff filter on reranked scores
-    node_postprocessors = []
+    node_postprocessors: list[Any] = []
 
     # Add reranker first
     node_postprocessors.append(get_reranker(engine_params, device=rag_device))
