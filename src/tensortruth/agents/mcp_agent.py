@@ -94,13 +94,12 @@ class ToolTracker:
                 self.urls_browsed.append(url)
             self.tools_called.append("fetch_page")
 
-            # Report progress BEFORE fetch (so user sees it even if fetch is slow)
+            # Report progress
             self._report_progress(f"📄 Fetching: {url}")
 
             try:
                 # Call original tool
                 result = await original_tool.acall(url=url, timeout=timeout)
-                self._report_progress(f"✅ Fetched: {url}")
                 return result
             except Exception as e:
                 self._report_progress(f"❌ Failed to fetch: {url} ({str(e)[:50]})")
