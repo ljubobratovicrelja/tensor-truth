@@ -124,7 +124,7 @@ export function ChatInput({
                   <Bot className="h-3.5 w-3.5" />
                   <SelectValue placeholder="Model" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent position="popper" side="top" className="max-h-[300px]">
                   <SelectItem value="__none__">
                     <span className="text-muted-foreground">Default model</span>
                   </SelectItem>
