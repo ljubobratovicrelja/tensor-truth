@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageItem } from "./MessageItem";
 import { StreamingIndicator } from "./StreamingIndicator";
@@ -39,7 +38,7 @@ export function MessageList({
   }
 
   return (
-    <ScrollArea className="flex-1" ref={scrollRef}>
+    <div className="flex-1 overflow-y-auto" ref={scrollRef}>
       <div className="space-y-2 p-4">
         {messages.length === 0 && !isStreaming ? (
           <div className="text-muted-foreground flex h-full min-h-[200px] items-center justify-center">
@@ -51,7 +50,7 @@ export function MessageList({
               <MessageItem key={index} message={message} />
             ))}
             {isStreaming && !streamingContent && <StreamingIndicator />}
-            {streamingContent && (
+            {isStreaming && streamingContent && (
               <MessageItem
                 message={{ role: "assistant", content: streamingContent }}
                 sources={streamingSources}
@@ -60,6 +59,6 @@ export function MessageList({
           </>
         )}
       </div>
-    </ScrollArea>
+    </div>
   );
 }

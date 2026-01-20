@@ -1,7 +1,6 @@
 import { useCallback, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createWebSocket } from "@/api/client";
-import { addSessionMessage } from "@/api/sessions";
 import { useChatStore } from "@/stores";
 import { QUERY_KEYS } from "@/lib/constants";
 import type { StreamMessage } from "@/api/types";
@@ -40,19 +39,6 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
     async (message: string) => {
       if (!sessionId) return;
 
-      // First, add the user message to the session
-      try {
-        await addSessionMessage(sessionId, {
-          role: "user",
-          content: message,
-        });
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.messages(sessionId) });
-      } catch (error) {
-        console.error("Failed to save user message:", error);
-        onError?.("Failed to save message");
-        return;
-      }
-
       // Close any existing connection
       if (wsRef.current) {
         wsRef.current.close();
@@ -67,6 +53,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
 
       let fullContent = "";
       let confidenceLevel = "normal";
+      let didFetchUserMessage = false;
 
       ws.onopen = () => {
         // Send the prompt
@@ -79,6 +66,14 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
 
           switch (data.type) {
             case "token":
+              // On first token, fetch messages to show the user message
+              // (backend saves it before streaming starts)
+              if (!didFetchUserMessage) {
+                didFetchUserMessage = true;
+                queryClient.invalidateQueries({
+                  queryKey: QUERY_KEYS.messages(sessionId),
+                });
+              }
               fullContent += data.content;
               appendToken(data.content);
               break;
@@ -92,18 +87,11 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               confidenceLevel = data.confidence_level;
               finishStreaming(fullContent, confidenceLevel);
 
-              // Save the assistant message
-              addSessionMessage(sessionId, {
-                role: "assistant",
-                content: fullContent,
-              })
-                .then(() => {
-                  queryClient.invalidateQueries({
-                    queryKey: QUERY_KEYS.messages(sessionId),
-                  });
-                  queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
-                })
-                .catch(console.error);
+              // Refetch messages from server (backend already saved them)
+              queryClient.invalidateQueries({
+                queryKey: QUERY_KEYS.messages(sessionId),
+              });
+              queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
 
               ws.close();
               break;
