@@ -33,6 +33,7 @@ export interface MessageResponse {
   role: string;
   content: string;
   sources?: SourceNode[] | null;
+  thinking?: string | null;
 }
 
 export interface MessagesResponse {
@@ -84,7 +85,24 @@ export interface StreamTitle {
   title: string;
 }
 
-export type StreamMessage = StreamToken | StreamSources | StreamDone | StreamError | StreamTitle;
+export interface StreamThinking {
+  type: "thinking";
+  content: string;
+}
+
+export interface StreamStatus {
+  type: "status";
+  status: "retrieving" | "thinking" | "generating";
+}
+
+export type StreamMessage =
+  | StreamToken
+  | StreamSources
+  | StreamDone
+  | StreamError
+  | StreamTitle
+  | StreamThinking
+  | StreamStatus;
 
 // Intent types
 export interface IntentRequest {

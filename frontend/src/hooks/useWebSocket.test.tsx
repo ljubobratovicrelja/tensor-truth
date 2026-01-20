@@ -3,6 +3,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useWebSocketChat } from "./useWebSocket";
+import { useChatStore } from "@/stores";
 import * as sessionsApi from "@/api/sessions";
 
 // Mock the sessions API
@@ -119,5 +120,117 @@ describe("useWebSocketChat", () => {
         JSON.stringify({ prompt: "Test prompt" })
       );
     });
+  });
+
+  it("should handle status messages and update store", async () => {
+    const { result } = renderHook(
+      () => useWebSocketChat({ sessionId: "test-session", onError: vi.fn() }),
+      { wrapper: createWrapper() }
+    );
+
+    // Reset store
+    await act(async () => {
+      useChatStore.getState().reset();
+    });
+
+    await act(async () => {
+      result.current.sendMessage("Test");
+    });
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances.length).toBe(1);
+    });
+
+    const ws = MockWebSocket.instances[0];
+
+    // Simulate status updates
+    await act(async () => {
+      ws.simulateMessage({ type: "status", status: "retrieving" });
+    });
+
+    expect(useChatStore.getState().pipelineStatus).toBe("retrieving");
+
+    await act(async () => {
+      ws.simulateMessage({ type: "status", status: "thinking" });
+    });
+
+    expect(useChatStore.getState().pipelineStatus).toBe("thinking");
+
+    await act(async () => {
+      ws.simulateMessage({ type: "status", status: "generating" });
+    });
+
+    expect(useChatStore.getState().pipelineStatus).toBe("generating");
+  });
+
+  it("should handle thinking messages and accumulate content", async () => {
+    const { result } = renderHook(
+      () => useWebSocketChat({ sessionId: "test-session", onError: vi.fn() }),
+      { wrapper: createWrapper() }
+    );
+
+    // Reset store
+    await act(async () => {
+      useChatStore.getState().reset();
+    });
+
+    await act(async () => {
+      result.current.sendMessage("Test");
+    });
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances.length).toBe(1);
+    });
+
+    const ws = MockWebSocket.instances[0];
+
+    // Simulate thinking tokens
+    await act(async () => {
+      ws.simulateMessage({ type: "thinking", content: "Let me " });
+      ws.simulateMessage({ type: "thinking", content: "analyze " });
+      ws.simulateMessage({ type: "thinking", content: "this." });
+    });
+
+    expect(useChatStore.getState().streamingThinking).toBe(
+      "Let me analyze this."
+    );
+  });
+
+  it("should clear status on streaming finish", async () => {
+    const { result } = renderHook(
+      () => useWebSocketChat({ sessionId: "test-session", onError: vi.fn() }),
+      { wrapper: createWrapper() }
+    );
+
+    // Reset store
+    await act(async () => {
+      useChatStore.getState().reset();
+    });
+
+    await act(async () => {
+      result.current.sendMessage("Test");
+    });
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances.length).toBe(1);
+    });
+
+    const ws = MockWebSocket.instances[0];
+
+    // Simulate full streaming flow
+    await act(async () => {
+      ws.simulateMessage({ type: "status", status: "retrieving" });
+      ws.simulateMessage({ type: "status", status: "generating" });
+      ws.simulateMessage({ type: "token", content: "Response" });
+      ws.simulateMessage({
+        type: "done",
+        content: "Response",
+        confidence_level: "normal",
+      });
+    });
+
+    // Status should be cleared after done
+    expect(useChatStore.getState().pipelineStatus).toBe(null);
+    expect(useChatStore.getState().isStreaming).toBe(false);
   });
 });

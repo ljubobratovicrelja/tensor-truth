@@ -12,8 +12,15 @@ export function ChatContainer() {
   const navigate = useNavigate();
   const location = useLocation();
   const { activeSessionId, setActiveSessionId } = useSessionStore();
-  const { streamingContent, streamingSources, isStreaming, error, pendingUserMessage } =
-    useChatStore();
+  const {
+    streamingContent,
+    streamingThinking,
+    streamingSources,
+    isStreaming,
+    pipelineStatus,
+    error,
+    pendingUserMessage,
+  } = useChatStore();
 
   // Sync URL param with store
   useEffect(() => {
@@ -77,8 +84,10 @@ export function ChatContainer() {
         isLoading={messagesLoading}
         pendingUserMessage={pendingUserMessage}
         streamingContent={streamingContent || undefined}
+        streamingThinking={streamingThinking || undefined}
         streamingSources={streamingSources.length > 0 ? streamingSources : undefined}
         isStreaming={isStreaming}
+        pipelineStatus={pipelineStatus}
       />
       {error && (
         <div className="border-destructive bg-destructive/10 text-destructive border-t py-2 text-sm">

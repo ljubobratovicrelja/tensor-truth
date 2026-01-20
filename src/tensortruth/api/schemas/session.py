@@ -55,6 +55,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     sources: Optional[List[Dict[str, Any]]] = None
+    thinking: Optional[str] = None
 
 
 class MessagesResponse(BaseModel):

@@ -7,16 +7,21 @@ import rehypeKatex from "rehype-katex";
 import { User, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourcesList } from "./SourceCard";
+import { ThinkingBox } from "./ThinkingBox";
 import type { MessageResponse, SourceNode } from "@/api/types";
 
 interface MessageItemProps {
   message: MessageResponse;
   sources?: SourceNode[];
+  /** Override thinking content (used during streaming) */
+  thinking?: string;
 }
 
-export function MessageItem({ message, sources }: MessageItemProps) {
+export function MessageItem({ message, sources, thinking }: MessageItemProps) {
   const isUser = message.role === "user";
   const messageSources = sources ?? (message.sources as SourceNode[] | undefined);
+  // Use prop thinking (streaming) or message.thinking (saved)
+  const thinkingContent = thinking ?? message.thinking;
 
   return (
     <div className={cn("flex gap-3 py-4", isUser ? "flex-row-reverse" : "flex-row")}>
@@ -28,36 +33,42 @@ export function MessageItem({ message, sources }: MessageItemProps) {
       >
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
       </div>
-      <div
-        className={cn(
-          "max-w-[80%] rounded-lg px-4 py-2",
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted"
+      <div className="max-w-[80%] space-y-2">
+        {/* Show thinking box for assistant messages */}
+        {!isUser && thinkingContent && (
+          <ThinkingBox content={thinkingContent} isCollapsed />
         )}
-      >
-        <div className="chat-markdown max-w-none">
-          <ReactMarkdown
-            remarkPlugins={[remarkMath]}
-            rehypePlugins={[
-              rehypeHighlight,
-              rehypeKatex,
-              rehypeSlug,
-              [
-                rehypeAutolinkHeadings,
-                {
-                  behavior: "wrap",
-                  properties: {
-                    className: ["header-anchor"],
+        <div
+          className={cn(
+            "rounded-lg px-4 py-2",
+            isUser ? "bg-primary text-primary-foreground" : "bg-muted"
+          )}
+        >
+          <div className="chat-markdown max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkMath]}
+              rehypePlugins={[
+                rehypeHighlight,
+                rehypeKatex,
+                rehypeSlug,
+                [
+                  rehypeAutolinkHeadings,
+                  {
+                    behavior: "wrap",
+                    properties: {
+                      className: ["header-anchor"],
+                    },
                   },
-                },
-              ],
-            ]}
-          >
-            {message.content}
-          </ReactMarkdown>
+                ],
+              ]}
+            >
+              {message.content}
+            </ReactMarkdown>
+          </div>
+          {!isUser && messageSources && messageSources.length > 0 && (
+            <SourcesList sources={messageSources} />
+          )}
         </div>
-        {!isUser && messageSources && messageSources.length > 0 && (
-          <SourcesList sources={messageSources} />
-        )}
       </div>
     </div>
   );

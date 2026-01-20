@@ -120,6 +120,7 @@ async def get_messages(
                 role=msg.get("role", "user"),
                 content=msg.get("content", ""),
                 sources=msg.get("sources"),
+                thinking=msg.get("thinking"),
             )
             for msg in messages
         ]

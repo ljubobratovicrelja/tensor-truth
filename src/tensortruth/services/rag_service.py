@@ -141,13 +141,16 @@ class RAGService:
         return self._engine is not None
 
     def query(self, prompt: str) -> Generator[RAGChunk, None, RAGResponse]:
-        """Execute a streaming RAG query.
+        """Execute a streaming RAG query with thinking token support.
+
+        Yields status updates during retrieval and thinking phases, then
+        streams content tokens (and thinking tokens if model supports them).
 
         Args:
             prompt: User's query prompt.
 
         Yields:
-            RAGChunk with partial response text.
+            RAGChunk with status, thinking, or text content.
 
         Returns:
             Final RAGResponse with complete text and sources.
@@ -158,21 +161,92 @@ class RAGService:
         if self._engine is None:
             raise RuntimeError("RAG engine not loaded. Call load_engine() first.")
 
-        response_stream = self._engine.stream_chat(prompt)
+        # Phase 1: Retrieval
+        yield RAGChunk(status="retrieving")
 
+        # Get retriever and condense question if needed
+        retriever = self._engine._retriever
+        condenser = getattr(self._engine, "_condenser_prompt_template", None)
+        memory = getattr(self._engine, "memory", None)
+
+        # Get chat history for context condensation
+        chat_history = list(memory.get()) if memory else []
+
+        # Condense the question with chat history if we have a condenser
+        condensed_question = prompt
+        if condenser and chat_history:
+            try:
+                from llama_index.core.base.llms.types import ChatMessage, MessageRole
+
+                # Build condensed question using LLM
+                condenser_prompt = condenser.format(
+                    chat_history="\n".join(
+                        [f"{m.role.value}: {m.content}" for m in chat_history]
+                    ),
+                    question=prompt,
+                )
+                condensed_response = self._engine._llm.complete(condenser_prompt)
+                condensed_question = str(condensed_response)
+            except Exception:
+                # Fall back to original prompt if condensation fails
+                condensed_question = prompt
+
+        # Retrieve context nodes
+        source_nodes = retriever.retrieve(condensed_question)
+
+        # Phase 2: Check if model supports thinking and start generation
+        llm = self._engine._llm
+        thinking_enabled = getattr(llm, "thinking", False)
+
+        if thinking_enabled:
+            yield RAGChunk(status="thinking")
+        else:
+            yield RAGChunk(status="generating")
+
+        # Build context and format the prompt
+        context_str = "\n\n".join([n.get_content() for n in source_nodes])
+        formatted_prompt = (
+            f"Context information:\n{context_str}\n\n"
+            f"Query: {prompt}\n\nAnswer:"
+        )
+
+        # Build messages with chat history
+        from llama_index.core.base.llms.types import ChatMessage, MessageRole
+
+        messages = chat_history + [
+            ChatMessage(role=MessageRole.USER, content=formatted_prompt)
+        ]
+
+        # Stream directly from LLM to access thinking tokens
         full_response = ""
-        source_nodes = []
+        full_thinking = ""
+        sent_generating_status = not thinking_enabled
 
-        for token in response_stream.response_gen:
-            full_response += token
-            yield RAGChunk(text=token, is_complete=False)
+        for chunk in llm.stream_chat(messages):
+            # Extract thinking delta if present
+            thinking_delta = chunk.additional_kwargs.get("thinking_delta")
+            if thinking_delta:
+                full_thinking += thinking_delta
+                yield RAGChunk(thinking=thinking_delta)
+            elif not sent_generating_status and thinking_enabled:
+                # Transition from thinking to generating
+                yield RAGChunk(status="generating")
+                sent_generating_status = True
 
-        # Get source nodes from the response
-        if hasattr(response_stream, "source_nodes"):
-            source_nodes = response_stream.source_nodes
+            # Extract content delta
+            if chunk.delta:
+                full_response += chunk.delta
+                yield RAGChunk(text=chunk.delta)
 
-        # Yield final complete chunk
-        yield RAGChunk(text="", source_nodes=source_nodes, is_complete=True)
+        # Update memory with the conversation
+        if memory:
+            from llama_index.core.memory import ChatMemoryBuffer
+
+            memory.put(ChatMessage(role=MessageRole.USER, content=prompt))
+            memory.put(ChatMessage(role=MessageRole.ASSISTANT, content=full_response))
+
+        # Yield final complete chunk with sources
+        yield RAGChunk(source_nodes=source_nodes, is_complete=True)
 
         return RAGResponse(text=full_response, source_nodes=source_nodes)
 

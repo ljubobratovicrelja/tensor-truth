@@ -205,6 +205,35 @@ class TestRAGModels:
         assert len(chunk.source_nodes) == 2
         assert chunk.is_complete is True
 
+    def test_rag_chunk_with_thinking(self):
+        """RAGChunk can include thinking content."""
+        chunk = RAGChunk(
+            thinking="Let me analyze this step by step...",
+        )
+
+        assert chunk.thinking == "Let me analyze this step by step..."
+        assert chunk.text == ""
+        assert chunk.status is None
+
+    def test_rag_chunk_with_status(self):
+        """RAGChunk can include pipeline status."""
+        for status in ["retrieving", "thinking", "generating"]:
+            chunk = RAGChunk(status=status)
+
+            assert chunk.status == status
+            assert chunk.text == ""
+            assert chunk.thinking is None
+
+    def test_rag_chunk_defaults(self):
+        """RAGChunk has sensible defaults."""
+        chunk = RAGChunk()
+
+        assert chunk.text == ""
+        assert chunk.thinking is None
+        assert chunk.source_nodes == []
+        assert chunk.is_complete is False
+        assert chunk.status is None
+
     def test_rag_response_creation(self):
         """RAGResponse can be created."""
         response = RAGResponse(

@@ -108,11 +108,21 @@ class PDFMetadata:
 
 @dataclass
 class RAGChunk:
-    """A chunk of RAG response with source information."""
+    """A chunk of RAG response with source information.
 
-    text: str
+    Attributes:
+        text: Content text delta (actual response).
+        thinking: Thinking/reasoning text delta (if model supports thinking).
+        source_nodes: Retrieved source documents (only set when is_complete=True).
+        is_complete: Whether this is the final chunk with sources.
+        status: Pipeline status indicator ('retrieving', 'thinking', 'generating', None).
+    """
+
+    text: str = ""
+    thinking: Optional[str] = None
     source_nodes: List[Any] = field(default_factory=list)
     is_complete: bool = False
+    status: Optional[Literal["retrieving", "thinking", "generating"]] = None
 
 
 @dataclass

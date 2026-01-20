@@ -4,3 +4,4 @@ export { MessageItem } from "./MessageItem";
 export { MessageList } from "./MessageList";
 export { SourceCard, SourcesList } from "./SourceCard";
 export { StreamingIndicator } from "./StreamingIndicator";
+export { ThinkingBox } from "./ThinkingBox";

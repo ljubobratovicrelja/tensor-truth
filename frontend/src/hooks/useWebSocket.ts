@@ -18,6 +18,8 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
   const {
     startStreaming,
     appendToken,
+    appendThinking,
+    setStatus,
     setSources,
     finishStreaming,
     setError,
@@ -70,6 +72,14 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
           const data = JSON.parse(event.data) as StreamMessage;
 
           switch (data.type) {
+            case "status":
+              setStatus(data.status);
+              break;
+
+            case "thinking":
+              appendThinking(data.content);
+              break;
+
             case "token":
               // On first token, fetch messages (backend has saved user message)
               // Don't clear pendingUserMessage here - let MessageList deduplicate
@@ -144,6 +154,8 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       queryClient,
       startStreaming,
       appendToken,
+      appendThinking,
+      setStatus,
       setSources,
       finishStreaming,
       setError,

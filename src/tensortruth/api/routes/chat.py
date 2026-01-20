@@ -199,14 +199,33 @@ async def websocket_chat(
             if session_service.needs_title_update(session_id, data):
                 title_task = asyncio.create_task(generate_smart_title_async(prompt))
 
-            # Stream response
+            # Stream response with status and thinking support
             full_response = ""
+            full_thinking = ""
             sources = []
 
             for chunk in rag_service.query(prompt):
                 if chunk.is_complete:
                     sources = _extract_sources(chunk.source_nodes)
-                else:
+                elif chunk.status:
+                    # Send pipeline status update
+                    await websocket.send_json(
+                        {
+                            "type": "status",
+                            "status": chunk.status,
+                        }
+                    )
+                elif chunk.thinking:
+                    # Send thinking token and accumulate
+                    full_thinking += chunk.thinking
+                    await websocket.send_json(
+                        {
+                            "type": "thinking",
+                            "content": chunk.thinking,
+                        }
+                    )
+                elif chunk.text:
+                    # Send content token
                     full_response += chunk.text
                     await websocket.send_json(
                         {
@@ -234,11 +253,13 @@ async def websocket_chat(
                 }
             )
 
-            # Save assistant response
+            # Save assistant response (include thinking for UI display, but it won't
+            # be included in LLM chat history - that's handled by RAG service memory)
+            assistant_message = {"role": "assistant", "content": full_response}
+            if full_thinking:
+                assistant_message["thinking"] = full_thinking
             data = session_service.load()
-            data = session_service.add_message(
-                session_id, {"role": "assistant", "content": full_response}, data
-            )
+            data = session_service.add_message(session_id, assistant_message, data)
             session_service.save(data)
 
             # Wait for title generation to complete and send to client

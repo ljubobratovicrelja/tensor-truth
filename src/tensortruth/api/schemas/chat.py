@@ -65,3 +65,17 @@ class StreamDone(BaseModel):
     type: Literal["done"] = "done"
     content: str
     confidence_level: str = "normal"
+
+
+class StreamThinking(BaseModel):
+    """WebSocket message for thinking/reasoning tokens."""
+
+    type: Literal["thinking"] = "thinking"
+    content: str
+
+
+class StreamStatus(BaseModel):
+    """WebSocket message for pipeline status updates."""
+
+    type: Literal["status"] = "status"
+    status: Literal["retrieving", "thinking", "generating"]

@@ -2,15 +2,19 @@ import { useEffect, useRef } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageItem } from "./MessageItem";
 import { StreamingIndicator } from "./StreamingIndicator";
+import { ThinkingBox } from "./ThinkingBox";
 import type { MessageResponse, SourceNode } from "@/api/types";
+import type { PipelineStatus } from "@/stores/chatStore";
 
 interface MessageListProps {
   messages: MessageResponse[];
   isLoading?: boolean;
   pendingUserMessage?: string | null;
   streamingContent?: string;
+  streamingThinking?: string;
   streamingSources?: SourceNode[];
   isStreaming?: boolean;
+  pipelineStatus?: PipelineStatus;
 }
 
 export function MessageList({
@@ -18,8 +22,10 @@ export function MessageList({
   isLoading,
   pendingUserMessage,
   streamingContent,
+  streamingThinking,
   streamingSources,
   isStreaming,
+  pipelineStatus,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -27,7 +33,7 @@ export function MessageList({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, pendingUserMessage, streamingContent]);
+  }, [messages, pendingUserMessage, streamingContent, streamingThinking]);
 
   if (isLoading) {
     return (
@@ -60,11 +66,19 @@ export function MessageList({
               ) && (
                 <MessageItem message={{ role: "user", content: pendingUserMessage }} />
               )}
-            {isStreaming && !streamingContent && <StreamingIndicator />}
+            {/* Streaming: show status indicator and thinking before content appears */}
+            {isStreaming && !streamingContent && (
+              <>
+                {streamingThinking && <ThinkingBox content={streamingThinking} />}
+                <StreamingIndicator status={pipelineStatus} />
+              </>
+            )}
+            {/* Streaming: show streaming response with thinking */}
             {isStreaming && streamingContent && (
               <MessageItem
                 message={{ role: "assistant", content: streamingContent }}
                 sources={streamingSources}
+                thinking={streamingThinking}
               />
             )}
           </div>
