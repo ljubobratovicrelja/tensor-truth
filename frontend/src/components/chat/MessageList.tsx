@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { ArrowDown } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { MessageItem } from "./MessageItem";
 import { StreamingIndicator } from "./StreamingIndicator";
 import { ThinkingBox } from "./ThinkingBox";
 import { useScrollDirection, useIsMobile } from "@/hooks";
 import { useUIStore } from "@/stores";
+import { cn } from "@/lib/utils";
 import type { MessageResponse, SourceNode } from "@/api/types";
 import type { PipelineStatus } from "@/stores/chatStore";
 
@@ -31,8 +34,10 @@ export function MessageList({
 }: MessageListProps) {
   // Use state for container so effects re-run when it's set
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const isMobile = useIsMobile();
   const setHeaderHidden = useUIStore((state) => state.setHeaderHidden);
+  const setInputHidden = useUIStore((state) => state.setInputHidden);
 
   const { direction, isAtTop, isNearTop, isScrollable, scrollRef } = useScrollDirection({
     threshold: 10,
@@ -63,10 +68,45 @@ export function MessageList({
     setHeaderHidden(shouldHide);
   }, [direction, isAtTop, isNearTop, isScrollable, isMobile, setHeaderHidden]);
 
-  // Reset header when unmounting or switching to desktop
+  // Reset header and input when unmounting or switching to desktop
   useEffect(() => {
-    return () => setHeaderHidden(false);
-  }, [setHeaderHidden]);
+    return () => {
+      setHeaderHidden(false);
+      setInputHidden(false);
+    };
+  }, [setHeaderHidden, setInputHidden]);
+
+  // Update input visibility (mobile) and scroll button visibility (all)
+  useEffect(() => {
+    if (!scrollContainer) {
+      setInputHidden(false);
+      setShowScrollButton(false);
+      return;
+    }
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      const scrollableHeight = scrollHeight - clientHeight;
+
+      // Show input if near bottom (within 10% of scrollable area or 150px)
+      const threshold = Math.max(scrollableHeight * 0.1, 150);
+      const isNearBottom = distanceFromBottom <= threshold;
+
+      if (isMobile) {
+        setInputHidden(!isNearBottom);
+      }
+
+      // Show scroll button only when input is hidden (same threshold)
+      setShowScrollButton(!isNearBottom);
+    };
+
+    // Initial check
+    handleScroll();
+
+    scrollContainer.addEventListener("scroll", handleScroll);
+    return () => scrollContainer.removeEventListener("scroll", handleScroll);
+  }, [isMobile, scrollContainer, setInputHidden]);
 
   // Auto-scroll to bottom on new content, but only if already near bottom
   useEffect(() => {
@@ -82,6 +122,13 @@ export function MessageList({
     }
   }, [scrollContainer, messages, pendingUserMessage, streamingContent, streamingThinking]);
 
+  const scrollToBottom = useCallback(() => {
+    scrollContainer?.scrollTo({
+      top: scrollContainer.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [scrollContainer]);
+
   if (isLoading) {
     return (
       <div className="flex-1 py-4">
@@ -95,7 +142,7 @@ export function MessageList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto" ref={combinedRef}>
+    <div className="relative flex-1 overflow-y-auto" ref={combinedRef}>
       <div className="chat-content-width py-4">
         {messages.length === 0 && !isStreaming && !pendingUserMessage ? (
           <div className="text-muted-foreground flex h-full min-h-[200px] items-center justify-center">
@@ -132,6 +179,23 @@ export function MessageList({
           </div>
         )}
       </div>
+
+      {/* Scroll to bottom button */}
+      <Button
+        onClick={scrollToBottom}
+        size="icon"
+        variant="secondary"
+        className={cn(
+          "fixed bottom-6 right-4 z-10 h-8 w-8 rounded-full opacity-60 shadow-md transition-all hover:opacity-100",
+          "md:bottom-44 md:right-8",
+          showScrollButton
+            ? "translate-y-0 scale-100"
+            : "pointer-events-none translate-y-4 scale-75 opacity-0"
+        )}
+        aria-label="Scroll to bottom"
+      >
+        <ArrowDown className="h-4 w-4" />
+      </Button>
     </div>
   );
 }

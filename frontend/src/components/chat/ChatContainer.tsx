@@ -9,6 +9,7 @@ import {
   useWebSocketChat,
   useIsMobile,
 } from "@/hooks";
+import { cn } from "@/lib/utils";
 import { PdfDialog } from "@/components/pdfs";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
@@ -31,6 +32,7 @@ export function ChatContainer() {
   const autoSendTriggered = useRef(false);
   const isMobile = useIsMobile();
   const setHeaderHidden = useUIStore((state) => state.setHeaderHidden);
+  const inputHidden = useUIStore((state) => state.inputHidden);
 
   // Hide header initially when entering chat on mobile
   // The scroll logic in MessageList will show it if we're at top
@@ -147,7 +149,7 @@ export function ChatContainer() {
   const currentModel = (sessionData?.params?.model as string) || undefined;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b px-4 py-2">
         <h2 className="text-muted-foreground text-sm font-medium">
           {sessionData?.title ?? "Chat"}
@@ -169,7 +171,13 @@ export function ChatContainer() {
           <div className="chat-content-width">{error}</div>
         </div>
       )}
-      <div className="border-t py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+      <div
+        className={cn(
+          "bg-background border-t pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]",
+          "max-h-[200px] transition-all duration-300 ease-in-out",
+          isMobile && inputHidden && "max-h-0 overflow-hidden border-t-0 !p-0 opacity-0"
+        )}
+      >
         <div className="chat-content-width">
           <ChatInput
             onSend={handleSend}
