@@ -1,3 +1,4 @@
+import { useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
@@ -5,7 +6,7 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { User, Bot } from "lucide-react";
+import { User, Bot, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourcesList } from "./SourceCard";
 import { ThinkingBox } from "./ThinkingBox";
@@ -26,6 +27,31 @@ export function MessageItem({ message, sources, thinking, isStreaming }: Message
   const messageSources = sources ?? (message.sources as SourceNode[] | undefined);
   // Use prop thinking (streaming) or message.thinking (saved)
   const thinkingContent = thinking ?? message.thinking;
+  const [copied, setCopied] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    const content = message.content;
+    try {
+      if (e.shiftKey && contentRef.current) {
+        // Copy as rich text (HTML + plain text fallback)
+        const html = contentRef.current.innerHTML;
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([content], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        // Copy as raw markdown
+        await navigator.clipboard.writeText(content);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
 
   return (
     <div className={cn("flex gap-3 py-4", isUser ? "md:flex-row-reverse" : "md:flex-row")}>
@@ -39,17 +65,28 @@ export function MessageItem({ message, sources, thinking, isStreaming }: Message
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
       </div>
 
-      <div className="min-w-0 flex-1 space-y-2 md:max-w-[80%] md:flex-initial">
+      <div className="group min-w-0 flex-1 space-y-2 md:max-w-[80%] md:flex-initial">
         {/* Show thinking box for assistant messages */}
         {!isUser && thinkingContent && (
           <ThinkingBox content={thinkingContent} isCollapsed={!isStreaming} />
         )}
         <div
           className={cn(
-            "rounded-2xl px-4 py-3",
+            "relative rounded-2xl px-4 py-3",
             isUser ? "bg-primary text-primary-foreground" : "bg-muted"
           )}
         >
+          {/* Copy button for assistant messages */}
+          {!isUser && !isStreaming && (
+            <button
+              onClick={handleCopy}
+              className="absolute right-2 top-2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-background/50 hover:text-foreground group-hover:opacity-100 focus:opacity-100"
+              title="Copy (Shift+click for rich text)"
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            </button>
+          )}
+
           {/* Inline header with icon - visible on mobile only */}
           <div
             className={cn(
@@ -71,7 +108,7 @@ export function MessageItem({ message, sources, thinking, isStreaming }: Message
           {isStreaming ? (
             <StreamingText content={message.content} isStreaming />
           ) : (
-            <div className="chat-markdown max-w-none">
+            <div ref={contentRef} className="chat-markdown max-w-none">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[
