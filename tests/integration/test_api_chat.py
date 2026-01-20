@@ -42,8 +42,13 @@ class TestChatAPI:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
+    @pytest.mark.requires_ollama
     async def test_chat_no_modules(self, client, tmp_path, monkeypatch):
-        """Test chat with session that has no modules or PDFs."""
+        """Test chat with session that has no modules or PDFs.
+
+        Should use LLM-only mode without RAG retrieval.
+        Requires Ollama to be running.
+        """
         sessions_file = tmp_path / "chat_sessions.json"
         sessions_dir = tmp_path / "sessions"
         sessions_dir.mkdir()
@@ -73,8 +78,11 @@ class TestChatAPI:
             f"/api/sessions/{session_id}/chat",
             json={"prompt": "Hello"},
         )
-        assert response.status_code == 400
-        assert "modules" in response.json()["detail"].lower()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["confidence_level"] == "llm_only"
+        assert len(data["content"]) > 0
+        assert data["sources"] == []
 
     @pytest.mark.asyncio
     async def test_intent_classification(self, client, tmp_path, monkeypatch):

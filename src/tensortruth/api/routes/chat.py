@@ -79,7 +79,7 @@ async def chat(
 
     # Query engine (collect full response)
     full_response = ""
-    sources = []
+    sources: List[SourceNode] = []
 
     if llm_only_mode:
         # LLM-only mode: direct LLM query without RAG

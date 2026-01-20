@@ -121,6 +121,7 @@ export function MessageList({
     // Only auto-scroll if already within 150px of bottom
     // This respects user's position if they've scrolled up
     if (distanceFromBottom < 150) {
+      // eslint-disable-next-line react-hooks/immutability
       scrollContainer.scrollTop = scrollHeight;
     }
   }, [

@@ -267,7 +267,7 @@ class TestSessionServiceDelete:
         session_dir.mkdir()
         (session_dir / "some_file.txt").write_text("test")
 
-        new_data = session_service.delete(
+        session_service.delete(
             session_id="session-1",
             data=sample_session_data,
             session_dir=session_dir,

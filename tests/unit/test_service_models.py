@@ -1,7 +1,5 @@
 """Unit tests for service layer models."""
 
-import pytest
-
 from tensortruth.services.models import (
     IntentResult,
     PDFMetadata,

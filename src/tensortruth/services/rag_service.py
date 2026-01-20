@@ -211,8 +211,6 @@ class RAGService:
         )
 
         # Build messages with chat history
-        from llama_index.core.base.llms.types import ChatMessage, MessageRole
-
         messages = chat_history + [
             ChatMessage(role=MessageRole.USER, content=formatted_prompt)
         ]
@@ -365,7 +363,8 @@ class RAGService:
         """
         if self._engine is None:
             return None
-        return self._engine._llm
+        # Cast to Ollama since we know it's the LLM type used in this project
+        return self._engine._llm  # type: ignore[return-value]
 
     def get_llm_from_params(self, params: Dict[str, Any]) -> Ollama:
         """Create an LLM instance from parameters without loading full engine.
@@ -390,7 +389,7 @@ class RAGService:
             return []
 
         try:
-            return self._engine.memory.get_all()
+            return self._engine._memory.get_all()
         except (AttributeError, TypeError):
             return []
 
