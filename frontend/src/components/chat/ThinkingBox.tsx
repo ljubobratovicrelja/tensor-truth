@@ -9,7 +9,11 @@ interface ThinkingBoxProps {
   className?: string;
 }
 
-export function ThinkingBox({ content, isCollapsed = false, className }: ThinkingBoxProps) {
+export function ThinkingBox({
+  content,
+  isCollapsed = false,
+  className,
+}: ThinkingBoxProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(!isCollapsed);
 
@@ -25,16 +29,11 @@ export function ThinkingBox({ content, isCollapsed = false, className }: Thinkin
   const toggleExpanded = () => setExpanded((prev) => !prev);
 
   return (
-    <div
-      className={cn(
-        "border-muted bg-muted/30 mb-3 rounded-lg border",
-        className
-      )}
-    >
+    <div className={cn("border-muted bg-muted/30 mb-3 rounded-lg border", className)}>
       <button
         type="button"
         onClick={toggleExpanded}
-        className="flex w-full items-center justify-between gap-2 border-b border-muted px-3 py-2 hover:bg-muted/50 transition-colors"
+        className="border-muted hover:bg-muted/50 flex w-full items-center justify-between gap-2 border-b px-3 py-2 transition-colors"
       >
         <div className="flex items-center gap-2">
           <Brain className="text-muted-foreground h-4 w-4" />
@@ -50,7 +49,7 @@ export function ThinkingBox({ content, isCollapsed = false, className }: Thinkin
         ref={scrollRef}
         className={cn(
           "overflow-y-auto px-3 py-2 font-mono text-sm transition-all",
-          expanded ? "max-h-48" : "max-h-0 py-0 overflow-hidden"
+          expanded ? "max-h-48" : "max-h-0 overflow-hidden py-0"
         )}
       >
         <pre className="text-muted-foreground whitespace-pre-wrap">{content}</pre>

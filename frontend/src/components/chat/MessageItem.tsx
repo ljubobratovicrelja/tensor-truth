@@ -22,7 +22,12 @@ interface MessageItemProps {
   isStreaming?: boolean;
 }
 
-export function MessageItem({ message, sources, thinking, isStreaming }: MessageItemProps) {
+export function MessageItem({
+  message,
+  sources,
+  thinking,
+  isStreaming,
+}: MessageItemProps) {
   const isUser = message.role === "user";
   const messageSources = sources ?? (message.sources as SourceNode[] | undefined);
   // Use prop thinking (streaming) or message.thinking (saved)
@@ -54,7 +59,9 @@ export function MessageItem({ message, sources, thinking, isStreaming }: Message
   };
 
   return (
-    <div className={cn("flex gap-3 py-4", isUser ? "md:flex-row-reverse" : "md:flex-row")}>
+    <div
+      className={cn("flex gap-3 py-4", isUser ? "md:flex-row-reverse" : "md:flex-row")}
+    >
       {/* Side icon - hidden on mobile, visible on md+ */}
       <div
         className={cn(
@@ -80,7 +87,7 @@ export function MessageItem({ message, sources, thinking, isStreaming }: Message
           {!isUser && !isStreaming && (
             <button
               onClick={handleCopy}
-              className="absolute right-2 top-2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-background/50 hover:text-foreground group-hover:opacity-100 focus:opacity-100"
+              className="text-muted-foreground hover:bg-background/50 hover:text-foreground absolute top-2 right-2 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
               title="Copy (Shift+click for rich text)"
             >
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}

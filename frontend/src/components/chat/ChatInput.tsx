@@ -120,7 +120,7 @@ export function ChatInput({
                 }
                 disabled={isStreaming}
               >
-                <SelectTrigger className="h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs hover:bg-muted">
+                <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
                   <Bot className="h-3.5 w-3.5" />
                   <SelectValue placeholder="Model" />
                 </SelectTrigger>

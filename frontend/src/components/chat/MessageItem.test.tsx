@@ -115,19 +115,24 @@ describe("MessageItem", () => {
       const { container } = render(<MessageItem message={message} />);
 
       // KaTeX renders math in .katex or .math spans
-      const mathElement = container.querySelector(".katex, .math-inline, [class*='katex']");
+      const mathElement = container.querySelector(
+        ".katex, .math-inline, [class*='katex']"
+      );
       expect(mathElement).toBeTruthy();
     });
 
     it("renders block math with $$ delimiters", () => {
       const message = {
         role: "assistant" as const,
-        content: "The quadratic formula:\n\n$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$\n\nIs useful.",
+        content:
+          "The quadratic formula:\n\n$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$\n\nIs useful.",
       };
       const { container } = render(<MessageItem message={message} />);
 
       // KaTeX renders display math differently
-      const mathElement = container.querySelector(".katex-display, .math-display, [class*='katex']");
+      const mathElement = container.querySelector(
+        ".katex-display, .math-display, [class*='katex']"
+      );
       expect(mathElement).toBeTruthy();
     });
   });

@@ -45,10 +45,13 @@ export function MessageList({
   });
 
   // Combine refs - we need both for scroll tracking and auto-scroll
-  const combinedRef = useCallback((node: HTMLDivElement | null) => {
-    setScrollContainer(node);
-    scrollRef(node);
-  }, [scrollRef]);
+  const combinedRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      setScrollContainer(node);
+      scrollRef(node);
+    },
+    [scrollRef]
+  );
 
   // Update header visibility based on scroll (mobile only)
   useEffect(() => {
@@ -120,7 +123,13 @@ export function MessageList({
     if (distanceFromBottom < 150) {
       scrollContainer.scrollTop = scrollHeight;
     }
-  }, [scrollContainer, messages, pendingUserMessage, streamingContent, streamingThinking]);
+  }, [
+    scrollContainer,
+    messages,
+    pendingUserMessage,
+    streamingContent,
+    streamingThinking,
+  ]);
 
   const scrollToBottom = useCallback(() => {
     scrollContainer?.scrollTo({
@@ -186,8 +195,8 @@ export function MessageList({
         size="icon"
         variant="secondary"
         className={cn(
-          "fixed bottom-6 right-4 z-10 h-8 w-8 rounded-full opacity-60 shadow-md transition-all hover:opacity-100",
-          "md:bottom-44 md:right-8",
+          "fixed right-4 bottom-6 z-10 h-8 w-8 rounded-full opacity-60 shadow-md transition-all hover:opacity-100",
+          "md:right-8 md:bottom-44",
           showScrollButton
             ? "translate-y-0 scale-100"
             : "pointer-events-none translate-y-4 scale-75 opacity-0"

@@ -117,9 +117,7 @@ describe("useWebSocketChat", () => {
     const ws = MockWebSocket.instances[0];
 
     await waitFor(() => {
-      expect(ws.sentMessages).toContainEqual(
-        JSON.stringify({ prompt: "Test prompt" })
-      );
+      expect(ws.sentMessages).toContainEqual(JSON.stringify({ prompt: "Test prompt" }));
     });
   });
 
@@ -192,9 +190,7 @@ describe("useWebSocketChat", () => {
       ws.simulateMessage({ type: "thinking", content: "this." });
     });
 
-    expect(useChatStore.getState().streamingThinking).toBe(
-      "Let me analyze this."
-    );
+    expect(useChatStore.getState().streamingThinking).toBe("Let me analyze this.");
   });
 
   it("should clear status on streaming finish", async () => {

@@ -18,12 +18,7 @@ interface StreamingTextProps {
  */
 export function StreamingText({ content, isStreaming, className }: StreamingTextProps) {
   return (
-    <div
-      className={cn(
-        "chat-markdown max-w-none",
-        className
-      )}
-    >
+    <div className={cn("chat-markdown max-w-none", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[

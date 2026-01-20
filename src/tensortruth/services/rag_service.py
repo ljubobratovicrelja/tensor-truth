@@ -207,8 +207,7 @@ class RAGService:
         # Build context and format the prompt
         context_str = "\n\n".join([n.get_content() for n in source_nodes])
         formatted_prompt = (
-            f"Context information:\n{context_str}\n\n"
-            f"Query: {prompt}\n\nAnswer:"
+            f"Context information:\n{context_str}\n\n" f"Query: {prompt}\n\nAnswer:"
         )
 
         # Build messages with chat history

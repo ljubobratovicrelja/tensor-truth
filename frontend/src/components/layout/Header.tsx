@@ -28,7 +28,7 @@ export function Header() {
   return (
     <header
       className={cn(
-        "border-border flex h-14 items-center gap-2 border-b bg-background px-3 md:gap-4 md:px-4",
+        "border-border bg-background flex h-14 items-center gap-2 border-b px-3 md:gap-4 md:px-4",
         "transition-transform duration-300 ease-in-out",
         // On mobile, slide up when hidden
         isMobile && headerHidden && "-translate-y-full"

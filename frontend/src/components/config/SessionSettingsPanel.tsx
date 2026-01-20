@@ -15,11 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
@@ -89,9 +85,7 @@ export function SessionSettingsPanel({
       setContextWindow(
         (currentParams.context_window as number) ?? config.ui.default_context_window
       );
-      setMaxTokens(
-        (currentParams.max_tokens as number) ?? config.ui.default_max_tokens
-      );
+      setMaxTokens((currentParams.max_tokens as number) ?? config.ui.default_max_tokens);
       setRerankerModel(
         (currentParams.reranker_model as string) ?? config.ui.default_reranker
       );
@@ -99,7 +93,8 @@ export function SessionSettingsPanel({
         (currentParams.reranker_top_n as number) ?? config.ui.default_top_n
       );
       setConfidenceCutoff(
-        (currentParams.confidence_cutoff as number) ?? config.ui.default_confidence_threshold
+        (currentParams.confidence_cutoff as number) ??
+          config.ui.default_confidence_threshold
       );
       setConfidenceCutoffHard(
         (currentParams.confidence_cutoff_hard as number) ??

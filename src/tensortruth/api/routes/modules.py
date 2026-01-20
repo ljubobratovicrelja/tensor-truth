@@ -155,5 +155,7 @@ async def list_favorite_presets() -> PresetsResponse:
     favorites = get_favorites(presets_file)
 
     return PresetsResponse(
-        presets=[PresetInfo(name=name, config=config) for name, config in favorites.items()]
+        presets=[
+            PresetInfo(name=name, config=config) for name, config in favorites.items()
+        ]
     )

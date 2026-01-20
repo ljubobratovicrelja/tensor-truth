@@ -75,7 +75,7 @@ export function Sidebar({ children }: SidebarProps) {
         )}
         style={{ width: MOBILE_WIDTH }}
       >
-        <div className="flex h-full flex-col border-r border-border">{children}</div>
+        <div className="border-border flex h-full flex-col border-r">{children}</div>
       </aside>
     );
   }
@@ -90,7 +90,7 @@ export function Sidebar({ children }: SidebarProps) {
       style={{ width: sidebarOpen ? sidebarWidth : 0 }}
     >
       <div
-        className="flex h-full flex-col border-r border-border"
+        className="border-border flex h-full flex-col border-r"
         style={{ width: sidebarWidth }}
       >
         {children}
@@ -99,7 +99,7 @@ export function Sidebar({ children }: SidebarProps) {
       {sidebarOpen && (
         <div
           onMouseDown={handleMouseDown}
-          className="absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-primary/20 active:bg-primary/30"
+          className="hover:bg-primary/20 active:bg-primary/30 absolute top-0 right-0 h-full w-1 cursor-col-resize"
         />
       )}
     </aside>

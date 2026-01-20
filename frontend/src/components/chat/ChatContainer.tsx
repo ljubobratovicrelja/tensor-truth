@@ -54,8 +54,9 @@ export function ChatContainer() {
 
   // Use urlSessionId directly for queries (source of truth is the URL)
   const { data: sessionData, error: sessionError } = useSession(urlSessionId ?? null);
-  const { data: messagesData, isLoading: messagesLoading } =
-    useSessionMessages(urlSessionId ?? null);
+  const { data: messagesData, isLoading: messagesLoading } = useSessionMessages(
+    urlSessionId ?? null
+  );
   const updateSession = useUpdateSession();
 
   // Redirect to home if session doesn't exist
@@ -134,9 +135,7 @@ export function ChatContainer() {
     const currentParams = sessionData?.params ?? {};
     const newParams = model
       ? { ...currentParams, model }
-      : Object.fromEntries(
-          Object.entries(currentParams).filter(([k]) => k !== "model")
-        );
+      : Object.fromEntries(Object.entries(currentParams).filter(([k]) => k !== "model"));
     updateSession.mutate(
       { sessionId: urlSessionId, data: { params: newParams } },
       {

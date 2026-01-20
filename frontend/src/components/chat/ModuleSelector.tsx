@@ -1,11 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Database, Check, Book, FileText, Package, Folder } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useModules } from "@/hooks";
@@ -109,7 +105,7 @@ export function ModuleSelector({
       <PopoverContent
         align="start"
         side="top"
-        className="w-80 max-h-[400px] flex flex-col p-0"
+        className="flex max-h-[400px] w-80 flex-col p-0"
         onInteractOutside={(e) => {
           // Prevent closing if there are unsaved changes
           if (hasChanges) {
@@ -118,7 +114,7 @@ export function ModuleSelector({
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b px-3 py-2 flex-shrink-0">
+        <div className="flex flex-shrink-0 items-center justify-between border-b px-3 py-2">
           <div className="flex items-center gap-2">
             <Database className="text-muted-foreground h-4 w-4" />
             <span className="text-sm font-medium">Knowledge Modules</span>
@@ -136,7 +132,7 @@ export function ModuleSelector({
         </div>
 
         {/* Module list - scrollable */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="p-2">
             {isLoading ? (
               <div className="text-muted-foreground py-4 text-center text-sm">
@@ -200,7 +196,7 @@ export function ModuleSelector({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t px-3 py-2 flex-shrink-0">
+        <div className="flex flex-shrink-0 items-center justify-between border-t px-3 py-2">
           <span className="text-muted-foreground text-xs">
             {selectedCount === 0
               ? "No modules selected (LLM only)"

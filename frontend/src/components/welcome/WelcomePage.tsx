@@ -41,10 +41,12 @@ export function WelcomePage() {
       const presetModel = preset?.config?.model as string | undefined;
 
       const effectiveModules = selectedModules.length > 0 ? selectedModules : undefined;
-      const effectiveModel = selectedModel && selectedModel !== "__none__" ? selectedModel : undefined;
+      const effectiveModel =
+        selectedModel && selectedModel !== "__none__" ? selectedModel : undefined;
 
       // Build params: start with session settings, add model if selected
-      const baseParams = Object.keys(sessionParams).length > 0 ? { ...sessionParams } : {};
+      const baseParams =
+        Object.keys(sessionParams).length > 0 ? { ...sessionParams } : {};
       const params = preset?.config
         ? { ...preset.config, model: presetModel }
         : effectiveModel
@@ -140,7 +142,7 @@ export function WelcomePage() {
 
                 {/* Model selector */}
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger className="h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs hover:bg-muted">
+                  <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
                     <Bot className="h-3.5 w-3.5" />
                     <SelectValue placeholder="Model" />
                   </SelectTrigger>
@@ -191,7 +193,9 @@ export function WelcomePage() {
         {/* Favorite Presets */}
         {favoritesData && favoritesData.presets.length > 0 && (
           <div className="space-y-3">
-            <p className="text-muted-foreground text-center text-sm">Quick start with a preset</p>
+            <p className="text-muted-foreground text-center text-sm">
+              Quick start with a preset
+            </p>
             <div className="flex flex-wrap items-center justify-center gap-2">
               {favoritesData.presets.map((preset) => (
                 <Button

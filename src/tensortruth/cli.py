@@ -99,8 +99,8 @@ def run_ui():
     """Entry point for React frontend dev server."""
     import argparse
     import os
-    import subprocess
     import shutil
+    import subprocess
 
     parser = argparse.ArgumentParser(
         description="Start the TensorTruth React frontend dev server"
@@ -126,7 +126,9 @@ def run_ui():
 
     if not frontend_dir.exists():
         print(f"Error: Frontend directory not found at {frontend_dir}", file=sys.stderr)
-        print("Make sure you're running from a development installation.", file=sys.stderr)
+        print(
+            "Make sure you're running from a development installation.", file=sys.stderr
+        )
         sys.exit(1)
 
     # Check if npm is available

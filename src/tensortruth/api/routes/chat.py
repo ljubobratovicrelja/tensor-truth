@@ -5,7 +5,6 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
-from tensortruth.app_utils.title_generation import generate_smart_title_async
 from tensortruth.api.deps import (
     ConfigServiceDep,
     IntentServiceDep,
@@ -23,6 +22,7 @@ from tensortruth.api.schemas import (
     IntentResponse,
     SourceNode,
 )
+from tensortruth.app_utils.title_generation import generate_smart_title_async
 
 # REST endpoints (mounted under /api)
 rest_router = APIRouter()
