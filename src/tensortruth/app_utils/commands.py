@@ -630,7 +630,7 @@ class BrowseAgentCommand(Command):
                 config = st.session_state.config
                 default_min_pages = config.agent.min_pages_required
             except (AttributeError, KeyError):
-                default_min_pages = 2  # Fallback if config unavailable
+                default_min_pages = 3  # Fallback if config unavailable
 
             # Execute agent with two-model strategy
             # Fast model for reasoning/decisions, main model for final synthesis

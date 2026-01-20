@@ -158,7 +158,7 @@ Available tools:
 - search_web: Search DuckDuckGo for information
 - fetch_page: Fetch and read a specific URL (MUST call {min_pages}+ times)
 
-REMINDER: You must fetch at least {min_pages} pages before answering. One page is never enough.
+REMINDER: Call fetch_page at least {min_pages} times before answering. One page is never enough.
 Sources will be added automatically - do NOT add a "Sources:" section.
 """
 
@@ -187,7 +187,7 @@ class MCPBrowseAgent:
         mcp_servers: Optional[list[MCPServerConfig]] = None,
         synthesis_model: Optional[str] = None,
         max_iterations: int = 10,
-        min_pages_required: int = 2,
+        min_pages_required: int = 3,
         context_window: int = 8192,
         progress_callback: Optional[Callable[[str], None]] = None,
         stream_callback: Optional[Callable[[str], None]] = None,
@@ -570,7 +570,7 @@ def browse_agent(
     chat_history: Optional[list] = None,
     synthesis_model: Optional[str] = None,
     max_iterations: int = 10,
-    min_pages_required: int = 2,
+    min_pages_required: int = 3,
     progress_callback: Optional[Callable[[str], None]] = None,
     stream_callback: Optional[Callable[[str], None]] = None,
     context_window: int = 8192,

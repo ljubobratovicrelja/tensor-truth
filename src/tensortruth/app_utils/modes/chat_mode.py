@@ -254,10 +254,10 @@ def _execute_browse_agent(
         config = st.session_state.config
         default_min_pages = config.agent.min_pages_required
     except (AttributeError, KeyError):
-        default_min_pages = 2  # Fallback if config unavailable
+        default_min_pages = 3  # Fallback if config unavailable
 
-    # Note: query is already enhanced with context via
-    # intent_classifier.enhance_query_with_context()
+    # Note: at this point, `query` has already been enhanced with context
+    # by the intent classifier (see _handle_natural_language_agent).
     # We do NOT pass chat_history to browse_agent because it would
     # cause the agent to answer from memory instead of using web tools.
     result = browse_agent(
