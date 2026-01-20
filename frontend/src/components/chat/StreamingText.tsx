@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
+import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { cn } from "@/lib/utils";
@@ -38,7 +39,7 @@ export function StreamingText({ content, isStreaming, className }: StreamingText
       )}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
           rehypeHighlight,
           rehypeKatex,

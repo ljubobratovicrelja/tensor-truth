@@ -1,6 +1,5 @@
 """Chat endpoints including WebSocket streaming."""
 
-import asyncio
 import json
 from typing import List
 
@@ -194,11 +193,8 @@ async def websocket_chat(
             )
             session_service.save(data)
 
-            # Start title generation in parallel if this is the first message
-            # This runs concurrently with RAG/streaming for minimal delay
-            title_task = None
-            if session_service.needs_title_update(session_id, data):
-                title_task = asyncio.create_task(generate_smart_title_async(prompt))
+            # Check if we need to generate a title (first message in session)
+            needs_title = session_service.needs_title_update(session_id, data)
 
             # Stream response with status and thinking support
             full_response = ""
@@ -256,7 +252,7 @@ async def websocket_chat(
                     "type": "done",
                     "content": full_response,
                     "confidence_level": "llm_only" if llm_only_mode else "normal",
-                    "title_pending": title_task is not None,
+                    "title_pending": needs_title,
                 }
             )
 
@@ -269,10 +265,11 @@ async def websocket_chat(
             data = session_service.add_message(session_id, assistant_message, data)
             session_service.save(data)
 
-            # Wait for title generation to complete and send to client
-            if title_task:
+            # Generate title from the response (not the prompt) for better context
+            # This runs after streaming completes but doesn't block the UI
+            if needs_title:
                 try:
-                    title = await title_task
+                    title = await generate_smart_title_async(full_response)
                     # Update session with new title
                     fresh_data = session_service.load()
                     fresh_data = session_service.update_title(

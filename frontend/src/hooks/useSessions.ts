@@ -63,7 +63,11 @@ export function useDeleteSession() {
 
   return useMutation({
     mutationFn: (sessionId: string) => deleteSession(sessionId),
-    onSuccess: () => {
+    onSuccess: (_, sessionId) => {
+      // Remove session-specific queries to prevent 404 refetch attempts
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.session(sessionId) });
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.messages(sessionId) });
+      // Refresh the sessions list
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
     },
   });

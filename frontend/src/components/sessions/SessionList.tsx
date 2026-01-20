@@ -25,12 +25,13 @@ export function SessionList() {
   };
 
   const handleDelete = async (sessionId: string) => {
+    const isCurrentSession = activeSessionId === sessionId;
     try {
       await deleteSession.mutateAsync(sessionId);
-      if (activeSessionId === sessionId) {
-        navigate("/");
-      }
       toast.success("Session deleted");
+      if (isCurrentSession) {
+        navigate("/", { replace: true });
+      }
     } catch (error) {
       console.error("Failed to delete session:", error);
       toast.error("Failed to delete session");

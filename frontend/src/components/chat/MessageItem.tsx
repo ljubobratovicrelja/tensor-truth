@@ -2,6 +2,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
+import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { User, Bot } from "lucide-react";
@@ -72,7 +73,7 @@ export function MessageItem({ message, sources, thinking, isStreaming }: Message
           ) : (
             <div className="chat-markdown max-w-none">
               <ReactMarkdown
-                remarkPlugins={[remarkMath]}
+                remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[
                   rehypeHighlight,
                   rehypeKatex,

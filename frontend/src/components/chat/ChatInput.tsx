@@ -1,7 +1,15 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Square } from "lucide-react";
+import { Send, Square, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useModels } from "@/hooks";
 import { ModuleSelector } from "./ModuleSelector";
 
 interface ChatInputProps {
@@ -11,6 +19,8 @@ interface ChatInputProps {
   placeholder?: string;
   selectedModules?: string[];
   onModulesChange?: (modules: string[]) => void;
+  selectedModel?: string;
+  onModelChange?: (model: string | null) => void;
 }
 
 export function ChatInput({
@@ -20,8 +30,11 @@ export function ChatInput({
   placeholder = "Type your message...",
   selectedModules = [],
   onModulesChange,
+  selectedModel,
+  onModelChange,
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
+  const { data: modelsData, isLoading: modelsLoading } = useModels();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -78,7 +91,7 @@ export function ChatInput({
 
         {/* Bottom toolbar */}
         <div className="absolute right-2 bottom-2 left-2 flex items-center justify-between">
-          {/* Left side - module selector */}
+          {/* Left side - module selector and model selector */}
           <div className="flex items-center gap-1">
             {onModulesChange && (
               <ModuleSelector
@@ -86,6 +99,38 @@ export function ChatInput({
                 onModulesChange={onModulesChange}
                 disabled={isStreaming}
               />
+            )}
+            {onModelChange && (
+              <Select
+                value={selectedModel || "__none__"}
+                onValueChange={(value) =>
+                  onModelChange(value === "__none__" ? null : value)
+                }
+                disabled={isStreaming}
+              >
+                <SelectTrigger className="h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs hover:bg-muted">
+                  <Bot className="h-3.5 w-3.5" />
+                  <SelectValue placeholder="Model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">
+                    <span className="text-muted-foreground">Default model</span>
+                  </SelectItem>
+                  {modelsLoading ? (
+                    <SelectItem value="loading" disabled>
+                      Loading...
+                    </SelectItem>
+                  ) : (
+                    modelsData?.models
+                      .toSorted((a, b) => a.name.localeCompare(b.name))
+                      .map((model) => (
+                        <SelectItem key={model.name} value={model.name}>
+                          {model.name}
+                        </SelectItem>
+                      ))
+                  )}
+                </SelectContent>
+              </Select>
             )}
           </div>
 

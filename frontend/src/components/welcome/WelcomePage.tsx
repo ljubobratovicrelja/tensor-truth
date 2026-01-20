@@ -140,11 +140,13 @@ export function WelcomePage() {
                         Loading...
                       </SelectItem>
                     ) : (
-                      modelsData?.models.map((model) => (
-                        <SelectItem key={model.name} value={model.name}>
-                          {model.name}
-                        </SelectItem>
-                      ))
+                      modelsData?.models
+                        .toSorted((a, b) => a.name.localeCompare(b.name))
+                        .map((model) => (
+                          <SelectItem key={model.name} value={model.name}>
+                            {model.name}
+                          </SelectItem>
+                        ))
                     )}
                   </SelectContent>
                 </Select>

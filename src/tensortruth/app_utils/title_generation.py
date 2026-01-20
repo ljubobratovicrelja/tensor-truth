@@ -65,9 +65,10 @@ async def generate_smart_title_async(text, model_name="qwen2.5:0.5b", keep_alive
     try:
         # Prompt designed to minimize fluff and prevent markdown
         prompt = (
-            f"Summarize this query into a concise 3-5 word title. "
-            f"Return ONLY plain text, no markdown formatting, no quotes, no punctuation. "
-            f"Query: {text}"
+            f"Generate a 2-4 word title for this text. "
+            f"MAXIMUM 4 WORDS. No sentences. No punctuation. Just a short label. "
+            f"Examples: 'RAG Overview', 'Python Basics', 'Database Design'. "
+            f"Text: {text[:1000]}"
         )
 
         payload = {
@@ -106,6 +107,10 @@ async def generate_smart_title_async(text, model_name="qwen2.5:0.5b", keep_alive
                     # Collapse multiple spaces
                     while "  " in title:
                         title = title.replace("  ", " ")
+                    # Enforce max 5 words as safeguard
+                    words = title.split()
+                    if len(words) > 5:
+                        title = " ".join(words[:5])
                     if title:
                         logger.debug(f"Title generation success: '{title}'")
                         return title

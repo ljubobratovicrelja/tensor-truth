@@ -127,7 +127,24 @@ export function ChatContainer() {
     );
   };
 
+  const handleModelChange = (model: string | null) => {
+    if (!urlSessionId) return;
+    const currentParams = sessionData?.params ?? {};
+    const newParams = model
+      ? { ...currentParams, model }
+      : Object.fromEntries(
+          Object.entries(currentParams).filter(([k]) => k !== "model")
+        );
+    updateSession.mutate(
+      { sessionId: urlSessionId, data: { params: newParams } },
+      {
+        onError: () => toast.error("Failed to update model"),
+      }
+    );
+  };
+
   const currentModules = sessionData?.modules ?? [];
+  const currentModel = (sessionData?.params?.model as string) || undefined;
 
   return (
     <div className="flex h-full flex-col">
@@ -161,6 +178,8 @@ export function ChatContainer() {
             placeholder={isStreaming ? "Generating response..." : undefined}
             selectedModules={currentModules}
             onModulesChange={handleModulesChange}
+            selectedModel={currentModel}
+            onModelChange={handleModelChange}
           />
         </div>
       </div>
