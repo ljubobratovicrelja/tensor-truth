@@ -95,5 +95,60 @@ def build_db():
     sys.exit(build_main())
 
 
+def run_ui():
+    """Entry point for React frontend dev server."""
+    import os
+    import subprocess
+    import shutil
+
+    # Find the frontend directory relative to the package
+    package_dir = Path(__file__).parent.resolve()
+    # Go up to project root: src/tensortruth -> src -> project_root
+    project_root = package_dir.parent.parent
+    frontend_dir = project_root / "frontend"
+
+    if not frontend_dir.exists():
+        print(f"Error: Frontend directory not found at {frontend_dir}", file=sys.stderr)
+        print("Make sure you're running from a development installation.", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if npm is available
+    npm_path = shutil.which("npm")
+    if not npm_path:
+        print("Error: npm is not installed or not in PATH.", file=sys.stderr)
+        print("Install Node.js from https://nodejs.org/", file=sys.stderr)
+        sys.exit(1)
+
+    # Check if node_modules exists
+    node_modules = frontend_dir / "node_modules"
+    if not node_modules.exists():
+        print("📦 Installing frontend dependencies...")
+        result = subprocess.run(
+            ["npm", "install"],
+            cwd=frontend_dir,
+            env={**os.environ},
+        )
+        if result.returncode != 0:
+            print("Error: Failed to install dependencies.", file=sys.stderr)
+            sys.exit(1)
+
+    print("🚀 Starting frontend dev server...")
+    print(f"   Directory: {frontend_dir}")
+    print("   URL: http://localhost:5173")
+    print()
+
+    # Run npm run dev
+    try:
+        result = subprocess.run(
+            ["npm", "run", "dev"],
+            cwd=frontend_dir,
+            env={**os.environ},
+        )
+        sys.exit(result.returncode)
+    except KeyboardInterrupt:
+        print("\n👋 Frontend server stopped.")
+        sys.exit(0)
+
+
 if __name__ == "__main__":
     main()
