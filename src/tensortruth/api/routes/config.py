@@ -81,3 +81,12 @@ async def get_default_config() -> ConfigResponse:
 
     config = TensorTruthConfig.create_default()
     return _config_to_response(config)
+
+
+@router.get("/devices")
+async def get_available_devices() -> dict:
+    """Get list of available compute devices for this system."""
+    from tensortruth.app_utils.helpers import get_system_devices
+
+    devices = get_system_devices()
+    return {"devices": devices}

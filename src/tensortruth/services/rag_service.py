@@ -7,6 +7,7 @@ and a cleaner interface for the UI layer.
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
+from llama_index.core.base.llms.types import ChatMessage, MessageRole
 from llama_index.core.chat_engine import CondensePlusContextChatEngine
 from llama_index.llms.ollama import Ollama
 
@@ -177,8 +178,6 @@ class RAGService:
         condensed_question = prompt
         if condenser and chat_history:
             try:
-                from llama_index.core.base.llms.types import ChatMessage, MessageRole
-
                 # Build condensed question using LLM
                 condenser_prompt = condenser.format(
                     chat_history="\n".join(
@@ -302,8 +301,6 @@ class RAGService:
         Returns:
             Final RAGResponse with complete text (no sources).
         """
-        from llama_index.core.base.llms.types import ChatMessage, MessageRole
-
         # Create LLM instance
         llm = get_llm(params)
 

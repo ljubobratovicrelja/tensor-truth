@@ -166,7 +166,7 @@ CUSTOM_CONDENSE_PROMPT_TEMPLATE = (
 )
 
 
-def get_embed_model(device: str = "cuda") -> HuggingFaceEmbedding:
+def get_embed_model(device: str = "cpu") -> HuggingFaceEmbedding:
     """Load HuggingFace embedding model.
 
     Args:
@@ -375,8 +375,23 @@ def load_engine_for_modules(
     if engine_params is None:
         engine_params = {}
 
-    # Determine devices
-    rag_device = engine_params.get("rag_device", "cuda")
+    # Determine devices - use session param, fallback to config default, then auto-detect
+    if "rag_device" not in engine_params:
+        try:
+            # Try to get default from config
+            config = load_config()
+            rag_device = config.rag.default_device
+        except (ImportError, Exception):
+            # Fallback to auto-detection if config unavailable
+            try:
+                from tensortruth.app_utils.helpers import get_system_devices
+
+                available_devices = get_system_devices()
+                rag_device = available_devices[0] if available_devices else "cpu"
+            except (ImportError, Exception):
+                rag_device = "cpu"
+    else:
+        rag_device = engine_params["rag_device"]
 
     # Calculate adaptive similarity_top_k based on reranker_top_n
     # Retrieve 2-3x more candidates than final target to ensure quality

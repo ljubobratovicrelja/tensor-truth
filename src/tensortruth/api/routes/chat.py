@@ -106,10 +106,11 @@ async def chat(
                 full_response += chunk.text
 
     # Add assistant response to session
+    assistant_message: dict = {"role": "assistant", "content": full_response}
+    if sources:
+        assistant_message["sources"] = [s.model_dump() for s in sources]
     data = session_service.load()  # Reload in case of concurrent updates
-    data = session_service.add_message(
-        session_id, {"role": "assistant", "content": full_response}, data
-    )
+    data = session_service.add_message(session_id, assistant_message, data)
     session_service.save(data)
 
     return ChatResponse(
@@ -258,9 +259,11 @@ async def websocket_chat(
 
             # Save assistant response (include thinking for UI display, but it won't
             # be included in LLM chat history - that's handled by RAG service memory)
-            assistant_message = {"role": "assistant", "content": full_response}
+            assistant_message: dict = {"role": "assistant", "content": full_response}
             if full_thinking:
                 assistant_message["thinking"] = full_thinking
+            if sources:
+                assistant_message["sources"] = [s.model_dump() for s in sources]
             data = session_service.load()
             data = session_service.add_message(session_id, assistant_message, data)
             session_service.save(data)
