@@ -60,14 +60,24 @@ export async function apiPatch<T, D = unknown>(path: string, data: D): Promise<T
   return handleResponse<T>(response);
 }
 
-export async function apiDelete<T>(path: string): Promise<T> {
+export async function apiDelete(path: string): Promise<void> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "DELETE",
     headers: {
       "Content-Type": "application/json",
     },
   });
-  return handleResponse<T>(response);
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try {
+      const error = (await response.json()) as ApiError;
+      detail = error.detail || detail;
+    } catch {
+      // Ignore JSON parsing errors
+    }
+    throw new ApiRequestError(response.status, detail);
+  }
+  // 204 No Content - don't try to parse JSON
 }
 
 export async function apiPostFormData<T>(path: string, formData: FormData): Promise<T> {

@@ -11,11 +11,8 @@ export async function uploadPdf(sessionId: string, file: File): Promise<PDFMetad
   return apiPostFormData<PDFMetadata>(`/sessions/${sessionId}/pdfs`, formData);
 }
 
-export async function deletePdf(
-  sessionId: string,
-  pdfId: string
-): Promise<{ message: string }> {
-  return apiDelete<{ message: string }>(`/sessions/${sessionId}/pdfs/${pdfId}`);
+export async function deletePdf(sessionId: string, pdfId: string): Promise<void> {
+  return apiDelete(`/sessions/${sessionId}/pdfs/${pdfId}`);
 }
 
 export async function reindexPdfs(sessionId: string): Promise<ReindexResponse> {

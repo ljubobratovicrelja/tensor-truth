@@ -28,8 +28,8 @@ export async function updateSession(
   return apiPatch<SessionResponse, SessionUpdate>(`/sessions/${sessionId}`, data);
 }
 
-export async function deleteSession(sessionId: string): Promise<{ message: string }> {
-  return apiDelete<{ message: string }>(`/sessions/${sessionId}`);
+export async function deleteSession(sessionId: string): Promise<void> {
+  return apiDelete(`/sessions/${sessionId}`);
 }
 
 export async function getSessionMessages(sessionId: string): Promise<MessagesResponse> {

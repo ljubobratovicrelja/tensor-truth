@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
-import { useSessions, useDeleteSession } from "@/hooks";
+import { toast } from "sonner";
+import { useSessions, useDeleteSession, useUpdateSession } from "@/hooks";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NewSessionDialog } from "./NewSessionDialog";
@@ -8,6 +9,7 @@ import { SessionItem } from "./SessionItem";
 export function SessionList() {
   const { data, isLoading, error } = useSessions();
   const deleteSession = useDeleteSession();
+  const updateSession = useUpdateSession();
   const navigate = useNavigate();
   const { sessionId: activeSessionId } = useParams<{ sessionId: string }>();
 
@@ -17,8 +19,20 @@ export function SessionList() {
       if (activeSessionId === sessionId) {
         navigate("/");
       }
+      toast.success("Session deleted");
     } catch (error) {
       console.error("Failed to delete session:", error);
+      toast.error("Failed to delete session");
+    }
+  };
+
+  const handleRename = async (sessionId: string, newTitle: string) => {
+    try {
+      await updateSession.mutateAsync({ sessionId, data: { title: newTitle } });
+      toast.success("Session renamed");
+    } catch (error) {
+      console.error("Failed to rename session:", error);
+      toast.error("Failed to rename session");
     }
   };
 
@@ -52,6 +66,7 @@ export function SessionList() {
                 isActive={activeSessionId === session.session_id}
                 onClick={() => navigate(`/chat/${session.session_id}`)}
                 onDelete={() => handleDelete(session.session_id)}
+                onRename={(newTitle) => handleRename(session.session_id, newTitle)}
               />
             ))
           )}
