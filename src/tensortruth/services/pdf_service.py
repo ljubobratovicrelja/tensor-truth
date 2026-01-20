@@ -66,6 +66,7 @@ class PDFService:
         Returns:
             PDFMetadata with file info.
         """
+
         # Create a mock file-like object for the PDF handler
         class MockUploadedFile:
             def __init__(self, content: bytes, name: str):

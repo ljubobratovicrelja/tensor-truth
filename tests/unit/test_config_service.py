@@ -1,9 +1,9 @@
 """Unit tests for ConfigService."""
 
-import yaml
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tensortruth.services.config_service import ConfigService
 

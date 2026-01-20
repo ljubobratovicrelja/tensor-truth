@@ -48,7 +48,9 @@ class SessionService:
             migrated = False
             for session in raw_data.get("sessions", {}).values():
                 if "title_needs_update" not in session:
-                    session["title_needs_update"] = session.get("title") == "New Session"
+                    session["title_needs_update"] = (
+                        session.get("title") == "New Session"
+                    )
                     migrated = True
 
             # Save migrated data back to file
@@ -78,9 +80,7 @@ class SessionService:
                 filtered_sessions[session_id] = session
 
         # Create data to save
-        save_data = SessionData(
-            current_id=data.current_id, sessions=filtered_sessions
-        )
+        save_data = SessionData(current_id=data.current_id, sessions=filtered_sessions)
 
         # Ensure parent directory exists
         self.sessions_file.parent.mkdir(parents=True, exist_ok=True)

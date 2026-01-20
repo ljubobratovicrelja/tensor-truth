@@ -257,7 +257,10 @@ class TestSessionServiceDelete:
         assert new_data.current_id is None
 
     def test_delete_with_session_dir(
-        self, session_service: SessionService, sample_session_data: SessionData, tmp_path: Path
+        self,
+        session_service: SessionService,
+        sample_session_data: SessionData,
+        tmp_path: Path,
     ):
         """Delete removes session directory if provided."""
         session_dir = tmp_path / "session-1"
@@ -356,5 +359,10 @@ class TestSessionServiceHelpers:
         self, session_service: SessionService, sample_session_data: SessionData
     ):
         """Needs title update returns correct flag value."""
-        assert session_service.needs_title_update("session-1", sample_session_data) is False
-        assert session_service.needs_title_update("session-2", sample_session_data) is True
+        assert (
+            session_service.needs_title_update("session-1", sample_session_data)
+            is False
+        )
+        assert (
+            session_service.needs_title_update("session-2", sample_session_data) is True
+        )

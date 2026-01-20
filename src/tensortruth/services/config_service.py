@@ -62,7 +62,9 @@ class ConfigService:
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
         with open(self.config_file, "w") as f:
-            yaml.safe_dump(config.to_dict(), f, default_flow_style=False, sort_keys=False)
+            yaml.safe_dump(
+                config.to_dict(), f, default_flow_style=False, sort_keys=False
+            )
 
     def update(self, **kwargs: Any) -> TensorTruthConfig:
         """Update specific config values.

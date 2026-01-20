@@ -45,7 +45,9 @@ class RAGService:
             config = load_config()
 
         self.config = config
-        self.indexes_dir = Path(indexes_dir) if indexes_dir else Path(get_base_index_dir())
+        self.indexes_dir = (
+            Path(indexes_dir) if indexes_dir else Path(get_base_index_dir())
+        )
 
         self._engine: Optional[CondensePlusContextChatEngine] = None
         self._current_config_hash: Optional[Tuple] = None
