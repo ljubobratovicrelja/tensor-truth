@@ -122,7 +122,8 @@ export function ChatInput({
                     </SelectItem>
                   ) : (
                     modelsData?.models
-                      .toSorted((a, b) => a.name.localeCompare(b.name))
+                      .slice()
+                      .sort((a, b) => a.name.localeCompare(b.name))
                       .map((model) => (
                         <SelectItem key={model.name} value={model.name}>
                           {model.name}

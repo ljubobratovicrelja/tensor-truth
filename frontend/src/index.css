@@ -64,6 +64,10 @@
   * {
     @apply border-border;
   }
+  html,
+  body {
+    @apply overflow-x-hidden;
+  }
   body {
     @apply bg-background text-foreground;
     font-family:
@@ -318,6 +322,9 @@
   /* Tables */
   .chat-markdown table {
     @apply my-4 w-full text-sm border-collapse;
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .chat-markdown th {
@@ -344,9 +351,8 @@
   }
 }
 
-/* Streaming text animation */
+/* Streaming cursor animation */
 @layer components {
-  /* Streaming cursor - blinking indicator at end of text */
   .streaming-cursor {
     @apply inline-block h-5 w-0.5 align-middle ml-0.5;
     background: currentColor;
@@ -361,22 +367,6 @@
     51%,
     100% {
       opacity: 0;
-    }
-  }
-
-  /* Streaming text - fade in animation on content updates */
-  .streaming-text {
-    animation: text-fade-in 350ms ease-out;
-  }
-
-  @keyframes text-fade-in {
-    0% {
-      opacity: 0.4;
-      filter: blur(1px);
-    }
-    100% {
-      opacity: 1;
-      filter: blur(0);
     }
   }
 }

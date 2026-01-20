@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageItem } from "./MessageItem";
 import { StreamingIndicator } from "./StreamingIndicator";
@@ -29,7 +29,8 @@ export function MessageList({
   isStreaming,
   pipelineStatus,
 }: MessageListProps) {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Use state for container so effects re-run when it's set
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
   const isMobile = useIsMobile();
   const setHeaderHidden = useUIStore((state) => state.setHeaderHidden);
 
@@ -39,10 +40,10 @@ export function MessageList({
   });
 
   // Combine refs - we need both for scroll tracking and auto-scroll
-  const combinedRef = (node: HTMLDivElement | null) => {
-    scrollContainerRef.current = node;
+  const combinedRef = useCallback((node: HTMLDivElement | null) => {
+    setScrollContainer(node);
     scrollRef(node);
-  };
+  }, [scrollRef]);
 
   // Update header visibility based on scroll (mobile only)
   useEffect(() => {
@@ -67,12 +68,19 @@ export function MessageList({
     return () => setHeaderHidden(false);
   }, [setHeaderHidden]);
 
-  // Auto-scroll to bottom on new content
+  // Auto-scroll to bottom on new content, but only if already near bottom
   useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    if (!scrollContainer) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+    // Only auto-scroll if already within 150px of bottom
+    // This respects user's position if they've scrolled up
+    if (distanceFromBottom < 150) {
+      scrollContainer.scrollTop = scrollHeight;
     }
-  }, [messages, pendingUserMessage, streamingContent, streamingThinking]);
+  }, [scrollContainer, messages, pendingUserMessage, streamingContent, streamingThinking]);
 
   if (isLoading) {
     return (
