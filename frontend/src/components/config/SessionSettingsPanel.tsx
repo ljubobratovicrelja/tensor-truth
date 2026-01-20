@@ -75,6 +75,19 @@ export function SessionSettingsPanel({
   const [systemPrompt, setSystemPrompt] = useState<string>("");
   const [ragDevice, setRagDevice] = useState<string>("cpu");
   const [llmDevice, setLlmDevice] = useState<string>("gpu");
+  const [availableDevices, setAvailableDevices] = useState<string[]>(DEVICE_OPTIONS);
+
+  // Fetch available devices from backend
+  useEffect(() => {
+    import("@/api/config").then(({ getAvailableDevices }) => {
+      getAvailableDevices()
+        .then(setAvailableDevices)
+        .catch(() => {
+          // Fallback to default options if fetch fails
+          setAvailableDevices(DEVICE_OPTIONS);
+        });
+    });
+  }, []);
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -304,7 +317,7 @@ export function SessionSettingsPanel({
                     <SelectValue placeholder="Select device" />
                   </SelectTrigger>
                   <SelectContent>
-                    {DEVICE_OPTIONS.map((option) => (
+                    {availableDevices.map((option) => (
                       <SelectItem key={option} value={option}>
                         {option.toUpperCase()}
                       </SelectItem>

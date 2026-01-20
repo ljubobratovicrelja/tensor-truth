@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Settings, Loader2, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -77,6 +77,19 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
   // Hardware
   const [device, setDevice] = useState(config.rag.default_device);
+  const [availableDevices, setAvailableDevices] = useState<string[]>(DEVICE_OPTIONS);
+
+  // Fetch available devices from backend
+  useEffect(() => {
+    import("@/api/config").then(({ getAvailableDevices }) => {
+      getAvailableDevices()
+        .then(setAvailableDevices)
+        .catch(() => {
+          // Fallback to default options if fetch fails
+          setAvailableDevices(DEVICE_OPTIONS);
+        });
+    });
+  }, []);
 
   const handleSave = async () => {
     await onSave({
@@ -273,7 +286,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
               <SelectValue placeholder="Select device" />
             </SelectTrigger>
             <SelectContent>
-              {DEVICE_OPTIONS.map((option) => (
+              {availableDevices.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option.toUpperCase()}
                 </SelectItem>

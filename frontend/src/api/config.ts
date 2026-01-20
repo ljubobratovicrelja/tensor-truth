@@ -14,3 +14,8 @@ export async function updateConfig(
 export async function getConfigDefaults(): Promise<ConfigResponse> {
   return apiGet<ConfigResponse>("/config/defaults");
 }
+
+export async function getAvailableDevices(): Promise<string[]> {
+  const response = await apiGet<{ devices: string[] }>("/config/devices");
+  return response.devices;
+}
