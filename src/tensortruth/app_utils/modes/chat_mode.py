@@ -1,9 +1,12 @@
 """Chat mode - Main conversation interface with RAG."""
 
+import logging
 import os
 import threading
+from typing import Optional
 
 import streamlit as st
+from llama_index.llms.ollama import Ollama
 
 from tensortruth.app_utils.chat_handler import handle_chat_response
 from tensortruth.app_utils.chat_utils import preserve_chat_history
@@ -19,6 +22,39 @@ from tensortruth.app_utils.session import save_sessions
 from tensortruth.app_utils.setup_state import get_session_params_with_defaults
 
 from ..commands import process_command
+
+logger = logging.getLogger(__name__)
+
+
+def _get_main_llm() -> Optional[Ollama]:
+    """Extract main LLM from session state if available.
+
+    Returns already-loaded LLM instance to reuse for intent classification.
+    Falls back to None if no LLM is loaded yet (classifier creates its own).
+
+    Returns:
+        Ollama instance or None
+    """
+    # Check if engine is still loading
+    if st.session_state.get("engine_loading", False):
+        return None
+
+    # Check if engine load failed
+    if st.session_state.get("engine_load_error"):
+        return None
+
+    # Try RAG engine first (preferred for quality)
+    engine = st.session_state.get("engine")
+    if engine and hasattr(engine, "_llm"):
+        return engine._llm
+
+    # Fallback to simple LLM mode
+    simple_llm = st.session_state.get("simple_llm")
+    if simple_llm:
+        return simple_llm
+
+    # No LLM loaded yet (fresh session)
+    return None
 
 
 def _should_route_to_agent(prompt: str, session: dict, params: dict) -> bool:
@@ -36,13 +72,17 @@ def _should_route_to_agent(prompt: str, session: dict, params: dict) -> bool:
     try:
         config = st.session_state.config
         if not config.agent.enable_natural_language_agents:
+            logger.info("Natural language agents disabled in config")
             return False
-    except (AttributeError, KeyError):
+    except (AttributeError, KeyError) as e:
         # Config not available, use default (enabled)
+        logger.debug(f"Config not available ({e}), defaulting to NL agents enabled")
         pass
 
     # Quick trigger word check (no LLM call)
-    return has_agent_triggers(prompt)
+    has_triggers = has_agent_triggers(prompt)
+    logger.info(f"Agent trigger check for '{prompt[:50]}...': {has_triggers}")
+    return has_triggers
 
 
 def _handle_natural_language_agent(
@@ -72,20 +112,35 @@ def _handle_natural_language_agent(
 
     ollama_url = get_ollama_url()
 
-    # Classify intent
+    # Get main LLM if available
+    main_llm = _get_main_llm()
+
+    # Classify intent (reuses main LLM if loaded)
     with st.spinner("🤔 Understanding your request..."):
         intent_result = detect_and_classify(
             message=prompt,
             recent_messages=session.get("messages", [])[-4:],
+            llm=main_llm,  # Pass main LLM here
             ollama_url=ollama_url,
-            classifier_model=classifier_model,
+            classifier_model=classifier_model,  # Fallback model name
         )
 
     # Route based on intent
+    logger.info(
+        f"Intent classification result: {intent_result.intent} (query: {intent_result.query})"
+    )
+
     if intent_result.intent == "browse":
         # Route to browse agent
         query = intent_result.query or prompt
-        _execute_browse_agent(query, session, params, current_id)
+        logger.info(f"Executing browse agent with query: {query}")
+        _execute_browse_agent(
+            query=query,
+            original_prompt=prompt,  # Pass original user message with instructions
+            session=session,
+            params=params,
+            current_id=current_id,
+        )
 
     elif intent_result.intent == "search":
         # Route to web search
@@ -122,6 +177,7 @@ def _handle_natural_language_agent(
 
 def _execute_browse_agent(
     query: str,
+    original_prompt: str,
     session: dict,
     params: dict,
     current_id: str,
@@ -130,6 +186,9 @@ def _execute_browse_agent(
 
     Args:
         query: Research query extracted from user message
+            (enhanced, e.g., "backpropagation")
+        original_prompt: Original user message with instructions
+            (e.g., "browse this, make an overview")
         session: Current session data
         params: Session parameters
         current_id: Current session ID
@@ -190,13 +249,25 @@ def _execute_browse_agent(
             convert_latex_delimiters(accumulated_response["text"])
         )
 
-    # Execute agent
+    # Get min_pages from session params, falling back to config default
+    try:
+        config = st.session_state.config
+        default_min_pages = config.agent.min_pages_required
+    except (AttributeError, KeyError):
+        default_min_pages = 2  # Fallback if config unavailable
+
+    # Note: query is already enhanced with context via
+    # intent_classifier.enhance_query_with_context()
+    # We do NOT pass chat_history to browse_agent because it would
+    # cause the agent to answer from memory instead of using web tools.
     result = browse_agent(
         goal=query,
+        original_request=original_prompt,  # Pass original message with user instructions
         model_name=reasoning_model,
         synthesis_model=main_model,
         ollama_url=ollama_url,
         max_iterations=params.get("agent_max_iterations", 10),
+        min_pages_required=params.get("agent_min_pages", default_min_pages),
         progress_callback=update_progress,
         stream_callback=stream_token,
         context_window=context_window,
@@ -205,8 +276,8 @@ def _execute_browse_agent(
     response_placeholder.empty()
 
     # Add to history
-    # Use original prompt as user message
-    session["messages"].append({"role": "user", "content": f"Research: {query}"})
+    # Save the ORIGINAL user message (with instructions), not just the extracted query
+    session["messages"].append({"role": "user", "content": original_prompt})
 
     response = result.final_answer or "No results found."
     session["messages"].append({"role": "assistant", "content": response})
@@ -508,8 +579,13 @@ def render_chat_mode():
         # NATURAL LANGUAGE AGENT ROUTING
         # Check if message contains trigger words and NL agents are enabled
         elif _should_route_to_agent(prompt, session, params):
+            logger.info(f"Routing to natural language agent for: {prompt[:50]}...")
             _handle_natural_language_agent(prompt, session, params, current_id)
             st.rerun()
+        else:
+            logger.info(
+                f"Routing to standard chat (no agent triggers): {prompt[:50]}..."
+            )
 
         # STANDARD CHAT PROCESSING
         session["messages"].append({"role": "user", "content": prompt})
