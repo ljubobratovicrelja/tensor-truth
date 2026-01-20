@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { User, Bot, Copy, Check } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, convertLatexDelimiters } from "@/lib/utils";
 import { SourcesList } from "./SourceCard";
 import { ThinkingBox } from "./ThinkingBox";
 import { StreamingText } from "./StreamingText";
@@ -126,7 +126,7 @@ export function MessageItem({ message, sources, thinking, isStreaming }: Message
                   ],
                 ]}
               >
-                {message.content}
+                {convertLatexDelimiters(message.content)}
               </ReactMarkdown>
             </div>
           )}

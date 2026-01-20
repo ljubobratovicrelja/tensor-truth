@@ -5,7 +5,7 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { cn } from "@/lib/utils";
+import { cn, convertLatexDelimiters } from "@/lib/utils";
 
 interface StreamingTextProps {
   content: string;
@@ -41,7 +41,7 @@ export function StreamingText({ content, isStreaming, className }: StreamingText
           ],
         ]}
       >
-        {content}
+        {convertLatexDelimiters(content)}
       </ReactMarkdown>
       {isStreaming && <span className="streaming-cursor" />}
     </div>
