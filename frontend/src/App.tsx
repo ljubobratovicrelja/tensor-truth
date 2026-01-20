@@ -1,3 +1,4 @@
+import { Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout";
 import { SessionList } from "@/components/sessions/SessionList";
 import { ChatContainer } from "@/components/chat/ChatContainer";
@@ -7,7 +8,10 @@ function App() {
   return (
     <>
       <AppLayout sidebar={<SessionList />}>
-        <ChatContainer />
+        <Routes>
+          <Route path="/" element={<ChatContainer />} />
+          <Route path="/chat/:sessionId" element={<ChatContainer />} />
+        </Routes>
       </AppLayout>
       <Toaster />
     </>

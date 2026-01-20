@@ -1,5 +1,5 @@
+import { useNavigate, useParams } from "react-router-dom";
 import { useSessions, useDeleteSession } from "@/hooks";
-import { useSessionStore } from "@/stores";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NewSessionDialog } from "./NewSessionDialog";
@@ -8,13 +8,14 @@ import { SessionItem } from "./SessionItem";
 export function SessionList() {
   const { data, isLoading, error } = useSessions();
   const deleteSession = useDeleteSession();
-  const { activeSessionId, setActiveSessionId } = useSessionStore();
+  const navigate = useNavigate();
+  const { sessionId: activeSessionId } = useParams<{ sessionId: string }>();
 
   const handleDelete = async (sessionId: string) => {
     try {
       await deleteSession.mutateAsync(sessionId);
       if (activeSessionId === sessionId) {
-        setActiveSessionId(null);
+        navigate("/");
       }
     } catch (error) {
       console.error("Failed to delete session:", error);
@@ -49,7 +50,7 @@ export function SessionList() {
                 key={session.session_id}
                 session={session}
                 isActive={activeSessionId === session.session_id}
-                onClick={() => setActiveSessionId(session.session_id)}
+                onClick={() => navigate(`/chat/${session.session_id}`)}
                 onDelete={() => handleDelete(session.session_id)}
               />
             ))

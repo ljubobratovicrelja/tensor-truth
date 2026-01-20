@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,7 +20,6 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useModules, useModels, useCreateSession } from "@/hooks";
-import { useSessionStore } from "@/stores";
 
 export function NewSessionDialog() {
   const [open, setOpen] = useState(false);
@@ -29,7 +29,7 @@ export function NewSessionDialog() {
   const { data: modulesData, isLoading: modulesLoading } = useModules();
   const { data: modelsData, isLoading: modelsLoading } = useModels();
   const createSession = useCreateSession();
-  const setActiveSessionId = useSessionStore((state) => state.setActiveSessionId);
+  const navigate = useNavigate();
 
   const handleCreate = async () => {
     try {
@@ -37,7 +37,7 @@ export function NewSessionDialog() {
         modules: selectedModule ? [selectedModule] : undefined,
         params: selectedModel ? { model: selectedModel } : undefined,
       });
-      setActiveSessionId(result.session_id);
+      navigate(`/chat/${result.session_id}`);
       setOpen(false);
       setSelectedModule("");
       setSelectedModel("");

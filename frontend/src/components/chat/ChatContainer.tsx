@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { useSessionStore, useChatStore } from "@/stores";
 import { useSessionMessages, useSession, useWebSocketChat } from "@/hooks";
@@ -6,12 +8,43 @@ import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 
 export function ChatContainer() {
-  const activeSessionId = useSessionStore((state) => state.activeSessionId);
+  const { sessionId: urlSessionId } = useParams<{ sessionId: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { activeSessionId, setActiveSessionId } = useSessionStore();
   const { streamingContent, streamingSources, isStreaming, error } = useChatStore();
 
-  const { data: sessionData } = useSession(activeSessionId);
+  // Sync URL param with store
+  useEffect(() => {
+    if (urlSessionId && urlSessionId !== activeSessionId) {
+      setActiveSessionId(urlSessionId);
+    } else if (!urlSessionId && activeSessionId) {
+      setActiveSessionId(null);
+    }
+  }, [urlSessionId, activeSessionId, setActiveSessionId]);
+
+  const { data: sessionData, error: sessionError } = useSession(activeSessionId);
   const { data: messagesData, isLoading: messagesLoading } =
     useSessionMessages(activeSessionId);
+
+  // Redirect to home if session doesn't exist
+  useEffect(() => {
+    if (sessionError && urlSessionId) {
+      toast.error("Session not found");
+      navigate("/", { replace: true });
+    }
+  }, [sessionError, urlSessionId, navigate]);
+
+  // Scroll to hash anchor after messages load
+  useEffect(() => {
+    if (!messagesLoading && location.hash) {
+      const id = location.hash.slice(1);
+      const element = document.getElementById(id);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+  }, [messagesLoading, location.hash]);
 
   const { sendMessage } = useWebSocketChat({
     sessionId: activeSessionId,

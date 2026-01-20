@@ -75,6 +75,35 @@ describe("MessageItem", () => {
       expect(heading).toBeTruthy();
       expect(heading?.textContent).toBe("Section Title");
     });
+
+    it("generates IDs for headings (anchor links)", () => {
+      const message = {
+        role: "assistant" as const,
+        content: "## Getting Started\n\n### Installation Steps\n\nSome content.",
+      };
+      const { container } = render(<MessageItem message={message} />);
+
+      const h2 = container.querySelector("h2");
+      const h3 = container.querySelector("h3");
+
+      // rehype-slug generates IDs from heading text
+      expect(h2?.id).toBe("getting-started");
+      expect(h3?.id).toBe("installation-steps");
+    });
+
+    it("wraps headings in clickable anchor links", () => {
+      const message = {
+        role: "assistant" as const,
+        content: "## My Header\n\nContent below.",
+      };
+      const { container } = render(<MessageItem message={message} />);
+
+      const heading = container.querySelector("h2");
+      const anchor = heading?.querySelector("a.header-anchor");
+
+      expect(anchor).toBeTruthy();
+      expect(anchor?.getAttribute("href")).toBe("#my-header");
+    });
   });
 
   describe("LaTeX/math rendering", () => {

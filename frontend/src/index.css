@@ -256,6 +256,22 @@
     @apply text-base font-semibold;
   }
 
+  /* Header anchor links */
+  .chat-markdown .header-anchor {
+    @apply no-underline text-inherit;
+  }
+
+  .chat-markdown .header-anchor:hover {
+    @apply underline underline-offset-4;
+  }
+
+  .chat-markdown h1:target,
+  .chat-markdown h2:target,
+  .chat-markdown h3:target,
+  .chat-markdown h4:target {
+    @apply scroll-mt-20;
+  }
+
   /* Paragraphs */
   .chat-markdown p {
     @apply my-3 first:mt-0 last:mb-0;

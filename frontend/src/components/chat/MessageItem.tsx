@@ -1,5 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import rehypeSlug from "rehype-slug";
+import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { User, Bot } from "lucide-react";
@@ -35,7 +37,20 @@ export function MessageItem({ message, sources }: MessageItemProps) {
         <div className="chat-markdown max-w-none">
           <ReactMarkdown
             remarkPlugins={[remarkMath]}
-            rehypePlugins={[rehypeHighlight, rehypeKatex]}
+            rehypePlugins={[
+              rehypeHighlight,
+              rehypeKatex,
+              rehypeSlug,
+              [
+                rehypeAutolinkHeadings,
+                {
+                  behavior: "wrap",
+                  properties: {
+                    className: ["header-anchor"],
+                  },
+                },
+              ],
+            ]}
           >
             {message.content}
           </ReactMarkdown>
