@@ -1,10 +1,12 @@
 """Chat endpoints including WebSocket streaming."""
 
+import asyncio
 import json
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
+from tensortruth.app_utils.title_generation import generate_smart_title_async
 from tensortruth.api.deps import (
     ConfigServiceDep,
     IntentServiceDep,
@@ -191,6 +193,12 @@ async def websocket_chat(
             )
             session_service.save(data)
 
+            # Start title generation in parallel if this is the first message
+            # This runs concurrently with RAG/streaming for minimal delay
+            title_task = None
+            if session_service.needs_title_update(session_id, data):
+                title_task = asyncio.create_task(generate_smart_title_async(prompt))
+
             # Stream response
             full_response = ""
             sources = []
@@ -222,6 +230,7 @@ async def websocket_chat(
                     "type": "done",
                     "content": full_response,
                     "confidence_level": "normal",
+                    "title_pending": title_task is not None,
                 }
             )
 
@@ -231,6 +240,22 @@ async def websocket_chat(
                 session_id, {"role": "assistant", "content": full_response}, data
             )
             session_service.save(data)
+
+            # Wait for title generation to complete and send to client
+            if title_task:
+                try:
+                    title = await title_task
+                    # Update session with new title
+                    fresh_data = session_service.load()
+                    fresh_data = session_service.update_title(
+                        session_id, title, fresh_data
+                    )
+                    session_service.save(fresh_data)
+                    # Send title to client
+                    await websocket.send_json({"type": "title", "title": title})
+                except Exception:
+                    # Title generation failure is non-critical
+                    pass
 
     except WebSocketDisconnect:
         pass

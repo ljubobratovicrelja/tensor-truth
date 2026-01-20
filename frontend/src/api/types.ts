@@ -71,6 +71,7 @@ export interface StreamDone {
   type: "done";
   content: string;
   confidence_level: string;
+  title_pending?: boolean;
 }
 
 export interface StreamError {
@@ -78,7 +79,12 @@ export interface StreamError {
   detail: string;
 }
 
-export type StreamMessage = StreamToken | StreamSources | StreamDone | StreamError;
+export interface StreamTitle {
+  type: "title";
+  title: string;
+}
+
+export type StreamMessage = StreamToken | StreamSources | StreamDone | StreamError | StreamTitle;
 
 // Intent types
 export interface IntentRequest {

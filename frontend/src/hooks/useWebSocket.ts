@@ -100,12 +100,25 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               });
               queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
 
-              ws.close();
+              // Close immediately if no title pending, otherwise wait for title
+              if (!data.title_pending) {
+                ws.close();
+              }
               break;
 
             case "error":
               setError(data.detail);
               onError?.(data.detail);
+              ws.close();
+              break;
+
+            case "title":
+              // Title was generated - refresh session data to show new title
+              queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
+              queryClient.invalidateQueries({
+                queryKey: QUERY_KEYS.session(sessionId),
+              });
+              // Now we can close the connection
               ws.close();
               break;
           }
