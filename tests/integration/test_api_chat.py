@@ -36,7 +36,7 @@ class TestChatAPI:
         get_session_service.cache_clear()
 
         response = await client.post(
-            "/sessions/nonexistent/chat",
+            "/api/sessions/nonexistent/chat",
             json={"prompt": "Hello"},
         )
         assert response.status_code == 404
@@ -61,7 +61,7 @@ class TestChatAPI:
 
         # Create a session without modules
         create_response = await client.post(
-            "/sessions", json={"modules": [], "params": {}}
+            "/api/sessions", json={"modules": [], "params": {}}
         )
         session_id = create_response.json()["session_id"]
 
@@ -70,7 +70,7 @@ class TestChatAPI:
         session_dir.mkdir(parents=True, exist_ok=True)
 
         response = await client.post(
-            f"/sessions/{session_id}/chat",
+            f"/api/sessions/{session_id}/chat",
             json={"prompt": "Hello"},
         )
         assert response.status_code == 400
@@ -88,12 +88,12 @@ class TestChatAPI:
         get_session_service.cache_clear()
 
         # Create a session
-        create_response = await client.post("/sessions", json={})
+        create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
 
         # Test intent classification with no triggers (should be chat)
         response = await client.post(
-            f"/sessions/{session_id}/intent",
+            f"/api/sessions/{session_id}/intent",
             json={"message": "What is PyTorch?", "recent_messages": []},
         )
         assert response.status_code == 200
@@ -115,7 +115,7 @@ class TestChatAPI:
         get_session_service.cache_clear()
 
         response = await client.post(
-            "/sessions/nonexistent/intent",
+            "/api/sessions/nonexistent/intent",
             json={"message": "Hello", "recent_messages": []},
         )
         assert response.status_code == 404

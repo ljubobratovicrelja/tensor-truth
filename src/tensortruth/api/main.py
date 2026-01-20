@@ -44,12 +44,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Include routers
-    app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
-    app.include_router(chat.router, tags=["chat"])
-    app.include_router(config.router, prefix="/config", tags=["config"])
-    app.include_router(modules.router, tags=["modules"])
-    app.include_router(pdfs.router, tags=["pdfs"])
+    # Include routers under /api prefix
+    app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
+    app.include_router(chat.rest_router, prefix="/api", tags=["chat"])
+    app.include_router(config.router, prefix="/api/config", tags=["config"])
+    app.include_router(modules.router, prefix="/api", tags=["modules"])
+    app.include_router(pdfs.router, prefix="/api", tags=["pdfs"])
+
+    # WebSocket router at /ws (not under /api)
+    app.include_router(chat.ws_router, tags=["websocket"])
 
     @app.get("/health", response_model=HealthResponse, tags=["health"])
     async def health_check() -> HealthResponse:

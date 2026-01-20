@@ -38,7 +38,7 @@ class TestConfigAPI:
 
         get_config_service.cache_clear()
 
-        response = await client.get("/config")
+        response = await client.get("/api/config")
         assert response.status_code == 200
         data = response.json()
 
@@ -56,7 +56,7 @@ class TestConfigAPI:
     @pytest.mark.asyncio
     async def test_get_default_config(self, client):
         """Test getting default configuration."""
-        response = await client.get("/config/defaults")
+        response = await client.get("/api/config/defaults")
         assert response.status_code == 200
         data = response.json()
 
@@ -85,7 +85,7 @@ class TestConfigAPI:
 
         # Update a value
         response = await client.patch(
-            "/config",
+            "/api/config",
             json={"updates": {"ollama_timeout": 600}},
         )
         assert response.status_code == 200
@@ -93,5 +93,5 @@ class TestConfigAPI:
         assert data["ollama"]["timeout"] == 600
 
         # Verify it persisted
-        response = await client.get("/config")
+        response = await client.get("/api/config")
         assert response.json()["ollama"]["timeout"] == 600

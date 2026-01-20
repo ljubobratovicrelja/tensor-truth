@@ -23,7 +23,12 @@ from tensortruth.api.schemas import (
     SourceNode,
 )
 
-router = APIRouter()
+# REST endpoints (mounted under /api)
+rest_router = APIRouter()
+# WebSocket endpoint (mounted at root, not under /api)
+ws_router = APIRouter()
+# Legacy alias for backwards compatibility
+router = rest_router
 
 
 def _extract_sources(source_nodes: List) -> List[SourceNode]:
@@ -107,7 +112,7 @@ async def chat(
     )
 
 
-@router.websocket("/ws/chat/{session_id}")
+@ws_router.websocket("/ws/chat/{session_id}")
 async def websocket_chat(
     websocket: WebSocket,
     session_id: str,

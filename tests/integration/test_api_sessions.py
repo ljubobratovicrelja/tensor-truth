@@ -71,7 +71,7 @@ class TestSessionsAPI:
 
         get_session_service.cache_clear()
 
-        response = await client.get("/sessions")
+        response = await client.get("/api/sessions")
         assert response.status_code == 200
         data = response.json()
         assert data["sessions"] == []
@@ -89,7 +89,7 @@ class TestSessionsAPI:
         get_session_service.cache_clear()
 
         response = await client.post(
-            "/sessions",
+            "/api/sessions",
             json={"modules": ["pytorch"], "params": {"model": "test-model"}},
         )
         assert response.status_code == 201
@@ -111,11 +111,11 @@ class TestSessionsAPI:
         get_session_service.cache_clear()
 
         # Create a session first
-        create_response = await client.post("/sessions", json={"modules": ["test"]})
+        create_response = await client.post("/api/sessions", json={"modules": ["test"]})
         session_id = create_response.json()["session_id"]
 
         # Get the session
-        response = await client.get(f"/sessions/{session_id}")
+        response = await client.get(f"/api/sessions/{session_id}")
         assert response.status_code == 200
         assert response.json()["session_id"] == session_id
 
@@ -130,7 +130,7 @@ class TestSessionsAPI:
 
         get_session_service.cache_clear()
 
-        response = await client.get("/sessions/nonexistent-id")
+        response = await client.get("/api/sessions/nonexistent-id")
         assert response.status_code == 404
 
     @pytest.mark.asyncio
@@ -145,12 +145,12 @@ class TestSessionsAPI:
         get_session_service.cache_clear()
 
         # Create a session
-        create_response = await client.post("/sessions", json={})
+        create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
 
         # Update title
         response = await client.patch(
-            f"/sessions/{session_id}", json={"title": "Updated Title"}
+            f"/api/sessions/{session_id}", json={"title": "Updated Title"}
         )
         assert response.status_code == 200
         assert response.json()["title"] == "Updated Title"
@@ -167,15 +167,15 @@ class TestSessionsAPI:
         get_session_service.cache_clear()
 
         # Create a session
-        create_response = await client.post("/sessions", json={})
+        create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
 
         # Delete it
-        response = await client.delete(f"/sessions/{session_id}")
+        response = await client.delete(f"/api/sessions/{session_id}")
         assert response.status_code == 204
 
         # Verify it's gone
-        response = await client.get(f"/sessions/{session_id}")
+        response = await client.get(f"/api/sessions/{session_id}")
         assert response.status_code == 404
 
     @pytest.mark.asyncio
@@ -190,12 +190,12 @@ class TestSessionsAPI:
         get_session_service.cache_clear()
 
         # Create a session
-        create_response = await client.post("/sessions", json={})
+        create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
 
         # Add a message
         response = await client.post(
-            f"/sessions/{session_id}/messages",
+            f"/api/sessions/{session_id}/messages",
             json={"role": "user", "content": "Hello, world!"},
         )
         assert response.status_code == 201
@@ -214,20 +214,20 @@ class TestSessionsAPI:
         get_session_service.cache_clear()
 
         # Create a session and add messages
-        create_response = await client.post("/sessions", json={})
+        create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
 
         await client.post(
-            f"/sessions/{session_id}/messages",
+            f"/api/sessions/{session_id}/messages",
             json={"role": "user", "content": "Hello"},
         )
         await client.post(
-            f"/sessions/{session_id}/messages",
+            f"/api/sessions/{session_id}/messages",
             json={"role": "assistant", "content": "Hi there!"},
         )
 
         # Get messages
-        response = await client.get(f"/sessions/{session_id}/messages")
+        response = await client.get(f"/api/sessions/{session_id}/messages")
         assert response.status_code == 200
         messages = response.json()["messages"]
         assert len(messages) == 2

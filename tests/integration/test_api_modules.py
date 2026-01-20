@@ -35,7 +35,7 @@ class TestModulesAPI:
             "tensortruth.api.routes.modules.get_indexes_dir", lambda: indexes_dir
         )
 
-        response = await client.get("/modules")
+        response = await client.get("/api/modules")
         assert response.status_code == 200
         assert response.json()["modules"] == []
 
@@ -54,7 +54,7 @@ class TestModulesAPI:
             "tensortruth.api.routes.modules.get_indexes_dir", lambda: indexes_dir
         )
 
-        response = await client.get("/modules")
+        response = await client.get("/api/modules")
         assert response.status_code == 200
         modules = response.json()["modules"]
         assert len(modules) == 1
@@ -79,7 +79,7 @@ class TestModulesAPI:
             "tensortruth.api.deps.get_config_service", lambda: test_service
         )
 
-        response = await client.get("/models")
+        response = await client.get("/api/models")
         assert response.status_code == 503
         assert "Ollama" in response.json()["detail"]
 
@@ -112,7 +112,7 @@ class TestModulesAPI:
             "tensortruth.api.deps.get_config_service", lambda: test_service
         )
 
-        response = await client.get("/models")
+        response = await client.get("/api/models")
         assert response.status_code == 200
         models = response.json()["models"]
         assert len(models) == 2
@@ -126,7 +126,7 @@ class TestModulesAPI:
             "tensortruth.api.routes.modules.get_presets_file", lambda: presets_file
         )
 
-        response = await client.get("/presets")
+        response = await client.get("/api/presets")
         assert response.status_code == 200
         assert response.json()["presets"] == []
 
@@ -145,7 +145,7 @@ class TestModulesAPI:
             "tensortruth.api.routes.modules.get_presets_file", lambda: presets_file
         )
 
-        response = await client.get("/presets")
+        response = await client.get("/api/presets")
         assert response.status_code == 200
         presets = response.json()["presets"]
         assert len(presets) == 2

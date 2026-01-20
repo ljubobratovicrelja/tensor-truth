@@ -35,7 +35,7 @@ class TestPDFsAPI:
 
         get_session_service.cache_clear()
 
-        response = await client.get("/sessions/nonexistent/pdfs")
+        response = await client.get("/api/sessions/nonexistent/pdfs")
         assert response.status_code == 404
 
     @pytest.mark.asyncio
@@ -57,14 +57,14 @@ class TestPDFsAPI:
         get_session_service.cache_clear()
 
         # Create a session first
-        create_response = await client.post("/sessions", json={})
+        create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
 
         # Create the session directory
         session_dir = sessions_dir / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
 
-        response = await client.get(f"/sessions/{session_id}/pdfs")
+        response = await client.get(f"/api/sessions/{session_id}/pdfs")
         assert response.status_code == 200
         data = response.json()
         assert data["pdfs"] == []
@@ -82,12 +82,12 @@ class TestPDFsAPI:
         get_session_service.cache_clear()
 
         # Create a session
-        create_response = await client.post("/sessions", json={})
+        create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
 
         # Try to upload a non-PDF file
         response = await client.post(
-            f"/sessions/{session_id}/pdfs",
+            f"/api/sessions/{session_id}/pdfs",
             files={"file": ("test.txt", b"not a pdf", "text/plain")},
         )
         assert response.status_code == 400
@@ -112,14 +112,14 @@ class TestPDFsAPI:
         get_session_service.cache_clear()
 
         # Create a session
-        create_response = await client.post("/sessions", json={})
+        create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
 
         # Create session directory
         session_dir = sessions_dir / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
 
-        response = await client.delete(f"/sessions/{session_id}/pdfs/nonexistent")
+        response = await client.delete(f"/api/sessions/{session_id}/pdfs/nonexistent")
         assert response.status_code == 404
 
     @pytest.mark.asyncio
@@ -141,14 +141,14 @@ class TestPDFsAPI:
         get_session_service.cache_clear()
 
         # Create a session
-        create_response = await client.post("/sessions", json={})
+        create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
 
         # Create session directory
         session_dir = sessions_dir / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
 
-        response = await client.post(f"/sessions/{session_id}/pdfs/reindex")
+        response = await client.post(f"/api/sessions/{session_id}/pdfs/reindex")
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is False
