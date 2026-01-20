@@ -46,16 +46,18 @@ export function ChatContainer() {
         isStreaming={isStreaming}
       />
       {error && (
-        <div className="border-destructive bg-destructive/10 text-destructive border-t px-4 py-2 text-sm">
-          {error}
+        <div className="border-destructive bg-destructive/10 text-destructive border-t py-2 text-sm">
+          <div className="chat-content-width">{error}</div>
         </div>
       )}
-      <div className="border-t p-4">
-        <ChatInput
-          onSend={handleSend}
-          disabled={isStreaming}
-          placeholder={isStreaming ? "Generating response..." : undefined}
-        />
+      <div className="border-t py-4">
+        <div className="chat-content-width">
+          <ChatInput
+            onSend={handleSend}
+            disabled={isStreaming}
+            placeholder={isStreaming ? "Generating response..." : undefined}
+          />
+        </div>
       </div>
     </div>
   );

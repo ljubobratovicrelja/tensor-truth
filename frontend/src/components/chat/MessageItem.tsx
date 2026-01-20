@@ -1,5 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { User, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourcesList } from "./SourceCard";
@@ -30,8 +32,11 @@ export function MessageItem({ message, sources }: MessageItemProps) {
           isUser ? "bg-primary text-primary-foreground" : "bg-muted"
         )}
       >
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+        <div className="chat-markdown max-w-none">
+          <ReactMarkdown
+            remarkPlugins={[remarkMath]}
+            rehypePlugins={[rehypeHighlight, rehypeKatex]}
+          >
             {message.content}
           </ReactMarkdown>
         </div>

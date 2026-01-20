@@ -199,3 +199,131 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Chat layout - single source of truth for content width */
+@layer components {
+  .chat-content-width {
+    @apply mx-auto w-full max-w-3xl px-4 lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl;
+  }
+}
+
+/* Chat markdown styling */
+@layer components {
+  .chat-markdown {
+    @apply text-base leading-7;
+  }
+
+  /* Code blocks */
+  .chat-markdown pre {
+    @apply rounded-xl my-4 p-4 overflow-x-auto text-sm;
+    background: oklch(0.15 0 0) !important;
+  }
+
+  .chat-markdown pre code {
+    @apply text-sm leading-relaxed;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+
+  /* Inline code */
+  .chat-markdown :not(pre) > code {
+    @apply px-1.5 py-0.5 rounded-md text-sm font-medium;
+    background: oklch(0.25 0 0);
+    color: oklch(0.9 0.15 30);
+  }
+
+  /* Headers in chat */
+  .chat-markdown h1,
+  .chat-markdown h2,
+  .chat-markdown h3,
+  .chat-markdown h4 {
+    @apply mt-6 mb-3 first:mt-0 font-semibold tracking-tight;
+  }
+
+  .chat-markdown h1 {
+    @apply text-2xl font-bold;
+  }
+
+  .chat-markdown h2 {
+    @apply text-xl font-semibold;
+  }
+
+  .chat-markdown h3 {
+    @apply text-lg font-semibold;
+  }
+
+  .chat-markdown h4 {
+    @apply text-base font-semibold;
+  }
+
+  /* Paragraphs */
+  .chat-markdown p {
+    @apply my-3 first:mt-0 last:mb-0;
+  }
+
+  /* Lists */
+  .chat-markdown ul,
+  .chat-markdown ol {
+    @apply my-3 pl-6;
+  }
+
+  .chat-markdown li {
+    @apply my-1.5;
+  }
+
+  .chat-markdown ul > li {
+    @apply list-disc;
+  }
+
+  .chat-markdown ol > li {
+    @apply list-decimal;
+  }
+
+  /* Nested lists */
+  .chat-markdown li > ul,
+  .chat-markdown li > ol {
+    @apply my-1;
+  }
+
+  /* Bold and italic */
+  .chat-markdown strong {
+    @apply font-semibold;
+  }
+
+  .chat-markdown em {
+    @apply italic;
+  }
+
+  /* Blockquotes */
+  .chat-markdown blockquote {
+    @apply border-l-4 border-zinc-500 pl-4 italic my-4 text-zinc-300;
+  }
+
+  /* Tables */
+  .chat-markdown table {
+    @apply my-4 w-full text-sm border-collapse;
+  }
+
+  .chat-markdown th {
+    @apply border border-zinc-600 px-3 py-2 text-left font-semibold bg-zinc-800;
+  }
+
+  .chat-markdown td {
+    @apply border border-zinc-700 px-3 py-2;
+  }
+
+  /* Links */
+  .chat-markdown a {
+    @apply text-blue-400 hover:text-blue-300 underline underline-offset-2;
+  }
+
+  /* Horizontal rule */
+  .chat-markdown hr {
+    @apply my-6 border-zinc-600;
+  }
+
+  /* Images */
+  .chat-markdown img {
+    @apply rounded-lg my-4 max-w-full;
+  }
+}
