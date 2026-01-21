@@ -20,7 +20,7 @@ Tensor-Truth uses a two-stage pipeline to create searchable indexes:
 
 All data is stored in `~/.tensortruth/` by default (or `%USERPROFILE%\.tensortruth` on Windows).
 
-### 🔧 Configuration Paths (Environment Variables)
+### Configuration Paths (Environment Variables)
 
 **All paths can be configured via environment variables** - this is especially useful for Docker deployments where you can prepare configurations upfront:
 
@@ -248,10 +248,14 @@ tensor-truth-build --modules 3d_reconstruction
 The index is built at `~/.tensortruth/indexes/papers_3d_reconstruction/`
 
 **Build Options:**
-- `--chunk-sizes 2048 512 128`: Control hierarchical chunk sizes (default)
+- `--chunk-sizes 2048 512 256`: Hierarchical chunk sizes in tokens (default)
+- `--chunk-overlap 64`: Overlap tokens between chunks (default: 64). Prevents information loss at boundaries.
+- `--chunking-strategy hierarchical`: Chunking strategy (see [Chunking Strategies](#chunking-strategies) below)
 - `--extensions .md .html .pdf`: File types to include
+- `--embedding-model BAAI/bge-m3`: HuggingFace embedding model (default: BAAI/bge-m3)
+- `--no-validate`: Skip HuggingFace Hub validation (for offline/private models)
 
-**💡 Chunk Size Strategy:**
+**Chunk Size Strategy:**
 
 Research shows that optimal chunk sizes vary by content type and use case. Based on empirical studies ([LlamaIndex](https://www.llamaindex.ai/blog/evaluating-the-ideal-chunk-size-for-a-rag-system-using-llamaindex-6207e5d3fec5), [Pinecone](https://www.pinecone.io/learn/chunking-strategies/)) and community consensus:
 
@@ -267,14 +271,150 @@ Research shows that optimal chunk sizes vary by content type and use case. Based
   - Books benefit from hierarchical retrieval (summary → sections → paragraphs)
 
 - **API Documentation**: Default works well for precise reference lookup
-  - `--chunk-sizes 2048 512 128` - Balances function-level detail with context
+  - `--chunk-sizes 2048 512 256` - Balances function-level detail with context (default)
   - Smaller leaf chunks help isolate individual API functions/classes
 
 - **Research Papers**: Medium chunks capture complete ideas
   - `--chunk-sizes 3072 768 256` - Preserves mathematical proofs and arguments
   - Papers with heavy math benefit from larger chunks to avoid splitting equations
 
+**Chunk Overlap:**
+
+The `--chunk-overlap` parameter (default: 64 tokens) controls how much text overlaps between adjacent chunks. This prevents information loss at chunk boundaries where important context might be split.
+
+- **Default (64)**: Good balance for most content
+- **Higher (128-256)**: Better for dense technical content where sentences reference adjacent content
+- **Lower (32)**: Faster indexing, acceptable for well-structured docs with clear section breaks
+
+```bash
+# Higher overlap for dense mathematical content
+tensor-truth-build --modules linear_algebra_cherney --chunk-overlap 128
+
+# Lower overlap for API docs with clear function boundaries
+tensor-truth-build --modules pytorch --chunk-overlap 32
+```
+
 **Key principle:** The leaf size (last number) determines what gets embedded. Larger = more context but less precision. Start with defaults and iterate based on query patterns.
+
+### Chunking Strategies
+
+Tensor-Truth supports three chunking strategies via `--chunking-strategy`:
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| `hierarchical` | Fixed-size hierarchical chunks (default) | Fast indexing, uniform technical docs |
+| `semantic` | Embedding-aware splits at natural boundaries | Narrative content, better context preservation |
+| `semantic_hierarchical` | Two-pass: semantic split → hierarchical | Mixed content (narrative + code), highest quality |
+
+**Examples:**
+
+```bash
+# Default: fast hierarchical chunking
+tensor-truth-build --modules pytorch
+
+# Semantic chunking for better context boundaries
+tensor-truth-build --modules deep_learning_goodfellow --chunking-strategy semantic
+
+# Two-pass for mixed content (papers with code examples)
+tensor-truth-build --modules 3d_reconstruction --chunking-strategy semantic_hierarchical
+```
+
+#### Understanding Semantic Splitter Parameters
+
+The semantic splitter uses embedding similarity to find natural content boundaries. Two parameters control its behavior:
+
+**`--semantic-buffer-size`** (default: 1)
+
+Controls how many sentences are grouped together before comparing embeddings. The splitter computes embeddings for sentence groups and splits where similarity drops significantly.
+
+| Value | Effect | Use Case |
+|-------|--------|----------|
+| 1 | Fine-grained splits, sentence-level boundaries | API docs, reference material |
+| 2-3 | Balanced splits, paragraph-level boundaries | General technical content |
+| 4-5 | Coarse splits, section-level boundaries | Narrative content, textbooks |
+
+**`--semantic-breakpoint-threshold`** (default: 95)
+
+Percentile threshold for determining where to split. The splitter computes similarity scores between adjacent sentence groups, then splits at points where the similarity falls below this percentile threshold.
+
+| Value | Effect | Use Case |
+|-------|--------|----------|
+| 80-85 | Aggressive splitting, many small chunks | Dense technical docs with distinct topics |
+| 90-95 | Balanced splitting (default) | Most content types |
+| 96-99 | Conservative splitting, fewer large chunks | Narrative content, proofs, arguments |
+
+#### Recommendations by Document Type
+
+**Books & Textbooks**
+
+Books have narrative flow where ideas build across paragraphs. Use conservative settings to preserve context:
+
+```bash
+# Recommended for textbooks
+tensor-truth-build --modules deep_learning_goodfellow \
+  --chunking-strategy semantic \
+  --semantic-buffer-size 3 \
+  --semantic-breakpoint-threshold 95 \
+  --chunk-sizes 4096 1024 512
+
+# For math-heavy books (preserve proofs and derivations)
+tensor-truth-build --modules linear_algebra_cherney \
+  --chunking-strategy semantic \
+  --semantic-buffer-size 4 \
+  --semantic-breakpoint-threshold 97 \
+  --chunk-overlap 128
+```
+
+**Academic Papers**
+
+Papers have distinct sections (abstract, methods, results) but dense content within sections. Use `semantic_hierarchical` for best results:
+
+```bash
+# Recommended for research papers
+tensor-truth-build --modules dl_architectures \
+  --chunking-strategy semantic_hierarchical \
+  --semantic-buffer-size 2 \
+  --semantic-breakpoint-threshold 92 \
+  --chunk-sizes 3072 768 256
+
+# For papers with heavy math/equations
+tensor-truth-build --modules optimization_papers \
+  --chunking-strategy semantic_hierarchical \
+  --semantic-buffer-size 3 \
+  --semantic-breakpoint-threshold 95 \
+  --chunk-overlap 96
+```
+
+**Programming Libraries & API Docs**
+
+API documentation has clear boundaries between functions/classes. Use `hierarchical` (fast) or fine-grained semantic:
+
+```bash
+# Fast option: hierarchical is usually sufficient for API docs
+tensor-truth-build --modules pytorch \
+  --chunking-strategy hierarchical \
+  --chunk-sizes 2048 512 256
+
+# If API docs have narrative tutorials mixed in
+tensor-truth-build --modules fastapi \
+  --chunking-strategy semantic \
+  --semantic-buffer-size 1 \
+  --semantic-breakpoint-threshold 88 \
+  --chunk-sizes 2048 512 256
+```
+
+#### Quick Reference Table
+
+| Document Type | Strategy | Buffer | Threshold | Chunk Sizes |
+|---------------|----------|--------|-----------|-------------|
+| API Documentation | `hierarchical` | - | - | 2048 512 256 |
+| API + Tutorials | `semantic` | 1 | 88 | 2048 512 256 |
+| Research Papers | `semantic_hierarchical` | 2 | 92 | 3072 768 256 |
+| Math-heavy Papers | `semantic_hierarchical` | 3 | 95 | 3072 768 256 |
+| Textbooks | `semantic` | 3 | 95 | 4096 1024 512 |
+| Math Textbooks | `semantic` | 4 | 97 | 4096 1024 512 |
+
+**Performance note:** Semantic strategies require computing embeddings during parsing, making them 3-5x slower than hierarchical. For large documentation sets (1000+ files), consider using `hierarchical` for speed, or process in batches.
 
 ### Step 5: Use in the App
 
