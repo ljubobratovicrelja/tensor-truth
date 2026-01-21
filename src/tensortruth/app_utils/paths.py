@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from tensortruth.indexing.metadata import sanitize_model_id
+
 
 def get_user_data_dir() -> Path:
     """
@@ -187,3 +189,83 @@ def get_base_indexes_dir(override: Optional[str] = None) -> str:
 
     path.mkdir(parents=True, exist_ok=True)
     return str(path)
+
+
+def get_indexes_dir_for_model(
+    embedding_model: str, base_dir_override: Optional[str] = None
+) -> Path:
+    """Get the indexes directory for a specific embedding model.
+
+    Args:
+        embedding_model: HuggingFace model name (e.g., "BAAI/bge-m3")
+        base_dir_override: Optional base indexes directory override
+
+    Returns:
+        Path to indexes/{model_id}/ directory (created if doesn't exist)
+
+    Examples:
+        >>> get_indexes_dir_for_model("BAAI/bge-m3")
+        Path('/home/user/.tensortruth/indexes/bge-m3')
+
+        >>> get_indexes_dir_for_model("Qwen/Qwen3-Embedding-0.6B")
+        Path('/home/user/.tensortruth/indexes/qwen3-embedding-0.6b')
+    """
+    base_dir = Path(get_base_indexes_dir(base_dir_override))
+    model_id = sanitize_model_id(embedding_model)
+    model_dir = base_dir / model_id
+    model_dir.mkdir(parents=True, exist_ok=True)
+    return model_dir
+
+
+def get_module_index_dir(
+    module_name: str, embedding_model: str, base_dir_override: Optional[str] = None
+) -> Path:
+    """Get the index directory for a specific module and embedding model.
+
+    Args:
+        module_name: Module name (e.g., "library_pytorch_2.9")
+        embedding_model: HuggingFace model name (e.g., "BAAI/bge-m3")
+        base_dir_override: Optional base indexes directory override
+
+    Returns:
+        Path to indexes/{model_id}/{module_name}/ directory
+
+    Examples:
+        >>> get_module_index_dir("library_pytorch_2.9", "BAAI/bge-m3")
+        Path('/home/user/.tensortruth/indexes/bge-m3/library_pytorch_2.9')
+    """
+    model_dir = get_indexes_dir_for_model(embedding_model, base_dir_override)
+    return model_dir / module_name
+
+
+def get_active_embedding_model() -> str:
+    """Get the currently configured default embedding model from config.
+
+    Returns:
+        The default embedding model name from config, or fallback default
+
+    Note:
+        This function loads config lazily to avoid circular imports.
+    """
+    try:
+        from tensortruth.app_utils.config import load_config
+
+        config = load_config()
+        return config.rag.default_embedding_model
+    except Exception:
+        return "BAAI/bge-m3"
+
+
+def get_active_embedding_indexes_dir(base_dir_override: Optional[str] = None) -> Path:
+    """Get the indexes directory for the currently active embedding model.
+
+    This is a convenience function that combines get_active_embedding_model()
+    and get_indexes_dir_for_model().
+
+    Args:
+        base_dir_override: Optional base indexes directory override
+
+    Returns:
+        Path to indexes/{active_model_id}/ directory
+    """
+    return get_indexes_dir_for_model(get_active_embedding_model(), base_dir_override)
