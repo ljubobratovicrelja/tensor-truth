@@ -13,6 +13,9 @@ from llama_index.llms.ollama import Ollama
 
 from tensortruth.app_utils.config_schema import TensorTruthConfig
 from tensortruth.rag_engine import (
+    CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE,
+    CUSTOM_CONTEXT_PROMPT_NO_SOURCES,
+    CUSTOM_CONTEXT_PROMPT_TEMPLATE,
     LLM_ONLY_SYSTEM_PROMPT,
     MultiIndexRetriever,
     get_base_index_dir,
@@ -217,7 +220,53 @@ class RAGService:
         metrics = compute_retrieval_metrics(source_nodes)
         metrics_dict = metrics.to_dict()
 
-        # Phase 2: Check if model supports thinking and start generation
+        # Phase 2: Determine prompt template based on source quality
+        confidence_threshold = (self._current_params or {}).get(
+            "confidence_cutoff", 0.0
+        )
+        chat_history_str = "\n".join(
+            [f"{m.role.value}: {m.content}" for m in chat_history]
+        )
+
+        # Select appropriate prompt based on source availability and confidence
+        if not source_nodes:
+            # No sources after filtering - use no-sources prompt
+            formatted_prompt = CUSTOM_CONTEXT_PROMPT_NO_SOURCES.format(
+                chat_history=chat_history_str,
+                query_str=prompt,
+            )
+        elif confidence_threshold > 0:
+            # Check best score against threshold
+            best_score = max(
+                (node.score for node in source_nodes if node.score is not None),
+                default=0.0,
+            )
+            context_str = "\n\n".join([n.get_content() for n in source_nodes])
+
+            if best_score < confidence_threshold:
+                # Low confidence - use low-confidence prompt
+                formatted_prompt = CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE.format(
+                    context_str=context_str,
+                    chat_history=chat_history_str,
+                    query_str=prompt,
+                )
+            else:
+                # Good confidence - use normal prompt
+                formatted_prompt = CUSTOM_CONTEXT_PROMPT_TEMPLATE.format(
+                    context_str=context_str,
+                    chat_history=chat_history_str,
+                    query_str=prompt,
+                )
+        else:
+            # No threshold configured - use normal prompt
+            context_str = "\n\n".join([n.get_content() for n in source_nodes])
+            formatted_prompt = CUSTOM_CONTEXT_PROMPT_TEMPLATE.format(
+                context_str=context_str,
+                chat_history=chat_history_str,
+                query_str=prompt,
+            )
+
+        # Phase 3: Check if model supports thinking and start generation
         llm = self._engine._llm
         thinking_enabled = getattr(llm, "thinking", False)
 
@@ -226,13 +275,7 @@ class RAGService:
         else:
             yield RAGChunk(status="generating")
 
-        # Build context and format the prompt
-        context_str = "\n\n".join([n.get_content() for n in source_nodes])
-        formatted_prompt = (
-            f"Context information:\n{context_str}\n\n" f"Query: {prompt}\n\nAnswer:"
-        )
-
-        # Build messages with chat history
+        # Build messages with the formatted prompt
         messages = chat_history + [
             ChatMessage(role=MessageRole.USER, content=formatted_prompt)
         ]
