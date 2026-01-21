@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings, Loader2, HelpCircle, RefreshCw } from "lucide-react";
+import { Settings, Loader2, HelpCircle, RefreshCw, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,11 +20,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
 import {
   useConfig,
   useUpdateConfig,
   useModels,
   useEmbeddingModels,
+  useRerankers,
+  useAddReranker,
   useReinitializeIndexes,
   useStartupStatus,
 } from "@/hooks";
@@ -49,12 +52,6 @@ interface ConfigFormProps {
   isSaving: boolean;
 }
 
-const RERANKER_OPTIONS = [
-  "BAAI/bge-reranker-v2-m3",
-  "BAAI/bge-reranker-base",
-  "cross-encoder/ms-marco-MiniLM-L-6-v2",
-];
-
 const DEVICE_OPTIONS = ["cpu", "cuda", "mps"];
 
 const CONTEXT_WINDOW_OPTIONS = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
@@ -64,7 +61,13 @@ const REINITIALIZE_START_KEY = "tensortruth-reinitialize-start";
 function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   const { data: modelsData } = useModels();
   const { data: embeddingModelsData } = useEmbeddingModels();
+  const { data: rerankersData } = useRerankers();
+  const addReranker = useAddReranker();
   const reinitializeIndexes = useReinitializeIndexes();
+
+  // Add reranker dialog state
+  const [addRerankerOpen, setAddRerankerOpen] = useState(false);
+  const [newRerankerModel, setNewRerankerModel] = useState("");
 
   // Reinitialization progress tracking
   const [isReinitializing, setIsReinitializing] = useState(false);
@@ -330,18 +333,87 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
               Reranker Model
               <HelpTooltip text="Cross-encoder model that re-scores retrieved documents for better relevance ranking." />
             </Label>
-            <Select value={reranker} onValueChange={setReranker}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select reranker" />
-              </SelectTrigger>
-              <SelectContent>
-                {RERANKER_OPTIONS.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Select value={reranker} onValueChange={setReranker}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select reranker" />
+                </SelectTrigger>
+                <SelectContent>
+                  {rerankersData?.models.map((model) => (
+                    <SelectItem key={model.model} value={model.model}>
+                      {model.model}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Dialog open={addRerankerOpen} onOpenChange={setAddRerankerOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="icon" title="Add custom reranker">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Add Reranker Model</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>HuggingFace Model Path</Label>
+                      <Input
+                        value={newRerankerModel}
+                        onChange={(e) => setNewRerankerModel(e.target.value)}
+                        placeholder="e.g., Qwen/Qwen3-Reranker-0.6B"
+                      />
+                      <p className="text-muted-foreground text-xs">
+                        Enter the full HuggingFace model path. The model will be validated
+                        before adding.
+                      </p>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setAddRerankerOpen(false);
+                          setNewRerankerModel("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          if (!newRerankerModel.trim()) return;
+                          addReranker.mutate(newRerankerModel.trim(), {
+                            onSuccess: (response) => {
+                              if (response.status === "added") {
+                                toast.success(`Reranker "${response.model}" added`);
+                                setReranker(response.model || newRerankerModel.trim());
+                                setAddRerankerOpen(false);
+                                setNewRerankerModel("");
+                              } else {
+                                toast.error(response.error || "Failed to add reranker");
+                              }
+                            },
+                            onError: (error) => {
+                              toast.error(`Failed to add reranker: ${error.message}`);
+                            },
+                          });
+                        }}
+                        disabled={addReranker.isPending || !newRerankerModel.trim()}
+                      >
+                        {addReranker.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Validating...
+                          </>
+                        ) : (
+                          "Add"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">

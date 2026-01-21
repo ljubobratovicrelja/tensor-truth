@@ -101,6 +101,14 @@ DEFAULT_EMBEDDING_MODEL_CONFIGS: Dict[str, Dict] = {
 DEFAULT_EMBEDDING_MODEL_CONFIG = EmbeddingModelConfig()
 
 
+# Default reranker models available out of the box
+DEFAULT_RERANKER_MODELS = [
+    "BAAI/bge-reranker-v2-m3",
+    "BAAI/bge-reranker-base",
+    "cross-encoder/ms-marco-MiniLM-L-6-v2",
+]
+
+
 @dataclass
 class RAGConfig:
     """RAG pipeline configuration."""
@@ -112,6 +120,10 @@ class RAGConfig:
     # Per-model configurations (model_name -> config dict)
     # On first run, this is populated from DEFAULT_EMBEDDING_MODEL_CONFIGS
     embedding_model_configs: Dict[str, Dict] = field(default_factory=dict)
+
+    # Available reranker models (user can add custom HuggingFace rerankers)
+    # On first run, this is populated from DEFAULT_RERANKER_MODELS
+    reranker_models: list = field(default_factory=list)
 
     def get_embedding_model_config(self, model_name: str) -> EmbeddingModelConfig:
         """Get configuration for a specific embedding model.
@@ -134,6 +146,16 @@ class RAGConfig:
 
         # Unknown model - use generic defaults
         return DEFAULT_EMBEDDING_MODEL_CONFIG
+
+    def get_reranker_models(self) -> list:
+        """Get available reranker models with fallback to defaults.
+
+        Returns:
+            List of HuggingFace model paths for rerankers
+        """
+        if self.reranker_models:
+            return self.reranker_models
+        return list(DEFAULT_RERANKER_MODELS)
 
 
 @dataclass
@@ -238,6 +260,8 @@ class TensorTruthConfig:
                 default_device=default_device,
                 # Populate with default embedding model configs
                 embedding_model_configs=dict(DEFAULT_EMBEDDING_MODEL_CONFIGS),
+                # Populate with default reranker models
+                reranker_models=list(DEFAULT_RERANKER_MODELS),
             ),
             models=ModelsConfig(),
             agent=AgentConfig(),

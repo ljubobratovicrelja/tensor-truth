@@ -4,6 +4,7 @@ export * from "./useChat";
 export * from "./useWebSocket";
 export * from "./usePdfs";
 export * from "./useConfig";
+export * from "./useRerankers";
 export * from "./useMediaQuery";
 export * from "./useScrollDirection";
 export * from "./useStartup";

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings, Loader2, HelpCircle } from "lucide-react";
+import { Settings, Loader2, HelpCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,7 +20,14 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { useConfig, useUpdateConfig, useUpdateSession, useEmbeddingModels } from "@/hooks";
+import { Input } from "@/components/ui/input";
+import {
+  useConfig,
+  useUpdateSession,
+  useEmbeddingModels,
+  useRerankers,
+  useAddReranker,
+} from "@/hooks";
 import { toast } from "sonner";
 
 function HelpTooltip({ text }: { text: string }) {
@@ -35,12 +42,6 @@ function HelpTooltip({ text }: { text: string }) {
     </Tooltip>
   );
 }
-
-const RERANKER_OPTIONS = [
-  "BAAI/bge-reranker-v2-m3",
-  "BAAI/bge-reranker-base",
-  "cross-encoder/ms-marco-MiniLM-L-6-v2",
-];
 
 const DEVICE_OPTIONS = ["cpu", "cuda", "mps"];
 const LLM_DEVICE_OPTIONS = ["cpu", "gpu"];
@@ -63,8 +64,13 @@ export function SessionSettingsPanel({
   const [isSaving, setIsSaving] = useState(false);
   const { data: config } = useConfig();
   const { data: embeddingModelsData } = useEmbeddingModels();
+  const { data: rerankersData } = useRerankers();
+  const addReranker = useAddReranker();
   const updateSession = useUpdateSession();
-  const updateConfig = useUpdateConfig();
+
+  // Add reranker dialog state
+  const [addRerankerOpen, setAddRerankerOpen] = useState(false);
+  const [newRerankerModel, setNewRerankerModel] = useState("");
 
   // Form state - initialized from session params or config defaults
   const [temperature, setTemperature] = useState<number>(0.7);
@@ -145,17 +151,6 @@ export function SessionSettingsPanel({
       newParams.system_prompt = systemPrompt.trim();
     } else {
       delete newParams.system_prompt;
-    }
-
-    // Update global config if embedding model changed (so modules list updates)
-    if (embeddingModel && embeddingModel !== config?.rag.default_embedding_model) {
-      try {
-        await updateConfig.mutateAsync({
-          rag_default_embedding_model: embeddingModel,
-        });
-      } catch {
-        // Non-fatal: session can still use the model even if global config update fails
-      }
     }
 
     // If onChange provided (welcome page mode), just call it
@@ -284,18 +279,91 @@ export function SessionSettingsPanel({
                   Reranker Model
                   <HelpTooltip text="Cross-encoder model that re-scores retrieved documents for better relevance ranking." />
                 </Label>
-                <Select value={rerankerModel} onValueChange={setRerankerModel}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select reranker" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RERANKER_OPTIONS.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-2">
+                  <Select value={rerankerModel} onValueChange={setRerankerModel}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Select reranker" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rerankersData?.models.map((model) => (
+                        <SelectItem key={model.model} value={model.model}>
+                          {model.model}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Dialog open={addRerankerOpen} onOpenChange={setAddRerankerOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="icon" title="Add custom reranker">
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Add Reranker Model</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label>HuggingFace Model Path</Label>
+                          <Input
+                            value={newRerankerModel}
+                            onChange={(e) => setNewRerankerModel(e.target.value)}
+                            placeholder="e.g., Qwen/Qwen3-Reranker-0.6B"
+                          />
+                          <p className="text-muted-foreground text-xs">
+                            Enter the full HuggingFace model path. The model will be
+                            validated before adding.
+                          </p>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setAddRerankerOpen(false);
+                              setNewRerankerModel("");
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              if (!newRerankerModel.trim()) return;
+                              addReranker.mutate(newRerankerModel.trim(), {
+                                onSuccess: (response) => {
+                                  if (response.status === "added") {
+                                    toast.success(`Reranker "${response.model}" added`);
+                                    setRerankerModel(
+                                      response.model || newRerankerModel.trim()
+                                    );
+                                    setAddRerankerOpen(false);
+                                    setNewRerankerModel("");
+                                  } else {
+                                    toast.error(
+                                      response.error || "Failed to add reranker"
+                                    );
+                                  }
+                                },
+                                onError: (error) => {
+                                  toast.error(`Failed to add reranker: ${error.message}`);
+                                },
+                              });
+                            }}
+                            disabled={addReranker.isPending || !newRerankerModel.trim()}
+                          >
+                            {addReranker.isPending ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Validating...
+                              </>
+                            ) : (
+                              "Add"
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">

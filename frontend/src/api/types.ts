@@ -324,6 +324,32 @@ export interface ReinitializeIndexesResponse {
   message: string;
 }
 
+// Reranker types
+export interface RerankerModelInfo {
+  model: string;
+  status: string;
+}
+
+export interface RerankerListResponse {
+  models: RerankerModelInfo[];
+  current: string;
+}
+
+export interface RerankerAddRequest {
+  model: string;
+}
+
+export interface RerankerAddResponse {
+  status: string;
+  model?: string | null;
+  error?: string | null;
+}
+
+export interface RerankerRemoveResponse {
+  status: string;
+  error?: string | null;
+}
+
 // API Error
 export interface ApiError {
   detail: string;

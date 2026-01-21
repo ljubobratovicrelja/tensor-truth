@@ -5,6 +5,7 @@ export const QUERY_KEYS = {
   modules: ["modules"] as const,
   models: ["models"] as const,
   embeddingModels: ["embedding-models"] as const,
+  rerankers: ["rerankers"] as const,
   presets: ["presets"] as const,
   favoritePresets: ["presets", "favorites"] as const,
   config: ["config"] as const,

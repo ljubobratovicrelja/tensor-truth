@@ -5,4 +5,5 @@ export * from "./chat";
 export * from "./config";
 export * from "./modules";
 export * from "./pdfs";
+export * from "./rerankers";
 export * from "./startup";

@@ -10,7 +10,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from tensortruth import __version__
-from tensortruth.api.routes import chat, config, modules, pdfs, sessions, startup
+from tensortruth.api.routes import (
+    chat,
+    config,
+    modules,
+    pdfs,
+    rerankers,
+    sessions,
+    startup,
+)
 from tensortruth.api.schemas import HealthResponse
 
 logger = logging.getLogger(__name__)
@@ -70,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
     app.include_router(chat.rest_router, prefix="/api", tags=["chat"])
     app.include_router(config.router, prefix="/api/config", tags=["config"])
+    app.include_router(rerankers.router, prefix="/api/rerankers", tags=["rerankers"])
     app.include_router(modules.router, prefix="/api", tags=["modules"])
     app.include_router(pdfs.router, prefix="/api", tags=["pdfs"])
 
