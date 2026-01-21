@@ -115,7 +115,8 @@ class RAGChunk:
         thinking: Thinking/reasoning text delta (if model supports thinking).
         source_nodes: Retrieved source documents (only set when is_complete=True).
         is_complete: Whether this is the final chunk with sources.
-        status: Pipeline status indicator ('retrieving', 'thinking', 'generating', None).
+        status: Pipeline status indicator ('loading_models', 'retrieving',
+            'reranking', 'thinking', 'generating', None).
         metrics: Retrieval quality metrics (only set when is_complete=True).
     """
 
@@ -123,7 +124,9 @@ class RAGChunk:
     thinking: Optional[str] = None
     source_nodes: List[Any] = field(default_factory=list)
     is_complete: bool = False
-    status: Optional[Literal["retrieving", "thinking", "generating"]] = None
+    status: Optional[
+        Literal["loading_models", "retrieving", "reranking", "thinking", "generating"]
+    ] = None
     metrics: Optional[Dict[str, Any]] = None
 
 

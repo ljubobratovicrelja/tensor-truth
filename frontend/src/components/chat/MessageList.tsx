@@ -179,15 +179,18 @@ export function MessageList({
                 <StreamingIndicator status={pipelineStatus} />
               </>
             )}
-            {/* Streaming: show streaming response with thinking */}
+            {/* Streaming: show streaming response with thinking and status */}
             {isStreaming && streamingContent && (
-              <MessageItem
-                message={{ role: "assistant", content: streamingContent }}
-                sources={streamingSources}
-                metrics={streamingMetrics}
-                thinking={streamingThinking}
-                isStreaming
-              />
+              <>
+                {pipelineStatus && <StreamingIndicator status={pipelineStatus} />}
+                <MessageItem
+                  message={{ role: "assistant", content: streamingContent }}
+                  sources={streamingSources}
+                  metrics={streamingMetrics}
+                  thinking={streamingThinking}
+                  isStreaming
+                />
+              </>
             )}
           </div>
         )}

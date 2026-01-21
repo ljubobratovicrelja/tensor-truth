@@ -198,8 +198,13 @@ class RAGService:
         # Retrieve context nodes
         source_nodes = retriever.retrieve(condensed_question)
 
-        # Apply the engine's postprocessor chain (reranker + filters)
-        if hasattr(self._engine, "_node_postprocessors"):
+        # Phase 2: Reranking (if postprocessors exist)
+        if (
+            hasattr(self._engine, "_node_postprocessors")
+            and self._engine._node_postprocessors
+        ):
+            yield RAGChunk(status="reranking")
+
             import logging
 
             from llama_index.core.schema import QueryBundle
@@ -220,7 +225,7 @@ class RAGService:
         metrics = compute_retrieval_metrics(source_nodes)
         metrics_dict = metrics.to_dict()
 
-        # Phase 2: Determine prompt template based on source quality
+        # Phase 3: Determine prompt template based on source quality
         confidence_threshold = (self._current_params or {}).get(
             "confidence_cutoff", 0.0
         )
@@ -266,7 +271,7 @@ class RAGService:
                 query_str=prompt,
             )
 
-        # Phase 3: Check if model supports thinking and start generation
+        # Phase 4: Check if model supports thinking and start generation
         llm = self._engine._llm
         thinking_enabled = getattr(llm, "thinking", False)
 

@@ -4,6 +4,7 @@ import type { RetrievalMetrics, SourceNode } from "@/api/types";
 export type PipelineStatus =
   | "loading_models"
   | "retrieving"
+  | "reranking"
   | "thinking"
   | "generating"
   | null;

@@ -1,5 +1,6 @@
 """Chat endpoints including WebSocket streaming."""
 
+import asyncio
 import json
 from typing import List
 
@@ -217,12 +218,16 @@ async def websocket_chat(
                     }
                 )
 
+                # Run blocking load_engine in thread pool to keep event loop responsive
+                loop = asyncio.get_event_loop()
                 chat_history = rag_service.get_chat_history()
-                rag_service.load_engine(
-                    modules=modules,
-                    params=params,
-                    session_index_path=session_index_path,
-                    chat_history=chat_history,
+                await loop.run_in_executor(
+                    None,
+                    rag_service.load_engine,
+                    modules,
+                    params,
+                    session_index_path,
+                    chat_history,
                 )
 
             # Add user message
@@ -247,36 +252,46 @@ async def websocket_chat(
             else:
                 query_generator = rag_service.query(prompt)
 
-            for chunk in query_generator:
-                if chunk.is_complete:
-                    sources = _extract_sources(chunk.source_nodes)
-                    metrics_dict = chunk.metrics
-                elif chunk.status:
-                    # Send pipeline status update
-                    await websocket.send_json(
-                        {
-                            "type": "status",
-                            "status": chunk.status,
-                        }
-                    )
-                elif chunk.thinking:
-                    # Send thinking token and accumulate
-                    full_thinking += chunk.thinking
-                    await websocket.send_json(
-                        {
-                            "type": "thinking",
-                            "content": chunk.thinking,
-                        }
-                    )
-                elif chunk.text:
-                    # Send content token
-                    full_response += chunk.text
-                    await websocket.send_json(
-                        {
-                            "type": "token",
-                            "content": chunk.text,
-                        }
-                    )
+            # Iterate generator in thread pool to prevent blocking event loop
+            loop = asyncio.get_event_loop()
+
+            while True:
+                try:
+                    # Get next chunk from generator in executor (non-blocking)
+                    chunk = await loop.run_in_executor(None, next, query_generator)
+
+                    if chunk.is_complete:
+                        sources = _extract_sources(chunk.source_nodes)
+                        metrics_dict = chunk.metrics
+                        break
+                    elif chunk.status:
+                        # Send pipeline status update immediately
+                        await websocket.send_json(
+                            {
+                                "type": "status",
+                                "status": chunk.status,
+                            }
+                        )
+                    elif chunk.thinking:
+                        # Send thinking token and accumulate
+                        full_thinking += chunk.thinking
+                        await websocket.send_json(
+                            {
+                                "type": "thinking",
+                                "content": chunk.thinking,
+                            }
+                        )
+                    elif chunk.text:
+                        # Send content token
+                        full_response += chunk.text
+                        await websocket.send_json(
+                            {
+                                "type": "token",
+                                "content": chunk.text,
+                            }
+                        )
+                except StopIteration:
+                    break
 
             # Send sources with metrics (only in RAG mode)
             if sources:
