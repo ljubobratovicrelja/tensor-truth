@@ -357,6 +357,153 @@ class TestModelManagerEmbedder:
         assert embedder1 is not embedder2
         assert mock_hf_embedding.call_count == 2
 
+    @patch("tensortruth.services.model_manager.HuggingFaceEmbedding")
+    def test_get_embedder_swaps_when_device_changes(self, mock_hf_embedding):
+        """Test that get_embedder reloads model when device changes (cpu -> cuda)."""
+        from tensortruth.services.model_manager import ModelManager
+
+        mock_instance1 = MagicMock()
+        mock_instance2 = MagicMock()
+        mock_hf_embedding.side_effect = [mock_instance1, mock_instance2]
+
+        manager = ModelManager.get_instance()
+        # Load on CPU
+        embedder1 = manager.get_embedder(model_name="BAAI/bge-m3", device="cpu")
+        # Request same model but on CUDA - should trigger reload
+        embedder2 = manager.get_embedder(model_name="BAAI/bge-m3", device="cuda")
+
+        assert embedder1 is not embedder2
+        assert mock_hf_embedding.call_count == 2
+
+        # Verify the device was passed correctly in each call
+        calls = mock_hf_embedding.call_args_list
+        assert calls[0].kwargs["device"] == "cpu"
+        assert calls[1].kwargs["device"] == "cuda"
+
+    @patch("tensortruth.services.model_manager.HuggingFaceEmbedding")
+    def test_get_embedder_no_reload_same_model_same_device(self, mock_hf_embedding):
+        """Test that requesting same model and device does not reload."""
+        from tensortruth.services.model_manager import ModelManager
+
+        mock_instance = MagicMock()
+        mock_hf_embedding.return_value = mock_instance
+
+        manager = ModelManager.get_instance()
+        embedder1 = manager.get_embedder(model_name="BAAI/bge-m3", device="cuda")
+        embedder2 = manager.get_embedder(model_name="BAAI/bge-m3", device="cuda")
+        embedder3 = manager.get_embedder(model_name="BAAI/bge-m3", device="cuda")
+
+        assert embedder1 is embedder2 is embedder3
+        assert mock_hf_embedding.call_count == 1
+
+
+@pytest.mark.unit
+class TestModelManagerReranker:
+    """Tests for ModelManager reranker functionality (mocked)."""
+
+    def setup_method(self):
+        """Reset singleton before each test."""
+        from tensortruth.services.model_manager import ModelManager
+
+        ModelManager.reset_instance()
+
+    @patch("tensortruth.services.model_manager.SentenceTransformerRerank")
+    def test_get_reranker_loads_model(self, mock_reranker):
+        """Test that get_reranker loads the model."""
+        from tensortruth.services.model_manager import ModelManager
+
+        mock_instance = MagicMock()
+        mock_reranker.return_value = mock_instance
+
+        manager = ModelManager.get_instance()
+        reranker = manager.get_reranker(
+            model_name="BAAI/bge-reranker-v2-m3", device="cpu"
+        )
+
+        assert reranker is mock_instance
+        mock_reranker.assert_called_once()
+
+    @patch("tensortruth.services.model_manager.SentenceTransformerRerank")
+    def test_get_reranker_reuses_loaded_model(self, mock_reranker):
+        """Test that get_reranker reuses already loaded model."""
+        from tensortruth.services.model_manager import ModelManager
+
+        mock_instance = MagicMock()
+        mock_reranker.return_value = mock_instance
+
+        manager = ModelManager.get_instance()
+        reranker1 = manager.get_reranker(
+            model_name="BAAI/bge-reranker-v2-m3", device="cpu"
+        )
+        reranker2 = manager.get_reranker(
+            model_name="BAAI/bge-reranker-v2-m3", device="cpu"
+        )
+
+        assert reranker1 is reranker2
+        assert mock_reranker.call_count == 1
+
+    @patch("tensortruth.services.model_manager.SentenceTransformerRerank")
+    def test_get_reranker_swaps_when_different_model(self, mock_reranker):
+        """Test that get_reranker swaps when different model requested."""
+        from tensortruth.services.model_manager import ModelManager
+
+        mock_instance1 = MagicMock()
+        mock_instance2 = MagicMock()
+        mock_reranker.side_effect = [mock_instance1, mock_instance2]
+
+        manager = ModelManager.get_instance()
+        reranker1 = manager.get_reranker(
+            model_name="BAAI/bge-reranker-v2-m3", device="cpu"
+        )
+        reranker2 = manager.get_reranker(
+            model_name="cross-encoder/ms-marco-MiniLM-L-6-v2", device="cpu"
+        )
+
+        assert reranker1 is not reranker2
+        assert mock_reranker.call_count == 2
+
+    @patch("tensortruth.services.model_manager.SentenceTransformerRerank")
+    def test_get_reranker_swaps_when_device_changes(self, mock_reranker):
+        """Test that get_reranker reloads when device changes."""
+        from tensortruth.services.model_manager import ModelManager
+
+        mock_instance1 = MagicMock()
+        mock_instance2 = MagicMock()
+        mock_reranker.side_effect = [mock_instance1, mock_instance2]
+
+        manager = ModelManager.get_instance()
+        reranker1 = manager.get_reranker(
+            model_name="BAAI/bge-reranker-v2-m3", device="cpu"
+        )
+        reranker2 = manager.get_reranker(
+            model_name="BAAI/bge-reranker-v2-m3", device="cuda"
+        )
+
+        assert reranker1 is not reranker2
+        assert mock_reranker.call_count == 2
+
+    @patch("tensortruth.services.model_manager.SentenceTransformerRerank")
+    def test_get_reranker_top_n_change_no_reload(self, mock_reranker):
+        """Test that changing top_n does not trigger full reload."""
+        from tensortruth.services.model_manager import ModelManager
+
+        mock_instance = MagicMock()
+        mock_reranker.return_value = mock_instance
+
+        manager = ModelManager.get_instance()
+        reranker1 = manager.get_reranker(
+            model_name="BAAI/bge-reranker-v2-m3", top_n=5, device="cpu"
+        )
+        reranker2 = manager.get_reranker(
+            model_name="BAAI/bge-reranker-v2-m3", top_n=10, device="cpu"
+        )
+
+        # Same instance, just top_n updated
+        assert reranker1 is reranker2
+        assert mock_reranker.call_count == 1
+        # Verify top_n was updated on the instance
+        assert mock_instance.top_n == 10
+
 
 # ============================================================================
 # Test Path Helpers for Embedding Model Directories

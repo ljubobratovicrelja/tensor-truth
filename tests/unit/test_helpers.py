@@ -63,7 +63,9 @@ class TestDownloadAndExtractIndexes:
 
             # Verify files were extracted to versioned path: indexes/{model_id}/module/
             # Default embedding model is bge-m3
-            extracted_file = tmp_path / "indexes" / "bge-m3" / "library_pytorch" / "test.txt"
+            extracted_file = (
+                tmp_path / "indexes" / "bge-m3" / "library_pytorch" / "test.txt"
+            )
             assert extracted_file.exists()
             assert extracted_file.read_text() == "test content"
 
@@ -296,3 +298,166 @@ class TestClearRetrieverCache:
 
         # Should not raise
         _clear_retriever_cache(mock_engine)
+
+
+@pytest.mark.unit
+class TestEmbeddingModelMatching:
+    """Test embedding model ID matching logic.
+
+    This tests the matching logic that the frontend uses to find which
+    embedding model corresponds to a session's selected embedding_model value.
+
+    The frontend stores embedding_model as either:
+    - Full HF path: "BAAI/bge-m3"
+    - Short ID: "bge-m3"
+
+    The API returns models with:
+    - model_id: "bge-m3" (sanitized short form)
+    - model_name: "BAAI/bge-m3" or null (full HF path if available)
+    """
+
+    def _get_short_model_id(self, model_name: str | None) -> str:
+        """Frontend's getShortModelId function equivalent."""
+        if not model_name:
+            return ""
+        parts = model_name.split("/")
+        return parts[-1].lower()
+
+    def _find_model_info(
+        self,
+        models: list[dict],
+        effective_embedding_model: str,
+    ) -> dict | None:
+        """Frontend's model matching logic from ModuleSelector.tsx.
+
+        Args:
+            models: List of embedding model infos from API
+            effective_embedding_model: The session's selected embedding model
+
+        Returns:
+            Matching model info dict or None
+        """
+        if not effective_embedding_model:
+            return None
+
+        short_effective = self._get_short_model_id(effective_embedding_model)
+
+        # Try exact matches first
+        for m in models:
+            if m["model_id"] == effective_embedding_model:
+                return m
+            if m.get("model_name") == effective_embedding_model:
+                return m
+
+        # Then try short ID matches
+        for m in models:
+            if m["model_id"] == short_effective:
+                return m
+            model_name_short = self._get_short_model_id(m.get("model_name"))
+            if model_name_short == short_effective:
+                return m
+
+        return None
+
+    def test_exact_model_id_match(self):
+        """Test matching when effective_embedding_model equals model_id."""
+        models = [
+            {"model_id": "bge-m3", "model_name": "BAAI/bge-m3", "modules": ["a", "b"]},
+            {"model_id": "qwen3-embedding-0.6b", "model_name": None, "modules": ["c"]},
+        ]
+
+        result = self._find_model_info(models, "bge-m3")
+        assert result is not None
+        assert result["model_id"] == "bge-m3"
+        assert result["modules"] == ["a", "b"]
+
+    def test_exact_model_name_match(self):
+        """Test matching when effective_embedding_model equals model_name."""
+        models = [
+            {"model_id": "bge-m3", "model_name": "BAAI/bge-m3", "modules": ["a", "b"]},
+            {
+                "model_id": "qwen3-embedding-0.6b",
+                "model_name": "Qwen/Qwen3-Embedding-0.6B",
+                "modules": ["c"],
+            },
+        ]
+
+        result = self._find_model_info(models, "BAAI/bge-m3")
+        assert result is not None
+        assert result["model_id"] == "bge-m3"
+
+    def test_short_id_match_from_full_path(self):
+        """Test matching full HF path to model_id."""
+        models = [
+            {"model_id": "bge-m3", "model_name": None, "modules": ["a", "b"]},
+        ]
+
+        # Frontend stores "BAAI/bge-m3" but API returns model_id "bge-m3"
+        result = self._find_model_info(models, "BAAI/bge-m3")
+        assert result is not None
+        assert result["model_id"] == "bge-m3"
+
+    def test_short_id_match_case_insensitive(self):
+        """Test that short ID matching is case insensitive."""
+        models = [
+            {
+                "model_id": "qwen3-embedding-0.6b",
+                "model_name": "Qwen/Qwen3-Embedding-0.6B",
+                "modules": ["c"],
+            },
+        ]
+
+        # Frontend may store with different casing
+        result = self._find_model_info(models, "Qwen3-Embedding-0.6b")
+        assert result is not None
+        assert result["model_id"] == "qwen3-embedding-0.6b"
+
+    def test_no_match_returns_none(self):
+        """Test that non-matching model returns None."""
+        models = [
+            {"model_id": "bge-m3", "model_name": "BAAI/bge-m3", "modules": ["a"]},
+        ]
+
+        result = self._find_model_info(models, "unknown/model")
+        assert result is None
+
+    def test_empty_effective_model_returns_none(self):
+        """Test that empty effective model returns None."""
+        models = [
+            {"model_id": "bge-m3", "model_name": "BAAI/bge-m3", "modules": ["a"]},
+        ]
+
+        result = self._find_model_info(models, "")
+        assert result is None
+
+    def test_model_name_null_still_matches_by_id(self):
+        """Test that models with null model_name can still be matched."""
+        models = [
+            {"model_id": "qwen3-embedding-0.6b", "model_name": None, "modules": ["c"]},
+        ]
+
+        # Even without model_name, should match via short ID
+        result = self._find_model_info(models, "Qwen/Qwen3-Embedding-0.6B")
+        assert result is not None
+        assert result["model_id"] == "qwen3-embedding-0.6b"
+
+    def test_exact_match_preferred_over_short_match(self):
+        """Test that exact matches take precedence over short ID matches."""
+        # Edge case: what if there are two models with similar IDs?
+        models = [
+            {
+                "model_id": "bge-m3",
+                "model_name": "BAAI/bge-m3",
+                "modules": ["official"],
+            },
+            {
+                "model_id": "custom-bge-m3",
+                "model_name": "custom/bge-m3",
+                "modules": ["custom"],
+            },
+        ]
+
+        # Should match the exact model_name first
+        result = self._find_model_info(models, "BAAI/bge-m3")
+        assert result is not None
+        assert result["modules"] == ["official"]
