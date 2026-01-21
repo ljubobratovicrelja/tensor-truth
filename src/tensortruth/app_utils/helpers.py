@@ -201,7 +201,7 @@ def download_and_extract_indexes(
     """Downloads and extracts index files from a Hugging Face repository.
 
     Supports both legacy single-file downloads and new embedding-model-specific
-    downloads via manifest.
+    downloads via manifest. Extracts to versioned path: indexes/{model_id}/
 
     Args:
         user_dir: The local directory where the indexes should be extracted.
@@ -222,7 +222,9 @@ def download_and_extract_indexes(
 
     from huggingface_hub import hf_hub_download
 
-    # Determine filename
+    # Determine filename and model_id
+    model_id = sanitize_model_id(embedding_model or DEFAULT_EMBEDDING_MODEL)
+
     if filename is None:
         if embedding_model is not None:
             filename = get_filename_for_embedding_model(embedding_model, repo_id)
@@ -252,12 +254,38 @@ def download_and_extract_indexes(
 
         tarball_path = Path(downloaded_file)
 
-        # Extracting the tarball.
-        logger.info(f"Extracting {tarball_path} to {user_dir}...")
-        with tarfile.open(tarball_path, "r:") as tar:
-            tar.extractall(path=user_dir)
+        # Extract to temp directory first
+        import tempfile
 
-        logger.info("Index download and extraction complete")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            logger.info(f"Extracting {tarball_path}...")
+            with tarfile.open(tarball_path, "r:") as tar:
+                tar.extractall(path=temp_path)
+
+            # Move extracted indexes to versioned path: indexes/{model_id}/
+            extracted_indexes = temp_path / "indexes"
+            if extracted_indexes.exists():
+                target_dir = user_dir / "indexes" / model_id
+                target_dir.mkdir(parents=True, exist_ok=True)
+
+                # Move each module directory to the versioned path
+                for module_dir in extracted_indexes.iterdir():
+                    if module_dir.is_dir():
+                        dest = target_dir / module_dir.name
+                        if dest.exists():
+                            shutil.rmtree(dest)
+                        shutil.move(str(module_dir), str(dest))
+                        logger.info(f"  Extracted: {module_dir.name}")
+
+                logger.info(
+                    f"Index download complete: {target_dir} "
+                    f"({len(list(target_dir.iterdir()))} modules)"
+                )
+            else:
+                logger.warning("No indexes directory found in tarball")
+                return False
+
         return True
 
     finally:

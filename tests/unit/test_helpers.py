@@ -24,16 +24,19 @@ class TestDownloadAndExtractIndexes:
         """Test successful download, extraction, and cleanup."""
         # Create a temporary tarball to simulate download
         tarball_path = tmp_path / HF_FILENAME
-        test_index_dir = tmp_path / "test_indexes"
-        test_index_dir.mkdir()
+
+        # Create realistic index structure: indexes/module_name/file
+        test_indexes_dir = tmp_path / "test_indexes" / "indexes"
+        test_module_dir = test_indexes_dir / "library_pytorch"
+        test_module_dir.mkdir(parents=True)
 
         # Create test index content
-        test_file = test_index_dir / "test.txt"
+        test_file = test_module_dir / "test.txt"
         test_file.write_text("test content")
 
-        # Create tarball
+        # Create tarball with indexes/library_pytorch/test.txt
         with tarfile.open(tarball_path, "w:") as tar:
-            tar.add(test_index_dir, arcname="indexes")
+            tar.add(test_indexes_dir, arcname="indexes")
 
         # Create HF cache directory to verify cleanup
         hf_cache_dir = tmp_path / ".cache"
@@ -58,8 +61,9 @@ class TestDownloadAndExtractIndexes:
             # Verify extraction succeeded
             assert result is True
 
-            # Verify files were extracted
-            extracted_file = tmp_path / "indexes" / "test.txt"
+            # Verify files were extracted to versioned path: indexes/{model_id}/module/
+            # Default embedding model is bge-m3
+            extracted_file = tmp_path / "indexes" / "bge-m3" / "library_pytorch" / "test.txt"
             assert extracted_file.exists()
             assert extracted_file.read_text() == "test content"
 
