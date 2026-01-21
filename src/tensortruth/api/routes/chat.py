@@ -40,7 +40,7 @@ def _extract_sources(source_nodes: List) -> List[SourceNode]:
             text = node.text if hasattr(node, "text") else str(node)
             score = node.score if hasattr(node, "score") else None
             metadata = node.metadata if hasattr(node, "metadata") else {}
-            sources.append(SourceNode(text=text[:500], score=score, metadata=metadata))
+            sources.append(SourceNode(text=text, score=score, metadata=metadata))
         except Exception:
             continue
     return sources

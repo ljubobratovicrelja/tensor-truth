@@ -6,6 +6,7 @@ import {
   BookOpen,
   Paperclip,
   Book,
+  HelpCircle,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -13,8 +14,366 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, convertLatexDelimiters } from "@/lib/utils";
 import type { RetrievalMetrics, SourceNode } from "@/api/types";
+
+// ============================================================================
+// Metric Tooltip Helpers
+// ============================================================================
+
+interface MetricTooltip {
+  title: string;
+  description: string;
+  interpretation: string;
+}
+
+function getMedianTooltip(median: number | null): MetricTooltip {
+  const percentage = median !== null ? median * 100 : null;
+  const base = {
+    title: "Median Relevance Score",
+    description:
+      "The middle value of all source relevance scores. Half the sources score above this, half below.",
+  };
+
+  if (percentage === null) {
+    return { ...base, interpretation: "No score data available." };
+  }
+  if (percentage >= 70) {
+    return {
+      ...base,
+      interpretation:
+        "Excellent match. The retrieval system found highly relevant sources for your query.",
+    };
+  }
+  if (percentage >= 50) {
+    return {
+      ...base,
+      interpretation:
+        "Good match. Sources are reasonably relevant and should provide useful context.",
+    };
+  }
+  if (percentage >= 30) {
+    return {
+      ...base,
+      interpretation:
+        "Moderate match. The sources have mixed relevance—consider refining your query for better results.",
+    };
+  }
+  return {
+    ...base,
+    interpretation:
+      "Weak match. Sources may only be tangentially related. Try rephrasing your question or selecting different modules.",
+  };
+}
+
+function getIQRTooltip(iqr: number | null): MetricTooltip {
+  const percentage = iqr !== null ? iqr * 100 : null;
+  const base = {
+    title: "Interquartile Range (IQR)",
+    description:
+      "Measures the spread between the 25th and 75th percentile scores. Lower values indicate more consistent source quality.",
+  };
+
+  if (percentage === null) {
+    return { ...base, interpretation: "No score data available." };
+  }
+  if (percentage <= 10) {
+    return {
+      ...base,
+      interpretation:
+        "Very consistent. All retrieved sources have similar relevance levels—uniform quality throughout.",
+    };
+  }
+  if (percentage <= 25) {
+    return {
+      ...base,
+      interpretation:
+        "Fairly consistent. Source scores are reasonably uniform with minor variation.",
+    };
+  }
+  if (percentage <= 40) {
+    return {
+      ...base,
+      interpretation:
+        "Variable quality. Source relevance varies considerably—top sources are much better than lower ones.",
+    };
+  }
+  return {
+    ...base,
+    interpretation:
+      "Highly variable. Large spread in source quality—rely more heavily on the top-ranked sources.",
+  };
+}
+
+function getHighConfidenceTooltip(ratio: number): MetricTooltip {
+  const percentage = ratio * 100;
+  const base = {
+    title: "High Confidence Ratio",
+    description:
+      "Percentage of sources scoring ≥70%. These are strong matches with high relevance to your query.",
+  };
+
+  if (percentage >= 80) {
+    return {
+      ...base,
+      interpretation:
+        "Outstanding. The vast majority of sources are highly relevant to your query.",
+    };
+  }
+  if (percentage >= 50) {
+    return {
+      ...base,
+      interpretation:
+        "Good quality pool. Most sources are confident matches that should inform the response well.",
+    };
+  }
+  if (percentage >= 20) {
+    return {
+      ...base,
+      interpretation:
+        "Mixed results. Some strong sources found, but many are moderate matches.",
+    };
+  }
+  return {
+    ...base,
+    interpretation:
+      "Few top-tier matches. Most sources fall into moderate or low confidence ranges.",
+  };
+}
+
+function getMediumConfidenceTooltip(ratio: number): MetricTooltip {
+  const percentage = ratio * 100;
+  const base = {
+    title: "Medium Confidence Ratio",
+    description:
+      "Percentage of sources scoring between 40-70%. These are reasonable matches with moderate relevance.",
+  };
+
+  if (percentage >= 80) {
+    return {
+      ...base,
+      interpretation:
+        "Most sources are moderately relevant. Decent quality, but few standout matches.",
+    };
+  }
+  if (percentage >= 50) {
+    return {
+      ...base,
+      interpretation:
+        "Balanced distribution. A healthy mix of confidence levels across your sources.",
+    };
+  }
+  if (percentage >= 20) {
+    return {
+      ...base,
+      interpretation:
+        "Sources are polarized—mostly either high or low confidence with few in the middle.",
+    };
+  }
+  return {
+    ...base,
+    interpretation:
+      "Very few moderate matches. Sources tend strongly toward high or low confidence.",
+  };
+}
+
+function getLowConfidenceTooltip(ratio: number): MetricTooltip {
+  const percentage = ratio * 100;
+  const base = {
+    title: "Low Confidence Ratio",
+    description:
+      "Percentage of sources scoring <40%. These are weak matches that may only be tangentially related.",
+  };
+
+  if (percentage <= 10) {
+    return {
+      ...base,
+      interpretation:
+        "Excellent filtering. Very few weak sources made it through—strong overall retrieval quality.",
+    };
+  }
+  if (percentage <= 30) {
+    return {
+      ...base,
+      interpretation:
+        "Good filtering. Some weaker sources included for coverage, but they won't dominate the context.",
+    };
+  }
+  if (percentage <= 50) {
+    return {
+      ...base,
+      interpretation:
+        "Moderate noise. A significant portion of sources have low confidence—results may be diluted.",
+    };
+  }
+  return {
+    ...base,
+    interpretation:
+      "High noise level. Many sources have low relevance—consider narrowing your query scope.",
+  };
+}
+
+function getSourceTypesTooltip(types: number): MetricTooltip {
+  const base = {
+    title: "Source Types",
+    description:
+      "Number of distinct document categories (papers, books, library docs, etc.) represented in the results.",
+  };
+
+  if (types === 1) {
+    return {
+      ...base,
+      interpretation:
+        "Single source type. Focused but narrow—all context comes from one document category.",
+    };
+  }
+  if (types <= 3) {
+    return {
+      ...base,
+      interpretation:
+        "Moderate diversity. Multiple document types provide different perspectives on your query.",
+    };
+  }
+  return {
+    ...base,
+    interpretation:
+      "High diversity. Broad coverage across many document types—comprehensive multi-perspective context.",
+  };
+}
+
+function getEntropyTooltip(entropy: number | null): MetricTooltip {
+  const base = {
+    title: "Source Entropy",
+    description:
+      "Information-theoretic measure of how evenly distributed the sources are. Higher values mean more balanced representation.",
+  };
+
+  if (entropy === null) {
+    return { ...base, interpretation: "No entropy data available." };
+  }
+  if (entropy < 1) {
+    return {
+      ...base,
+      interpretation:
+        "Concentrated sources. Results heavily favor a few documents—deep but narrow coverage.",
+    };
+  }
+  if (entropy < 2) {
+    return {
+      ...base,
+      interpretation:
+        "Moderate distribution. Sources are reasonably spread across documents with some clustering.",
+    };
+  }
+  return {
+    ...base,
+    interpretation:
+      "Well-distributed. Sources are evenly spread across many documents—broad, balanced coverage.",
+  };
+}
+
+function getChunksTooltip(chunks: number): MetricTooltip {
+  const base = {
+    title: "Total Chunks",
+    description:
+      "Number of text passages retrieved to form the context. More chunks provide broader coverage but increase response time.",
+  };
+
+  if (chunks <= 5) {
+    return {
+      ...base,
+      interpretation:
+        "Minimal context. Few passages retrieved—responses will be concise but may miss relevant details.",
+    };
+  }
+  if (chunks <= 15) {
+    return {
+      ...base,
+      interpretation:
+        "Moderate context. Good balance between coverage and efficiency for most queries.",
+    };
+  }
+  if (chunks <= 30) {
+    return {
+      ...base,
+      interpretation:
+        "Rich context. Extensive coverage that should capture nuanced or complex topics well.",
+    };
+  }
+  return {
+    ...base,
+    interpretation:
+      "Very large context. Maximum coverage—ideal for comprehensive questions but may slow responses.",
+  };
+}
+
+function getCharsPerChunkTooltip(avgChars: number): MetricTooltip {
+  const base = {
+    title: "Average Chunk Size",
+    description:
+      "Mean character count per retrieved passage. Affects how much context each chunk provides.",
+  };
+
+  if (avgChars < 200) {
+    return {
+      ...base,
+      interpretation:
+        "Very short chunks. Highly focused snippets—precise but may lack surrounding context.",
+    };
+  }
+  if (avgChars < 500) {
+    return {
+      ...base,
+      interpretation:
+        "Short chunks. Good for precise retrieval where specific sentences matter most.",
+    };
+  }
+  if (avgChars < 1000) {
+    return {
+      ...base,
+      interpretation:
+        "Medium chunks. Balanced size that preserves paragraph-level context.",
+    };
+  }
+  return {
+    ...base,
+    interpretation:
+      "Large chunks. Substantial passages that provide rich surrounding context per source.",
+  };
+}
+
+// ============================================================================
+// MetricItem Component
+// ============================================================================
+
+interface MetricItemProps {
+  label: string;
+  value: string;
+  tooltip: MetricTooltip;
+}
+
+function MetricItem({ label, value, tooltip }: MetricItemProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="hover:bg-muted/50 -ml-1 flex w-fit cursor-help items-center gap-1 rounded px-1 py-0.5 transition-colors">
+          <span>{label ? `${label}: ${value}` : value}</span>
+          <HelpCircle className="text-muted-foreground/50 h-3 w-3" />
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        <div className="space-y-1.5">
+          <div className="font-medium">{tooltip.title}</div>
+          <div className="text-muted-foreground text-xs">{tooltip.description}</div>
+          <div className="border-border border-t pt-1.5 text-xs">
+            {tooltip.interpretation}
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 interface SourceCardProps {
   source: SourceNode;
@@ -122,7 +481,7 @@ export function SourceCard({ source, index }: SourceCardProps) {
         )}
       >
         <div className="border-border border-t px-2.5 py-2">
-          <div className="chat-markdown text-muted-foreground max-w-none text-xs leading-relaxed">
+          <div className="chat-markdown text-muted-foreground max-h-64 max-w-none overflow-y-auto text-xs leading-relaxed">
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeHighlight, rehypeKatex]}
@@ -152,10 +511,18 @@ function MetricsPanel({ metrics }: { metrics: RetrievalMetrics }) {
           <div className="mb-1 font-medium">Distribution</div>
           <div className="text-muted-foreground space-y-0.5">
             {score_distribution.median !== null && (
-              <div>Median: {(score_distribution.median * 100).toFixed(1)}%</div>
+              <MetricItem
+                label="Median"
+                value={`${(score_distribution.median * 100).toFixed(1)}%`}
+                tooltip={getMedianTooltip(score_distribution.median)}
+              />
             )}
             {score_distribution.iqr !== null && (
-              <div>IQR: {(score_distribution.iqr * 100).toFixed(1)}%</div>
+              <MetricItem
+                label="IQR"
+                value={`${(score_distribution.iqr * 100).toFixed(1)}%`}
+                tooltip={getIQRTooltip(score_distribution.iqr)}
+              />
             )}
           </div>
         </div>
@@ -164,8 +531,30 @@ function MetricsPanel({ metrics }: { metrics: RetrievalMetrics }) {
         <div>
           <div className="mb-1 font-medium">Quality</div>
           <div className="text-muted-foreground space-y-0.5">
-            <div>High: {(quality.high_confidence_ratio * 100).toFixed(0)}%</div>
-            <div>Low: {(quality.low_confidence_ratio * 100).toFixed(0)}%</div>
+            {(() => {
+              const high = quality.high_confidence_ratio;
+              const low = quality.low_confidence_ratio;
+              const medium = Math.max(0, 1 - high - low);
+              return (
+                <>
+                  <MetricItem
+                    label="High"
+                    value={`${(high * 100).toFixed(0)}%`}
+                    tooltip={getHighConfidenceTooltip(high)}
+                  />
+                  <MetricItem
+                    label="Med"
+                    value={`${(medium * 100).toFixed(0)}%`}
+                    tooltip={getMediumConfidenceTooltip(medium)}
+                  />
+                  <MetricItem
+                    label="Low"
+                    value={`${(low * 100).toFixed(0)}%`}
+                    tooltip={getLowConfidenceTooltip(low)}
+                  />
+                </>
+              );
+            })()}
           </div>
         </div>
 
@@ -173,9 +562,17 @@ function MetricsPanel({ metrics }: { metrics: RetrievalMetrics }) {
         <div>
           <div className="mb-1 font-medium">Diversity</div>
           <div className="text-muted-foreground space-y-0.5">
-            <div>{diversity.source_types} types</div>
+            <MetricItem
+              label=""
+              value={`${diversity.source_types} types`}
+              tooltip={getSourceTypesTooltip(diversity.source_types)}
+            />
             {diversity.source_entropy !== null && (
-              <div>Entropy: {diversity.source_entropy.toFixed(2)}</div>
+              <MetricItem
+                label="Entropy"
+                value={diversity.source_entropy.toFixed(2)}
+                tooltip={getEntropyTooltip(diversity.source_entropy)}
+              />
             )}
           </div>
         </div>
@@ -184,8 +581,16 @@ function MetricsPanel({ metrics }: { metrics: RetrievalMetrics }) {
         <div>
           <div className="mb-1 font-medium">Coverage</div>
           <div className="text-muted-foreground space-y-0.5">
-            <div>{coverage.total_chunks} chunks</div>
-            <div>{coverage.avg_chunk_length.toFixed(0)} chars/chunk</div>
+            <MetricItem
+              label=""
+              value={`${coverage.total_chunks} chunks`}
+              tooltip={getChunksTooltip(coverage.total_chunks)}
+            />
+            <MetricItem
+              label=""
+              value={`${coverage.avg_chunk_length.toFixed(0)} chars/chunk`}
+              tooltip={getCharsPerChunkTooltip(coverage.avg_chunk_length)}
+            />
           </div>
         </div>
       </div>
