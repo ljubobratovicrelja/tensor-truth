@@ -76,7 +76,12 @@ export function MessageItem({
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
       </div>
 
-      <div className="group min-w-0 flex-1 space-y-2 md:max-w-[80%] md:flex-initial">
+      <div
+        className={cn(
+          "group min-w-0 space-y-2 md:max-w-[80%]",
+          isUser ? "flex-1 md:flex-initial" : "w-full md:flex-initial"
+        )}
+      >
         {/* Show thinking box for assistant messages */}
         {!isUser && thinkingContent && (
           <ThinkingBox content={thinkingContent} isCollapsed={!isStreaming} />
