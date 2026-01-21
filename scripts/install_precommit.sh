@@ -1,4 +1,12 @@
 #!/bin/bash
+
+# Auto-activate venv if it exists
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+elif [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+fi
+
 set -e
 
 echo "Uninstalling existing pre-commit hooks..."

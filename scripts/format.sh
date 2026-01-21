@@ -1,6 +1,13 @@
 #!/bin/bash
 # Formatting script - formats both Python and TypeScript/JavaScript code.
 
+# Auto-activate venv if it exists
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+elif [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+fi
+
 set -e
 
 TARGETS="src/tensortruth scripts tests"

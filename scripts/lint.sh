@@ -1,6 +1,13 @@
 #!/bin/bash
 # Linting checks - used by CI and locally to ensure consistency.
 
+# Auto-activate venv if it exists
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+elif [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+fi
+
 set -e
 
 TARGETS="src/tensortruth scripts tests"
