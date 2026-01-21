@@ -29,6 +29,16 @@ export function Sidebar({ children }: SidebarProps) {
     prevIsMobile.current = isMobile;
   }, [isMobile, sidebarOpen, setSidebarOpen]);
 
+  // Lock body scroll when sidebar is open on mobile
+  useEffect(() => {
+    if (isMobile && sidebarOpen) {
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = "";
+      };
+    }
+  }, [isMobile, sidebarOpen]);
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       // Disable resize on mobile
@@ -75,7 +85,9 @@ export function Sidebar({ children }: SidebarProps) {
         )}
         style={{ width: MOBILE_WIDTH }}
       >
-        <div className="border-border flex h-full flex-col border-r">{children}</div>
+        <div className="border-border flex h-full flex-col overflow-hidden border-r">
+          {children}
+        </div>
       </aside>
     );
   }

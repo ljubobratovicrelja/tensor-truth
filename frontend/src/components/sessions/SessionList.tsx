@@ -49,12 +49,12 @@ export function SessionList() {
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="p-3">
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="shrink-0 p-3">
         <NewSessionDialog />
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 overflow-auto">
         <div className="space-y-1 px-3 pb-3">
           {isLoading ? (
             <>

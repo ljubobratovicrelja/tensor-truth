@@ -179,7 +179,7 @@ export function ChatContainer() {
           isMobile && inputHidden && "max-h-0 overflow-hidden border-t-0 !p-0 opacity-0"
         )}
       >
-        <div className="chat-content-width">
+        <div className="chat-content-width md:pr-[5%]">
           <ChatInput
             onSend={handleSend}
             onStop={cancelStreaming}

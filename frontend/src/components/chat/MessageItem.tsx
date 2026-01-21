@@ -63,9 +63,8 @@ export function MessageItem({
   };
 
   return (
-    <div
-      className={cn("flex gap-3 py-4", isUser ? "md:flex-row-reverse" : "md:flex-row")}
-    >
+    <div className={cn("flex gap-3 py-4", isUser ? "flex-row-reverse" : "flex-row")}>
+      {isUser && <div className="hidden md:block md:w-[5%] md:shrink-0" />}
       {/* Side icon - hidden on mobile, visible on md+ */}
       <div
         className={cn(
@@ -78,8 +77,8 @@ export function MessageItem({
 
       <div
         className={cn(
-          "group min-w-0 space-y-2 md:max-w-[80%]",
-          isUser ? "flex-1 md:flex-initial" : "w-full md:flex-initial"
+          "group min-w-0 space-y-2",
+          isUser ? "md:max-w-[50%]" : "w-full md:max-w-[80%]"
         )}
       >
         {/* Show thinking box for assistant messages */}
