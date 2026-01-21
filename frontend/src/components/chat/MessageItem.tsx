@@ -141,8 +141,8 @@ export function MessageItem({
               </ReactMarkdown>
             </div>
           )}
-          {!isUser && messageSources && messageSources.length > 0 && (
-            <SourcesList sources={messageSources} metrics={messageMetrics} />
+          {!isUser && (messageSources?.length || messageMetrics) && (
+            <SourcesList sources={messageSources ?? []} metrics={messageMetrics} />
           )}
         </div>
       </div>

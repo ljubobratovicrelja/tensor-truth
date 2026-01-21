@@ -7,6 +7,7 @@ import {
   Paperclip,
   Book,
   HelpCircle,
+  AlertTriangle,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -606,7 +607,27 @@ interface SourcesListProps {
 export function SourcesList({ sources, metrics }: SourcesListProps) {
   const [collapsed, setCollapsed] = useState(true);
 
-  if (sources.length === 0) return null;
+  // If no sources and no metrics, nothing to show (no RAG was attempted)
+  if (sources.length === 0 && !metrics) return null;
+
+  // RAG was active but no sources passed confidence thresholds
+  if (sources.length === 0 && metrics) {
+    return (
+      <div className="mt-2 border-t pt-2">
+        <div className="text-muted-foreground flex items-start gap-2 text-xs">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-500" />
+          <div>
+            <span className="font-medium">No sources met confidence thresholds.</span>{" "}
+            <span className="text-muted-foreground/70">
+              This response was generated without RAG context. Consider lowering the
+              confidence threshold in session settings if you want to include
+              lower-scoring sources.
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Calculate confidence statistics
   const scores = sources
