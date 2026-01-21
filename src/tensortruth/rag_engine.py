@@ -18,6 +18,12 @@ from llama_index.core.postprocessor import (
 )
 from llama_index.core.retrievers import AutoMergingRetriever, BaseRetriever
 from llama_index.core.schema import NodeWithScore
+from llama_index.core.vector_stores import (
+    FilterCondition,
+    FilterOperator,
+    MetadataFilter,
+    MetadataFilters,
+)
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -271,6 +277,87 @@ def get_reranker(
 
     manager = ModelManager.get_instance()
     return manager.get_reranker(model_name=model, top_n=top_n, device=device)
+
+
+# Operator mapping for filter expressions
+_FILTER_OPERATORS = {
+    "$eq": FilterOperator.EQ,
+    "$ne": FilterOperator.NE,
+    "$gt": FilterOperator.GT,
+    "$gte": FilterOperator.GTE,
+    "$lt": FilterOperator.LT,
+    "$lte": FilterOperator.LTE,
+    "$in": FilterOperator.IN,
+    "$nin": FilterOperator.NIN,
+    "$contains": FilterOperator.CONTAINS,
+    "$text_match": FilterOperator.TEXT_MATCH,
+}
+
+
+def _build_metadata_filters(
+    filter_spec: Optional[Dict[str, Any]],
+) -> Optional[MetadataFilters]:
+    """Build LlamaIndex MetadataFilters from a filter specification.
+
+    Supports simple equality filters and operator-based filters.
+
+    Args:
+        filter_spec: Dictionary mapping field names to values or operator dicts.
+            Simple: {"doc_type": "library"}
+            With operator: {"version": {"$gte": "2.0"}}
+            List values: {"doc_type": ["library", "book"]} (uses IN operator)
+
+    Returns:
+        MetadataFilters object, or None if filter_spec is empty/None
+
+    Examples:
+        >>> _build_metadata_filters({"doc_type": "library"})
+        MetadataFilters(filters=[MetadataFilter(key="doc_type", value="library")])
+
+        >>> _build_metadata_filters({"version": {"$gte": "2.0"}})
+        MetadataFilters(filters=[MetadataFilter(key="version", value="2.0", operator=GTE)])
+    """
+    if not filter_spec:
+        return None
+
+    filters = []
+
+    for key, value in filter_spec.items():
+        if isinstance(value, dict):
+            # Operator syntax: {"field": {"$op": "value"}}
+            for op_key, op_value in value.items():
+                if op_key in _FILTER_OPERATORS:
+                    filters.append(
+                        MetadataFilter(
+                            key=key,
+                            value=op_value,
+                            operator=_FILTER_OPERATORS[op_key],
+                        )
+                    )
+                else:
+                    # Unknown operator, skip this entry (could log a warning)
+                    pass
+                break  # Only process first key in operator dict
+        elif isinstance(value, list):
+            # List values use IN operator
+            filters.append(
+                MetadataFilter(
+                    key=key,
+                    value=value,
+                    operator=FilterOperator.IN,
+                )
+            )
+        else:
+            # Simple equality
+            filters.append(MetadataFilter(key=key, value=value))
+
+    if not filters:
+        return None
+
+    return MetadataFilters(
+        filters=filters,  # type: ignore[arg-type]
+        condition=FilterCondition.AND,
+    )
 
 
 class MultiIndexRetriever(BaseRetriever):

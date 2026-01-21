@@ -7,12 +7,17 @@ vector indexes from documentation with metadata extraction.
 import logging
 import os
 import shutil
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import chromadb
 from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreIndex
-from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
+from llama_index.core.node_parser import (
+    HierarchicalNodeParser,
+    SemanticSplitterNodeParser,
+    get_leaf_nodes,
+)
 from llama_index.core.schema import Document
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -32,7 +37,32 @@ from .metadata import sanitize_model_id, write_index_metadata
 # Default embedding model
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
 
+# Default chunk overlap (tokens) for hierarchical node parsing
+# Prevents information loss at chunk boundaries
+# Must be smaller than the smallest chunk size (default: 128)
+DEFAULT_CHUNK_OVERLAP = 64
+
 logger = logging.getLogger(__name__)
+
+
+class ChunkingStrategy(Enum):
+    """Chunking strategy for document parsing.
+
+    HIERARCHICAL: Traditional fixed-size hierarchical chunking (default).
+        Fast and deterministic. Best for uniform technical documentation.
+
+    SEMANTIC: Semantic-aware chunking using embedding similarity.
+        Splits at natural semantic boundaries. Slower but better context.
+        Requires embedding model.
+
+    SEMANTIC_HIERARCHICAL: Two-pass approach - semantic split first,
+        then hierarchical parsing on semantic chunks. Best for mixed content
+        (narrative + code). Slowest but most intelligent.
+    """
+
+    HIERARCHICAL = "hierarchical"
+    SEMANTIC = "semantic"
+    SEMANTIC_HIERARCHICAL = "semantic_hierarchical"
 
 
 def _create_embed_model(
@@ -225,6 +255,10 @@ def build_module(
     sources_config: Dict,
     extensions: List[str] | None = None,
     chunk_sizes: List[int] | None = None,
+    chunk_overlap: int | None = None,
+    chunking_strategy: str = "hierarchical",
+    semantic_buffer_size: int = 1,
+    semantic_breakpoint_threshold: int = 95,
     device: Optional[str] = None,
     embedding_model: Optional[str] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
@@ -245,6 +279,16 @@ def build_module(
         sources_config: Loaded sources.json configuration
         extensions: List of file extensions to include (default: [".md", ".html", ".pdf"])
         chunk_sizes: Hierarchical chunk sizes for document parsing (default: [2048, 512, 256])
+        chunk_overlap: Overlap tokens between chunks (default: DEFAULT_CHUNK_OVERLAP).
+            Prevents information loss at chunk boundaries.
+        chunking_strategy: Strategy for chunking documents. One of:
+            - "hierarchical": Fixed-size hierarchical chunking (default, fast)
+            - "semantic": Semantic-aware chunking using embedding similarity
+            - "semantic_hierarchical": Semantic split + hierarchical parsing
+        semantic_buffer_size: Buffer size for semantic splitter (default: 1).
+            Higher values create larger semantic chunks.
+        semantic_breakpoint_threshold: Percentile threshold for semantic breaks
+            (default: 95). Higher values mean fewer, larger chunks.
         device: Device for embedding ("cpu", "cuda", "mps"). Auto-detected if None.
         embedding_model: HuggingFace embedding model path (default: BAAI/bge-m3)
         progress_callback: Optional callback function(stage, current, total) for progress updates
@@ -259,6 +303,8 @@ def build_module(
         extensions = [".md", ".html", ".pdf"]
     if chunk_sizes is None:
         chunk_sizes = [2048, 512, 256]
+    if chunk_overlap is None:
+        chunk_overlap = DEFAULT_CHUNK_OVERLAP
     if embedding_model is None:
         embedding_model = DEFAULT_EMBEDDING_MODEL
 
@@ -320,12 +366,57 @@ def build_module(
         ),
     )
 
-    # Parse documents into hierarchical nodes
+    # Detect device if not provided (needed for both parsing and embedding)
+    if device is None:
+        device = TensorTruthConfig._detect_default_device()
+
+    # Create embedding model (used for semantic splitting and final embedding)
+    embed_model = _create_embed_model(embedding_model, device)
+
+    # Parse documents using the selected strategy
     if progress_callback:
         progress_callback("parsing", 0, len(documents))
 
-    node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
-    nodes = node_parser.get_nodes_from_documents(documents)
+    strategy = ChunkingStrategy(chunking_strategy)
+    logger.info(f"Using chunking strategy: {strategy.value}")
+
+    if strategy == ChunkingStrategy.HIERARCHICAL:
+        # Traditional hierarchical chunking
+        node_parser = HierarchicalNodeParser.from_defaults(
+            chunk_sizes=chunk_sizes,
+            chunk_overlap=chunk_overlap,
+        )
+        nodes = node_parser.get_nodes_from_documents(documents)
+
+    elif strategy == ChunkingStrategy.SEMANTIC:
+        # Semantic-aware chunking using embedding similarity
+        semantic_parser = SemanticSplitterNodeParser(
+            embed_model=embed_model,
+            buffer_size=semantic_buffer_size,
+            breakpoint_percentile_threshold=semantic_breakpoint_threshold,
+        )
+        nodes = semantic_parser.get_nodes_from_documents(documents)
+
+    elif strategy == ChunkingStrategy.SEMANTIC_HIERARCHICAL:
+        # Two-pass: semantic split first, then hierarchical on semantic chunks
+        semantic_parser = SemanticSplitterNodeParser(
+            embed_model=embed_model,
+            buffer_size=semantic_buffer_size,
+            breakpoint_percentile_threshold=semantic_breakpoint_threshold,
+        )
+        semantic_nodes = semantic_parser.get_nodes_from_documents(documents)
+        logger.info(f"Semantic split produced {len(semantic_nodes)} nodes")
+
+        # Apply hierarchical parsing to semantic nodes
+        hierarchical_parser = HierarchicalNodeParser.from_defaults(
+            chunk_sizes=chunk_sizes,
+            chunk_overlap=chunk_overlap,
+        )
+        # semantic_nodes are BaseNode, but get_nodes_from_documents works with them
+        nodes = hierarchical_parser.get_nodes_from_documents(
+            semantic_nodes  # type: ignore[arg-type]
+        )
+
     leaf_nodes = get_leaf_nodes(nodes)
     logger.info(f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves).")
 
@@ -338,17 +429,10 @@ def build_module(
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     storage_context.docstore.add_documents(nodes)
 
-    # Detect device if not provided
-    if device is None:
-        device = TensorTruthConfig._detect_default_device()
-
     logger.info(f"Embedding with {embedding_model} on {device.upper()}...")
 
     if progress_callback:
         progress_callback("embedding", 0, len(leaf_nodes))
-
-    # Create embedding model with config-driven settings
-    embed_model = _create_embed_model(embedding_model, device)
 
     VectorStoreIndex(
         leaf_nodes,
@@ -364,6 +448,8 @@ def build_module(
         index_dir=Path(persist_dir),
         embedding_model=embedding_model,
         chunk_sizes=chunk_sizes,
+        chunk_overlap=chunk_overlap,
+        chunking_strategy=chunking_strategy,
     )
 
     logger.info(f"Module '{module_name}' built successfully with {embedding_model}!")

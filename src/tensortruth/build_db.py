@@ -111,14 +111,45 @@ Environment Variables:
         "--chunk-sizes",
         nargs="+",
         type=int,
-        default=[2048, 512, 128],
-        help="Chunk sizes for hierarchical parsing (default: 2048 512 128)",
+        default=[2048, 512, 256],
+        help="Chunk sizes for hierarchical parsing (default: 2048 512 256)",
+    )
+
+    parser.add_argument(
+        "--chunk-overlap",
+        type=int,
+        default=None,
+        help="Overlap tokens between chunks (default: 64). "
+        "Must be smaller than smallest chunk size. Prevents information loss at boundaries.",
     )
 
     parser.add_argument(
         "--extensions",
         nargs="+",
         default=[".md", ".html", ".pdf"],
+    )
+
+    parser.add_argument(
+        "--chunking-strategy",
+        choices=["hierarchical", "semantic", "semantic_hierarchical"],
+        default="hierarchical",
+        help="Chunking strategy: hierarchical (fast, default), "
+        "semantic (embedding-aware), or semantic_hierarchical (two-pass).",
+    )
+
+    parser.add_argument(
+        "--semantic-buffer-size",
+        type=int,
+        default=1,
+        help="Buffer size for semantic splitter (default: 1). Higher = larger chunks.",
+    )
+
+    parser.add_argument(
+        "--semantic-breakpoint-threshold",
+        type=int,
+        default=95,
+        help="Percentile threshold for semantic breaks (default: 95). "
+        "Higher = fewer, larger chunks.",
     )
 
     # Embedding model options
@@ -248,6 +279,10 @@ Environment Variables:
             sources_config,
             extensions=args.extensions,
             chunk_sizes=args.chunk_sizes,
+            chunk_overlap=args.chunk_overlap,
+            chunking_strategy=args.chunking_strategy,
+            semantic_buffer_size=args.semantic_buffer_size,
+            semantic_breakpoint_threshold=args.semantic_breakpoint_threshold,
             embedding_model=embedding_model,
         )
 

@@ -392,3 +392,456 @@ class TestBuildModule:
         assert result is True
         # Old file should be gone (directory is replaced)
         assert not old_file.exists()
+
+
+@pytest.mark.unit
+class TestChunkOverlap:
+    """Tests for chunk overlap functionality (Phase 1)."""
+
+    def test_default_chunk_overlap_constant_exists(self):
+        """Test that DEFAULT_CHUNK_OVERLAP constant is defined."""
+        from tensortruth.indexing.builder import DEFAULT_CHUNK_OVERLAP
+
+        assert DEFAULT_CHUNK_OVERLAP == 64
+
+    @pytest.fixture
+    def mock_sources_config(self):
+        """Mock sources configuration."""
+        return {
+            "libraries": {
+                "test_lib": {
+                    "type": "sphinx",
+                    "version": "1.0",
+                    "doc_root": "https://example.com/docs/",
+                }
+            },
+        }
+
+    @pytest.fixture
+    def temp_docs_dir(self, tmp_path):
+        """Create temporary docs directory with content."""
+        docs_dir = tmp_path / "library_docs"
+        docs_dir.mkdir()
+
+        lib_dir = docs_dir / "library_test_lib"
+        lib_dir.mkdir()
+        (lib_dir / "intro.md").write_text("# Introduction\n\nTest content.")
+
+        return str(docs_dir)
+
+    @patch("tensortruth.indexing.builder.HierarchicalNodeParser")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_build_module_passes_chunk_overlap_to_parser(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_parser_class,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """Test that build_module passes chunk_overlap to HierarchicalNodeParser."""
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+        mock_parser = MagicMock()
+        mock_parser.get_nodes_from_documents.return_value = []
+        mock_parser_class.from_defaults.return_value = mock_parser
+
+        indexes_dir = str(tmp_path / "indexes")
+
+        build_module(
+            "test_lib",
+            temp_docs_dir,
+            indexes_dir,
+            mock_sources_config,
+            chunk_overlap=128,
+        )
+
+        # Verify chunk_overlap was passed to the parser
+        mock_parser_class.from_defaults.assert_called_once()
+        call_kwargs = mock_parser_class.from_defaults.call_args.kwargs
+        assert call_kwargs.get("chunk_overlap") == 128
+
+    @patch("tensortruth.indexing.builder.HierarchicalNodeParser")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_build_module_default_chunk_overlap(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_parser_class,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """Test that build_module uses default chunk_overlap when not specified."""
+        from tensortruth.indexing.builder import DEFAULT_CHUNK_OVERLAP
+
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+        mock_parser = MagicMock()
+        mock_parser.get_nodes_from_documents.return_value = []
+        mock_parser_class.from_defaults.return_value = mock_parser
+
+        indexes_dir = str(tmp_path / "indexes")
+
+        build_module(
+            "test_lib",
+            temp_docs_dir,
+            indexes_dir,
+            mock_sources_config,
+        )
+
+        # Verify default chunk_overlap was used
+        mock_parser_class.from_defaults.assert_called_once()
+        call_kwargs = mock_parser_class.from_defaults.call_args.kwargs
+        assert call_kwargs.get("chunk_overlap") == DEFAULT_CHUNK_OVERLAP
+
+    @patch("tensortruth.indexing.builder.HierarchicalNodeParser")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_build_module_custom_chunk_overlap(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_parser_class,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """Test build with custom chunk overlap value."""
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+        mock_parser = MagicMock()
+        mock_parser.get_nodes_from_documents.return_value = []
+        mock_parser_class.from_defaults.return_value = mock_parser
+
+        indexes_dir = str(tmp_path / "indexes")
+
+        build_module(
+            "test_lib",
+            temp_docs_dir,
+            indexes_dir,
+            mock_sources_config,
+            chunk_overlap=512,
+        )
+
+        call_kwargs = mock_parser_class.from_defaults.call_args.kwargs
+        assert call_kwargs.get("chunk_overlap") == 512
+
+    @patch("tensortruth.indexing.builder.write_index_metadata")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_chunk_overlap_recorded_in_metadata(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_write_metadata,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """Test that chunk_overlap is recorded in index metadata."""
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+
+        indexes_dir = str(tmp_path / "indexes")
+
+        build_module(
+            "test_lib",
+            temp_docs_dir,
+            indexes_dir,
+            mock_sources_config,
+            chunk_overlap=256,
+        )
+
+        # Verify write_index_metadata was called with chunk_overlap
+        mock_write_metadata.assert_called_once()
+        call_kwargs = mock_write_metadata.call_args.kwargs
+        assert call_kwargs.get("chunk_overlap") == 256
+
+
+@pytest.mark.unit
+class TestSemanticChunking:
+    """Tests for semantic chunking functionality (Phase 2)."""
+
+    def test_chunking_strategy_enum_values(self):
+        """Test that ChunkingStrategy enum has expected values."""
+        from tensortruth.indexing.builder import ChunkingStrategy
+
+        assert hasattr(ChunkingStrategy, "HIERARCHICAL")
+        assert hasattr(ChunkingStrategy, "SEMANTIC")
+        assert hasattr(ChunkingStrategy, "SEMANTIC_HIERARCHICAL")
+        assert ChunkingStrategy.HIERARCHICAL.value == "hierarchical"
+        assert ChunkingStrategy.SEMANTIC.value == "semantic"
+        assert ChunkingStrategy.SEMANTIC_HIERARCHICAL.value == "semantic_hierarchical"
+
+    @pytest.fixture
+    def mock_sources_config(self):
+        """Mock sources configuration."""
+        return {
+            "libraries": {
+                "test_lib": {
+                    "type": "sphinx",
+                    "version": "1.0",
+                    "doc_root": "https://example.com/docs/",
+                }
+            },
+        }
+
+    @pytest.fixture
+    def temp_docs_dir(self, tmp_path):
+        """Create temporary docs directory with content."""
+        docs_dir = tmp_path / "library_docs"
+        docs_dir.mkdir()
+
+        lib_dir = docs_dir / "library_test_lib"
+        lib_dir.mkdir()
+        (lib_dir / "intro.md").write_text("# Introduction\n\nTest content.")
+
+        return str(docs_dir)
+
+    @patch("tensortruth.indexing.builder.HierarchicalNodeParser")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_hierarchical_strategy_uses_hierarchical_parser(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_parser_class,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """Test that hierarchical strategy uses HierarchicalNodeParser."""
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+        mock_parser = MagicMock()
+        mock_parser.get_nodes_from_documents.return_value = []
+        mock_parser_class.from_defaults.return_value = mock_parser
+
+        indexes_dir = str(tmp_path / "indexes")
+
+        from tensortruth.indexing.builder import build_module
+
+        build_module(
+            "test_lib",
+            temp_docs_dir,
+            indexes_dir,
+            mock_sources_config,
+            chunking_strategy="hierarchical",
+        )
+
+        # Verify HierarchicalNodeParser was used
+        mock_parser_class.from_defaults.assert_called_once()
+
+    @patch("tensortruth.indexing.builder.SemanticSplitterNodeParser")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_semantic_strategy_uses_semantic_splitter(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_semantic_parser,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """Test that semantic strategy uses SemanticSplitterNodeParser."""
+        mock_detect_device.return_value = "cpu"
+        mock_embed_model = MagicMock()
+        mock_embed.return_value = mock_embed_model
+        mock_parser = MagicMock()
+        mock_parser.get_nodes_from_documents.return_value = []
+        mock_semantic_parser.return_value = mock_parser
+
+        indexes_dir = str(tmp_path / "indexes")
+
+        from tensortruth.indexing.builder import build_module
+
+        build_module(
+            "test_lib",
+            temp_docs_dir,
+            indexes_dir,
+            mock_sources_config,
+            chunking_strategy="semantic",
+        )
+
+        # Verify SemanticSplitterNodeParser was used
+        mock_semantic_parser.assert_called_once()
+        call_kwargs = mock_semantic_parser.call_args.kwargs
+        # Should pass embed_model for semantic splitting
+        assert "embed_model" in call_kwargs
+
+    @patch("tensortruth.indexing.builder.SemanticSplitterNodeParser")
+    @patch("tensortruth.indexing.builder.HierarchicalNodeParser")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_semantic_hierarchical_applies_both_parsers(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_hierarchical_parser,
+        mock_semantic_parser,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """Test that semantic_hierarchical uses both parsers."""
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+
+        # Semantic parser returns documents
+        mock_semantic = MagicMock()
+        mock_semantic.get_nodes_from_documents.return_value = [MagicMock()]
+        mock_semantic_parser.return_value = mock_semantic
+
+        # Hierarchical parser returns final nodes
+        mock_hierarchical = MagicMock()
+        mock_hierarchical.get_nodes_from_documents.return_value = []
+        mock_hierarchical_parser.from_defaults.return_value = mock_hierarchical
+
+        indexes_dir = str(tmp_path / "indexes")
+
+        from tensortruth.indexing.builder import build_module
+
+        build_module(
+            "test_lib",
+            temp_docs_dir,
+            indexes_dir,
+            mock_sources_config,
+            chunking_strategy="semantic_hierarchical",
+        )
+
+        # Both parsers should be called
+        mock_semantic_parser.assert_called_once()
+        mock_hierarchical_parser.from_defaults.assert_called_once()
+
+    @patch("tensortruth.indexing.builder.SemanticSplitterNodeParser")
+    @patch("tensortruth.indexing.builder.write_index_metadata")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_chunking_strategy_recorded_in_metadata(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_write_metadata,
+        mock_semantic_parser,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """Test that chunking_strategy is recorded in index metadata."""
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+        mock_parser = MagicMock()
+        mock_parser.get_nodes_from_documents.return_value = []
+        mock_semantic_parser.return_value = mock_parser
+
+        indexes_dir = str(tmp_path / "indexes")
+
+        from tensortruth.indexing.builder import build_module
+
+        build_module(
+            "test_lib",
+            temp_docs_dir,
+            indexes_dir,
+            mock_sources_config,
+            chunking_strategy="semantic",
+        )
+
+        # Verify write_index_metadata was called with chunking_strategy
+        mock_write_metadata.assert_called_once()
+        call_kwargs = mock_write_metadata.call_args.kwargs
+        assert call_kwargs.get("chunking_strategy") == "semantic"
+
+    @patch("tensortruth.indexing.builder.SemanticSplitterNodeParser")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_semantic_buffer_size_parameter(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_semantic_parser,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """Test that semantic_buffer_size is passed to SemanticSplitterNodeParser."""
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+        mock_parser = MagicMock()
+        mock_parser.get_nodes_from_documents.return_value = []
+        mock_semantic_parser.return_value = mock_parser
+
+        indexes_dir = str(tmp_path / "indexes")
+
+        from tensortruth.indexing.builder import build_module
+
+        build_module(
+            "test_lib",
+            temp_docs_dir,
+            indexes_dir,
+            mock_sources_config,
+            chunking_strategy="semantic",
+            semantic_buffer_size=3,
+        )
+
+        call_kwargs = mock_semantic_parser.call_args.kwargs
+        assert call_kwargs.get("buffer_size") == 3
+
+    @patch("tensortruth.indexing.builder.SemanticSplitterNodeParser")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_semantic_breakpoint_threshold_parameter(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_semantic_parser,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """Test that semantic_breakpoint_threshold is passed to SemanticSplitterNodeParser."""
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+        mock_parser = MagicMock()
+        mock_parser.get_nodes_from_documents.return_value = []
+        mock_semantic_parser.return_value = mock_parser
+
+        indexes_dir = str(tmp_path / "indexes")
+
+        from tensortruth.indexing.builder import build_module
+
+        build_module(
+            "test_lib",
+            temp_docs_dir,
+            indexes_dir,
+            mock_sources_config,
+            chunking_strategy="semantic",
+            semantic_breakpoint_threshold=90,
+        )
+
+        call_kwargs = mock_semantic_parser.call_args.kwargs
+        assert call_kwargs.get("breakpoint_percentile_threshold") == 90

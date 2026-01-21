@@ -58,6 +58,8 @@ def write_index_metadata(
     index_dir: Path,
     embedding_model: str,
     chunk_sizes: List[int],
+    chunk_overlap: Optional[int] = None,
+    chunking_strategy: Optional[str] = None,
     version: str = INDEX_VERSION,
     extra_metadata: Optional[Dict[str, Any]] = None,
 ) -> None:
@@ -70,6 +72,8 @@ def write_index_metadata(
         index_dir: Path to the index directory
         embedding_model: Full HuggingFace model path (e.g., "BAAI/bge-m3")
         chunk_sizes: List of hierarchical chunk sizes used during indexing
+        chunk_overlap: Overlap tokens between chunks (for reproducibility)
+        chunking_strategy: Strategy used for chunking (hierarchical, semantic, etc.)
         version: Index format version (default: current INDEX_VERSION)
         extra_metadata: Optional additional metadata to include
     """
@@ -82,6 +86,8 @@ def write_index_metadata(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "index_version": version,
         "chunk_sizes": chunk_sizes,
+        "chunk_overlap": chunk_overlap,
+        "chunking_strategy": chunking_strategy,
     }
 
     if extra_metadata:

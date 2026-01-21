@@ -423,3 +423,75 @@ class TestGetReranker:
         assert call_kwargs["model"] == "BAAI/bge-reranker-base"
         assert call_kwargs["top_n"] == 5
         assert call_kwargs["device"] == "cpu"
+
+
+# ============================================================================
+# Tests for Metadata Filtering (Phase 3)
+# ============================================================================
+
+
+@pytest.mark.unit
+class TestMetadataFiltering:
+    """Tests for metadata filtering functionality."""
+
+    def test_build_metadata_filters_function_exists(self):
+        """Test that _build_metadata_filters function exists."""
+        from tensortruth.rag_engine import _build_metadata_filters
+
+        assert callable(_build_metadata_filters)
+
+    def test_build_metadata_filters_simple_equality(self):
+        """Test building filters with simple equality checks."""
+        from tensortruth.rag_engine import _build_metadata_filters
+
+        filter_spec = {"doc_type": "library"}
+        result = _build_metadata_filters(filter_spec)
+
+        assert result is not None
+        assert len(result.filters) == 1
+        assert result.filters[0].key == "doc_type"
+        assert result.filters[0].value == "library"
+
+    def test_build_metadata_filters_multiple_conditions(self):
+        """Test building filters with multiple conditions."""
+        from tensortruth.rag_engine import _build_metadata_filters
+
+        filter_spec = {"doc_type": "library", "source": "pytorch"}
+        result = _build_metadata_filters(filter_spec)
+
+        assert result is not None
+        assert len(result.filters) == 2
+
+    def test_build_metadata_filters_with_operators(self):
+        """Test building filters with explicit operators."""
+        from tensortruth.rag_engine import _build_metadata_filters
+
+        # Filter spec with operator syntax
+        filter_spec = {"version": {"$gte": "2.0"}}
+        result = _build_metadata_filters(filter_spec)
+
+        assert result is not None
+        assert len(result.filters) == 1
+        # The filter should use GTE operator
+        assert result.filters[0].key == "version"
+
+    def test_build_metadata_filters_returns_none_for_empty(self):
+        """Test that empty filter spec returns None."""
+        from tensortruth.rag_engine import _build_metadata_filters
+
+        result = _build_metadata_filters({})
+        assert result is None
+
+        result = _build_metadata_filters(None)
+        assert result is None
+
+    def test_build_metadata_filters_list_values(self):
+        """Test building filters with list values (IN operator)."""
+        from tensortruth.rag_engine import _build_metadata_filters
+
+        filter_spec = {"doc_type": ["library", "book"]}
+        result = _build_metadata_filters(filter_spec)
+
+        assert result is not None
+        # Should use IN operator for lists
+        assert len(result.filters) == 1
