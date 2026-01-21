@@ -167,23 +167,26 @@ CUSTOM_CONDENSE_PROMPT_TEMPLATE = (
 )
 
 
-def get_embed_model(device: str = "cpu") -> HuggingFaceEmbedding:
-    """Load HuggingFace embedding model.
+def get_embed_model(
+    device: str = "cpu", model_name: str | None = None
+) -> HuggingFaceEmbedding:
+    """Get HuggingFace embedding model via ModelManager singleton.
+
+    This function provides backward compatibility while using the new
+    ModelManager singleton for efficient model lifecycle management.
 
     Args:
-        device: Device to load model on ('cuda' or 'cpu')
+        device: Device to load model on ('cuda', 'cpu', or 'mps')
+        model_name: HuggingFace model path (default: from config or BAAI/bge-m3)
 
     Returns:
-        HuggingFaceEmbedding instance
+        HuggingFaceEmbedding instance (managed by ModelManager)
     """
-    print(f"Loading Embedder on: {device.upper()}")
-    batch_size = 128 if device == "cuda" else 16
-    return HuggingFaceEmbedding(
-        model_name="BAAI/bge-m3",
-        device=device,
-        model_kwargs={"trust_remote_code": True},
-        embed_batch_size=batch_size,
-    )
+    from tensortruth.services.model_manager import ModelManager
+
+    manager = ModelManager.get_instance()
+    manager.set_default_device(device)
+    return manager.get_embedder(model_name=model_name, device=device)
 
 
 def get_llm(params: Dict[str, Any]) -> Ollama:
@@ -248,21 +251,26 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
 def get_reranker(
     params: Dict[str, Any], device: str = "cuda"
 ) -> SentenceTransformerRerank:
-    """Initialize cross-encoder reranker model.
+    """Get cross-encoder reranker model via ModelManager singleton.
+
+    This function provides backward compatibility while using the new
+    ModelManager singleton for efficient model lifecycle management.
 
     Args:
         params: Dictionary with reranker configuration
-        device: Device to load model on ('cuda' or 'cpu')
+        device: Device to load model on ('cuda', 'cpu', or 'mps')
 
     Returns:
-        SentenceTransformerRerank instance
+        SentenceTransformerRerank instance (managed by ModelManager)
     """
+    from tensortruth.services.model_manager import ModelManager
+
     # Default to the high-precision BGE-M3 v2 if not specified
     model = params.get("reranker_model", "BAAI/bge-reranker-v2-m3")
     top_n = params.get("reranker_top_n", 3)
 
-    print(f"Loading Reranker on: {device.upper()}")
-    return SentenceTransformerRerank(model=model, top_n=top_n, device=device)
+    manager = ModelManager.get_instance()
+    return manager.get_reranker(model_name=model, top_n=top_n, device=device)
 
 
 class MultiIndexRetriever(BaseRetriever):
@@ -454,6 +462,7 @@ def load_engine_for_modules(
         engine_params = {}
 
     # Determine devices - use session param, fallback to config default, then auto-detect
+    config = None
     if "rag_device" not in engine_params:
         try:
             # Try to get default from config
@@ -471,26 +480,49 @@ def load_engine_for_modules(
     else:
         rag_device = engine_params["rag_device"]
 
+    # Determine embedding model - use session param, fallback to config default
+    embedding_model = engine_params.get("embedding_model")
+    if embedding_model is None:
+        try:
+            if config is None:
+                config = load_config()
+            embedding_model = config.rag.default_embedding_model
+        except (ImportError, Exception):
+            embedding_model = "BAAI/bge-m3"
+
     # Calculate adaptive similarity_top_k based on reranker_top_n
     # Retrieve 2-3x more candidates than final target to ensure quality
     reranker_top_n = engine_params.get("reranker_top_n", 3)
     similarity_top_k = max(5, reranker_top_n * 2)
 
-    # Set Global Settings for this session (Embedder)
-    embed_model = get_embed_model(rag_device)
+    # Set Global Settings for this session (Embedder via ModelManager)
+    embed_model = get_embed_model(rag_device, model_name=embedding_model)
     Settings.embed_model = embed_model
+
+    # Get embedding-aware index directory
+    from tensortruth.app_utils.paths import get_indexes_dir_for_model
+
+    embedding_indexes_dir = str(get_indexes_dir_for_model(embedding_model))
 
     active_retrievers: list[BaseRetriever] = []
     print(
         f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} | "
-        f"RAG DEVICE: {rag_device} | RETRIEVAL: {similarity_top_k} per index → "
-        f"RERANK: top {reranker_top_n} ---"
+        f"EMBEDDER: {embedding_model} | RAG DEVICE: {rag_device} | "
+        f"RETRIEVAL: {similarity_top_k} per index → RERANK: top {reranker_top_n} ---"
     )
 
     for module in selected_modules:
-        path = os.path.join(get_base_index_dir(), module)
+        # First try embedding-aware path: indexes/{model_id}/{module}
+        path = os.path.join(embedding_indexes_dir, module)
+
+        # Fall back to legacy path: indexes/{module} (for backward compatibility)
         if not os.path.exists(path):
-            continue
+            legacy_path = os.path.join(get_base_index_dir(), module)
+            if os.path.exists(legacy_path):
+                print(f"  Using legacy index path for {module}")
+                path = legacy_path
+            else:
+                continue
 
         db = chromadb.PersistentClient(path=path)
         collection = db.get_or_create_collection("data")
