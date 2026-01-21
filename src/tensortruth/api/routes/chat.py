@@ -33,11 +33,26 @@ router = rest_router
 
 
 def _extract_sources(source_nodes: List) -> List[SourceNode]:
-    """Extract source information from RAG source nodes."""
+    """Extract source information from RAG source nodes.
+
+    Uses get_content() to get the full merged content from AutoMergingRetriever,
+    which may be larger than the leaf node text if nodes were merged to parent.
+    """
     sources = []
     for node in source_nodes:
         try:
-            text = node.text if hasattr(node, "text") else str(node)
+            # For NodeWithScore, access the inner node for get_content()
+            inner_node = getattr(node, "node", node)
+
+            # Prefer get_content() which returns merged parent content
+            # when AutoMergingRetriever has merged leaf nodes
+            if hasattr(inner_node, "get_content"):
+                text = inner_node.get_content()
+            elif hasattr(node, "text"):
+                text = node.text
+            else:
+                text = str(node)
+
             score = node.score if hasattr(node, "score") else None
             metadata = node.metadata if hasattr(node, "metadata") else {}
             sources.append(SourceNode(text=text, score=score, metadata=metadata))
