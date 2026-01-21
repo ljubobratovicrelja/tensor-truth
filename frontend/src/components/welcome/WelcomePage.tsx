@@ -3,15 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Send, Bot, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useModels, useCreateSession, useFavoritePresets } from "@/hooks";
+import { useModels, useCreateSession, useFavoritePresets, useConfig } from "@/hooks";
 import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
 import { SessionSettingsPanel } from "@/components/config";
@@ -26,6 +20,7 @@ export function WelcomePage() {
 
   const { data: modelsData, isLoading: modelsLoading } = useModels();
   const { data: favoritesData } = useFavoritePresets();
+  const { data: config } = useConfig();
   const createSession = useCreateSession();
   const navigate = useNavigate();
   const setPendingMessage = useChatStore((state) => state.setPendingUserMessage);
@@ -96,7 +91,7 @@ export function WelcomePage() {
         {/* Logo and Greeting */}
         <div className="text-center">
           <div className="mb-4 flex items-center justify-center gap-3">
-            <img src="/logo.png" alt="TensorTruth" className="h-12 w-12" />
+            <img src="/logo.png" alt="TensorTruth" className="h-24 w-24" />
           </div>
           <h1 className="text-foreground text-3xl font-semibold tracking-tight">
             What would you like to know?
@@ -145,11 +140,17 @@ export function WelcomePage() {
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
                   <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
                     <Bot className="h-3.5 w-3.5" />
-                    <SelectValue placeholder="Model" />
+                    <span className="text-xs">
+                      {selectedModel && selectedModel !== "__none__"
+                        ? selectedModel
+                        : config?.models.default_rag_model || "Model"}
+                    </span>
                   </SelectTrigger>
                   <SelectContent position="popper" side="top" className="max-h-[300px]">
                     <SelectItem value="__none__">
-                      <span className="text-muted-foreground">Default model</span>
+                      <span className="text-muted-foreground">
+                        Default ({config?.models.default_rag_model || "..."})
+                      </span>
                     </SelectItem>
                     {modelsLoading ? (
                       <SelectItem value="loading" disabled>

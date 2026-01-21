@@ -1,15 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Square, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useModels } from "@/hooks";
+import { useModels, useConfig } from "@/hooks";
 import { ModuleSelector } from "./ModuleSelector";
 import { SessionSettingsPanel } from "@/components/config";
 
@@ -40,6 +34,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const { data: modelsData, isLoading: modelsLoading } = useModels();
+  const { data: config } = useConfig();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -123,11 +118,15 @@ export function ChatInput({
               >
                 <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
                   <Bot className="h-3.5 w-3.5" />
-                  <SelectValue placeholder="Model" />
+                  <span className="text-xs">
+                    {selectedModel || config?.models.default_rag_model || "Model"}
+                  </span>
                 </SelectTrigger>
                 <SelectContent position="popper" side="top" className="max-h-[300px]">
                   <SelectItem value="__none__">
-                    <span className="text-muted-foreground">Default model</span>
+                    <span className="text-muted-foreground">
+                      Default ({config?.models.default_rag_model || "..."})
+                    </span>
                   </SelectItem>
                   {modelsLoading ? (
                     <SelectItem value="loading" disabled>
