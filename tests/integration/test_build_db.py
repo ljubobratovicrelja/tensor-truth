@@ -81,7 +81,7 @@ class TestBuildModule:
 
         return str(docs_dir)
 
-    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_build_library_module(
         self,
@@ -105,13 +105,13 @@ class TestBuildModule:
             mock_sources_config,
         )
 
-        # Verify index was created
-        assert Path(indexes_dir, "library_test_lib").exists()
+        # Verify index was created (versioned path: indexes/{model_id}/module/)
+        assert Path(indexes_dir, "bge-m3", "library_test_lib").exists()
 
         # Verify VectorStoreIndex was called
         mock_index.assert_called_once()
 
-    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_build_papers_module(
         self,
@@ -133,10 +133,10 @@ class TestBuildModule:
             mock_sources_config,
         )
 
-        # Verify papers index was created
-        assert Path(indexes_dir, "papers_test_papers").exists()
+        # Verify papers index was created (versioned path)
+        assert Path(indexes_dir, "bge-m3", "papers_test_papers").exists()
 
-    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_build_book_module(
         self,
@@ -158,8 +158,8 @@ class TestBuildModule:
             mock_sources_config,
         )
 
-        # Verify book index was created (singular "book")
-        assert Path(indexes_dir, "book_test_book").exists()
+        # Verify book index was created (versioned path, singular "book")
+        assert Path(indexes_dir, "bge-m3", "book_test_book").exists()
 
     def test_missing_source_directory(self, tmp_path, mock_sources_config, caplog):
         """Test that missing source directory is handled gracefully."""
@@ -177,7 +177,7 @@ class TestBuildModule:
         # Should log error, not raise
         assert "missing" in caplog.text.lower()
 
-    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_rebuild_replaces_old_index(
         self,
@@ -190,7 +190,8 @@ class TestBuildModule:
         """Test that rebuilding removes old index first."""
 
         indexes_dir = str(tmp_path / "indexes")
-        index_path = Path(indexes_dir, "library_test_lib")
+        # Use versioned path structure
+        index_path = Path(indexes_dir, "bge-m3", "library_test_lib")
 
         # Create existing index
         index_path.mkdir(parents=True)
@@ -390,7 +391,7 @@ class TestBuildMainCLI:
             "indexes": str(indexes_dir),
         }
 
-    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_build_all_flag(self, mock_index, mock_embed, setup_build_env):
         """Test --all flag builds all modules."""
@@ -415,7 +416,7 @@ class TestBuildMainCLI:
         # Should succeed
         assert result == 0
 
-    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
     def test_build_specific_modules(self, mock_index, mock_embed, setup_build_env):
         """Test building specific modules."""

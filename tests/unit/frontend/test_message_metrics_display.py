@@ -129,9 +129,9 @@ def test_sourceslist_should_display_metrics_not_fallback():
 
     print("✓ SourcesList would display NEW metrics format")
     print(f"  Avg: {int(metrics['score_distribution']['mean'] * 100)}%")
-    print(
-        f"  Range: {int(metrics['score_distribution']['min'] * 100)}%-{int(metrics['score_distribution']['max'] * 100)}%"
-    )
+    min_score = int(metrics["score_distribution"]["min"] * 100)
+    max_score = int(metrics["score_distribution"]["max"] * 100)
+    print(f"  Range: {min_score}%-{max_score}%")
     print(f"  {metrics['diversity']['unique_sources']} docs")
 
 

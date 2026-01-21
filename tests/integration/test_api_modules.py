@@ -42,16 +42,27 @@ class TestModulesAPI:
     @pytest.mark.asyncio
     async def test_list_modules_with_index(self, client, tmp_path, monkeypatch):
         """Test listing modules when indexes exist."""
+        from tensortruth.services import ConfigService
+
         indexes_dir = tmp_path / "indexes"
         indexes_dir.mkdir()
 
-        # Create a fake index directory with chroma.sqlite3
-        module_dir = indexes_dir / "pytorch"
+        # Create a fake index directory with versioned path: indexes/{model_id}/module/
+        model_dir = indexes_dir / "bge-m3"
+        model_dir.mkdir()
+        module_dir = model_dir / "pytorch"
         module_dir.mkdir()
         (module_dir / "chroma.sqlite3").touch()
 
         monkeypatch.setattr(
             "tensortruth.api.routes.modules.get_indexes_dir", lambda: indexes_dir
+        )
+
+        # Mock config service to return default embedding model
+        config_file = tmp_path / "config.yaml"
+        test_service = ConfigService(config_file=config_file)
+        monkeypatch.setattr(
+            "tensortruth.api.deps.get_config_service", lambda: test_service
         )
 
         response = await client.get("/api/modules")

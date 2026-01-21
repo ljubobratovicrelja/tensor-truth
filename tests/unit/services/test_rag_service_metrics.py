@@ -4,8 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tensortruth.services.models import RAGChunk
-
 
 class TestRAGServiceMetrics:
     """Test RAG service metrics integration."""
@@ -37,7 +35,8 @@ class TestRAGServiceMetrics:
         mock_retriever = MagicMock()
         mock_node = MagicMock()
         mock_node.score = 0.85
-        mock_node.node.get_content.return_value = "Test content" * 100
+        mock_node.get_content.return_value = "Test content " * 100
+        mock_node.node.get_content.return_value = "Test content " * 100
         mock_node.node.metadata = {
             "filename": "test.pdf",
             "doc_type": "paper",
@@ -86,7 +85,6 @@ class TestRAGServiceMetrics:
         This ensures metrics reflect final reranked scores, not raw embeddings.
         """
         from tensortruth.services.rag_service import RAGService
-        from tensortruth.services.retrieval_metrics import compute_retrieval_metrics
 
         mock_engine = MagicMock()
         mock_llm = MagicMock()
@@ -100,7 +98,8 @@ class TestRAGServiceMetrics:
         mock_retriever = MagicMock()
         mock_node = MagicMock()
         mock_node.score = 0.75  # Original score
-        mock_node.node.get_content.return_value = "Content"
+        mock_node.get_content.return_value = "Content " * 50
+        mock_node.node.get_content.return_value = "Content " * 50
         mock_node.node.metadata = {"filename": "test.pdf", "doc_type": "paper"}
         mock_retriever.retrieve.return_value = [mock_node]
         mock_engine._retriever = mock_retriever

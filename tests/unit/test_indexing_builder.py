@@ -206,7 +206,7 @@ class TestBuildModule:
         return str(docs_dir)
 
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
-    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
     def test_build_module_success(
         self,
@@ -231,7 +231,8 @@ class TestBuildModule:
         )
 
         assert result is True
-        assert Path(indexes_dir, "library_test_lib").exists()
+        # With versioned structure, index is in indexes/{model_id}/module/
+        assert Path(indexes_dir, "bge-m3", "library_test_lib").exists()
         mock_index.assert_called_once()
 
     def test_build_module_missing_source_dir(
@@ -271,7 +272,7 @@ class TestBuildModule:
         assert "no documents" in caplog.text.lower()
 
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
-    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
     def test_build_module_custom_chunk_sizes(
         self,
@@ -299,7 +300,7 @@ class TestBuildModule:
         assert result is True
 
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
-    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder._create_embed_model")
     def test_build_module_custom_device(
         self,
         mock_embed,
@@ -322,11 +323,11 @@ class TestBuildModule:
         )
 
         assert result is True
-        # Verify get_embed_model was called with custom device
-        mock_embed.assert_called_with(device="cuda")
+        # Verify _create_embed_model was called with custom device
+        mock_embed.assert_called_with("BAAI/bge-m3", "cuda")
 
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
-    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
     def test_build_module_progress_callback(
         self,
@@ -357,7 +358,7 @@ class TestBuildModule:
         assert callback.call_count >= 2  # At least metadata and embedding stages
 
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
-    @patch("tensortruth.indexing.builder.get_embed_model")
+    @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
     def test_build_module_replaces_old_index(
         self,
@@ -373,9 +374,10 @@ class TestBuildModule:
         mock_embed.return_value = MagicMock()
 
         indexes_dir = str(tmp_path / "indexes")
-        index_path = Path(indexes_dir, "library_test_lib")
+        # With versioned structure, index is in indexes/{model_id}/module/
+        index_path = Path(indexes_dir, "bge-m3", "library_test_lib")
 
-        # Create existing index
+        # Create existing index in versioned path
         index_path.mkdir(parents=True)
         old_file = index_path / "old_data.txt"
         old_file.write_text("old index data")
@@ -388,5 +390,5 @@ class TestBuildModule:
         )
 
         assert result is True
-        # Old file should be gone
+        # Old file should be gone (directory is replaced)
         assert not old_file.exists()

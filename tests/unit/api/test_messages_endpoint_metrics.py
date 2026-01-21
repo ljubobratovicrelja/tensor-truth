@@ -5,7 +5,6 @@ but not returned by the GET /sessions/{id}/messages endpoint.
 """
 
 import json
-from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient

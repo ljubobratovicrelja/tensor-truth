@@ -2,11 +2,11 @@
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from tensortruth.services.models import RAGChunk, RAGResponse
+from tensortruth.services.models import RAGChunk
 from tensortruth.services.session_service import SessionService
 
 

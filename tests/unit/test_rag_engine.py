@@ -252,9 +252,15 @@ class TestMultiIndexRetriever:
 
 @pytest.mark.unit
 class TestGetEmbedModel:
-    """Tests for get_embed_model function."""
+    """Tests for get_embed_model function via ModelManager."""
 
-    @patch("tensortruth.rag_engine.HuggingFaceEmbedding")
+    def setup_method(self):
+        """Reset ModelManager singleton before each test."""
+        from tensortruth.services.model_manager import ModelManager
+
+        ModelManager.reset_instance()
+
+    @patch("tensortruth.services.model_manager.HuggingFaceEmbedding")
     def test_get_embed_model_cuda(self, mock_embedding_class):
         """Test embedding model initialization with CUDA."""
         from tensortruth.rag_engine import get_embed_model
@@ -268,11 +274,11 @@ class TestGetEmbedModel:
         mock_embedding_class.assert_called_once()
 
         # Check that device was passed correctly
-        call_kwargs = mock_embedding_class.call_args[1]
+        call_kwargs = mock_embedding_class.call_args.kwargs
         assert call_kwargs["device"] == "cuda"
         assert "BAAI/bge-m3" in call_kwargs["model_name"]
 
-    @patch("tensortruth.rag_engine.HuggingFaceEmbedding")
+    @patch("tensortruth.services.model_manager.HuggingFaceEmbedding")
     def test_get_embed_model_cpu(self, mock_embedding_class):
         """Test embedding model initialization with CPU."""
         from tensortruth.rag_engine import get_embed_model
@@ -283,12 +289,17 @@ class TestGetEmbedModel:
         result = get_embed_model(device="cpu")
         assert result == mock_model
 
-        call_kwargs = mock_embedding_class.call_args[1]
+        call_kwargs = mock_embedding_class.call_args.kwargs
         assert call_kwargs["device"] == "cpu"
 
-    @patch("tensortruth.rag_engine.HuggingFaceEmbedding")
+    @patch("tensortruth.services.model_manager.HuggingFaceEmbedding")
     def test_get_embed_model_mps(self, mock_embedding_class):
-        """Test embedding model initialization with MPS."""
+        """Test embedding model initialization with MPS (skipped if not available)."""
+        import torch
+
+        if not (hasattr(torch.backends, "mps") and torch.backends.mps.is_available()):
+            pytest.skip("MPS not available on this system")
+
         from tensortruth.rag_engine import get_embed_model
 
         mock_model = MagicMock()
@@ -297,7 +308,7 @@ class TestGetEmbedModel:
         result = get_embed_model(device="mps")
         assert result == mock_model
 
-        call_kwargs = mock_embedding_class.call_args[1]
+        call_kwargs = mock_embedding_class.call_args.kwargs
         assert call_kwargs["device"] == "mps"
 
 
@@ -372,9 +383,15 @@ class TestGetLLM:
 
 @pytest.mark.unit
 class TestGetReranker:
-    """Tests for get_reranker function."""
+    """Tests for get_reranker function via ModelManager."""
 
-    @patch("tensortruth.rag_engine.SentenceTransformerRerank")
+    def setup_method(self):
+        """Reset ModelManager singleton before each test."""
+        from tensortruth.services.model_manager import ModelManager
+
+        ModelManager.reset_instance()
+
+    @patch("tensortruth.services.model_manager.SentenceTransformerRerank")
     def test_get_reranker_defaults(self, mock_reranker_class):
         """Test reranker initialization with defaults."""
         from tensortruth.rag_engine import get_reranker
@@ -386,11 +403,11 @@ class TestGetReranker:
         result = get_reranker(params, device="cuda")
 
         assert result == mock_reranker
-        call_kwargs = mock_reranker_class.call_args[1]
+        call_kwargs = mock_reranker_class.call_args.kwargs
         assert call_kwargs["device"] == "cuda"
         assert call_kwargs["top_n"] == 3  # default
 
-    @patch("tensortruth.rag_engine.SentenceTransformerRerank")
+    @patch("tensortruth.services.model_manager.SentenceTransformerRerank")
     def test_get_reranker_custom_model(self, mock_reranker_class):
         """Test reranker with custom model."""
         from tensortruth.rag_engine import get_reranker
@@ -402,7 +419,7 @@ class TestGetReranker:
         result = get_reranker(params, device="cpu")
         assert result == mock_reranker
 
-        call_kwargs = mock_reranker_class.call_args[1]
+        call_kwargs = mock_reranker_class.call_args.kwargs
         assert call_kwargs["model"] == "BAAI/bge-reranker-base"
         assert call_kwargs["top_n"] == 5
         assert call_kwargs["device"] == "cpu"
