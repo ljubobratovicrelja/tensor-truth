@@ -1,6 +1,7 @@
 """Configuration schema and default values for Tensor-Truth."""
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from typing import Dict, Optional
 
 from tensortruth.core.constants import (
     DEFAULT_AGENT_REASONING_MODEL,
@@ -31,11 +32,108 @@ class UIConfig:
 
 
 @dataclass
+class EmbeddingModelConfig:
+    """Per-embedding-model configuration for HuggingFace models.
+
+    These settings optimize memory usage and performance for specific models.
+    See: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B for Qwen3 recommendations.
+    """
+
+    # Batch sizes for embedding (smaller = less VRAM, slower)
+    batch_size_cuda: int = 128
+    batch_size_cpu: int = 16
+
+    # PyTorch dtype: null (default), "float16", "bfloat16", "float32"
+    torch_dtype: Optional[str] = None
+
+    # Tokenizer padding side: null (default), "left", "right"
+    # Qwen3 models recommend "left" padding
+    padding_side: Optional[str] = None
+
+    # Enable Flash Attention 2 if available (requires flash-attn package)
+    flash_attention: bool = False
+
+    # Trust remote code from HuggingFace (required for some models)
+    trust_remote_code: bool = True
+
+
+# Default embedding model configurations
+# These are written to config.yaml on first run and can be customized
+DEFAULT_EMBEDDING_MODEL_CONFIGS: Dict[str, Dict] = {
+    # BGE-M3: High-quality multilingual embeddings, works well with defaults
+    "BAAI/bge-m3": {
+        "batch_size_cuda": 128,
+        "batch_size_cpu": 16,
+        "torch_dtype": None,
+        "padding_side": None,
+        "flash_attention": False,
+        "trust_remote_code": True,
+    },
+    # Qwen3 Embedding models: Need special handling due to memory spikes
+    # See: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/discussions/38
+    "Qwen/Qwen3-Embedding-0.6B": {
+        "batch_size_cuda": 8,
+        "batch_size_cpu": 4,
+        "torch_dtype": "float16",
+        "padding_side": "left",
+        "flash_attention": True,
+        "trust_remote_code": True,
+    },
+    "Qwen/Qwen3-Embedding-4B": {
+        "batch_size_cuda": 4,
+        "batch_size_cpu": 2,
+        "torch_dtype": "float16",
+        "padding_side": "left",
+        "flash_attention": True,
+        "trust_remote_code": True,
+    },
+    "Qwen/Qwen3-Embedding-8B": {
+        "batch_size_cuda": 2,
+        "batch_size_cpu": 1,
+        "torch_dtype": "float16",
+        "padding_side": "left",
+        "flash_attention": True,
+        "trust_remote_code": True,
+    },
+}
+
+# Default config for unknown models
+DEFAULT_EMBEDDING_MODEL_CONFIG = EmbeddingModelConfig()
+
+
+@dataclass
 class RAGConfig:
     """RAG pipeline configuration."""
 
     default_device: str = "cpu"  # Will be auto-detected on first run
     default_balance_strategy: str = "top_k_per_index"  # Multi-index balancing
+    default_embedding_model: str = "BAAI/bge-m3"  # HuggingFace embedding model
+
+    # Per-model configurations (model_name -> config dict)
+    # On first run, this is populated from DEFAULT_EMBEDDING_MODEL_CONFIGS
+    embedding_model_configs: Dict[str, Dict] = field(default_factory=dict)
+
+    def get_embedding_model_config(self, model_name: str) -> EmbeddingModelConfig:
+        """Get configuration for a specific embedding model.
+
+        Looks up model-specific config, falling back to defaults if not found.
+
+        Args:
+            model_name: HuggingFace model path (e.g., "BAAI/bge-m3")
+
+        Returns:
+            EmbeddingModelConfig with settings for this model
+        """
+        # Check user config first
+        if model_name in self.embedding_model_configs:
+            return EmbeddingModelConfig(**self.embedding_model_configs[model_name])
+
+        # Fall back to built-in defaults
+        if model_name in DEFAULT_EMBEDDING_MODEL_CONFIGS:
+            return EmbeddingModelConfig(**DEFAULT_EMBEDDING_MODEL_CONFIGS[model_name])
+
+        # Unknown model - use generic defaults
+        return DEFAULT_EMBEDDING_MODEL_CONFIG
 
 
 @dataclass
@@ -136,7 +234,11 @@ class TensorTruthConfig:
         return cls(
             ollama=OllamaConfig(),
             ui=UIConfig(),
-            rag=RAGConfig(default_device=default_device),
+            rag=RAGConfig(
+                default_device=default_device,
+                # Populate with default embedding model configs
+                embedding_model_configs=dict(DEFAULT_EMBEDDING_MODEL_CONFIGS),
+            ),
             models=ModelsConfig(),
             agent=AgentConfig(),
         )

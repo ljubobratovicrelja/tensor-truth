@@ -28,6 +28,8 @@ class RAGConfigSchema(BaseModel):
     """RAG pipeline configuration."""
 
     default_device: str = "cpu"
+    default_balance_strategy: str = "top_k_per_index"
+    default_embedding_model: str = "BAAI/bge-m3"
 
 
 class ModelsConfigSchema(BaseModel):

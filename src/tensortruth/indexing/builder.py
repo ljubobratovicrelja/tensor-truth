@@ -8,17 +8,17 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import chromadb
 from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreIndex
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
 from llama_index.core.schema import Document
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from ..app_utils.config_schema import TensorTruthConfig
+from ..app_utils.config_schema import DEFAULT_EMBEDDING_MODEL_CONFIGS, TensorTruthConfig
 from ..core.types import DocumentType
-from ..rag_engine import get_embed_model
 from ..utils.metadata import (
     extract_arxiv_metadata_from_config,
     extract_book_chapter_metadata,
@@ -27,8 +27,99 @@ from ..utils.metadata import (
     get_book_metadata_from_config,
     get_document_type_from_config,
 )
+from .metadata import sanitize_model_id, write_index_metadata
+
+# Default embedding model
+DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
 
 logger = logging.getLogger(__name__)
+
+
+def _create_embed_model(
+    model_name: str,
+    device: str,
+) -> HuggingFaceEmbedding:
+    """Create HuggingFace embedding model with config-driven settings.
+
+    Loads model-specific configuration from config.yaml (or built-in defaults)
+    and applies optimizations like batch size, dtype, flash attention, etc.
+
+    Args:
+        model_name: HuggingFace model path (e.g., "BAAI/bge-m3")
+        device: Device to run on ("cpu", "cuda", "mps")
+
+    Returns:
+        Configured HuggingFaceEmbedding instance
+    """
+    # Try to load config, fall back to built-in defaults
+    try:
+        from ..app_utils.config import load_config
+
+        config = load_config()
+        model_config = config.rag.get_embedding_model_config(model_name)
+    except Exception:
+        # Fall back to built-in defaults if config loading fails
+        from ..app_utils.config_schema import (
+            DEFAULT_EMBEDDING_MODEL_CONFIG,
+            EmbeddingModelConfig,
+        )
+
+        if model_name in DEFAULT_EMBEDDING_MODEL_CONFIGS:
+            model_config = EmbeddingModelConfig(
+                **DEFAULT_EMBEDDING_MODEL_CONFIGS[model_name]
+            )
+        else:
+            model_config = DEFAULT_EMBEDDING_MODEL_CONFIG
+
+    # Determine batch size based on device
+    batch_size = (
+        model_config.batch_size_cuda
+        if device == "cuda"
+        else model_config.batch_size_cpu
+    )
+
+    # Build model_kwargs
+    model_kwargs: Dict[str, Any] = {"trust_remote_code": model_config.trust_remote_code}
+
+    # Add torch_dtype if specified
+    if model_config.torch_dtype:
+        import torch
+
+        dtype_map = {
+            "float16": torch.float16,
+            "bfloat16": torch.bfloat16,
+            "float32": torch.float32,
+        }
+        if model_config.torch_dtype in dtype_map:
+            model_kwargs["torch_dtype"] = dtype_map[model_config.torch_dtype]
+
+    # Try to enable flash attention if configured
+    if model_config.flash_attention:
+        try:
+            import flash_attn  # noqa: F401
+
+            model_kwargs["attn_implementation"] = "flash_attention_2"
+            logger.info("Flash Attention 2 enabled for embedding model")
+        except ImportError:
+            logger.debug("Flash Attention not available, using default attention")
+
+    # Build tokenizer_kwargs
+    tokenizer_kwargs = None
+    if model_config.padding_side:
+        tokenizer_kwargs = {"padding_side": model_config.padding_side}
+
+    logger.info(
+        f"Creating embedding model: {model_name} "
+        f"(batch_size={batch_size}, dtype={model_config.torch_dtype or 'default'})"
+    )
+
+    return HuggingFaceEmbedding(
+        model_name=model_name,
+        device=device,
+        model_kwargs=model_kwargs,
+        tokenizer_kwargs=tokenizer_kwargs,
+        embed_batch_size=batch_size,
+    )
 
 
 def extract_metadata(
@@ -135,6 +226,7 @@ def build_module(
     extensions: List[str] | None = None,
     chunk_sizes: List[int] | None = None,
     device: Optional[str] = None,
+    embedding_model: Optional[str] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
 ) -> bool:
     """Build vector index for a documentation module.
@@ -144,7 +236,7 @@ def build_module(
     2. Extracts metadata based on document type
     3. Parses documents into hierarchical chunks
     4. Embeds chunks and creates vector index
-    5. Persists the index to disk
+    5. Persists the index to disk with metadata
 
     Args:
         module_name: Name of module (e.g., "pytorch", "dl_foundations")
@@ -154,6 +246,7 @@ def build_module(
         extensions: List of file extensions to include (default: [".md", ".html", ".pdf"])
         chunk_sizes: Hierarchical chunk sizes for document parsing (default: [2048, 512, 256])
         device: Device for embedding ("cpu", "cuda", "mps"). Auto-detected if None.
+        embedding_model: HuggingFace embedding model path (default: BAAI/bge-m3)
         progress_callback: Optional callback function(stage, current, total) for progress updates
 
     Returns:
@@ -166,6 +259,8 @@ def build_module(
         extensions = [".md", ".html", ".pdf"]
     if chunk_sizes is None:
         chunk_sizes = [2048, 512, 256]
+    if embedding_model is None:
+        embedding_model = DEFAULT_EMBEDDING_MODEL
 
     # Get document type from config
     doc_type = get_document_type_from_config(module_name, sources_config)
@@ -174,7 +269,10 @@ def build_module(
     module_dir_name = f"{doc_type.value}_{module_name}"
 
     source_dir = os.path.join(library_docs_dir, module_dir_name)
-    persist_dir = os.path.join(indexes_dir, module_dir_name)
+
+    # Use embedding model subdirectory for versioned indexes
+    model_id = sanitize_model_id(embedding_model)
+    persist_dir = os.path.join(indexes_dir, model_id, module_dir_name)
 
     logger.info(f"\n--- BUILDING MODULE: {module_name} ---")
     logger.info(f"Source: {source_dir}")
@@ -244,19 +342,30 @@ def build_module(
     if device is None:
         device = TensorTruthConfig._detect_default_device()
 
-    logger.info(f"Embedding on {device.upper()}...")
+    logger.info(f"Embedding with {embedding_model} on {device.upper()}...")
 
     if progress_callback:
         progress_callback("embedding", 0, len(leaf_nodes))
 
+    # Create embedding model with config-driven settings
+    embed_model = _create_embed_model(embedding_model, device)
+
     VectorStoreIndex(
         leaf_nodes,
         storage_context=storage_context,
-        embed_model=get_embed_model(device=device),
+        embed_model=embed_model,
         show_progress=True,
     )
 
     storage_context.persist(persist_dir=persist_dir)
-    logger.info(f"Module '{module_name}' built successfully!")
+
+    # Write index metadata for future compatibility checks
+    write_index_metadata(
+        index_dir=Path(persist_dir),
+        embedding_model=embedding_model,
+        chunk_sizes=chunk_sizes,
+    )
+
+    logger.info(f"Module '{module_name}' built successfully with {embedding_model}!")
 
     return True
