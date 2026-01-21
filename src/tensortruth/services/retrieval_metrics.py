@@ -7,7 +7,7 @@ including score distribution, diversity, coverage, and quality indicators.
 import math
 import statistics
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 
@@ -193,7 +193,7 @@ def compute_retrieval_metrics(source_nodes: List[Any]) -> RetrievalMetrics:
 
     for node in source_nodes:
         # Extract metadata (handle different structures)
-        metadata = {}
+        metadata: Dict[str, Any] = {}
         if hasattr(node, "node") and hasattr(node.node, "metadata"):
             metadata = node.node.metadata or {}
         elif hasattr(node, "metadata"):

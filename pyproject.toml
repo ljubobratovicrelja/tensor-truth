@@ -17,8 +17,9 @@ keywords = ["rag", "deepseek", "ollama", "pytorch", "llm", "local-ai"]
 dependencies = [
     # --- Dependency Stabilization ---
     # Narrowing these specific libraries prevents the massive backtracking
-    "transformers>=4.40.0,<4.47.0",
-    "tokenizers>=0.19.0,<0.21.0",
+    # Note: transformers>=4.51 required for Qwen3 embedding model support
+    "transformers>=4.51.0,<5.0.0",
+    "tokenizers>=0.19.0,<1.0.0",
     "huggingface-hub[hf_xet,inference]>=0.23.0,<1.0.0",
     "sentence-transformers>=3.0.0",
     "llama_parse>=0.5.0,<0.6.55",
