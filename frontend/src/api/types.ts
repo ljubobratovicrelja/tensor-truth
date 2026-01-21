@@ -35,6 +35,7 @@ export interface MessageResponse {
   content: string;
   sources?: SourceNode[] | null;
   thinking?: string | null;
+  metrics?: RetrievalMetrics | null;
 }
 
 export interface MessagesResponse {
@@ -52,10 +53,40 @@ export interface SourceNode {
   metadata: Record<string, unknown>;
 }
 
+export interface RetrievalMetrics {
+  score_distribution: {
+    mean: number | null;
+    median: number | null;
+    min: number | null;
+    max: number | null;
+    std: number | null;
+    q1: number | null;
+    q3: number | null;
+    iqr: number | null;
+    range: number | null;
+  };
+  diversity: {
+    unique_sources: number;
+    source_types: number;
+    source_entropy: number | null;
+  };
+  coverage: {
+    total_context_chars: number;
+    avg_chunk_length: number;
+    total_chunks: number;
+    estimated_tokens: number;
+  };
+  quality: {
+    high_confidence_ratio: number;
+    low_confidence_ratio: number;
+  };
+}
+
 export interface ChatResponse {
   content: string;
   sources: SourceNode[];
   confidence_level: string;
+  metrics?: RetrievalMetrics | null;
 }
 
 // WebSocket message types
@@ -67,6 +98,7 @@ export interface StreamToken {
 export interface StreamSources {
   type: "sources";
   data: SourceNode[];
+  metrics?: RetrievalMetrics | null;
 }
 
 export interface StreamDone {

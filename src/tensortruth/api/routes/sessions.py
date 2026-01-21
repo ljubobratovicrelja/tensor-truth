@@ -132,6 +132,7 @@ async def get_messages(
                 content=msg.get("content", ""),
                 sources=msg.get("sources"),
                 thinking=msg.get("thinking"),
+                metrics=msg.get("metrics"),
             )
             for msg in messages
         ]

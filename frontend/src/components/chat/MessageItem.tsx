@@ -11,11 +11,12 @@ import { cn, convertLatexDelimiters } from "@/lib/utils";
 import { SourcesList } from "./SourceCard";
 import { ThinkingBox } from "./ThinkingBox";
 import { StreamingText } from "./StreamingText";
-import type { MessageResponse, SourceNode } from "@/api/types";
+import type { MessageResponse, RetrievalMetrics, SourceNode } from "@/api/types";
 
 interface MessageItemProps {
   message: MessageResponse;
   sources?: SourceNode[];
+  metrics?: RetrievalMetrics | null;
   /** Override thinking content (used during streaming) */
   thinking?: string;
   /** Whether this message is currently being streamed */
@@ -25,11 +26,14 @@ interface MessageItemProps {
 export function MessageItem({
   message,
   sources,
+  metrics,
   thinking,
   isStreaming,
 }: MessageItemProps) {
   const isUser = message.role === "user";
   const messageSources = sources ?? (message.sources as SourceNode[] | undefined);
+  // Use prop metrics (streaming) or message.metrics (saved)
+  const messageMetrics = metrics ?? message.metrics;
   // Use prop thinking (streaming) or message.thinking (saved)
   const thinkingContent = thinking ?? message.thinking;
   const [copied, setCopied] = useState(false);
@@ -138,7 +142,7 @@ export function MessageItem({
             </div>
           )}
           {!isUser && messageSources && messageSources.length > 0 && (
-            <SourcesList sources={messageSources} />
+            <SourcesList sources={messageSources} metrics={messageMetrics} />
           )}
         </div>
       </div>

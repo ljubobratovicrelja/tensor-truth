@@ -14,7 +14,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { Badge } from "@/components/ui/badge";
 import { cn, convertLatexDelimiters } from "@/lib/utils";
-import type { SourceNode } from "@/api/types";
+import type { RetrievalMetrics, SourceNode } from "@/api/types";
 
 interface SourceCardProps {
   source: SourceNode;
@@ -141,11 +141,64 @@ export function SourceCard({ source, index }: SourceCardProps) {
   );
 }
 
-interface SourcesListProps {
-  sources: SourceNode[];
+function MetricsPanel({ metrics }: { metrics: RetrievalMetrics }) {
+  const { score_distribution, diversity, coverage, quality } = metrics;
+
+  return (
+    <div className="bg-muted/30 mb-3 rounded-md p-3">
+      <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
+        {/* Score Distribution */}
+        <div>
+          <div className="mb-1 font-medium">Distribution</div>
+          <div className="text-muted-foreground space-y-0.5">
+            {score_distribution.median !== null && (
+              <div>Median: {(score_distribution.median * 100).toFixed(1)}%</div>
+            )}
+            {score_distribution.iqr !== null && (
+              <div>IQR: {(score_distribution.iqr * 100).toFixed(1)}%</div>
+            )}
+          </div>
+        </div>
+
+        {/* Quality */}
+        <div>
+          <div className="mb-1 font-medium">Quality</div>
+          <div className="text-muted-foreground space-y-0.5">
+            <div>High: {(quality.high_confidence_ratio * 100).toFixed(0)}%</div>
+            <div>Low: {(quality.low_confidence_ratio * 100).toFixed(0)}%</div>
+          </div>
+        </div>
+
+        {/* Diversity */}
+        <div>
+          <div className="mb-1 font-medium">Diversity</div>
+          <div className="text-muted-foreground space-y-0.5">
+            <div>{diversity.source_types} types</div>
+            {diversity.source_entropy !== null && (
+              <div>Entropy: {diversity.source_entropy.toFixed(2)}</div>
+            )}
+          </div>
+        </div>
+
+        {/* Coverage */}
+        <div>
+          <div className="mb-1 font-medium">Coverage</div>
+          <div className="text-muted-foreground space-y-0.5">
+            <div>{coverage.total_chunks} chunks</div>
+            <div>{coverage.avg_chunk_length.toFixed(0)} chars/chunk</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-export function SourcesList({ sources }: SourcesListProps) {
+interface SourcesListProps {
+  sources: SourceNode[];
+  metrics?: RetrievalMetrics | null;
+}
+
+export function SourcesList({ sources, metrics }: SourcesListProps) {
   const [collapsed, setCollapsed] = useState(true);
 
   if (sources.length === 0) return null;
@@ -174,12 +227,23 @@ export function SourcesList({ sources }: SourcesListProps) {
           <span className="font-medium tracking-wide uppercase">
             Sources ({sources.length})
           </span>
-          {stats && (
+          {metrics ? (
+            <span className="text-muted-foreground/70 font-normal tracking-normal normal-case">
+              | Avg: {((metrics.score_distribution.mean || 0) * 100).toFixed(0)}% | Range:{" "}
+              {((metrics.score_distribution.min || 0) * 100).toFixed(0)}%-
+              {((metrics.score_distribution.max || 0) * 100).toFixed(0)}%
+              {metrics.score_distribution.std && (
+                <> | σ: {(metrics.score_distribution.std * 100).toFixed(1)}%</>
+              )}{" "}
+              | {metrics.diversity.unique_sources} docs | ~
+              {metrics.coverage.estimated_tokens} tokens
+            </span>
+          ) : stats ? (
             <span className="text-muted-foreground/70 font-normal tracking-normal normal-case">
               | Max: {(stats.max * 100).toFixed(0)}% | Min: {(stats.min * 100).toFixed(0)}
               % | Avg: {(stats.mean * 100).toFixed(0)}%
             </span>
-          )}
+          ) : null}
         </div>
         {collapsed ? (
           <ChevronDown className="h-3.5 w-3.5 shrink-0" />
@@ -193,6 +257,10 @@ export function SourcesList({ sources }: SourcesListProps) {
           collapsed ? "max-h-0" : "max-h-[2000px]"
         )}
       >
+        {/* Expanded metrics panel */}
+        {metrics && <MetricsPanel metrics={metrics} />}
+
+        {/* Source cards */}
         {sources.map((source, index) => (
           <SourceCard key={index} source={source} index={index} />
         ))}

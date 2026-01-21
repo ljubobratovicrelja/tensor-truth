@@ -24,6 +24,7 @@ export function ChatContainer() {
     streamingContent,
     streamingThinking,
     streamingSources,
+    streamingMetrics,
     isStreaming,
     pipelineStatus,
     error,
@@ -162,6 +163,7 @@ export function ChatContainer() {
         streamingContent={streamingContent || undefined}
         streamingThinking={streamingThinking || undefined}
         streamingSources={streamingSources.length > 0 ? streamingSources : undefined}
+        streamingMetrics={streamingMetrics}
         isStreaming={isStreaming}
         pipelineStatus={pipelineStatus}
       />

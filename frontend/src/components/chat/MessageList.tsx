@@ -8,7 +8,7 @@ import { ThinkingBox } from "./ThinkingBox";
 import { useScrollDirection, useIsMobile } from "@/hooks";
 import { useUIStore } from "@/stores";
 import { cn } from "@/lib/utils";
-import type { MessageResponse, SourceNode } from "@/api/types";
+import type { MessageResponse, RetrievalMetrics, SourceNode } from "@/api/types";
 import type { PipelineStatus } from "@/stores/chatStore";
 
 interface MessageListProps {
@@ -18,6 +18,7 @@ interface MessageListProps {
   streamingContent?: string;
   streamingThinking?: string;
   streamingSources?: SourceNode[];
+  streamingMetrics?: RetrievalMetrics | null;
   isStreaming?: boolean;
   pipelineStatus?: PipelineStatus;
 }
@@ -29,6 +30,7 @@ export function MessageList({
   streamingContent,
   streamingThinking,
   streamingSources,
+  streamingMetrics,
   isStreaming,
   pipelineStatus,
 }: MessageListProps) {
@@ -182,6 +184,7 @@ export function MessageList({
               <MessageItem
                 message={{ role: "assistant", content: streamingContent }}
                 sources={streamingSources}
+                metrics={streamingMetrics}
                 thinking={streamingThinking}
                 isStreaming
               />

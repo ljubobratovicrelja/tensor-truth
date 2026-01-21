@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { SourceNode } from "@/api/types";
+import type { RetrievalMetrics, SourceNode } from "@/api/types";
 
 export type PipelineStatus =
   | "loading_models"
@@ -13,6 +13,7 @@ interface ChatStore {
   streamingContent: string;
   streamingThinking: string;
   streamingSources: SourceNode[];
+  streamingMetrics: RetrievalMetrics | null;
   confidenceLevel: string | null;
   pipelineStatus: PipelineStatus;
   error: string | null;
@@ -23,6 +24,7 @@ interface ChatStore {
   appendThinking: (thinking: string) => void;
   setStatus: (status: PipelineStatus) => void;
   setSources: (sources: SourceNode[]) => void;
+  setMetrics: (metrics: RetrievalMetrics | null) => void;
   finishStreaming: (content: string, confidenceLevel: string) => void;
   setPendingUserMessage: (message: string | null) => void;
   clearPendingUserMessage: () => void;
@@ -35,6 +37,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   streamingContent: "",
   streamingThinking: "",
   streamingSources: [],
+  streamingMetrics: null,
   confidenceLevel: null,
   pipelineStatus: null,
   error: null,
@@ -46,6 +49,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingContent: "",
       streamingThinking: "",
       streamingSources: [],
+      streamingMetrics: null,
       confidenceLevel: null,
       pipelineStatus: null,
       error: null,
@@ -65,6 +69,8 @@ export const useChatStore = create<ChatStore>((set) => ({
   setStatus: (status) => set({ pipelineStatus: status }),
 
   setSources: (sources) => set({ streamingSources: sources }),
+
+  setMetrics: (metrics) => set({ streamingMetrics: metrics }),
 
   finishStreaming: (content, confidenceLevel) =>
     set({
@@ -93,6 +99,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingContent: "",
       streamingThinking: "",
       streamingSources: [],
+      streamingMetrics: null,
       confidenceLevel: null,
       pipelineStatus: null,
       error: null,

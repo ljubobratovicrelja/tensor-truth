@@ -21,6 +21,7 @@ from tensortruth.rag_engine import (
 )
 
 from .models import RAGChunk, RAGResponse
+from .retrieval_metrics import compute_retrieval_metrics
 
 
 class RAGService:
@@ -212,6 +213,10 @@ class RAGService:
                 # Log but don't break streaming if postprocessor fails
                 logger.warning(f"Postprocessor failed, using unprocessed nodes: {e}")
 
+        # Compute retrieval metrics from final reranked nodes
+        metrics = compute_retrieval_metrics(source_nodes)
+        metrics_dict = metrics.to_dict()
+
         # Phase 2: Check if model supports thinking and start generation
         llm = self._engine._llm
         thinking_enabled = getattr(llm, "thinking", False)
@@ -258,10 +263,14 @@ class RAGService:
             memory.put(ChatMessage(role=MessageRole.USER, content=prompt))
             memory.put(ChatMessage(role=MessageRole.ASSISTANT, content=full_response))
 
-        # Yield final complete chunk with sources
-        yield RAGChunk(source_nodes=source_nodes, is_complete=True)
+        # Yield final complete chunk with sources and metrics
+        yield RAGChunk(
+            source_nodes=source_nodes, is_complete=True, metrics=metrics_dict
+        )
 
-        return RAGResponse(text=full_response, source_nodes=source_nodes)
+        return RAGResponse(
+            text=full_response, source_nodes=source_nodes, metrics=metrics_dict
+        )
 
     def query_simple(
         self,
@@ -366,7 +375,7 @@ class RAGService:
         # Yield final complete chunk (no sources in LLM-only mode)
         yield RAGChunk(source_nodes=[], is_complete=True)
 
-        return RAGResponse(text=full_response, source_nodes=[])
+        return RAGResponse(text=full_response, source_nodes=[], metrics=None)
 
     def get_llm(self) -> Optional[Ollama]:
         """Get the underlying LLM instance from the engine.

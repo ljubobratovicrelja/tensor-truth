@@ -21,6 +21,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
     appendThinking,
     setStatus,
     setSources,
+    setMetrics,
     finishStreaming,
     setError,
     reset,
@@ -96,6 +97,9 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
 
             case "sources":
               setSources(data.data);
+              if (data.metrics) {
+                setMetrics(data.metrics);
+              }
               break;
 
             case "done":
@@ -160,6 +164,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       appendThinking,
       setStatus,
       setSources,
+      setMetrics,
       finishStreaming,
       setError,
       onError,

@@ -83,6 +83,8 @@ class TestChatAPI:
         assert data["confidence_level"] == "llm_only"
         assert len(data["content"]) > 0
         assert data["sources"] == []
+        # LLM-only mode should have no metrics
+        assert data.get("metrics") is None
 
     @pytest.mark.asyncio
     async def test_intent_classification(self, client, tmp_path, monkeypatch):
@@ -134,6 +136,52 @@ class TestChatAPIWithMockedRAG:
 
     These tests mock the RAG service to avoid needing Ollama running.
     """
+
+    @pytest.mark.asyncio
+    async def test_chat_response_includes_metrics_field(
+        self, client, tmp_path, monkeypatch
+    ):
+        """Test that chat response schema includes metrics field.
+
+        This test verifies the response structure, ensuring the API
+        returns the metrics field (even if None for LLM-only mode).
+        """
+        sessions_file = tmp_path / "chat_sessions.json"
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+
+        monkeypatch.setattr(
+            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
+        )
+        monkeypatch.setattr(
+            "tensortruth.api.deps.get_session_dir",
+            lambda sid: sessions_dir / sid,
+        )
+        from tensortruth.api.deps import get_session_service
+
+        get_session_service.cache_clear()
+
+        # Create a session
+        create_response = await client.post(
+            "/api/sessions", json={"modules": [], "params": {}}
+        )
+        session_id = create_response.json()["session_id"]
+
+        # Create session directory
+        session_dir = sessions_dir / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        # Since we're in LLM-only mode (no modules), we can test without Ollama
+        # by just verifying the response structure from the endpoint definition
+        # The actual LLM query would require Ollama, so we check the schema only
+
+        # Verify the ChatResponse schema has metrics field by checking endpoint
+        # This is a structural test - full e2e would need Ollama
+        from tensortruth.api.schemas.chat import ChatResponse
+
+        # Verify ChatResponse model includes metrics field
+        assert "metrics" in ChatResponse.model_fields
+        assert ChatResponse.model_fields["metrics"].is_required() is False
 
     @pytest.mark.asyncio
     @pytest.mark.requires_ollama

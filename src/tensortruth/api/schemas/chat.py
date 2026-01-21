@@ -25,6 +25,7 @@ class ChatResponse(BaseModel):
     content: str
     sources: List[SourceNode] = Field(default_factory=list)
     confidence_level: str = "normal"
+    metrics: Optional[Dict[str, Any]] = None
 
 
 class IntentRequest(BaseModel):
@@ -57,6 +58,7 @@ class StreamSources(BaseModel):
 
     type: Literal["sources"] = "sources"
     data: List[SourceNode]
+    metrics: Optional[Dict[str, Any]] = None
 
 
 class StreamDone(BaseModel):

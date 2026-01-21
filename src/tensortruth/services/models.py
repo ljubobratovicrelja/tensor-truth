@@ -116,6 +116,7 @@ class RAGChunk:
         source_nodes: Retrieved source documents (only set when is_complete=True).
         is_complete: Whether this is the final chunk with sources.
         status: Pipeline status indicator ('retrieving', 'thinking', 'generating', None).
+        metrics: Retrieval quality metrics (only set when is_complete=True).
     """
 
     text: str = ""
@@ -123,6 +124,7 @@ class RAGChunk:
     source_nodes: List[Any] = field(default_factory=list)
     is_complete: bool = False
     status: Optional[Literal["retrieving", "thinking", "generating"]] = None
+    metrics: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -132,3 +134,4 @@ class RAGResponse:
     text: str
     source_nodes: List[Any] = field(default_factory=list)
     confidence_level: str = "normal"  # "normal", "low", "none"
+    metrics: Optional[Dict[str, Any]] = None

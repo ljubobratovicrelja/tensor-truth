@@ -80,12 +80,14 @@ async def chat(
     # Query engine (collect full response)
     full_response = ""
     sources: List[SourceNode] = []
+    metrics_dict = None
 
     if llm_only_mode:
         # LLM-only mode: direct LLM query without RAG
         for chunk in rag_service.query_llm_only(body.prompt, params):
             if chunk.is_complete:
                 sources = []
+                metrics_dict = chunk.metrics
             elif chunk.text:
                 full_response += chunk.text
     else:
@@ -102,6 +104,7 @@ async def chat(
         for chunk in rag_service.query(body.prompt):
             if chunk.is_complete:
                 sources = _extract_sources(chunk.source_nodes)
+                metrics_dict = chunk.metrics
             elif chunk.text:
                 full_response += chunk.text
 
@@ -109,6 +112,8 @@ async def chat(
     assistant_message: dict = {"role": "assistant", "content": full_response}
     if sources:
         assistant_message["sources"] = [s.model_dump() for s in sources]
+    if metrics_dict:
+        assistant_message["metrics"] = metrics_dict
     data = session_service.load()  # Reload in case of concurrent updates
     data = session_service.add_message(session_id, assistant_message, data)
     session_service.save(data)
@@ -117,6 +122,7 @@ async def chat(
         content=full_response,
         sources=sources,
         confidence_level="llm_only" if llm_only_mode else "normal",
+        metrics=metrics_dict,
     )
 
 
@@ -218,6 +224,7 @@ async def websocket_chat(
             full_response = ""
             full_thinking = ""
             sources = []
+            metrics_dict = None
 
             # Choose query method based on mode
             if llm_only_mode:
@@ -228,6 +235,7 @@ async def websocket_chat(
             for chunk in query_generator:
                 if chunk.is_complete:
                     sources = _extract_sources(chunk.source_nodes)
+                    metrics_dict = chunk.metrics
                 elif chunk.status:
                     # Send pipeline status update
                     await websocket.send_json(
@@ -255,12 +263,13 @@ async def websocket_chat(
                         }
                     )
 
-            # Send sources (only in RAG mode)
+            # Send sources with metrics (only in RAG mode)
             if sources:
                 await websocket.send_json(
                     {
                         "type": "sources",
                         "data": [s.model_dump() for s in sources],
+                        "metrics": metrics_dict,
                     }
                 )
 
@@ -281,6 +290,8 @@ async def websocket_chat(
                 assistant_message["thinking"] = full_thinking
             if sources:
                 assistant_message["sources"] = [s.model_dump() for s in sources]
+            if metrics_dict:
+                assistant_message["metrics"] = metrics_dict
             data = session_service.load()
             data = session_service.add_message(session_id, assistant_message, data)
             session_service.save(data)
