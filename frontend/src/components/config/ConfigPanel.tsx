@@ -24,6 +24,7 @@ import {
   useConfig,
   useUpdateConfig,
   useModels,
+  useEmbeddingModels,
   useReinitializeIndexes,
   useStartupStatus,
 } from "@/hooks";
@@ -62,6 +63,7 @@ const REINITIALIZE_START_KEY = "tensortruth-reinitialize-start";
 
 function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   const { data: modelsData } = useModels();
+  const { data: embeddingModelsData } = useEmbeddingModels();
   const reinitializeIndexes = useReinitializeIndexes();
 
   // Reinitialization progress tracking
@@ -99,6 +101,11 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   // Hardware
   const [device, setDevice] = useState(config.rag.default_device);
   const [availableDevices, setAvailableDevices] = useState<string[]>(DEVICE_OPTIONS);
+
+  // Embedding Model
+  const [embeddingModel, setEmbeddingModel] = useState(
+    config.rag.default_embedding_model
+  );
 
   // Fetch available devices from backend
   useEffect(() => {
@@ -163,6 +170,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
       ui_default_confidence_threshold: confidenceThreshold,
       ui_default_confidence_cutoff_hard: confidenceCutoffHard,
       rag_default_device: device,
+      rag_default_embedding_model: embeddingModel,
     });
   };
 
@@ -296,6 +304,27 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
       <div className="space-y-4">
         <h3 className="text-sm font-medium">Retrieval</h3>
         <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>
+              Embedding Model
+              <HelpTooltip text="Model used for vector embeddings. Changing this switches to a different set of indexes." />
+            </Label>
+            <Select value={embeddingModel} onValueChange={setEmbeddingModel}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select embedding model" />
+              </SelectTrigger>
+              <SelectContent>
+                {embeddingModelsData?.models.map((model) => (
+                  <SelectItem
+                    key={model.model_id}
+                    value={model.model_name || model.model_id}
+                  >
+                    {model.model_id} ({model.index_count} modules)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-2">
             <Label>
               Reranker Model

@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { useConfig, useUpdateSession } from "@/hooks";
+import { useConfig, useUpdateConfig, useUpdateSession, useEmbeddingModels } from "@/hooks";
 import { toast } from "sonner";
 
 function HelpTooltip({ text }: { text: string }) {
@@ -62,7 +62,9 @@ export function SessionSettingsPanel({
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { data: config } = useConfig();
+  const { data: embeddingModelsData } = useEmbeddingModels();
   const updateSession = useUpdateSession();
+  const updateConfig = useUpdateConfig();
 
   // Form state - initialized from session params or config defaults
   const [temperature, setTemperature] = useState<number>(0.7);
@@ -75,6 +77,7 @@ export function SessionSettingsPanel({
   const [systemPrompt, setSystemPrompt] = useState<string>("");
   const [ragDevice, setRagDevice] = useState<string>("cpu");
   const [llmDevice, setLlmDevice] = useState<string>("gpu");
+  const [embeddingModel, setEmbeddingModel] = useState<string>("");
   const [availableDevices, setAvailableDevices] = useState<string[]>(DEVICE_OPTIONS);
 
   // Fetch available devices from backend
@@ -116,6 +119,9 @@ export function SessionSettingsPanel({
       setSystemPrompt((currentParams.system_prompt as string) ?? "");
       setRagDevice((currentParams.rag_device as string) ?? config.rag.default_device);
       setLlmDevice((currentParams.llm_device as string) ?? "gpu");
+      setEmbeddingModel(
+        (currentParams.embedding_model as string) ?? config.rag.default_embedding_model
+      );
     }
   }, [open, config, currentParams]);
 
@@ -131,6 +137,7 @@ export function SessionSettingsPanel({
       confidence_cutoff_hard: confidenceCutoffHard,
       rag_device: ragDevice,
       llm_device: llmDevice,
+      embedding_model: embeddingModel,
     };
 
     // Only include system_prompt if non-empty
@@ -138,6 +145,17 @@ export function SessionSettingsPanel({
       newParams.system_prompt = systemPrompt.trim();
     } else {
       delete newParams.system_prompt;
+    }
+
+    // Update global config if embedding model changed (so modules list updates)
+    if (embeddingModel && embeddingModel !== config?.rag.default_embedding_model) {
+      try {
+        await updateConfig.mutateAsync({
+          rag_default_embedding_model: embeddingModel,
+        });
+      } catch {
+        // Non-fatal: session can still use the model even if global config update fails
+      }
     }
 
     // If onChange provided (welcome page mode), just call it
@@ -240,6 +258,27 @@ export function SessionSettingsPanel({
           <div className="space-y-4">
             <h3 className="text-sm font-medium">Retrieval</h3>
             <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>
+                  Embedding Model
+                  <HelpTooltip text="The embedding model used for vector search. Only models with built indexes are available." />
+                </Label>
+                <Select value={embeddingModel} onValueChange={setEmbeddingModel}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select embedding model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {embeddingModelsData?.models.map((model) => (
+                      <SelectItem
+                        key={model.model_id}
+                        value={model.model_name || model.model_id}
+                      >
+                        {model.model_id} ({model.index_count} indexes)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-2">
                 <Label>
                   Reranker Model

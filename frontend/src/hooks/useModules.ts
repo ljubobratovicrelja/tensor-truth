@@ -1,6 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { QUERY_KEYS } from "@/lib/constants";
-import { listModules, listModels, listPresets, listFavoritePresets } from "@/api/modules";
+import {
+  listModules,
+  listModels,
+  listPresets,
+  listFavoritePresets,
+  listEmbeddingModels,
+} from "@/api/modules";
 
 export function useModules() {
   return useQuery({
@@ -13,6 +19,13 @@ export function useModels() {
   return useQuery({
     queryKey: QUERY_KEYS.models,
     queryFn: listModels,
+  });
+}
+
+export function useEmbeddingModels() {
+  return useQuery({
+    queryKey: QUERY_KEYS.embeddingModels,
+    queryFn: listEmbeddingModels,
   });
 }
 

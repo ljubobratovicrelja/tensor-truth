@@ -4,6 +4,7 @@ export const QUERY_KEYS = {
   messages: (sessionId: string) => ["sessions", sessionId, "messages"] as const,
   modules: ["modules"] as const,
   models: ["models"] as const,
+  embeddingModels: ["embedding-models"] as const,
   presets: ["presets"] as const,
   favoritePresets: ["presets", "favorites"] as const,
   config: ["config"] as const,

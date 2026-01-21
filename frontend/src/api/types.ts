@@ -167,6 +167,8 @@ export interface UIConfig {
 
 export interface RAGConfig {
   default_device: string;
+  default_balance_strategy: string;
+  default_embedding_model: string;
 }
 
 export interface ModelsConfig {
@@ -217,6 +219,18 @@ export interface ModelsResponse {
   models: ModelInfo[];
 }
 
+export interface EmbeddingModelInfo {
+  model_id: string;
+  model_name: string | null;
+  index_count: number;
+  modules: string[];
+}
+
+export interface EmbeddingModelsResponse {
+  models: EmbeddingModelInfo[];
+  current: string;
+}
+
 export interface PresetInfo {
   name: string;
   config: Record<string, unknown>;
@@ -247,15 +261,30 @@ export interface ReindexResponse {
 }
 
 // Startup types
+export interface AvailableEmbeddingModel {
+  model_id: string;
+  model_name: string | null;
+  index_count: number;
+  modules: string[];
+}
+
 export interface IndexesStatus {
   exists: boolean;
   has_content: boolean;
+  available_models?: AvailableEmbeddingModel[] | null;
 }
 
 export interface ModelsStatus {
   required: string[];
   available: string[];
   missing: string[];
+}
+
+export interface EmbeddingMismatch {
+  config_model: string;
+  config_model_id: string;
+  available_model_ids: string[];
+  message: string;
 }
 
 export interface StartupStatusResponse {
@@ -265,6 +294,7 @@ export interface StartupStatusResponse {
   models_ok: boolean;
   indexes_status: IndexesStatus;
   models_status: ModelsStatus;
+  embedding_mismatch?: EmbeddingMismatch | null;
   ready: boolean;
   warnings: string[];
 }
@@ -272,6 +302,7 @@ export interface StartupStatusResponse {
 export interface IndexDownloadRequest {
   repo_id?: string;
   filename?: string;
+  embedding_model?: string;
 }
 
 export interface IndexDownloadResponse {

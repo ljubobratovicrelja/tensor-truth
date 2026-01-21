@@ -1,7 +1,14 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, AlertCircle, Download, Server } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Download,
+  Server,
+  AlertTriangle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useStartupStatus, useDownloadIndexes, usePullModel } from "@/hooks/useStartup";
@@ -337,6 +344,40 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
                 <span className="font-semibold">Indexes Ready</span>
               </div>
             </div>
+          )}
+
+          {/* Embedding Model Mismatch Warning */}
+          {status.embedding_mismatch && (
+            <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <AlertTitle className="text-amber-700 dark:text-amber-400">
+                Embedding Model Mismatch
+              </AlertTitle>
+              <AlertDescription className="text-amber-600 dark:text-amber-300">
+                <p className="mb-2">{status.embedding_mismatch.message}</p>
+                <div className="text-sm">
+                  <p>
+                    <strong>Configured:</strong>{" "}
+                    <code className="rounded bg-amber-100 px-1 dark:bg-amber-900/50">
+                      {status.embedding_mismatch.config_model}
+                    </code>
+                  </p>
+                  <p>
+                    <strong>Available:</strong>{" "}
+                    {status.embedding_mismatch.available_model_ids.map((id, i) => (
+                      <code
+                        key={id}
+                        className="rounded bg-amber-100 px-1 dark:bg-amber-900/50"
+                      >
+                        {id}
+                        {i < status.embedding_mismatch!.available_model_ids.length - 1 &&
+                          ", "}
+                      </code>
+                    ))}
+                  </p>
+                </div>
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Models Section */}

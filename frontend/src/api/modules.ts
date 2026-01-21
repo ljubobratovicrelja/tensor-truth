@@ -1,5 +1,10 @@
 import { apiGet } from "./client";
-import type { ModulesResponse, ModelsResponse, PresetsResponse } from "./types";
+import type {
+  ModulesResponse,
+  ModelsResponse,
+  PresetsResponse,
+  EmbeddingModelsResponse,
+} from "./types";
 
 export async function listModules(): Promise<ModulesResponse> {
   return apiGet<ModulesResponse>("/modules");
@@ -7,6 +12,10 @@ export async function listModules(): Promise<ModulesResponse> {
 
 export async function listModels(): Promise<ModelsResponse> {
   return apiGet<ModelsResponse>("/models");
+}
+
+export async function listEmbeddingModels(): Promise<EmbeddingModelsResponse> {
+  return apiGet<EmbeddingModelsResponse>("/embedding-models");
 }
 
 export async function listPresets(): Promise<PresetsResponse> {

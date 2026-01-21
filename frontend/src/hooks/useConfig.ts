@@ -23,6 +23,8 @@ export function useUpdateConfig() {
     mutationFn: (updates: Record<string, unknown>) => updateConfig(updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.config });
+      // Also invalidate modules since they depend on configured embedding model
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.modules });
     },
   });
 }
