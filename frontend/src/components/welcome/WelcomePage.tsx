@@ -131,6 +131,7 @@ export function WelcomePage() {
                   selectedModules={selectedModules}
                   onModulesChange={setSelectedModules}
                   disabled={isSubmitting}
+                  embeddingModel={sessionParams.embedding_model as string | undefined}
                 />
 
                 {/* Session settings */}

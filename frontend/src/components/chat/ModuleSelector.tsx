@@ -4,23 +4,65 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { useModules } from "@/hooks";
+import { useModules, useConfig, useEmbeddingModels } from "@/hooks";
 import type { ModuleInfo } from "@/api/types";
+
+/** Extract short model ID from full model name (e.g., "BAAI/bge-m3" -> "bge-m3") */
+function getShortModelId(modelName: string | undefined): string {
+  if (!modelName) return "";
+  const parts = modelName.split("/");
+  return parts[parts.length - 1].toLowerCase();
+}
+
+/** Infer doc_type and sort_order from module name pattern */
+function inferDocType(moduleName: string): { doc_type: string; sort_order: number } {
+  const name = moduleName.toLowerCase();
+  if (name.startsWith("book_")) {
+    return { doc_type: "book", sort_order: 1 };
+  }
+  if (name.startsWith("papers_") || name.startsWith("paper_")) {
+    return { doc_type: "paper", sort_order: 2 };
+  }
+  if (name.startsWith("library_")) {
+    return { doc_type: "library_doc", sort_order: 3 };
+  }
+  return { doc_type: "unknown", sort_order: 4 };
+}
+
+/** Generate display name from module name (e.g., "book_deep_learning" -> "Deep Learning") */
+function generateDisplayName(moduleName: string): string {
+  // Remove prefix (book_, library_, papers_, paper_)
+  const name = moduleName
+    .replace(/^book_/i, "")
+    .replace(/^papers?_/i, "")
+    .replace(/^library_/i, "");
+  // Convert underscores to spaces and title case
+  return name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 interface ModuleSelectorProps {
   selectedModules: string[];
   onModulesChange: (modules: string[]) => void;
   disabled?: boolean;
+  /** Embedding model to filter modules by. If provided, only modules indexed with this model are shown. */
+  embeddingModel?: string;
 }
 
 export function ModuleSelector({
   selectedModules,
   onModulesChange,
   disabled = false,
+  embeddingModel,
 }: ModuleSelectorProps) {
   const [open, setOpen] = useState(false);
   const [localSelection, setLocalSelection] = useState<string[]>(selectedModules);
   const { data: modulesData, isLoading } = useModules();
+  const { data: config } = useConfig();
+  const { data: embeddingModelsData } = useEmbeddingModels();
+
+  // Use prop if provided, otherwise fall back to config default
+  const effectiveEmbeddingModel = embeddingModel ?? config?.rag?.default_embedding_model;
+  const embeddingModelId = getShortModelId(effectiveEmbeddingModel);
 
   // Sync local selection when prop changes
   useEffect(() => {
@@ -53,21 +95,105 @@ export function ModuleSelector({
     setLocalSelection([]);
   };
 
-  const modules = modulesData?.modules ?? [];
+  // Find the embedding model info matching the effective embedding model
+  const selectedModelInfo = useMemo(() => {
+    if (!embeddingModelsData || !effectiveEmbeddingModel) return null;
+
+    const effectiveLower = effectiveEmbeddingModel.toLowerCase();
+    const shortEffective = getShortModelId(effectiveEmbeddingModel);
+
+    // Try exact matches first (case-insensitive), then short ID matches
+    return (
+      embeddingModelsData.models.find(
+        (m) =>
+          m.model_id.toLowerCase() === effectiveLower ||
+          m.model_name?.toLowerCase() === effectiveLower
+      ) ??
+      embeddingModelsData.models.find(
+        (m) =>
+          m.model_id.toLowerCase() === shortEffective ||
+          getShortModelId(m.model_name ?? "") === shortEffective
+      ) ??
+      null
+    );
+  }, [embeddingModelsData, effectiveEmbeddingModel]);
+
+  // Get the set of available module names for the selected embedding model
+  const availableModuleNames = useMemo(() => {
+    return selectedModelInfo ? new Set(selectedModelInfo.modules) : null;
+  }, [selectedModelInfo]);
+
+  // Clear invalid module selections when embedding model changes
+  useEffect(() => {
+    if (!availableModuleNames || selectedModules.length === 0) return;
+    const validSelection = selectedModules.filter((m) => availableModuleNames.has(m));
+    if (validSelection.length !== selectedModules.length) {
+      // Some selected modules are no longer valid - update parent
+      onModulesChange(validSelection);
+    }
+  }, [availableModuleNames, selectedModules, onModulesChange]);
+
+  // Build module list from embeddingModelsData (source of truth for available modules)
+  // and enrich with display info from modulesData where available
+  const filteredModules = useMemo(() => {
+    // If no selected model info, we can't determine available modules - show nothing
+    if (!selectedModelInfo) {
+      return [];
+    }
+
+    // Create a lookup map from modulesData for display info
+    const moduleInfoMap = new Map<string, ModuleInfo>();
+    for (const m of modulesData?.modules ?? []) {
+      moduleInfoMap.set(m.name, m);
+    }
+
+    // Build modules list from selectedModelInfo.modules (the actual available modules)
+    const modules = selectedModelInfo.modules.map((moduleName): ModuleInfo => {
+      const existingInfo = moduleInfoMap.get(moduleName);
+      if (existingInfo) {
+        return existingInfo;
+      }
+      // Create info for modules not in modulesData by inferring from name
+      // This happens when session's embedding model differs from config's default
+      const { doc_type, sort_order } = inferDocType(moduleName);
+      return {
+        name: moduleName,
+        display_name: generateDisplayName(moduleName),
+        doc_type,
+        sort_order,
+      };
+    });
+
+    // Sort by sort_order (type) then alphabetically by display_name
+    return modules.sort((a, b) => {
+      if (a.sort_order !== b.sort_order) {
+        return a.sort_order - b.sort_order;
+      }
+      return a.display_name.toLowerCase().localeCompare(b.display_name.toLowerCase());
+    });
+  }, [selectedModelInfo, modulesData?.modules]);
+
+  const modules = filteredModules;
   const selectedCount = localSelection.length;
 
-  // Group modules by doc_type
+  // Group modules by doc_type, sorted alphabetically within each group
   const groupedModules = useMemo(() => {
     const groups: Record<string, ModuleInfo[]> = {};
-    for (const module of modulesData?.modules ?? []) {
+    for (const module of filteredModules) {
       const type = module.doc_type || "unknown";
       if (!groups[type]) {
         groups[type] = [];
       }
       groups[type].push(module);
     }
+    // Sort each group alphabetically by display_name
+    for (const type of Object.keys(groups)) {
+      groups[type].sort((a, b) =>
+        a.display_name.toLowerCase().localeCompare(b.display_name.toLowerCase())
+      );
+    }
     return groups;
-  }, [modulesData?.modules]);
+  }, [filteredModules]);
 
   // Type display config
   const typeConfig: Record<string, { label: string; icon: typeof Book }> = {
@@ -117,7 +243,15 @@ export function ModuleSelector({
         <div className="flex flex-shrink-0 items-center justify-between border-b px-3 py-2">
           <div className="flex items-center gap-2">
             <Database className="text-muted-foreground h-4 w-4" />
-            <span className="text-sm font-medium">Knowledge Modules</span>
+            <span className="text-sm font-medium">
+              Knowledge Modules
+              {embeddingModelId && (
+                <span className="text-muted-foreground font-normal">
+                  {" "}
+                  ({embeddingModelId})
+                </span>
+              )}
+            </span>
           </div>
           {selectedCount > 0 && (
             <Button

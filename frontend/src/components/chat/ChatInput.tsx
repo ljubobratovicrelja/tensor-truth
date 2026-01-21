@@ -103,6 +103,7 @@ export function ChatInput({
                 selectedModules={selectedModules}
                 onModulesChange={onModulesChange}
                 disabled={isStreaming}
+                embeddingModel={sessionParams.embedding_model as string | undefined}
               />
             )}
             {sessionId && (
