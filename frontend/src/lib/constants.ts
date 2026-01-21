@@ -8,4 +8,5 @@ export const QUERY_KEYS = {
   favoritePresets: ["presets", "favorites"] as const,
   config: ["config"] as const,
   pdfs: (sessionId: string) => ["sessions", sessionId, "pdfs"] as const,
+  startup: ["startup"] as const,
 };

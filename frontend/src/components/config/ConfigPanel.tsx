@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Settings, Loader2, HelpCircle } from "lucide-react";
+import { Settings, Loader2, HelpCircle, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,7 +20,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
-import { useConfig, useUpdateConfig, useModels } from "@/hooks";
+import {
+  useConfig,
+  useUpdateConfig,
+  useModels,
+  useReinitializeIndexes,
+  useStartupStatus,
+} from "@/hooks";
 import type { ConfigResponse } from "@/api/types";
 
 function HelpTooltip({ text }: { text: string }) {
@@ -51,8 +58,22 @@ const DEVICE_OPTIONS = ["cpu", "cuda", "mps"];
 
 const CONTEXT_WINDOW_OPTIONS = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
 
+const REINITIALIZE_START_KEY = "tensortruth-reinitialize-start";
+
 function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   const { data: modelsData } = useModels();
+  const reinitializeIndexes = useReinitializeIndexes();
+
+  // Reinitialization progress tracking
+  const [isReinitializing, setIsReinitializing] = useState(false);
+  const [reinitializeStartTime, setReinitializeStartTime] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Poll startup status every 1s when reinitializing, otherwise don't poll
+  const pollingInterval = isReinitializing ? 1000 : false;
+  const { data: startupStatus } = useStartupStatus(
+    pollingInterval ? { pollingInterval } : undefined
+  );
 
   // Models
   const [ragModel, setRagModel] = useState(config.models.default_rag_model);
@@ -91,6 +112,45 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     });
   }, []);
 
+  // Restore reinitialize state from localStorage on mount
+  useEffect(() => {
+    if (!startupStatus) return;
+
+    const storedReinitializeStart = localStorage.getItem(REINITIALIZE_START_KEY);
+    if (storedReinitializeStart && !startupStatus.indexes_ok) {
+      const startTime = parseInt(storedReinitializeStart, 10);
+      setIsReinitializing(true);
+      setReinitializeStartTime(startTime);
+    } else if (startupStatus.indexes_ok) {
+      localStorage.removeItem(REINITIALIZE_START_KEY);
+    }
+  }, [startupStatus]);
+
+  // Update elapsed time every second while reinitializing
+  useEffect(() => {
+    if (!isReinitializing || !reinitializeStartTime) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.round((Date.now() - reinitializeStartTime) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isReinitializing, reinitializeStartTime]);
+
+  // Detect when reinitialization completes
+  useEffect(() => {
+    if (isReinitializing && startupStatus?.indexes_ok) {
+      setIsReinitializing(false);
+      localStorage.removeItem(REINITIALIZE_START_KEY);
+      const elapsed = reinitializeStartTime ? Date.now() - reinitializeStartTime : 0;
+      const elapsedSeconds = Math.round(elapsed / 1000);
+      toast.success(`Indexes reinitialized successfully! (${elapsedSeconds}s)`);
+    }
+  }, [isReinitializing, startupStatus?.indexes_ok, reinitializeStartTime]);
+
   const handleSave = async () => {
     await onSave({
       models_default_rag_model: ragModel,
@@ -103,6 +163,32 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
       ui_default_confidence_threshold: confidenceThreshold,
       ui_default_confidence_cutoff_hard: confidenceCutoffHard,
       rag_default_device: device,
+    });
+  };
+
+  const handleReinitialize = () => {
+    if (
+      !confirm(
+        "This will delete all existing indexes and download fresh copies from HuggingFace Hub. This may take several minutes. Continue?"
+      )
+    ) {
+      return;
+    }
+
+    const startTime = Date.now();
+    setIsReinitializing(true);
+    setReinitializeStartTime(startTime);
+    localStorage.setItem(REINITIALIZE_START_KEY, startTime.toString());
+
+    reinitializeIndexes.mutate(undefined, {
+      onSuccess: (response) => {
+        toast.info(response.message);
+      },
+      onError: (error) => {
+        setIsReinitializing(false);
+        localStorage.removeItem(REINITIALIZE_START_KEY);
+        toast.error(`Failed to reinitialize indexes: ${error.message}`);
+      },
     });
   };
 
@@ -296,6 +382,67 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
           <p className="text-muted-foreground text-xs">
             Device for embedding model and reranker
           </p>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Maintenance Section */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium">Maintenance</h3>
+        <div className="space-y-3">
+          <div className="bg-muted/50 rounded-lg border p-4">
+            <div className="mb-3 flex items-start gap-2">
+              <RefreshCw className="text-muted-foreground mt-0.5 h-4 w-4" />
+              <div className="flex-1">
+                <h4 className="text-sm font-medium">Reinitialize Indexes</h4>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Delete all existing vector indexes and download fresh copies from
+                  HuggingFace Hub. Use this to fix corrupted indexes or update to the
+                  latest version. (~3.9GB download)
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={handleReinitialize}
+              disabled={isReinitializing}
+              variant="outline"
+              size="sm"
+              className="w-full"
+            >
+              {isReinitializing ? (
+                <>
+                  <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                  Reinitializing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-3 w-3" />
+                  Reinitialize Indexes
+                </>
+              )}
+            </Button>
+            {isReinitializing && (
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">
+                    Reinitialization in progress...
+                  </span>
+                  <span className="text-muted-foreground font-mono">
+                    {elapsedSeconds}s
+                  </span>
+                </div>
+                <div className="bg-secondary relative h-1.5 overflow-hidden rounded-full">
+                  <div className="from-primary/50 via-primary to-primary/50 absolute inset-0 animate-pulse bg-gradient-to-r" />
+                  <div className="via-primary/30 animate-shimmer absolute inset-0 bg-gradient-to-r from-transparent to-transparent" />
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  Deleting old indexes and downloading fresh copies. This may take several
+                  minutes.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

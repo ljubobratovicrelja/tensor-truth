@@ -6,3 +6,4 @@ export * from "./usePdfs";
 export * from "./useConfig";
 export * from "./useMediaQuery";
 export * from "./useScrollDirection";
+export * from "./useStartup";

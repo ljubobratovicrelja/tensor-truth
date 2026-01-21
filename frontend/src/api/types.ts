@@ -214,6 +214,53 @@ export interface ReindexResponse {
   pdf_count: number;
 }
 
+// Startup types
+export interface IndexesStatus {
+  exists: boolean;
+  has_content: boolean;
+}
+
+export interface ModelsStatus {
+  required: string[];
+  available: string[];
+  missing: string[];
+}
+
+export interface StartupStatusResponse {
+  directories_ok: boolean;
+  config_ok: boolean;
+  indexes_ok: boolean;
+  models_ok: boolean;
+  indexes_status: IndexesStatus;
+  models_status: ModelsStatus;
+  ready: boolean;
+  warnings: string[];
+}
+
+export interface IndexDownloadRequest {
+  repo_id?: string;
+  filename?: string;
+}
+
+export interface IndexDownloadResponse {
+  status: string;
+  message: string;
+}
+
+export interface ModelPullRequest {
+  model_name: string;
+}
+
+export interface ModelPullResponse {
+  status: string;
+  message: string;
+}
+
+export interface ReinitializeIndexesResponse {
+  status: string;
+  message: string;
+}
+
 // API Error
 export interface ApiError {
   detail: string;

@@ -30,6 +30,16 @@ from .session import (
     SessionResponse,
     SessionUpdate,
 )
+from .startup import (
+    IndexDownloadRequest,
+    IndexDownloadResponse,
+    IndexesStatusSchema,
+    ModelPullRequest,
+    ModelPullResponse,
+    ModelsStatusSchema,
+    ReinitializeIndexesResponse,
+    StartupStatusResponse,
+)
 
 __all__ = [
     # Common
@@ -64,4 +74,13 @@ __all__ = [
     "PDFMetadataResponse",
     "PDFListResponse",
     "ReindexResponse",
+    # Startup
+    "StartupStatusResponse",
+    "IndexesStatusSchema",
+    "ModelsStatusSchema",
+    "IndexDownloadRequest",
+    "IndexDownloadResponse",
+    "ModelPullRequest",
+    "ModelPullResponse",
+    "ReinitializeIndexesResponse",
 ]

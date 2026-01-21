@@ -1,6 +1,7 @@
 """FastAPI application factory and entry point."""
 
 import argparse
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -9,21 +10,41 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from tensortruth import __version__
-from tensortruth.api.routes import chat, config, modules, pdfs, sessions
+from tensortruth.api.routes import chat, config, modules, pdfs, sessions, startup
 from tensortruth.api.schemas import HealthResponse
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
-    # Startup
+    # Startup - Initialize critical infrastructure
+    from tensortruth.api.deps import (
+        get_config_service,
+        get_session_service,
+        get_startup_service,
+    )
+
+    logger.info("Initializing TensorTruth API...")
+
+    startup_service = get_startup_service()
+
+    # Check resources and log status (non-blocking)
+    # Note: This performs initialization checks and logs the results
+    startup_service.check_startup_status(log=True)
+
+    logger.info("✓ TensorTruth API startup complete")
+
     yield
+
     # Shutdown - cleanup resources
-    from tensortruth.api.deps import get_config_service, get_session_service
+    logger.info("Shutting down TensorTruth API...")
 
     # Clear LRU caches on shutdown
     get_session_service.cache_clear()
     get_config_service.cache_clear()
+    get_startup_service.cache_clear()
 
 
 def create_app() -> FastAPI:
@@ -45,6 +66,7 @@ def create_app() -> FastAPI:
     )
 
     # Include routers under /api prefix
+    app.include_router(startup.router, prefix="/api/startup", tags=["startup"])
     app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
     app.include_router(chat.rest_router, prefix="/api", tags=["chat"])
     app.include_router(config.router, prefix="/api/config", tags=["config"])

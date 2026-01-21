@@ -20,6 +20,7 @@ from tensortruth.services import (
     RAGService,
     SessionService,
 )
+from tensortruth.services.startup_service import StartupService
 
 
 @lru_cache
@@ -32,6 +33,13 @@ def get_session_service() -> SessionService:
 def get_config_service() -> ConfigService:
     """Get the singleton ConfigService instance."""
     return ConfigService()
+
+
+@lru_cache
+def get_startup_service() -> StartupService:
+    """Get the singleton StartupService instance."""
+    config_service = get_config_service()
+    return StartupService(config_service)
 
 
 def get_rag_service() -> Generator[RAGService, None, None]:
@@ -70,5 +78,6 @@ def get_pdf_service(session_id: str) -> PDFService:
 # Type aliases for FastAPI dependency injection
 SessionServiceDep = Annotated[SessionService, Depends(get_session_service)]
 ConfigServiceDep = Annotated[ConfigService, Depends(get_config_service)]
+StartupServiceDep = Annotated[StartupService, Depends(get_startup_service)]
 RAGServiceDep = Annotated[RAGService, Depends(get_rag_service)]
 IntentServiceDep = Annotated[IntentService, Depends(get_intent_service)]
