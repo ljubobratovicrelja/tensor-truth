@@ -10,12 +10,12 @@ Tensor-Truth uses a two-stage pipeline to create searchable indexes:
    - Fetches and converts documentation sources to markdown
    - Supports three source types: **libraries** (Sphinx/Doxygen), **papers** (ArXiv), and **books** (PDF textbooks)
    - Features interactive `--add` mode for guided source addition
-   - Outputs to `~/.tensortruth/library_docs/` with type-based prefixes (`library_*`, `papers_*`, `books_*`)
+   - Outputs to `~/.tensortruth/library_docs/` with type-based prefixes (`library_*`, `papers_*`, `book_*`)
 
 2. **`tensor-truth-build`** (implemented in [build_db.py](../src/tensortruth/build_db.py))
    - Builds vector indexes from fetched documentation using hierarchical chunking
    - Extracts metadata based on document type (library modules, paper citations, book chapters)
-   - Outputs to `~/.tensortruth/indexes/` with matching directory names
+   - Outputs to `~/.tensortruth/indexes/<model-id>/` with matching directory names
    - Supports selective building with `--modules`, `--all`, `--books`, `--libraries`, or `--papers`
 
 All data is stored in `~/.tensortruth/` by default (or `%USERPROFILE%\.tensortruth` on Windows).
@@ -231,11 +231,11 @@ tensor-truth-docs --add
 - **With `--add`**: Interactive wizard guides you through adding sources (libraries, books, or papers)
 
 **Options:**
-- `--converter marker`: Use marker-pdf for better math equation support (slower)
-- `--converter pymupdf`: Default, faster but less accurate for complex math
+- `--converter marker`: Default, better math equation support
+- `--converter pymupdf`: Faster but less accurate for complex math
 - `--format pdf`: Keep original PDFs without conversion
 
-Papers are stored in `~/.tensortruth/library_docs/3d_reconstruction/`
+Papers are stored in `~/.tensortruth/library_docs/papers_3d_reconstruction/`
 
 ### Step 4: Build the Index
 
@@ -245,7 +245,7 @@ Create vector embeddings from the markdown files:
 tensor-truth-build --modules 3d_reconstruction
 ```
 
-The index is built at `~/.tensortruth/indexes/papers_3d_reconstruction/`
+The index is built at `~/.tensortruth/indexes/<model-id>/papers_3d_reconstruction/` (e.g., `bge-m3/papers_3d_reconstruction/` for the default embedding model)
 
 **Build Options:**
 - `--chunk-sizes 2048 512 256`: Hierarchical chunk sizes in tokens (default)
@@ -593,10 +593,14 @@ This validates:
 
 ## Tips and Best Practices
 
-### 1. Use Marker for Math-Heavy Content
-For papers with complex equations, use `--converter marker`:
+### 1. Marker Is Best for Math-Heavy Content
+Marker (the default converter) handles complex equations well. If speed is more important than accuracy, use `--converter pymupdf`:
 ```bash
-tensor-truth-docs --type papers --category 3d_reconstruction --converter marker
+# Default (marker) - best for math
+tensor-truth-docs --type papers --category 3d_reconstruction
+
+# Faster but less accurate for math
+tensor-truth-docs --type papers --category 3d_reconstruction --converter pymupdf
 ```
 
 ### 2. Filter Small Files
@@ -648,10 +652,10 @@ For now, if you need to evaluate retrieval performance, consider manually testin
 ### Build Fails with "No documents found"
 - Ensure you ran `tensor-truth-docs` first
 - Check the module name matches between fetch and build
-- Verify files exist in `~/.tensortruth/library_docs/<module_name>/` (or wherever `TENSOR_TRUTH_DOCS_DIR` points)
+- Verify files exist in `~/.tensortruth/library_docs/<type>_<module_name>/` (e.g., `library_pytorch`, `papers_dl_foundations`, `book_linear_algebra`)
 
 ### Book Chapters Not Detected
-- Try `--converter marker` for better TOC extraction
+- The default converter (marker) has good TOC extraction - ensure you're using it
 - Fall back to manual splitting with `split_method: "none"`
 - Pre-define chapters manually in sources.json with page ranges
 - **Large chapters detected?** Use `--max-pages-per-chapter 20` to split them into smaller files. Smaller chunks (15-25 pages) work better for RAG retrieval as they allow more focused context without overwhelming the LLM's context window.
