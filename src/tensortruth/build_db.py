@@ -14,7 +14,8 @@ from tensortruth.cli_paths import (
     get_sources_config_path,
 )
 from tensortruth.fetch_sources import load_user_sources
-from tensortruth.indexing.builder import build_module
+from tensortruth.indexing.builder import DEFAULT_EMBEDDING_MODEL, build_module
+from tensortruth.indexing.metadata import sanitize_model_id
 from tensortruth.utils.validation import validate_module_for_build
 
 logging.basicConfig(level=logging.INFO)
@@ -37,6 +38,12 @@ Examples:
   tensor-truth-build --modules pytorch \\
     --library-docs-dir /data/docs \\
     --indexes-dir /data/indexes
+
+  # Use a specific embedding model
+  tensor-truth-build --modules pytorch --embedding-model Qwen/Qwen3-Embedding-0.6B
+
+  # Skip model validation (for offline/private models)
+  tensor-truth-build --modules pytorch --embedding-model my-org/my-model --no-validate
 
 Environment Variables:
   TENSOR_TRUTH_DOCS_DIR       Library docs directory
@@ -114,7 +121,57 @@ Environment Variables:
         default=[".md", ".html", ".pdf"],
     )
 
+    # Embedding model options
+    parser.add_argument(
+        "--embedding-model",
+        default=None,
+        help=(
+            f"HuggingFace embedding model to use (default: {DEFAULT_EMBEDDING_MODEL}). "
+            "Accepts any HuggingFace model path (e.g., Qwen/Qwen3-Embedding-0.6B)."
+        ),
+    )
+
+    parser.add_argument(
+        "--no-validate",
+        action="store_true",
+        help="Skip HuggingFace model validation (for offline/private models)",
+    )
+
     args = parser.parse_args()
+
+    # Resolve embedding model (CLI arg, then config, then default)
+    if args.embedding_model is None:
+        try:
+            from tensortruth.app_utils.config import load_config
+
+            config = load_config()
+            embedding_model = config.rag.default_embedding_model
+        except Exception:
+            embedding_model = DEFAULT_EMBEDDING_MODEL
+    else:
+        embedding_model = args.embedding_model
+
+    # Validate embedding model exists on HuggingFace (optional)
+    if not args.no_validate:
+        try:
+            from huggingface_hub import model_info
+
+            logger.info(f"Validating embedding model: {embedding_model}")
+            model_info(embedding_model)
+            logger.info(f"Model {embedding_model} found on HuggingFace Hub")
+        except ImportError:
+            logger.warning(
+                "huggingface_hub not installed, skipping model validation. "
+                "Install with: pip install huggingface_hub"
+            )
+        except Exception as e:
+            logger.error(
+                f"Embedding model '{embedding_model}' not found on HuggingFace Hub: {e}"
+            )
+            logger.info(
+                "Use --no-validate to skip this check for private/offline models"
+            )
+            return 1
 
     # Resolve paths (CLI args override env vars override defaults)
     library_docs_dir = get_library_docs_dir(args.library_docs_dir)
@@ -157,11 +214,14 @@ Environment Variables:
         parser.print_help()
         return 1
 
+    model_id = sanitize_model_id(embedding_model)
+
     logger.info("")
     logger.info(f"Modules to build: {args.modules}")
     logger.info(f"Library docs dir: {library_docs_dir}")
-    logger.info(f"Indexes dir: {indexes_dir}")
+    logger.info(f"Indexes dir: {indexes_dir}/{model_id}/")
     logger.info(f"Sources config: {sources_config_path}")
+    logger.info(f"Embedding model: {embedding_model}")
     logger.info("")
 
     # Validate all modules before building
@@ -188,6 +248,7 @@ Environment Variables:
             sources_config,
             extensions=args.extensions,
             chunk_sizes=args.chunk_sizes,
+            embedding_model=embedding_model,
         )
 
         logger.info("")
