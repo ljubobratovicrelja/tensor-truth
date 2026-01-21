@@ -1,20 +1,27 @@
 """General helper functions for the Streamlit app."""
 
 import gc
+import json
 import logging
 import os
 import tarfile
 import time
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import torch
+
+from tensortruth.indexing.metadata import sanitize_model_id
 
 logger = logging.getLogger(__name__)
 
 # Constants for the Tensor Truth Indexes
 HF_REPO_ID = "ljubobratovicrelja/tensor-truth-indexes"
 HF_FILENAME = "indexes_v0.1.14.tar"
+HF_MANIFEST_FILENAME = "manifest.json"
+
+# Default embedding model for backwards compatibility
+DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
 
 
 def get_module_display_name(
@@ -88,28 +95,145 @@ def get_module_display_name(
     return module_name, "unknown", "📁 Other", 4
 
 
+def get_hf_manifest(
+    repo_id: str = HF_REPO_ID,
+) -> Optional[Dict[str, Any]]:
+    """Fetch the index manifest from HuggingFace Hub.
+
+    The manifest lists available embedding model indexes and their tarballs.
+
+    Args:
+        repo_id: The HuggingFace repository ID.
+
+    Returns:
+        Manifest dict if successful, None otherwise.
+
+    Manifest schema:
+        {
+            "default_embedding_model": "BAAI/bge-m3",
+            "available_indexes": [
+                {
+                    "embedding_model": "BAAI/bge-m3",
+                    "embedding_model_id": "bge-m3",
+                    "filename": "indexes_bge-m3_v0.2.0.tar",
+                    "version": "0.2.0"
+                },
+                ...
+            ]
+        }
+    """
+    try:
+        from huggingface_hub import hf_hub_download
+
+        manifest_path = hf_hub_download(
+            repo_id=repo_id,
+            filename=HF_MANIFEST_FILENAME,
+            repo_type="dataset",
+        )
+
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    except Exception as e:
+        logger.warning(f"Failed to fetch manifest from {repo_id}: {e}")
+        return None
+
+
+def get_available_hf_embedding_indexes(
+    repo_id: str = HF_REPO_ID,
+) -> List[Dict[str, Any]]:
+    """Get list of available embedding indexes from HuggingFace Hub.
+
+    Args:
+        repo_id: The HuggingFace repository ID.
+
+    Returns:
+        List of available index info dicts with keys:
+        - embedding_model: Full model name (e.g., "BAAI/bge-m3")
+        - embedding_model_id: Sanitized ID (e.g., "bge-m3")
+        - filename: Tarball filename to download
+        - version: Index version string
+    """
+    manifest = get_hf_manifest(repo_id)
+    if manifest:
+        return manifest.get("available_indexes", [])
+
+    # Fallback to legacy single-file format if manifest not available
+    return [
+        {
+            "embedding_model": DEFAULT_EMBEDDING_MODEL,
+            "embedding_model_id": sanitize_model_id(DEFAULT_EMBEDDING_MODEL),
+            "filename": HF_FILENAME,
+            "version": "legacy",
+        }
+    ]
+
+
+def get_filename_for_embedding_model(
+    embedding_model: str,
+    repo_id: str = HF_REPO_ID,
+) -> Optional[str]:
+    """Get the tarball filename for a specific embedding model.
+
+    Args:
+        embedding_model: The embedding model name (e.g., "BAAI/bge-m3")
+        repo_id: The HuggingFace repository ID.
+
+    Returns:
+        Tarball filename if available, None otherwise.
+    """
+    model_id = sanitize_model_id(embedding_model)
+    available = get_available_hf_embedding_indexes(repo_id)
+
+    for entry in available:
+        if entry.get("embedding_model_id") == model_id:
+            return entry.get("filename")
+
+    return None
+
+
 def download_and_extract_indexes(
     user_dir: Union[str, Path],
     repo_id: str = HF_REPO_ID,
-    filename: str = HF_FILENAME,
+    filename: Optional[str] = None,
+    embedding_model: Optional[str] = None,
 ) -> bool:
-    """
-    Downloads and extracts index files from a Hugging Face repository.
+    """Downloads and extracts index files from a Hugging Face repository.
+
+    Supports both legacy single-file downloads and new embedding-model-specific
+    downloads via manifest.
 
     Args:
         user_dir: The local directory where the indexes should be extracted.
         repo_id: The Hugging Face repository ID (e.g., 'username/repo-name').
-        filename: The specific tarball filename to download.
+        filename: The specific tarball filename to download (optional if
+                  embedding_model is provided).
+        embedding_model: The embedding model to download indexes for. If provided,
+                        the appropriate filename will be looked up from manifest.
 
     Returns:
         True if the download and extraction were successful.
 
     Raises:
+        ValueError: If neither filename nor embedding_model provided.
         Exception: If the download or extraction process fails.
     """
     import shutil
 
     from huggingface_hub import hf_hub_download
+
+    # Determine filename
+    if filename is None:
+        if embedding_model is not None:
+            filename = get_filename_for_embedding_model(embedding_model, repo_id)
+            if filename is None:
+                logger.warning(
+                    f"No index tarball found for embedding model: {embedding_model}. "
+                    f"Falling back to default: {HF_FILENAME}"
+                )
+                filename = HF_FILENAME
+        else:
+            filename = HF_FILENAME
 
     user_dir = Path(user_dir)
     user_dir.mkdir(parents=True, exist_ok=True)
@@ -118,6 +242,7 @@ def download_and_extract_indexes(
     HF_REPO_TYPE = "dataset"
 
     try:
+        logger.info(f"Downloading {filename} from {repo_id}...")
         downloaded_file = hf_hub_download(
             repo_id=repo_id,
             filename=filename,
@@ -128,13 +253,14 @@ def download_and_extract_indexes(
         tarball_path = Path(downloaded_file)
 
         # Extracting the tarball.
+        logger.info(f"Extracting {tarball_path} to {user_dir}...")
         with tarfile.open(tarball_path, "r:") as tar:
             tar.extractall(path=user_dir)
 
+        logger.info("Index download and extraction complete")
         return True
 
     finally:
-
         # Clean up the downloaded tarball file.
         if tarball_path is not None and tarball_path.exists():
             tarball_path.unlink()
@@ -184,33 +310,56 @@ def get_random_rag_processing_message():
 def download_indexes_with_ui(
     user_dir: Union[str, Path],
     repo_id: str = HF_REPO_ID,
-    filename: str = HF_FILENAME,
+    filename: Optional[str] = None,
+    embedding_model: Optional[str] = None,
 ):
-    """
-    Wrapper for download_and_extract_indexes that provides Streamlit UI feedback.
+    """Wrapper for download_and_extract_indexes that provides Streamlit UI feedback.
+
+    Args:
+        user_dir: Directory to extract indexes to.
+        repo_id: HuggingFace repository ID.
+        filename: Specific tarball to download (optional if embedding_model provided).
+        embedding_model: Embedding model to download indexes for.
     """
     import streamlit as st
 
+    model_info = f" for {embedding_model}" if embedding_model else ""
+
     try:
         with st.spinner(
-            "📥 Downloading indexes from HuggingFace Hub (this may take a few minutes)..."
+            f"📥 Downloading indexes{model_info} from HuggingFace Hub "
+            f"(this may take a few minutes)..."
         ):
             success = download_and_extract_indexes(
-                user_dir, repo_id=repo_id, filename=filename
+                user_dir,
+                repo_id=repo_id,
+                filename=filename,
+                embedding_model=embedding_model,
             )
             if success:
                 st.success("✅ Indexes downloaded and extracted successfully!")
     except Exception as e:
         st.error(f"❌ Error downloading/extracting indexes: {e}")
-        hf_link = f"https://huggingface.co/datasets/{repo_id}/blob/main/{filename}"
+        display_filename = filename or HF_FILENAME
+        hf_link = (
+            f"https://huggingface.co/datasets/{repo_id}/blob/main/{display_filename}"
+        )
         st.info(f"Try fetching manually from: {hf_link}, and storing in: {user_dir}")
 
 
-def get_available_modules(index_dir: Union[str, Path]):
+def get_available_modules(
+    index_dir: Union[str, Path],
+    embedding_model: Optional[str] = None,
+):
     """Get list of available modules with categorized display names.
+
+    Supports both versioned structure (indexes/{model_id}/{module}/) and
+    legacy flat structure (indexes/{module}/) for backward compatibility.
 
     Args:
         index_dir: Base index directory (str or Path)
+        embedding_model: Optional embedding model to filter by. If provided,
+                        looks for modules in indexes/{model_id}/
 
     Returns:
         List of tuples: [(module_name, formatted_display_name), ...]
@@ -220,18 +369,63 @@ def get_available_modules(index_dir: Union[str, Path]):
     if not index_dir.exists():
         return []
 
-    # Get current list of module directories
-    module_dirs = sorted([d.name for d in index_dir.iterdir() if d.is_dir()])
+    # Determine which directories to look in
+    search_dirs = []
 
-    # For each module, get display name and category from ChromaDB metadata
+    if embedding_model:
+        # Look in versioned structure first
+        model_id = sanitize_model_id(embedding_model)
+        versioned_dir = index_dir / model_id
+        if versioned_dir.exists():
+            search_dirs.append(versioned_dir)
+
+    # Also check legacy flat structure for backward compatibility
+    # But only include modules that are valid indexes (not model ID directories)
+    for item in index_dir.iterdir():
+        if item.is_dir():
+            # Check if this is a valid ChromaDB index (has chroma.sqlite3)
+            if (item / "chroma.sqlite3").exists():
+                # This is a legacy flat structure module
+                if item not in search_dirs:
+                    search_dirs.append(index_dir)
+                    break
+
+    # If no embedding model specified, search all model directories
+    if not embedding_model:
+        for item in index_dir.iterdir():
+            if item.is_dir() and not (item / "chroma.sqlite3").exists():
+                # This looks like a model ID directory
+                if any(
+                    (sub / "chroma.sqlite3").exists()
+                    for sub in item.iterdir()
+                    if sub.is_dir()
+                ):
+                    search_dirs.append(item)
+
+    # Collect all modules from search directories
     results = []
-    for module_name in module_dirs:
-        display_name, doc_type, category_prefix, sort_order = get_module_display_name(
-            index_dir, module_name
-        )
-        # Format: "📚 Books › Linear Algebra - Cherney"
-        formatted_name = f"{category_prefix} › {display_name}"
-        results.append((module_name, formatted_name, sort_order))
+    seen_modules = set()
+
+    for search_dir in search_dirs:
+        module_dirs = sorted([d.name for d in search_dir.iterdir() if d.is_dir()])
+
+        for module_name in module_dirs:
+            # Skip if not a valid index
+            module_path = search_dir / module_name
+            if not (module_path / "chroma.sqlite3").exists():
+                continue
+
+            # Skip duplicates
+            if module_name in seen_modules:
+                continue
+            seen_modules.add(module_name)
+
+            display_name, doc_type, category_prefix, sort_order = (
+                get_module_display_name(search_dir, module_name)
+            )
+            # Format: "📚 Books › Linear Algebra - Cherney"
+            formatted_name = f"{category_prefix} › {display_name}"
+            results.append((module_name, formatted_name, sort_order))
 
     # Sort by category first (sort_order), then by display name
     results.sort(key=lambda x: (x[2], x[1]))

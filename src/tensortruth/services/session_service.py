@@ -59,6 +59,7 @@ class SessionService:
                 "confidence_cutoff_hard": config.ui.default_confidence_cutoff_hard,
                 "rag_device": config.rag.default_device,
                 "balance_strategy": config.rag.default_balance_strategy,
+                "embedding_model": config.rag.default_embedding_model,
                 "llm_device": "gpu",  # Reasonable default
             }
 

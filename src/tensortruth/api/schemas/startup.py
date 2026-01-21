@@ -1,8 +1,19 @@
 """Startup-related schemas."""
 
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
+
+
+class AvailableEmbeddingModelSchema(BaseModel):
+    """Information about an available embedding model with indexes."""
+
+    model_id: str = Field(..., description="Sanitized model ID (e.g., 'bge-m3')")
+    model_name: Optional[str] = Field(
+        None, description="Full HuggingFace model name if available"
+    )
+    index_count: int = Field(..., description="Number of module indexes available")
+    modules: List[str] = Field(..., description="List of module names with indexes")
 
 
 class IndexesStatusSchema(BaseModel):
@@ -12,6 +23,22 @@ class IndexesStatusSchema(BaseModel):
     has_content: bool = Field(
         ..., description="Indexes contain valid ChromaDB databases"
     )
+    available_models: Optional[List[AvailableEmbeddingModelSchema]] = Field(
+        None, description="Embedding models with available indexes"
+    )
+
+
+class EmbeddingMismatchSchema(BaseModel):
+    """Embedding model configuration mismatch information."""
+
+    config_model: str = Field(
+        ..., description="Embedding model configured in config.yaml"
+    )
+    config_model_id: str = Field(..., description="Sanitized config model ID")
+    available_model_ids: List[str] = Field(
+        ..., description="Model IDs with available indexes"
+    )
+    message: str = Field(..., description="Human-readable warning message")
 
 
 class ModelsStatusSchema(BaseModel):
@@ -31,6 +58,9 @@ class StartupStatusResponse(BaseModel):
     models_ok: bool = Field(..., description="All required models available")
     indexes_status: IndexesStatusSchema
     models_status: ModelsStatusSchema
+    embedding_mismatch: Optional[EmbeddingMismatchSchema] = Field(
+        None, description="Embedding model mismatch warning if applicable"
+    )
     ready: bool = Field(..., description="App ready to run (critical checks passed)")
     warnings: List[str] = Field(..., description="Non-critical warnings")
 
@@ -42,9 +72,13 @@ class IndexDownloadRequest(BaseModel):
         "ljubobratovicrelja/tensor-truth-indexes",
         description="HuggingFace repository ID",
     )
-    filename: str = Field(
-        "indexes_v0.1.14.tar",
-        description="Tarball filename to download",
+    filename: Optional[str] = Field(
+        None,
+        description="Tarball filename to download (auto-selected if embedding_model provided)",
+    )
+    embedding_model: Optional[str] = Field(
+        None,
+        description="Embedding model to download indexes for (e.g., 'BAAI/bge-m3')",
     )
 
 

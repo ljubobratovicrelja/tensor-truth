@@ -3,8 +3,10 @@
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from typing import List
 
 from fastapi import APIRouter, BackgroundTasks
+from pydantic import BaseModel, Field
 
 from tensortruth.api.deps import StartupServiceDep
 from tensortruth.api.schemas import (
@@ -15,7 +17,10 @@ from tensortruth.api.schemas import (
     ReinitializeIndexesResponse,
     StartupStatusResponse,
 )
-from tensortruth.app_utils.helpers import download_and_extract_indexes
+from tensortruth.app_utils.helpers import (
+    download_and_extract_indexes,
+    get_available_hf_embedding_indexes,
+)
 from tensortruth.app_utils.paths import get_indexes_dir, get_user_data_dir
 from tensortruth.core.ollama import pull_model
 
@@ -25,6 +30,42 @@ router = APIRouter()
 
 # Thread pool for blocking operations
 _thread_pool = ThreadPoolExecutor(max_workers=2)
+
+
+# ============================================================================
+# Embedding Model Suggestion/Selection Schemas
+# ============================================================================
+
+
+class EmbeddingModelSuggestion(BaseModel):
+    """A suggested embedding model."""
+
+    model_name: str = Field(..., description="Full HuggingFace model path")
+    model_id: str = Field(..., description="Sanitized model ID")
+    description: str = Field(..., description="Brief description of the model")
+
+
+class EmbeddingModelSuggestionsResponse(BaseModel):
+    """Response with suggested embedding models."""
+
+    suggestions: List[EmbeddingModelSuggestion]
+    default: str = Field(..., description="Recommended default model")
+
+
+class AvailableHFIndexEntry(BaseModel):
+    """An available index entry from HuggingFace Hub."""
+
+    embedding_model: str
+    embedding_model_id: str
+    filename: str
+    version: str
+
+
+class AvailableHFIndexesResponse(BaseModel):
+    """Response with available indexes from HuggingFace Hub."""
+
+    available_indexes: List[AvailableHFIndexEntry]
+    default_model: str = Field(..., description="Default embedding model")
 
 
 @router.get("/status", response_model=StartupStatusResponse)
@@ -38,6 +79,7 @@ async def get_startup_status(
     - Configuration loading
     - Vector indexes availability
     - Ollama models availability
+    - Embedding model mismatch
 
     Returns status, warnings, and readiness flag.
     """
@@ -50,20 +92,92 @@ async def get_startup_status(
         models_ok=status["models_ok"],
         indexes_status=status["indexes_status"],
         models_status=status["models_status"],
+        embedding_mismatch=status.get("embedding_mismatch"),
         ready=status["ready"],
         warnings=status["warnings"],
     )
 
 
-def _download_indexes_sync(repo_id: str, filename: str) -> bool:
+@router.get(
+    "/embedding-models/suggestions", response_model=EmbeddingModelSuggestionsResponse
+)
+async def get_embedding_model_suggestions() -> EmbeddingModelSuggestionsResponse:
+    """Get suggested embedding models for index building.
+
+    Returns a list of recommended embedding models with descriptions.
+    Users can use ANY HuggingFace model, but these are good starting points.
+    """
+    suggestions = [
+        EmbeddingModelSuggestion(
+            model_name="BAAI/bge-m3",
+            model_id="bge-m3",
+            description="Multilingual, high quality, good balance of size/performance",
+        ),
+        EmbeddingModelSuggestion(
+            model_name="Qwen/Qwen3-Embedding-0.6B",
+            model_id="qwen3-embedding-0.6b",
+            description="Small, fast, efficient for English text",
+        ),
+        EmbeddingModelSuggestion(
+            model_name="Qwen/Qwen3-Embedding-4B",
+            model_id="qwen3-embedding-4b",
+            description="Large, high quality, best for complex documents",
+        ),
+        EmbeddingModelSuggestion(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_id="all-minilm-l6-v2",
+            description="Very fast, lightweight, English only",
+        ),
+    ]
+
+    return EmbeddingModelSuggestionsResponse(
+        suggestions=suggestions,
+        default="BAAI/bge-m3",
+    )
+
+
+@router.get(
+    "/embedding-models/available-indexes", response_model=AvailableHFIndexesResponse
+)
+async def get_available_embedding_indexes() -> AvailableHFIndexesResponse:
+    """Get embedding models with pre-built indexes available on HuggingFace Hub.
+
+    Returns a list of embedding models for which pre-built indexes are available
+    for download from the HuggingFace repository.
+    """
+    available = get_available_hf_embedding_indexes()
+
+    return AvailableHFIndexesResponse(
+        available_indexes=[
+            AvailableHFIndexEntry(
+                embedding_model=entry.get("embedding_model", ""),
+                embedding_model_id=entry.get("embedding_model_id", ""),
+                filename=entry.get("filename", ""),
+                version=entry.get("version", ""),
+            )
+            for entry in available
+        ],
+        default_model="BAAI/bge-m3",
+    )
+
+
+def _download_indexes_sync(
+    repo_id: str,
+    filename: str | None = None,
+    embedding_model: str | None = None,
+) -> bool:
     """Synchronous wrapper for index download (runs in thread pool)."""
     try:
         user_dir = get_user_data_dir()
         success = download_and_extract_indexes(
-            user_dir, repo_id=repo_id, filename=filename
+            user_dir,
+            repo_id=repo_id,
+            filename=filename,
+            embedding_model=embedding_model,
         )
         if success:
-            logger.info("✓ Indexes downloaded and extracted successfully")
+            model_info = f" for {embedding_model}" if embedding_model else ""
+            logger.info(f"✓ Indexes{model_info} downloaded and extracted successfully")
         else:
             logger.error("✗ Index download failed")
         return success
@@ -72,10 +186,16 @@ def _download_indexes_sync(repo_id: str, filename: str) -> bool:
         return False
 
 
-async def _download_indexes_background(repo_id: str, filename: str):
+async def _download_indexes_background(
+    repo_id: str,
+    filename: str | None = None,
+    embedding_model: str | None = None,
+):
     """Background task to download indexes."""
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(_thread_pool, _download_indexes_sync, repo_id, filename)
+    await loop.run_in_executor(
+        _thread_pool, _download_indexes_sync, repo_id, filename, embedding_model
+    )
 
 
 @router.post("/download-indexes", response_model=IndexDownloadResponse)
@@ -84,6 +204,9 @@ async def download_indexes(
     background_tasks: BackgroundTasks,
 ) -> IndexDownloadResponse:
     """Trigger background download of vector indexes from HuggingFace Hub.
+
+    If embedding_model is provided, downloads indexes for that specific model.
+    Otherwise falls back to filename or default.
 
     This endpoint returns immediately and runs the download in the background.
     Poll /startup/status to check when indexes become available.
@@ -94,14 +217,18 @@ async def download_indexes(
             _download_indexes_background,
             request.repo_id,
             request.filename,
+            request.embedding_model,
         )
 
-        logger.info(f"Started index download: {request.repo_id}/{request.filename}")
+        model_info = (
+            f" for {request.embedding_model}" if request.embedding_model else ""
+        )
+        logger.info(f"Started index download{model_info}: {request.repo_id}")
 
         return IndexDownloadResponse(
             status="started",
             message=(
-                f"Downloading indexes from {request.repo_id}. "
+                f"Downloading indexes{model_info} from {request.repo_id}. "
                 f"This may take a few minutes. Poll /startup/status to check progress."
             ),
         )
