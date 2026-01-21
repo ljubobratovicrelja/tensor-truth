@@ -93,7 +93,7 @@ export interface StreamThinking {
 
 export interface StreamStatus {
   type: "status";
-  status: "retrieving" | "thinking" | "generating";
+  status: "loading_models" | "retrieving" | "thinking" | "generating";
 }
 
 export type StreamMessage =

@@ -330,9 +330,11 @@ class MultiIndexRetriever(BaseRetriever):
 
                     # Tag nodes with source index for balancing
                     for node in nodes:
-                        if not hasattr(node, "metadata"):
-                            node.metadata = {}
-                        node.metadata["_source_index"] = idx
+                        # Access the underlying node's metadata dict directly
+                        if hasattr(node, "node") and hasattr(node.node, "metadata"):
+                            node.node.metadata["_source_index"] = idx
+                        elif hasattr(node, "metadata") and node.metadata is not None:
+                            node.metadata["_source_index"] = idx
 
                     combined_nodes.extend(nodes)
                 except Exception as e:
@@ -363,7 +365,14 @@ class MultiIndexRetriever(BaseRetriever):
         # Group by source index
         by_index = defaultdict(list)
         for node in nodes:
-            idx = node.metadata.get("_source_index", 0)
+            # Try to get metadata from NodeWithScore structure
+            metadata = None
+            if hasattr(node, "node") and hasattr(node.node, "metadata"):
+                metadata = node.node.metadata
+            elif hasattr(node, "metadata"):
+                metadata = node.metadata
+
+            idx = metadata.get("_source_index", 0) if metadata else 0
             by_index[idx].append(node)
 
         if not by_index:

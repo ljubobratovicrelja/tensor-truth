@@ -146,29 +146,6 @@ async def websocket_chat(
             await websocket.close(code=1008)
             return
 
-        modules = session.get("modules") or []
-        params = session.get("params", {})
-
-        # Check for session PDF index
-        with get_pdf_service(session_id) as pdf_service:
-            index_path = pdf_service.get_index_path()
-            session_index_path = str(index_path) if index_path else None
-
-        # Determine if we're in LLM-only mode (no modules or PDFs)
-        llm_only_mode = not modules and not session_index_path
-
-        # Load RAG engine if needed (only for non-LLM-only mode)
-        if not llm_only_mode and rag_service.needs_reload(
-            modules, params, session_index_path
-        ):
-            chat_history = rag_service.get_chat_history()
-            rag_service.load_engine(
-                modules=modules,
-                params=params,
-                session_index_path=session_index_path,
-                chat_history=chat_history,
-            )
-
         while True:
             # Receive message
             message = await websocket.receive_text()
@@ -186,6 +163,46 @@ async def websocket_chat(
                     }
                 )
                 continue
+
+            # Reload session data to get updated modules/params (may have changed mid-session)
+            data = session_service.load()
+            session = session_service.get_session(session_id, data)
+            if session is None:
+                await websocket.send_json(
+                    {"type": "error", "detail": "Session not found"}
+                )
+                break
+
+            modules = session.get("modules") or []
+            params = session.get("params", {})
+
+            # Check for session PDF index
+            with get_pdf_service(session_id) as pdf_service:
+                index_path = pdf_service.get_index_path()
+                session_index_path = str(index_path) if index_path else None
+
+            # Determine if we're in LLM-only mode (no modules or PDFs)
+            llm_only_mode = not modules and not session_index_path
+
+            # Load RAG engine if needed (send status to keep connection alive)
+            if not llm_only_mode and rag_service.needs_reload(
+                modules, params, session_index_path
+            ):
+                # Send loading status to prevent WebSocket timeout
+                await websocket.send_json(
+                    {
+                        "type": "status",
+                        "status": "loading_models",
+                    }
+                )
+
+                chat_history = rag_service.get_chat_history()
+                rag_service.load_engine(
+                    modules=modules,
+                    params=params,
+                    session_index_path=session_index_path,
+                    chat_history=chat_history,
+                )
 
             # Add user message
             data = session_service.load()

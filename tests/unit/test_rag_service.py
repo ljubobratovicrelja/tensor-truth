@@ -1,9 +1,9 @@
 """Unit tests for RAG service functionality."""
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock
 
 import pytest
-from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
+from llama_index.core.schema import NodeWithScore, TextNode
 
 
 @pytest.mark.unit

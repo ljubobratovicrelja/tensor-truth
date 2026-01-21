@@ -1,4 +1,4 @@
-import { Search, Brain, Sparkles } from "lucide-react";
+import { Search, Brain, Sparkles, Loader2 } from "lucide-react";
 import type { PipelineStatus } from "@/stores/chatStore";
 
 interface StreamingIndicatorProps {
@@ -6,6 +6,10 @@ interface StreamingIndicatorProps {
 }
 
 const STATUS_CONFIG = {
+  loading_models: {
+    icon: Loader2,
+    label: "Loading models...",
+  },
   retrieving: {
     icon: Search,
     label: "Searching documents...",

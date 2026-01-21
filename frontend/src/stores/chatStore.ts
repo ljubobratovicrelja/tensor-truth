@@ -1,7 +1,12 @@
 import { create } from "zustand";
 import type { SourceNode } from "@/api/types";
 
-export type PipelineStatus = "retrieving" | "thinking" | "generating" | null;
+export type PipelineStatus =
+  | "loading_models"
+  | "retrieving"
+  | "thinking"
+  | "generating"
+  | null;
 
 interface ChatStore {
   isStreaming: boolean;

@@ -10,9 +10,12 @@ import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from .models import SessionData
+
+if TYPE_CHECKING:
+    from .config_service import ConfigService
 
 
 class SessionService:
