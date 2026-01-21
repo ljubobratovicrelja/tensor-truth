@@ -17,6 +17,7 @@ from llama_index.core.postprocessor import (
     SimilarityPostprocessor,
 )
 from llama_index.core.retrievers import AutoMergingRetriever, BaseRetriever
+from llama_index.core.schema import NodeWithScore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -276,6 +277,7 @@ class MultiIndexRetriever(BaseRetriever):
         max_workers: Optional[int] = None,
         enable_cache: bool = True,
         cache_size: int = 128,
+        balance_strategy: str = "top_k_per_index",
     ) -> None:
         """Initialize multi-index retriever.
 
@@ -284,10 +286,12 @@ class MultiIndexRetriever(BaseRetriever):
             max_workers: Maximum parallel workers (default: min(len(retrievers), 8))
             enable_cache: Whether to cache retrieval results
             cache_size: LRU cache size
+            balance_strategy: Balancing strategy ("none", "top_k_per_index")
         """
         self.retrievers = retrievers
         self.max_workers = max_workers or min(len(retrievers), 8)
         self.enable_cache = enable_cache
+        self.balance_strategy = balance_strategy
         super().__init__()
 
         # Create LRU cache for retrieve operations if enabled
@@ -315,18 +319,70 @@ class MultiIndexRetriever(BaseRetriever):
         # Parallelize retrieval across all indices
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_retriever = {
-                executor.submit(r.retrieve, query_bundle): r for r in self.retrievers
+                executor.submit(r.retrieve, query_bundle): (r, idx)
+                for idx, r in enumerate(self.retrievers)
             }
 
             for future in as_completed(future_to_retriever):
                 try:
                     nodes = future.result()
+                    retriever, idx = future_to_retriever[future]
+
+                    # Tag nodes with source index for balancing
+                    for node in nodes:
+                        if not hasattr(node, "metadata"):
+                            node.metadata = {}
+                        node.metadata["_source_index"] = idx
+
                     combined_nodes.extend(nodes)
                 except Exception as e:
                     # Log error but continue with other retrievers
                     print(f"Retriever failed: {e}")
 
+        # Apply balancing if configured and multiple indexes
+        if len(self.retrievers) > 1 and self.balance_strategy == "top_k_per_index":
+            combined_nodes = self._balance_top_k_per_index(combined_nodes)
+
         return combined_nodes
+
+    def _balance_top_k_per_index(
+        self, nodes: List[NodeWithScore]
+    ) -> List[NodeWithScore]:
+        """Balance nodes by taking top-k from each index.
+
+        Ensures each index contributes fairly to the candidate pool before reranking.
+
+        Args:
+            nodes: Combined nodes from all retrievers (tagged with _source_index)
+
+        Returns:
+            Balanced list with equal representation per index
+        """
+        from collections import defaultdict
+
+        # Group by source index
+        by_index = defaultdict(list)
+        for node in nodes:
+            idx = node.metadata.get("_source_index", 0)
+            by_index[idx].append(node)
+
+        if not by_index:
+            return []
+
+        # Determine per-index limit (ensure fair representation)
+        num_indexes = len(by_index)
+        total_nodes = len(nodes)
+        per_index_limit = max(1, total_nodes // num_indexes)
+
+        # Take top nodes from each index (already sorted by score)
+        balanced = []
+        for idx_nodes in by_index.values():
+            balanced.extend(idx_nodes[:per_index_limit])
+
+        # Re-sort by score for postprocessor chain
+        balanced.sort(key=lambda n: n.score if n.score else 0.0, reverse=True)
+
+        return balanced
 
     def _retrieve(self, query_bundle: QueryBundle):
         """Public retrieve method that leverages caching.
@@ -457,7 +513,12 @@ def load_engine_for_modules(
     if not active_retrievers:
         raise FileNotFoundError("No valid indices loaded.")
 
-    composite_retriever = MultiIndexRetriever(active_retrievers)
+    # Get balance strategy from params (default to "top_k_per_index")
+    balance_strategy = engine_params.get("balance_strategy", "top_k_per_index")
+
+    composite_retriever = MultiIndexRetriever(
+        active_retrievers, balance_strategy=balance_strategy
+    )
 
     memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
 

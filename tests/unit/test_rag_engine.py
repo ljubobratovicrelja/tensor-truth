@@ -91,7 +91,7 @@ class TestMultiIndexRetriever:
         assert results[0] == mock_node
 
     def test_retrieve_preserves_order(self):
-        """Test that retrieval preserves order from retrievers."""
+        """Test that retrieval preserves order from retrievers when balancing is disabled."""
         nodes = [MagicMock() for _ in range(5)]
 
         retriever1 = MagicMock()
@@ -100,7 +100,10 @@ class TestMultiIndexRetriever:
         retriever2 = MagicMock()
         retriever2.retrieve.return_value = nodes[3:]
 
-        multi_retriever = MultiIndexRetriever([retriever1, retriever2])
+        # Disable balancing to test order preservation
+        multi_retriever = MultiIndexRetriever(
+            [retriever1, retriever2], balance_strategy="none"
+        )
 
         query_bundle = QueryBundle(query_str="test query")
         results = multi_retriever._retrieve(query_bundle)
@@ -156,6 +159,90 @@ class TestMultiIndexRetriever:
         multi_retriever.clear_cache()
         multi_retriever.clear_cache()
         multi_retriever.clear_cache()
+
+    def test_multi_index_balancing(self):
+        """Test per-index balancing distributes sources fairly."""
+        # Create mock nodes with different scores
+        # Retriever 1 has higher embedding scores
+        nodes1 = [
+            MagicMock(score=0.9, metadata={}),
+            MagicMock(score=0.8, metadata={}),
+            MagicMock(score=0.7, metadata={}),
+        ]
+
+        # Retriever 2 has lower embedding scores
+        nodes2 = [
+            MagicMock(score=0.6, metadata={}),
+            MagicMock(score=0.5, metadata={}),
+            MagicMock(score=0.4, metadata={}),
+        ]
+
+        retriever1 = MagicMock()
+        retriever1.retrieve.return_value = nodes1
+
+        retriever2 = MagicMock()
+        retriever2.retrieve.return_value = nodes2
+
+        # Create balanced retriever
+        multi_retriever = MultiIndexRetriever(
+            [retriever1, retriever2], balance_strategy="top_k_per_index"
+        )
+
+        # Execute retrieval
+        query_bundle = QueryBundle(query_str="test")
+        results = multi_retriever._retrieve(query_bundle)
+
+        # Verify nodes are tagged with source index
+        for node in results:
+            assert "_source_index" in node.metadata
+
+        # Count nodes from each index
+        index0_count = sum(1 for n in results if n.metadata.get("_source_index") == 0)
+        index1_count = sum(1 for n in results if n.metadata.get("_source_index") == 1)
+
+        # Should be balanced (3 from each)
+        assert index0_count == 3
+        assert index1_count == 3
+
+    def test_multi_index_balancing_disabled(self):
+        """Test that balancing can be disabled."""
+        nodes1 = [MagicMock(score=0.9, metadata={})]
+        nodes2 = [MagicMock(score=0.6, metadata={})]
+
+        retriever1 = MagicMock()
+        retriever1.retrieve.return_value = nodes1
+
+        retriever2 = MagicMock()
+        retriever2.retrieve.return_value = nodes2
+
+        # Create retriever with balancing disabled
+        multi_retriever = MultiIndexRetriever(
+            [retriever1, retriever2], balance_strategy="none"
+        )
+
+        query_bundle = QueryBundle(query_str="test")
+        results = multi_retriever._retrieve(query_bundle)
+
+        # Should still get all nodes, just not balanced
+        assert len(results) == 2
+
+    def test_multi_index_balancing_single_index(self):
+        """Test that balancing doesn't break with single index."""
+        nodes = [MagicMock(score=0.9, metadata={})]
+
+        retriever = MagicMock()
+        retriever.retrieve.return_value = nodes
+
+        # Create retriever with single index (balancing should be skipped)
+        multi_retriever = MultiIndexRetriever(
+            [retriever], balance_strategy="top_k_per_index"
+        )
+
+        query_bundle = QueryBundle(query_str="test")
+        results = multi_retriever._retrieve(query_bundle)
+
+        # Should work normally
+        assert len(results) == 1
 
 
 # ============================================================================

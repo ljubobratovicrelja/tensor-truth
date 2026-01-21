@@ -30,6 +30,46 @@ class SessionService:
         """
         self.sessions_file = Path(sessions_file)
 
+    def _apply_config_defaults(
+        self, params: Dict[str, Any], config_service: "ConfigService"
+    ) -> Dict[str, Any]:
+        """Apply config defaults to incomplete session params.
+
+        Args:
+            params: User-provided params (may be empty or partial)
+            config_service: ConfigService to load defaults from
+
+        Returns:
+            Complete params dict with all defaults filled in
+        """
+        try:
+            config = config_service.load()
+
+            # Define defaults from config
+            defaults = {
+                "temperature": config.ui.default_temperature,
+                "context_window": config.ui.default_context_window,
+                "max_tokens": config.ui.default_max_tokens,
+                "reranker_model": config.ui.default_reranker,
+                "reranker_top_n": config.ui.default_top_n,
+                "confidence_cutoff": config.ui.default_confidence_threshold,
+                "confidence_cutoff_hard": config.ui.default_confidence_cutoff_hard,
+                "rag_device": config.rag.default_device,
+                "balance_strategy": config.rag.default_balance_strategy,
+                "llm_device": "gpu",  # Reasonable default
+            }
+
+            # User params override defaults
+            return {**defaults, **params}
+
+        except Exception as e:
+            # If config loading fails, return params as-is
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to apply config defaults: {e}")
+            return params
+
     def load(self) -> SessionData:
         """Load chat sessions from JSON file.
 
@@ -93,6 +133,7 @@ class SessionService:
         modules: Optional[List[str]],
         params: Dict[str, Any],
         data: SessionData,
+        config_service: Optional["ConfigService"] = None,
     ) -> Tuple[str, SessionData]:
         """Create a new chat session.
 
@@ -100,17 +141,22 @@ class SessionService:
             modules: List of module names to load.
             params: Session parameters (model, temperature, etc).
             data: Current session data.
+            config_service: Optional ConfigService for applying defaults.
 
         Returns:
             Tuple of (new_session_id, updated_SessionData).
         """
+        # Apply config defaults if service provided
+        if config_service:
+            params = self._apply_config_defaults(params, config_service)
+
         new_id = str(uuid.uuid4())
         new_session = {
             "title": "New Session",
             "created_at": str(datetime.now()),
             "messages": [],
             "modules": modules,
-            "params": params,
+            "params": params,  # Now contains complete defaults
             "title_needs_update": True,
         }
 

@@ -194,6 +194,24 @@ class RAGService:
         # Retrieve context nodes
         source_nodes = retriever.retrieve(condensed_question)
 
+        # Apply the engine's postprocessor chain (reranker + filters)
+        if hasattr(self._engine, "_node_postprocessors"):
+            import logging
+
+            from llama_index.core.schema import QueryBundle
+
+            logger = logging.getLogger(__name__)
+            query_bundle = QueryBundle(query_str=condensed_question)
+
+            try:
+                for postprocessor in self._engine._node_postprocessors:
+                    source_nodes = postprocessor.postprocess_nodes(
+                        source_nodes, query_bundle=query_bundle
+                    )
+            except Exception as e:
+                # Log but don't break streaming if postprocessor fails
+                logger.warning(f"Postprocessor failed, using unprocessed nodes: {e}")
+
         # Phase 2: Check if model supports thinking and start generation
         llm = self._engine._llm
         thinking_enabled = getattr(llm, "thinking", False)

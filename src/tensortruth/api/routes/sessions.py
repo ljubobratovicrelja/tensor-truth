@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 
-from tensortruth.api.deps import SessionServiceDep
+from tensortruth.api.deps import ConfigServiceDep, SessionServiceDep
 from tensortruth.api.schemas import (
     MessageCreate,
     MessageResponse,
@@ -41,12 +41,17 @@ async def list_sessions(session_service: SessionServiceDep) -> SessionListRespon
 
 @router.post("", response_model=SessionResponse, status_code=201)
 async def create_session(
-    body: SessionCreate, session_service: SessionServiceDep
+    body: SessionCreate,
+    session_service: SessionServiceDep,
+    config_service: ConfigServiceDep,
 ) -> SessionResponse:
     """Create a new chat session."""
     data = session_service.load()
     new_id, new_data = session_service.create(
-        modules=body.modules, params=body.params, data=data
+        modules=body.modules,
+        params=body.params,
+        data=data,
+        config_service=config_service,
     )
     session_service.save(new_data)
     session = new_data.sessions[new_id]

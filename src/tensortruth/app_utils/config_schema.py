@@ -35,6 +35,7 @@ class RAGConfig:
     """RAG pipeline configuration."""
 
     default_device: str = "cpu"  # Will be auto-detected on first run
+    default_balance_strategy: str = "top_k_per_index"  # Multi-index balancing
 
 
 @dataclass
