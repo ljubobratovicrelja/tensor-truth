@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings, Loader2, HelpCircle, Plus } from "lucide-react";
+import { Settings, Loader2, HelpCircle, Plus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,6 +27,7 @@ import {
   useEmbeddingModels,
   useRerankers,
   useAddReranker,
+  useRestartEngine,
 } from "@/hooks";
 import { toast } from "sonner";
 
@@ -67,6 +68,7 @@ export function SessionSettingsPanel({
   const { data: rerankersData } = useRerankers();
   const addReranker = useAddReranker();
   const updateSession = useUpdateSession();
+  const restartEngine = useRestartEngine();
 
   // Add reranker dialog state
   const [addRerankerOpen, setAddRerankerOpen] = useState(false);
@@ -174,6 +176,15 @@ export function SessionSettingsPanel({
       toast.error("Failed to save session settings");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleRestartEngine = async () => {
+    try {
+      await restartEngine.mutateAsync();
+      toast.success("Engine restarted successfully");
+    } catch {
+      toast.error("Failed to restart engine");
     }
   };
 
@@ -447,6 +458,30 @@ export function SessionSettingsPanel({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRestartEngine}
+                disabled={restartEngine.isPending}
+                className="w-full"
+              >
+                {restartEngine.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Restarting...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Restart Engine
+                  </>
+                )}
+              </Button>
+              <p className="text-muted-foreground text-xs">
+                Clears GPU/MPS memory and restarts the RAG pipeline
+              </p>
             </div>
           </div>
 
