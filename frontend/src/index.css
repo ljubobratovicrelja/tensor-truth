@@ -227,11 +227,22 @@
     @apply text-sm leading-relaxed;
     background: transparent !important;
     padding: 0 !important;
+    color: #e1e4e8; /* Light gray fallback for undetected languages */
   }
 
   /* Inline code */
   .chat-markdown :not(pre) > code {
     @apply rounded-md px-1.5 py-0.5 text-sm font-medium;
+    background: oklch(0.25 0 0);
+    color: oklch(0.9 0.15 30);
+  }
+
+  /* User message code blocks - use same dark theme as assistant for consistency */
+  .chat-markdown-user pre {
+    background: oklch(0.15 0 0) !important;
+  }
+
+  .chat-markdown-user :not(pre) > code {
     background: oklch(0.25 0 0);
     color: oklch(0.9 0.15 30);
   }

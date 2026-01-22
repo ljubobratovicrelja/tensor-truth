@@ -22,7 +22,7 @@ export function StreamingText({ content, isStreaming, className }: StreamingText
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
-          rehypeHighlight,
+          [rehypeHighlight, { detect: true }],
           rehypeKatex,
           rehypeSlug,
           [

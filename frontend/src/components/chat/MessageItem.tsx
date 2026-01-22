@@ -123,11 +123,14 @@ export function MessageItem({
           {isStreaming ? (
             <StreamingText content={message.content} isStreaming />
           ) : (
-            <div ref={contentRef} className="chat-markdown max-w-none">
+            <div
+              ref={contentRef}
+              className={cn("chat-markdown max-w-none", isUser && "chat-markdown-user")}
+            >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[
-                  rehypeHighlight,
+                  [rehypeHighlight, { detect: true }],
                   rehypeKatex,
                   rehypeSlug,
                   [
