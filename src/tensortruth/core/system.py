@@ -172,11 +172,6 @@ def get_all_memory_info() -> List[MemoryInfo]:
     if mps_mem:
         memory_info.append(mps_mem)
 
-    # Ollama memory (may overlap with CUDA VRAM but useful to show separately)
-    ollama_mem = get_ollama_memory()
-    if ollama_mem:
-        memory_info.append(ollama_mem)
-
     # System RAM
     ram_mem = get_system_ram()
     if ram_mem:
