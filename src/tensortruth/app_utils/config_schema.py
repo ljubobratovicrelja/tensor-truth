@@ -25,7 +25,6 @@ class UIConfig:
     default_temperature: float = 0.1
     default_context_window: int = 16384
     default_max_tokens: int = 4096
-    default_reranker: str = "BAAI/bge-reranker-v2-m3"
     default_top_n: int = 5
     default_confidence_threshold: float = 0.4
     default_confidence_cutoff_hard: float = 0.1
@@ -116,6 +115,7 @@ class RAGConfig:
     default_device: str = "cpu"  # Will be auto-detected on first run
     default_balance_strategy: str = "top_k_per_index"  # Multi-index balancing
     default_embedding_model: str = "BAAI/bge-m3"  # HuggingFace embedding model
+    default_reranker: str = "BAAI/bge-reranker-v2-m3"  # Default reranker model
 
     # Per-model configurations (model_name -> config dict)
     # On first run, this is populated from DEFAULT_EMBEDDING_MODEL_CONFIGS

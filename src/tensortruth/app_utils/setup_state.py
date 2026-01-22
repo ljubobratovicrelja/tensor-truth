@@ -31,7 +31,7 @@ def init_setup_defaults_from_config():
     st.session_state.setup_max_tokens = config.ui.default_max_tokens
 
     # RAG parameters
-    st.session_state.setup_reranker = config.ui.default_reranker
+    st.session_state.setup_reranker = config.rag.default_reranker
     st.session_state.setup_top_n = config.ui.default_top_n
     st.session_state.setup_conf = config.ui.default_confidence_threshold
     st.session_state.setup_conf_cutoff_hard = config.ui.default_confidence_cutoff_hard
@@ -99,7 +99,7 @@ def get_session_params_with_defaults(session_params: dict) -> dict:
         ),
         "system_prompt": session_params.get("system_prompt", ""),
         "reranker_model": session_params.get(
-            "reranker_model", config.ui.default_reranker
+            "reranker_model", config.rag.default_reranker
         ),
         "reranker_top_n": session_params.get("reranker_top_n", config.ui.default_top_n),
         "rag_device": session_params.get("rag_device", config.rag.default_device),

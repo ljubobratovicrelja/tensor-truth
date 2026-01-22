@@ -18,7 +18,6 @@ class UIConfigSchema(BaseModel):
     default_temperature: float = 0.1
     default_context_window: int = 16384
     default_max_tokens: int = 4096
-    default_reranker: str = "BAAI/bge-reranker-v2-m3"
     default_top_n: int = 5
     default_confidence_threshold: float = 0.4
     default_confidence_cutoff_hard: float = 0.1
@@ -30,6 +29,7 @@ class RAGConfigSchema(BaseModel):
     default_device: str = "cpu"
     default_balance_strategy: str = "top_k_per_index"
     default_embedding_model: str = "BAAI/bge-m3"
+    default_reranker: str = "BAAI/bge-reranker-v2-m3"
 
 
 class ModelsConfigSchema(BaseModel):

@@ -54,7 +54,6 @@ class TestConfigSchema:
         config = UIConfig()
         assert config.default_temperature == 0.1
         assert config.default_context_window == 16384
-        assert config.default_reranker == "BAAI/bge-reranker-v2-m3"
         assert config.default_top_n == 5
         assert config.default_confidence_threshold == 0.4
 
@@ -62,6 +61,7 @@ class TestConfigSchema:
         """Test RAGConfig default values."""
         config = RAGConfig()
         assert config.default_device == "cpu"
+        assert config.default_reranker == "BAAI/bge-reranker-v2-m3"
 
     def test_agent_config_defaults(self):
         """Test AgentConfig default values."""
@@ -132,11 +132,13 @@ class TestConfigSchema:
             "ui": {
                 "default_temperature": 0.5,
                 "default_context_window": 8192,
-                "default_reranker": "BAAI/bge-reranker-base",
                 "default_top_n": 5,
                 "default_confidence_threshold": 0.4,
             },
-            "rag": {"default_device": "mps"},
+            "rag": {
+                "default_device": "mps",
+                "default_reranker": "BAAI/bge-reranker-base",
+            },
         }
         config = TensorTruthConfig.from_dict(data)
 
@@ -145,6 +147,7 @@ class TestConfigSchema:
         assert config.ui.default_temperature == 0.5
         assert config.ui.default_context_window == 8192
         assert config.rag.default_device == "mps"
+        assert config.rag.default_reranker == "BAAI/bge-reranker-base"
 
     def test_config_from_dict_with_missing_keys(self):
         """Test TensorTruthConfig handles missing keys gracefully."""

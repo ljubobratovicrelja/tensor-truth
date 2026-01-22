@@ -95,3 +95,81 @@ class TestConfigAPI:
         # Verify it persisted
         response = await client.get("/api/config")
         assert response.json()["ollama"]["timeout"] == 600
+
+    @pytest.mark.asyncio
+    async def test_get_config_includes_rag_embedding_model(
+        self, client, tmp_path, monkeypatch
+    ):
+        """Test that GET /config returns default_embedding_model in rag section."""
+        monkeypatch.setattr(
+            "tensortruth.api.deps.ConfigService.__init__",
+            lambda self, config_file=None: setattr(
+                self, "config_file", tmp_path / "config.yaml"
+            )
+            or setattr(self, "config_dir", tmp_path),
+        )
+        from tensortruth.api.deps import get_config_service
+
+        get_config_service.cache_clear()
+
+        response = await client.get("/api/config")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify embedding model is in rag section
+        assert "default_embedding_model" in data["rag"]
+        assert data["rag"]["default_embedding_model"] == "BAAI/bge-m3"
+
+    @pytest.mark.asyncio
+    async def test_get_config_includes_rag_reranker(
+        self, client, tmp_path, monkeypatch
+    ):
+        """Test that GET /config returns default_reranker in rag section."""
+        monkeypatch.setattr(
+            "tensortruth.api.deps.ConfigService.__init__",
+            lambda self, config_file=None: setattr(
+                self, "config_file", tmp_path / "config.yaml"
+            )
+            or setattr(self, "config_dir", tmp_path),
+        )
+        from tensortruth.api.deps import get_config_service
+
+        get_config_service.cache_clear()
+
+        response = await client.get("/api/config")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify reranker is in rag section (not ui)
+        assert "default_reranker" in data["rag"]
+        assert data["rag"]["default_reranker"] == "BAAI/bge-reranker-v2-m3"
+        assert "default_reranker" not in data["ui"]
+
+    @pytest.mark.asyncio
+    async def test_update_config_rag_reranker(self, client, tmp_path, monkeypatch):
+        """Test updating default_reranker via rag_default_reranker key."""
+        config_file = tmp_path / "config.yaml"
+
+        from tensortruth.services import ConfigService
+
+        test_service = ConfigService(config_file=config_file)
+
+        def get_test_config_service():
+            return test_service
+
+        monkeypatch.setattr(
+            "tensortruth.api.deps.get_config_service", get_test_config_service
+        )
+
+        # Update reranker using rag_ prefix
+        response = await client.patch(
+            "/api/config",
+            json={"updates": {"rag_default_reranker": "BAAI/bge-reranker-base"}},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["rag"]["default_reranker"] == "BAAI/bge-reranker-base"
+
+        # Verify it persisted
+        response = await client.get("/api/config")
+        assert response.json()["rag"]["default_reranker"] == "BAAI/bge-reranker-base"

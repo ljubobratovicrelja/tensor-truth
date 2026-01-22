@@ -53,7 +53,7 @@ class SessionService:
                 "temperature": config.ui.default_temperature,
                 "context_window": config.ui.default_context_window,
                 "max_tokens": config.ui.default_max_tokens,
-                "reranker_model": config.ui.default_reranker,
+                "reranker_model": config.rag.default_reranker,
                 "reranker_top_n": config.ui.default_top_n,
                 "confidence_cutoff": config.ui.default_confidence_threshold,
                 "confidence_cutoff_hard": config.ui.default_confidence_cutoff_hard,

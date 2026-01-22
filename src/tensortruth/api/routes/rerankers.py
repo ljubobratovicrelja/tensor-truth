@@ -72,7 +72,7 @@ async def list_rerankers(config_service: ConfigServiceDep) -> RerankerListRespon
 
     return RerankerListResponse(
         models=[RerankerModelInfo(model=m, status="valid") for m in models],
-        current=config.ui.default_reranker,
+        current=config.rag.default_reranker,
     )
 
 
@@ -141,7 +141,7 @@ async def remove_reranker(
         )
 
     # Cannot remove the current default
-    if model_name == config.ui.default_reranker:
+    if model_name == config.rag.default_reranker:
         return RerankerRemoveResponse(
             status="failed",
             error="Cannot remove the currently selected default reranker",

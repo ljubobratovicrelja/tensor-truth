@@ -27,13 +27,14 @@ def _config_to_response(config) -> ConfigResponse:
             default_temperature=config.ui.default_temperature,
             default_context_window=config.ui.default_context_window,
             default_max_tokens=config.ui.default_max_tokens,
-            default_reranker=config.ui.default_reranker,
             default_top_n=config.ui.default_top_n,
             default_confidence_threshold=config.ui.default_confidence_threshold,
             default_confidence_cutoff_hard=config.ui.default_confidence_cutoff_hard,
         ),
         rag=RAGConfigSchema(
             default_device=config.rag.default_device,
+            default_embedding_model=config.rag.default_embedding_model,
+            default_reranker=config.rag.default_reranker,
         ),
         models=ModelsConfigSchema(
             default_rag_model=config.models.default_rag_model,

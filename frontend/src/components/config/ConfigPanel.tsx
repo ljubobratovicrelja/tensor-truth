@@ -92,7 +92,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   const [maxTokens, setMaxTokens] = useState(config.ui.default_max_tokens);
 
   // Retrieval
-  const [reranker, setReranker] = useState(config.ui.default_reranker);
+  const [reranker, setReranker] = useState(config.rag.default_reranker);
   const [topN, setTopN] = useState(config.ui.default_top_n);
   const [confidenceThreshold, setConfidenceThreshold] = useState(
     config.ui.default_confidence_threshold
@@ -168,12 +168,12 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
       ui_default_temperature: temperature,
       ui_default_context_window: contextWindow,
       ui_default_max_tokens: maxTokens,
-      ui_default_reranker: reranker,
       ui_default_top_n: topN,
       ui_default_confidence_threshold: confidenceThreshold,
       ui_default_confidence_cutoff_hard: confidenceCutoffHard,
       rag_default_device: device,
       rag_default_embedding_model: embeddingModel,
+      rag_default_reranker: reranker,
     });
   };
 

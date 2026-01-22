@@ -159,7 +159,6 @@ export interface UIConfig {
   default_temperature: number;
   default_context_window: number;
   default_max_tokens: number;
-  default_reranker: string;
   default_top_n: number;
   default_confidence_threshold: number;
   default_confidence_cutoff_hard: number;
@@ -169,6 +168,7 @@ export interface RAGConfig {
   default_device: string;
   default_balance_strategy: string;
   default_embedding_model: string;
+  default_reranker: string;
 }
 
 export interface ModelsConfig {
