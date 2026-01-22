@@ -45,6 +45,83 @@ def clean_filename(title: str) -> str:
     return clean[:50]  # Truncate to avoid path length issues
 
 
+# Unicode replacement character and other problematic characters from PDF extraction
+INVALID_CHARS = {
+    "\ufffd": "REPLACEMENT CHARACTER (U+FFFD)",
+    "\x00": "NULL (U+0000)",
+    "\ufffe": "NONCHARACTER (U+FFFE)",
+    "\uffff": "NONCHARACTER (U+FFFF)",
+}
+
+
+def detect_invalid_characters(
+    text: str, include_line_info: bool = False
+) -> Dict[str, Any]:
+    """Detect invalid/problematic characters in text.
+
+    Checks for:
+    - U+FFFD: Replacement character (diamond with question mark)
+    - U+0000: Null character
+    - U+FFFE, U+FFFF: Unicode noncharacters
+
+    Args:
+        text: Text to check
+        include_line_info: If True, include line numbers and context for each occurrence
+
+    Returns:
+        Dict with:
+            - has_invalid: bool indicating if any invalid chars found
+            - counts: dict mapping char description to count
+            - occurrences: list of (line_num, context) tuples (if include_line_info=True)
+    """
+    if not text:
+        return {"has_invalid": False, "counts": {}, "occurrences": []}
+
+    counts: Dict[str, int] = {}
+    occurrences: List[tuple] = []
+
+    for char, description in INVALID_CHARS.items():
+        count = text.count(char)
+        if count > 0:
+            counts[description] = count
+
+    has_invalid = bool(counts)
+
+    if has_invalid and include_line_info:
+        lines = text.split("\n")
+        for line_num, line in enumerate(lines, 1):
+            for char in INVALID_CHARS:
+                if char in line:
+                    # Get context around the invalid char (truncate long lines)
+                    context = line[:100] + "..." if len(line) > 100 else line
+                    occurrences.append((line_num, context))
+                    break  # One entry per line is enough
+
+    return {
+        "has_invalid": has_invalid,
+        "counts": counts,
+        "occurrences": occurrences[:20],  # Limit to first 20 occurrences
+    }
+
+
+def remove_invalid_characters(text: str) -> str:
+    """Remove invalid/problematic characters from text.
+
+    Args:
+        text: Text to clean
+
+    Returns:
+        Text with invalid characters removed
+    """
+    if not text:
+        return text
+
+    for char in INVALID_CHARS:
+        text = text.replace(char, "")
+
+    return text
+
+
 def download_pdf(url: str, output_path: Union[str, Path]) -> bool:
     """Download PDF from URL to output path.
 
@@ -384,6 +461,36 @@ def convert_with_marker(pdf_path: Union[str, Path]) -> str:
     except Exception as e:
         logger.error(f"Marker conversion failed: {e}")
         return convert_pdf_to_markdown(pdf_path, converter="pymupdf")
+
+
+def normalize_math_delimiters(text: str) -> str:
+    r"""Convert $$...$$ to \[...\] and $...$ to \(...\) for LLM compatibility.
+
+    LLMs are trained to output \[...\] and \(...\) delimiters, so RAG documents
+    should use the same notation for consistent retrieval.
+
+    Args:
+        text: Markdown text with $...$ or $$...$$ math delimiters
+
+    Returns:
+        Text with \(...\) and \[...\] delimiters
+    """
+    if not text:
+        return text
+
+    # Convert display math $$...$$ to \[...\]
+    text = re.sub(r"\$\$\s*(.*?)\s*\$\$", r"\\[\1\\]", text, flags=re.DOTALL)
+
+    # Convert inline math $...$ to \(...\)
+    # Negative lookbehind/lookahead to avoid matching already-converted $$ or escaped \$
+    text = re.sub(
+        r"(?<!\$)(?<!\\)\$(?!\$)\s*(.*?)\s*(?<!\\)\$(?!\$)",
+        r"\\(\1\\)",
+        text,
+        flags=re.DOTALL,
+    )
+
+    return text
 
 
 def post_process_math(md_text: Optional[str]) -> Optional[str]:
