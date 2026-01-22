@@ -39,7 +39,10 @@ export function Header() {
         {getIcon()}
       </Button>
       <div className="flex flex-1 items-center gap-2">
-        <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+        <Link
+          to="/"
+          className="flex items-center gap-2 transition-opacity hover:opacity-80"
+        >
           <img src="/logo.png" alt="TensorTruth" className="h-7 w-7" />
           <h1 className="hidden text-lg font-semibold sm:block">TensorTruth</h1>
         </Link>
