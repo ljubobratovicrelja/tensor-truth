@@ -41,19 +41,43 @@ export function MessageItem({
 
   const handleCopy = async (e: React.MouseEvent) => {
     const content = message.content;
+
     try {
       if (e.shiftKey && contentRef.current) {
-        // Copy as rich text (HTML + plain text fallback)
-        const html = contentRef.current.innerHTML;
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            "text/html": new Blob([html], { type: "text/html" }),
-            "text/plain": new Blob([content], { type: "text/plain" }),
-          }),
-        ]);
+        // Copy as rich text
+        if (navigator.clipboard?.write) {
+          const html = contentRef.current.innerHTML;
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              "text/html": new Blob([html], { type: "text/html" }),
+              "text/plain": new Blob([content], { type: "text/plain" }),
+            }),
+          ]);
+        } else {
+          // Fallback: select and copy rendered content
+          const range = document.createRange();
+          range.selectNodeContents(contentRef.current);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          document.execCommand("copy");
+          selection?.removeAllRanges();
+        }
       } else {
         // Copy as raw markdown
-        await navigator.clipboard.writeText(content);
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(content);
+        } else {
+          // Fallback: copy via temporary textarea
+          const textArea = document.createElement("textarea");
+          textArea.value = content;
+          textArea.style.position = "fixed";
+          textArea.style.left = "-9999px";
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textArea);
+        }
       }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
