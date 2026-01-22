@@ -3,9 +3,11 @@ import { Send, Square, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useModels, useConfig } from "@/hooks";
+import { useModels, useConfig, useCommandDetection } from "@/hooks";
 import { ModuleSelector } from "./ModuleSelector";
 import { SessionSettingsPanel } from "@/components/config";
+import { CommandAutocomplete } from "./CommandAutocomplete";
+import type { CommandDefinition } from "@/types/commands";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -33,10 +35,20 @@ export function ChatInput({
   sessionParams = {},
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
+  const [autocompleteHasResults, setAutocompleteHasResults] = useState(false);
   const { data: modelsData, isLoading: modelsLoading } = useModels();
   const { data: config } = useConfig();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const detection = useCommandDetection(message);
 
+  // Show autocomplete only if command detected AND no space after command name
+  // (hide when user is typing arguments, only show when typing command name)
+  const commandEndPos =
+    detection.commandPosition + (detection.commandName?.length || 0) + 1;
+  const hasSpaceAfterCommand = message.charAt(commandEndPos) === " ";
+  const showAutocomplete = detection.hasCommand && !hasSpaceAfterCommand;
+
+  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -50,7 +62,7 @@ export function ChatInput({
     const trimmed = message.trim();
     if (trimmed && !isStreaming) {
       onSend(trimmed);
-      setMessage("");
+      setMessage(""); // Autocomplete will hide automatically when message clears
     }
   };
 
@@ -58,8 +70,38 @@ export function ChatInput({
     onStop?.();
   };
 
+  const handleCommandSelect = (command: CommandDefinition) => {
+    // Replace the current command with the selected one
+    if (detection.commandPosition >= 0) {
+      const before = message.slice(0, detection.commandPosition);
+      const after = message.slice(
+        detection.commandPosition + (detection.commandName?.length || 0) + 1
+      );
+      // Replace with just the command name (e.g., "/web "), user adds args manually
+      const commandName = command.usage.split(" ")[0];
+      setMessage(`${before}${commandName} ${after}`.trim() + " ");
+    } else {
+      // Fallback: append command at the end
+      const commandName = command.usage.split(" ")[0];
+      setMessage(`${message} ${commandName} `);
+    }
+    // Autocomplete will hide automatically when command pattern changes
+    // Focus back on textarea
+    textareaRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Send on Enter (without Shift) or Cmd/Ctrl+Enter
+    // Only let autocomplete handle keys if it's open AND has results
+    if (
+      showAutocomplete &&
+      autocompleteHasResults &&
+      ["Enter", "Tab", "ArrowUp", "ArrowDown", "Escape"].includes(e.key)
+    ) {
+      // Let autocomplete handle these keys
+      return;
+    }
+
+    // Send on Enter (without Shift)
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (!isStreaming) {
@@ -73,6 +115,25 @@ export function ChatInput({
   return (
     <div className="space-y-2">
       <div className="bg-muted/50 border-input relative rounded-2xl border">
+        {/* Command Autocomplete */}
+        <CommandAutocomplete
+          input={message}
+          isOpen={showAutocomplete}
+          onSelect={handleCommandSelect}
+          onHasResultsChange={setAutocompleteHasResults}
+          onClose={() => {
+            // Remove the command when user presses Escape
+            if (detection.commandPosition >= 0) {
+              const before = message.slice(0, detection.commandPosition);
+              const after = message.slice(
+                detection.commandPosition + (detection.commandName?.length || 0) + 1
+              );
+              setMessage((before + after).trim());
+            }
+            textareaRef.current?.focus();
+          }}
+        />
+
         {/* Textarea */}
         <textarea
           ref={textareaRef}
