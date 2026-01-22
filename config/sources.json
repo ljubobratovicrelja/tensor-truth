@@ -1066,18 +1066,6 @@
       "description": "Mathematical foundations for ML: linear algebra, probability, optimization",
       "items": {}
     },
-    "neural_networks_nielsen": {
-      "type": "pdf_book",
-      "category": "deep_learning",
-      "title": "Neural Networks and Deep Learning",
-      "authors": [
-        "Michael Nielsen"
-      ],
-      "source": "https://jingyuexing.github.io/Ebook/Machine_Learning/Neural Networks and Deep Learning-eng.pdf",
-      "split_method": "none",
-      "description": "Accessible introduction with interactive visualizations",
-      "items": {}
-    },
     "dive_deep_learning_zhang": {
       "type": "pdf_book",
       "category": "deep_learning",
