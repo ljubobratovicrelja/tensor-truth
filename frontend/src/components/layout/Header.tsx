@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/stores";
 import { useIsMobile } from "@/hooks";
 import { ConfigPanel } from "@/components/config";
+import { SystemStatusPanel } from "@/components/status";
 import { ThemeToggle } from "./ThemeToggle";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +42,7 @@ export function Header() {
         <img src="/logo.png" alt="TensorTruth" className="h-7 w-7" />
         <h1 className="hidden text-lg font-semibold sm:block">TensorTruth</h1>
       </div>
+      <SystemStatusPanel />
       <ThemeToggle />
       {!isInChat && <ConfigPanel />}
     </header>
