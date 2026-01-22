@@ -17,6 +17,8 @@ export function WelcomePage() {
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [sessionParams, setSessionParams] = useState<Record<string, unknown>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activePreset, setActivePreset] = useState<string | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   const { data: modelsData, isLoading: modelsLoading } = useModels();
   const { data: favoritesData } = useFavoritePresets();
@@ -28,27 +30,16 @@ export function WelcomePage() {
   // Derive effective model: user selection or config default
   const effectiveModel = selectedModel || config?.models.default_rag_model || "";
 
-  const handleSubmit = async (promptText?: string, preset?: PresetInfo) => {
+  const handleSubmit = async (promptText?: string) => {
     const text = promptText ?? message.trim();
     if (!text || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      // Use preset config or selected options
-      const presetModules = preset?.config?.modules as string[] | undefined;
-      const presetModel = preset?.config?.model as string | undefined;
-
-      const effectiveModules = selectedModules.length > 0 ? selectedModules : undefined;
-
-      // Build params: start with session settings, always include effective model
-      const baseParams =
-        Object.keys(sessionParams).length > 0 ? { ...sessionParams } : {};
-      const params = preset?.config
-        ? { ...preset.config, model: presetModel }
-        : { ...baseParams, model: effectiveModel };
+      const params = { ...sessionParams, model: effectiveModel };
 
       const result = await createSession.mutateAsync({
-        modules: presetModules ?? effectiveModules,
+        modules: selectedModules.length > 0 ? selectedModules : undefined,
         params,
       });
 
@@ -72,12 +63,39 @@ export function WelcomePage() {
   };
 
   const handlePresetClick = (preset: PresetInfo) => {
-    // Use the preset's description as a starting prompt, or a default greeting
-    const description = preset.config?.description as string | undefined;
-    const prompt = description
-      ? `I'd like help with: ${description}`
-      : `Start a ${preset.name} session`;
-    handleSubmit(prompt, preset);
+    const config = preset.config || {};
+
+    // Apply modules from preset
+    if (Array.isArray(config.modules)) {
+      setSelectedModules(config.modules as string[]);
+    }
+
+    // Apply model from preset
+    if (config.model) {
+      setSelectedModel(config.model as string);
+    }
+
+    // Build session params from preset config
+    const newParams: Record<string, unknown> = {};
+    const paramKeys = [
+      "temperature",
+      "context_window",
+      "reranker_model",
+      "reranker_top_n",
+      "confidence_cutoff",
+      "confidence_cutoff_hard",
+      "system_prompt",
+      "embedding_model",
+    ];
+    paramKeys.forEach((key) => {
+      if (config[key] !== undefined) newParams[key] = config[key];
+    });
+    setSessionParams(newParams);
+
+    // Track active preset & trigger animation
+    setActivePreset(preset.name);
+    setIsAnimating(true);
+    setTimeout(() => setIsAnimating(false), 800);
   };
 
   const canSend = message.trim().length > 0 && !isSubmitting;
@@ -100,7 +118,12 @@ export function WelcomePage() {
 
         {/* Chat Input */}
         <div className="space-y-4">
-          <div className="bg-muted/50 border-input relative rounded-2xl border shadow-sm">
+          <div
+            className={cn(
+              "bg-muted/50 border-input relative rounded-2xl border shadow-sm transition-all duration-500",
+              isAnimating && "preset-glow"
+            )}
+          >
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -190,14 +213,22 @@ export function WelcomePage() {
               {favoritesData.presets.map((preset) => (
                 <Button
                   key={preset.name}
-                  variant="outline"
+                  variant={activePreset === preset.name ? "default" : "outline"}
                   size="sm"
                   onClick={() => handlePresetClick(preset)}
                   disabled={isSubmitting}
-                  className="gap-2 rounded-full"
+                  className={cn(
+                    "gap-2 rounded-full transition-all duration-300",
+                    activePreset === preset.name && "ring-primary/50 scale-105 ring-2"
+                  )}
                   title={preset.config?.description as string | undefined}
                 >
-                  <Sparkles className="h-3.5 w-3.5" />
+                  <Sparkles
+                    className={cn(
+                      "h-3.5 w-3.5 transition-all",
+                      activePreset === preset.name && "text-yellow-400"
+                    )}
+                  />
                   {preset.name}
                 </Button>
               ))}
