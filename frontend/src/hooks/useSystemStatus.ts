@@ -7,10 +7,12 @@ import {
   getMemoryInfo,
   getDevices,
   getOllamaStatus,
+  getRAGStatus,
   restartEngine,
   type MemoryResponse,
   type DevicesResponse,
   type OllamaStatusResponse,
+  type RAGStatusResponse,
   type RestartEngineResponse,
 } from "@/api/system";
 
@@ -56,6 +58,23 @@ export function useOllamaStatus(enabled = true) {
   return useQuery<OllamaStatusResponse>({
     queryKey: ["system", "ollama", "status"],
     queryFn: getOllamaStatus,
+    refetchInterval: enabled ? 1000 : false,
+    staleTime: 800,
+    enabled,
+  });
+}
+
+/**
+ * Hook to fetch RAG system status (embedder and reranker)
+ *
+ * Refetches every second when enabled (panel open) for responsive updates
+ *
+ * @param enabled - Whether to enable polling (default: true)
+ */
+export function useRAGStatus(enabled = true) {
+  return useQuery<RAGStatusResponse>({
+    queryKey: ["system", "rag", "status"],
+    queryFn: getRAGStatus,
     refetchInterval: enabled ? 1000 : false,
     staleTime: 800,
     enabled,

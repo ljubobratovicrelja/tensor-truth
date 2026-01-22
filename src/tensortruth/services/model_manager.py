@@ -368,6 +368,98 @@ class ModelManager:
             "default_device": self._default_device,
         }
 
+    def get_memory_usage(self) -> Dict[str, Any]:
+        """Get memory usage of loaded models.
+
+        Calculates memory by summing parameter sizes of the underlying PyTorch models.
+
+        Returns:
+            Dict with memory info for embedder and reranker:
+            {
+                "embedder": {"model_name": str, "device": str, "memory_gb": float} | None,
+                "reranker": {"model_name": str, "device": str, "memory_gb": float} | None,
+                "total_gb": float
+            }
+        """
+        result: Dict[str, Any] = {
+            "embedder": None,
+            "reranker": None,
+            "total_gb": 0.0,
+        }
+
+        # Calculate embedder memory
+        if self._embedder is not None:
+            embedder_mem = self._get_model_memory_gb(self._embedder)
+            if embedder_mem is not None:
+                result["embedder"] = {
+                    "model_name": self._embedder_model_name,
+                    "device": self._embedder_device,
+                    "memory_gb": embedder_mem,
+                }
+                result["total_gb"] += embedder_mem
+
+        # Calculate reranker memory
+        if self._reranker is not None:
+            reranker_mem = self._get_model_memory_gb(self._reranker)
+            if reranker_mem is not None:
+                result["reranker"] = {
+                    "model_name": self._reranker_model_name,
+                    "device": self._reranker_device,
+                    "memory_gb": reranker_mem,
+                }
+                result["total_gb"] += reranker_mem
+
+        return result
+
+    def _get_model_memory_gb(self, wrapper: Any) -> Optional[float]:
+        """Calculate memory usage of a model wrapper in GB.
+
+        Accesses the underlying PyTorch model and sums parameter memory.
+
+        Args:
+            wrapper: LlamaIndex model wrapper (HuggingFaceEmbedding or SentenceTransformerRerank)
+
+        Returns:
+            Memory usage in GB, or None if unable to calculate
+        """
+        try:
+            model = None
+
+            # HuggingFaceEmbedding stores model in _model attribute
+            if hasattr(wrapper, "_model"):
+                model = wrapper._model
+            # SentenceTransformerRerank stores it in model attribute
+            elif hasattr(wrapper, "model"):
+                model = wrapper.model
+            # sentence-transformers model has _first_module()
+            if model is not None and hasattr(model, "_first_module"):
+                model = model._first_module()
+            # Or it might have an 'auto_model' attribute
+            if model is not None and hasattr(model, "auto_model"):
+                model = model.auto_model
+            # Or access via [0] for sequential models
+            if model is not None and hasattr(model, "__getitem__"):
+                try:
+                    first = model[0]
+                    if hasattr(first, "auto_model"):
+                        model = first.auto_model
+                except (IndexError, TypeError):
+                    pass
+
+            if model is None:
+                return None
+
+            # Sum parameter memory
+            total_bytes = 0
+            if hasattr(model, "parameters"):
+                for param in model.parameters():
+                    total_bytes += param.numel() * param.element_size()
+
+            return total_bytes / (1024**3)
+        except Exception as e:
+            logger.debug(f"Could not calculate model memory: {e}")
+            return None
+
     @property
     def current_embedding_model(self) -> Optional[str]:
         """Get the currently loaded embedding model name."""

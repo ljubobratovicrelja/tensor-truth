@@ -24,12 +24,27 @@ export interface OllamaModelInfo {
   size_vram_gb: number;
   size_gb: number;
   parameters: string | null;
+  context_length: number | null;
 }
 
 export interface OllamaStatusResponse {
   running: boolean;
   models: OllamaModelInfo[];
   info_lines: string[];
+}
+
+export interface RAGModelStatus {
+  loaded: boolean;
+  model_name: string | null;
+  device: string | null;
+  memory_gb: number | null;
+}
+
+export interface RAGStatusResponse {
+  active: boolean;
+  embedder: RAGModelStatus;
+  reranker: RAGModelStatus;
+  total_memory_gb: number;
 }
 
 /**
@@ -51,6 +66,13 @@ export async function getDevices(): Promise<DevicesResponse> {
  */
 export async function getOllamaStatus(): Promise<OllamaStatusResponse> {
   return apiGet<OllamaStatusResponse>("/system/ollama/status");
+}
+
+/**
+ * Get RAG system status (embedder and reranker)
+ */
+export async function getRAGStatus(): Promise<RAGStatusResponse> {
+  return apiGet<RAGStatusResponse>("/system/rag/status");
 }
 
 export interface RestartEngineResponse {

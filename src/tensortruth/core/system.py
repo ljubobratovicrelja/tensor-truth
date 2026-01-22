@@ -167,6 +167,78 @@ def get_ollama_memory() -> Optional[MemoryInfo]:
         return None
 
 
+@dataclass
+class RAGModelStatus:
+    """Status information for a RAG model (embedder or reranker)."""
+
+    loaded: bool
+    model_name: Optional[str] = None
+    device: Optional[str] = None
+    memory_gb: Optional[float] = None
+
+
+@dataclass
+class RAGStatus:
+    """Overall RAG system status."""
+
+    active: bool
+    embedder: RAGModelStatus
+    reranker: RAGModelStatus
+    total_memory_gb: float
+
+
+def get_rag_status() -> RAGStatus:
+    """Get RAG system status including model details.
+
+    Returns:
+        RAGStatus with embedder and reranker information.
+    """
+    try:
+        from tensortruth.services.model_manager import ModelManager
+
+        manager = ModelManager.get_instance()
+        memory_info = manager.get_memory_usage()
+
+        embedder_loaded = manager.is_embedder_loaded()
+        reranker_loaded = manager.is_reranker_loaded()
+
+        embedder_status = RAGModelStatus(loaded=False)
+        reranker_status = RAGModelStatus(loaded=False)
+
+        if embedder_loaded and memory_info.get("embedder"):
+            emb = memory_info["embedder"]
+            embedder_status = RAGModelStatus(
+                loaded=True,
+                model_name=emb.get("model_name"),
+                device=emb.get("device"),
+                memory_gb=emb.get("memory_gb"),
+            )
+
+        if reranker_loaded and memory_info.get("reranker"):
+            rer = memory_info["reranker"]
+            reranker_status = RAGModelStatus(
+                loaded=True,
+                model_name=rer.get("model_name"),
+                device=rer.get("device"),
+                memory_gb=rer.get("memory_gb"),
+            )
+
+        return RAGStatus(
+            active=embedder_loaded or reranker_loaded,
+            embedder=embedder_status,
+            reranker=reranker_status,
+            total_memory_gb=memory_info.get("total_gb", 0),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to get RAG status: {e}")
+        return RAGStatus(
+            active=False,
+            embedder=RAGModelStatus(loaded=False),
+            reranker=RAGModelStatus(loaded=False),
+            total_memory_gb=0,
+        )
+
+
 def get_all_memory_info() -> List[MemoryInfo]:
     """Get comprehensive memory usage across all components.
 

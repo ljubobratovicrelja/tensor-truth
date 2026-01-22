@@ -161,6 +161,59 @@ def check_thinking_support(model_name: str) -> bool:
     return False
 
 
+def get_model_info(model_name: str) -> Dict[str, Any]:
+    """Get detailed model information from Ollama.
+
+    Queries the Ollama /api/show endpoint to get model metadata including
+    context window size, parameter count, and capabilities.
+
+    Args:
+        model_name: The name of the model to query
+
+    Returns:
+        Dictionary with model info:
+        - context_length: int (default 4096 if not found)
+        - parameter_size: str or None (e.g., "8B")
+        - capabilities: list of strings
+        - family: str or None
+    """
+    result: Dict[str, Any] = {
+        "context_length": 4096,  # Default fallback
+        "parameter_size": None,
+        "capabilities": [],
+        "family": None,
+    }
+
+    try:
+        response = requests.post(
+            f"{get_api_base()}/show", json={"model": model_name}, timeout=2
+        )
+        if response.status_code == 200:
+            data = response.json()
+
+            # Extract model info from response
+            model_info = data.get("model_info", {})
+
+            # Context length - try multiple possible keys
+            for key in model_info:
+                if "context_length" in key.lower():
+                    result["context_length"] = model_info[key]
+                    break
+
+            # Get details
+            details = data.get("details", {})
+            result["parameter_size"] = details.get("parameter_size")
+            result["family"] = details.get("family")
+
+            # Capabilities
+            result["capabilities"] = data.get("capabilities", [])
+
+    except Exception as e:
+        logger.warning(f"Failed to get model info for {model_name}: {e}")
+
+    return result
+
+
 def pull_model(model_name: str, callback=None) -> bool:
     """Pull a model from Ollama repository.
 

@@ -12,7 +12,7 @@ from tensortruth.app_utils.helpers import (
     get_system_devices,
 )
 from tensortruth.core.system import MemoryInfo as CoreMemoryInfo
-from tensortruth.core.system import get_all_memory_info
+from tensortruth.core.system import get_all_memory_info, get_rag_status
 
 router = APIRouter()
 
@@ -45,6 +45,7 @@ class OllamaModelInfo(BaseModel):
     size_vram_gb: float
     size_gb: float
     parameters: Optional[str] = None
+    context_length: Optional[int] = None
 
 
 class OllamaStatusResponse(BaseModel):
@@ -110,6 +111,7 @@ async def get_ollama_status() -> OllamaStatusResponse:
                         size_vram_gb=model_info.get("size_vram", 0) / (1024**3),
                         size_gb=model_info.get("size", 0) / (1024**3),
                         parameters=model_info.get("details", {}).get("parameter_size"),
+                        context_length=model_info.get("context_length"),
                     )
                 )
 
@@ -121,6 +123,53 @@ async def get_ollama_status() -> OllamaStatusResponse:
     except Exception:
         # Ollama not available or error occurred
         return OllamaStatusResponse(running=False, models=[], info_lines=[])
+
+
+class RAGModelStatus(BaseModel):
+    """Status information for a RAG model."""
+
+    loaded: bool
+    model_name: Optional[str] = None
+    device: Optional[str] = None
+    memory_gb: Optional[float] = None
+
+
+class RAGStatusResponse(BaseModel):
+    """Response schema for RAG status endpoint."""
+
+    active: bool
+    embedder: RAGModelStatus
+    reranker: RAGModelStatus
+    total_memory_gb: float
+
+
+@router.get("/rag/status", response_model=RAGStatusResponse)
+async def get_rag_status_endpoint() -> RAGStatusResponse:
+    """Get RAG system status including embedder and reranker details.
+
+    Returns:
+    - active: Whether any RAG models are currently loaded
+    - embedder: Embedding model status (model name, device, memory)
+    - reranker: Reranker model status (model name, device, memory)
+    - total_memory_gb: Combined memory usage of RAG models
+    """
+    status = get_rag_status()
+    return RAGStatusResponse(
+        active=status.active,
+        embedder=RAGModelStatus(
+            loaded=status.embedder.loaded,
+            model_name=status.embedder.model_name,
+            device=status.embedder.device,
+            memory_gb=status.embedder.memory_gb,
+        ),
+        reranker=RAGModelStatus(
+            loaded=status.reranker.loaded,
+            model_name=status.reranker.model_name,
+            device=status.reranker.device,
+            memory_gb=status.reranker.memory_gb,
+        ),
+        total_memory_gb=status.total_memory_gb,
+    )
 
 
 class RestartEngineResponse(BaseModel):

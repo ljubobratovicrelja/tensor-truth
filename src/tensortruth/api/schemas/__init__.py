@@ -28,6 +28,7 @@ from .session import (
     SessionCreate,
     SessionListResponse,
     SessionResponse,
+    SessionStatsResponse,
     SessionUpdate,
 )
 from .startup import (
@@ -49,6 +50,7 @@ __all__ = [
     "SessionCreate",
     "SessionResponse",
     "SessionListResponse",
+    "SessionStatsResponse",
     "SessionUpdate",
     "MessageCreate",
     "MessageResponse",

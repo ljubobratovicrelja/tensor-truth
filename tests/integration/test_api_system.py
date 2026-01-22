@@ -1,6 +1,5 @@
 """Integration tests for system info API endpoints."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 from tensortruth.api.main import app
