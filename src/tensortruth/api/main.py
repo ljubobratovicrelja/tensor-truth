@@ -12,12 +12,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from tensortruth import __version__
 from tensortruth.api.routes import (
     chat,
+    commands,
     config,
     modules,
     pdfs,
     rerankers,
     sessions,
     startup,
+    system,
 )
 from tensortruth.api.schemas import HealthResponse
 
@@ -77,10 +79,12 @@ def create_app() -> FastAPI:
     app.include_router(startup.router, prefix="/api/startup", tags=["startup"])
     app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
     app.include_router(chat.rest_router, prefix="/api", tags=["chat"])
+    app.include_router(commands.router, prefix="/api", tags=["commands"])
     app.include_router(config.router, prefix="/api/config", tags=["config"])
     app.include_router(rerankers.router, prefix="/api/rerankers", tags=["rerankers"])
     app.include_router(modules.router, prefix="/api", tags=["modules"])
     app.include_router(pdfs.router, prefix="/api", tags=["pdfs"])
+    app.include_router(system.router, prefix="/api/system", tags=["system"])
 
     # WebSocket router at /ws (not under /api)
     app.include_router(chat.ws_router, tags=["websocket"])

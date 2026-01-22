@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
@@ -16,6 +17,7 @@ from tensortruth.api.deps import (
     get_rag_service,
     get_session_service,
 )
+from tensortruth.api.routes.commands import registry as command_registry
 from tensortruth.api.schemas import (
     ChatRequest,
     ChatResponse,
@@ -185,6 +187,80 @@ async def websocket_chat(
                     }
                 )
                 continue
+
+            # Detect command anywhere in prompt
+            command_match = re.search(r"/(\w+)(?:\s+(.+))?", prompt)
+
+            if command_match:
+                cmd_name = command_match.group(1)
+                cmd_args = command_match.group(2) or ""
+
+                command = command_registry.get(cmd_name)
+
+                if command:
+                    # Save user message
+                    data = session_service.load()
+                    data = session_service.add_message(
+                        session_id, {"role": "user", "content": prompt}, data
+                    )
+                    session_service.save(data)
+
+                    # Execute command (streams response via websocket)
+                    # Note: Command is responsible for sending done message with full response
+                    # The done message will include the full response text in content field
+                    # We'll intercept it here to save to session
+
+                    # Create a wrapper websocket that captures the response
+                    full_response = ""
+
+                    class ResponseCapturingWebSocket:
+                        """Wrapper that captures command response for session saving."""
+
+                        def __init__(self, ws: WebSocket):
+                            self.ws = ws
+                            self.response = ""
+
+                        async def send_json(self, data: dict) -> None:
+                            nonlocal full_response
+                            # Capture the full response from done message
+                            if data.get("type") == "done" and "content" in data:
+                                full_response = data["content"]
+                            # Forward all messages to real websocket
+                            await self.ws.send_json(data)
+
+                        # Forward other WebSocket methods to underlying ws
+                        def __getattr__(self, name):
+                            return getattr(self.ws, name)
+
+                    wrapper = ResponseCapturingWebSocket(websocket)
+                    # Type ignore because wrapper is duck-typed compatible
+                    await command.execute(cmd_args, session, wrapper)  # type: ignore
+
+                    # Save assistant response to session
+                    if full_response:
+                        data = session_service.load()
+                        data = session_service.add_message(
+                            session_id,
+                            {"role": "assistant", "content": full_response},
+                            data,
+                        )
+                        session_service.save(data)
+
+                    # Continue to next iteration to wait for next message
+                    continue
+                else:
+                    # Unknown command - send error
+                    error_msg = (
+                        f"Unknown command: /{cmd_name}. "
+                        "Type /help for available commands."
+                    )
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "detail": error_msg,
+                        }
+                    )
+                    continue
 
             # Reload session data to get updated modules/params (may have changed mid-session)
             data = session_service.load()
