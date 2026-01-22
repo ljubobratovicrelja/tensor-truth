@@ -5,7 +5,6 @@ from typing import Dict, List, Optional
 
 from tensortruth.core.constants import (
     DEFAULT_AGENT_REASONING_MODEL,
-    DEFAULT_FALLBACK_MODEL,
     DEFAULT_RAG_MODEL,
 )
 
@@ -164,9 +163,6 @@ class ModelsConfig:
 
     # Default model for RAG engine
     default_rag_model: str = DEFAULT_RAG_MODEL
-
-    # Default fallback model when no models are available
-    default_fallback_model: str = DEFAULT_FALLBACK_MODEL
 
     # Default agent reasoning model (used in browse commands and autonomous agents)
     default_agent_reasoning_model: str = DEFAULT_AGENT_REASONING_MODEL

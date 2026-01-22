@@ -23,7 +23,6 @@ from tensortruth.app_utils.config_schema import (
 )
 from tensortruth.core.constants import (
     DEFAULT_AGENT_REASONING_MODEL,
-    DEFAULT_FALLBACK_MODEL,
     DEFAULT_RAG_MODEL,
 )
 
@@ -106,7 +105,6 @@ class TestConfigSchema:
         """Test ModelsConfig has correct default values."""
         config = ModelsConfig()
         assert config.default_rag_model == DEFAULT_RAG_MODEL
-        assert config.default_fallback_model == DEFAULT_FALLBACK_MODEL
         assert config.default_agent_reasoning_model == DEFAULT_AGENT_REASONING_MODEL
 
     def test_config_to_dict(self):
@@ -429,18 +427,15 @@ class TestConfigFileOperations:
         """Test updating models config section."""
         update_config(
             models_default_rag_model="llama3:8b",
-            models_default_fallback_model="llama3:8b",
             models_default_agent_reasoning_model="llama3.1:8b",
         )
         config = load_config()
         assert config.models.default_rag_model == "llama3:8b"
-        assert config.models.default_fallback_model == "llama3:8b"
         assert config.models.default_agent_reasoning_model == "llama3.1:8b"
 
         # Restore original values
         update_config(
             models_default_rag_model="deepseek-r1:14b",
-            models_default_fallback_model="deepseek-r1:8b",
             models_default_agent_reasoning_model="llama3.1:8b",
         )
 

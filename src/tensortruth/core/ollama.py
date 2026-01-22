@@ -84,7 +84,7 @@ def get_running_models() -> List[Dict[str, Any]]:
 def get_available_models() -> List[str]:
     """
     Get list of available Ollama models.
-    Returns sorted list of model names, or default fallback if unavailable.
+    Returns sorted list of model names, or empty list if Ollama is unavailable.
     """
     try:
         response = requests.get(f"{get_api_base()}/tags", timeout=2)
@@ -95,14 +95,7 @@ def get_available_models() -> List[str]:
     except Exception:
         pass
 
-    # Try to get fallback model from config, then use hardcoded default
-    try:
-        from tensortruth.app_utils.config import load_config
-
-        config = load_config()
-        return [config.models.default_fallback_model]
-    except Exception:
-        return ["deepseek-r1:8b"]  # Default fallback
+    return []
 
 
 def get_running_models_detailed() -> List[Dict[str, Any]]:
@@ -285,7 +278,6 @@ def ensure_required_models_available() -> List[str]:
         config = load_config()
         required_models = [
             config.models.default_rag_model,
-            config.models.default_fallback_model,
             config.models.default_agent_reasoning_model,
         ]
 

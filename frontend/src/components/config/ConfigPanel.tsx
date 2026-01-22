@@ -83,9 +83,6 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
   // Models
   const [ragModel, setRagModel] = useState(config.models.default_rag_model);
-  const [fallbackModel, setFallbackModel] = useState(
-    config.models.default_fallback_model
-  );
 
   // Generation
   const [temperature, setTemperature] = useState(config.ui.default_temperature);
@@ -180,7 +177,6 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   const handleSave = async () => {
     await onSave({
       models_default_rag_model: ragModel,
-      models_default_fallback_model: fallbackModel,
       ui_default_temperature: temperature,
       ui_default_context_window: contextWindow,
       ui_default_max_tokens: maxTokens,
@@ -236,24 +232,6 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
               <HelpTooltip text="Primary model for retrieval-augmented generation. Used when answering questions with document context." />
             </Label>
             <Select value={ragModel} onValueChange={setRagModel}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
-              <SelectContent>
-                {modelsData?.models.map((model) => (
-                  <SelectItem key={model.name} value={model.name}>
-                    {model.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>
-              Fallback Model
-              <HelpTooltip text="Backup model used when the primary model is unavailable or Ollama fails to list models." />
-            </Label>
-            <Select value={fallbackModel} onValueChange={setFallbackModel}>
               <SelectTrigger>
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>

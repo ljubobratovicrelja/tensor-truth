@@ -173,7 +173,6 @@ export interface RAGConfig {
 
 export interface ModelsConfig {
   default_rag_model: string;
-  default_fallback_model: string;
   default_agent_reasoning_model: string;
 }
 

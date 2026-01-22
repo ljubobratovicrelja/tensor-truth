@@ -60,16 +60,15 @@ class TestModelPullingIntegration:
             result = pull_model("test-model:1b")
             assert result is False
 
-    def test_get_available_models_with_fallback(self):
-        """Test get_available_models fallback when API fails."""
+    def test_get_available_models_when_ollama_unavailable(self):
+        """Test get_available_models returns empty list when API fails."""
         # Mock API failure
         with patch("requests.get", side_effect=Exception("API unavailable")):
-            # This should trigger the fallback to config
             result = get_available_models()
 
-            # Should return some fallback (even if it's just the hardcoded default)
+            # Should return empty list when Ollama is unavailable
             assert isinstance(result, list)
-            # The function should not crash and return some reasonable fallback
+            assert result == []
 
     def test_get_available_models_success(self):
         """Test get_available_models with successful API response."""

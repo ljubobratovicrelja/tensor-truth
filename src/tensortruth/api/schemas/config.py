@@ -36,7 +36,6 @@ class ModelsConfigSchema(BaseModel):
     """Default model configurations."""
 
     default_rag_model: str = "deepseek-r1:14b"
-    default_fallback_model: str = "llama3.1:8b"
     default_agent_reasoning_model: str = "llama3.1:8b"
 
 

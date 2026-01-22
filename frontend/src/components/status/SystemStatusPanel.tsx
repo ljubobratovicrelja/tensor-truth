@@ -336,14 +336,6 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
                   <span className="font-medium">RAG Model:</span>{" "}
                   <span className="font-mono">{config.models.default_rag_model}</span>
                 </div>
-                {config.models.default_fallback_model && (
-                  <div>
-                    <span className="font-medium">Fallback Model:</span>{" "}
-                    <span className="font-mono">
-                      {config.models.default_fallback_model}
-                    </span>
-                  </div>
-                )}
                 {config.models.default_agent_reasoning_model && (
                   <div>
                     <span className="font-medium">Agent Reasoning:</span>{" "}

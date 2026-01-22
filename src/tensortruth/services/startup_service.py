@@ -185,7 +185,6 @@ class StartupService:
                 dict.fromkeys(
                     [
                         config.models.default_rag_model,
-                        config.models.default_fallback_model,
                         config.models.default_agent_reasoning_model,
                     ]
                 )

@@ -39,7 +39,6 @@ def _config_to_response(config) -> ConfigResponse:
         ),
         models=ModelsConfigSchema(
             default_rag_model=config.models.default_rag_model,
-            default_fallback_model=config.models.default_fallback_model,
             default_agent_reasoning_model=config.models.default_agent_reasoning_model,
         ),
         agent=AgentConfigSchema(

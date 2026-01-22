@@ -8,9 +8,6 @@ consistency and avoid hardcoded values in multiple locations.
 DEFAULT_RAG_MODEL = "deepseek-r1:14b"
 """Default model for RAG engine."""
 
-DEFAULT_FALLBACK_MODEL = "deepseek-r1:8b"
-"""Default fallback model when no other models are available."""
-
 DEFAULT_AGENT_REASONING_MODEL = "llama3.1:8b"
 """Default model for autonomous agent reasoning.
 

@@ -58,13 +58,17 @@ class TestHelpers:
     @patch("tensortruth.core.ollama.get_available_models")
     def test_get_ollama_models_failure(self, mock_get_available):
         """Test Ollama model fetch when service is down."""
-        # Make the function raise an exception
-        mock_get_available.side_effect = Exception("Connection refused")
+        # Clear any Streamlit cache that might exist on the function
+        if hasattr(get_ollama_models, "clear"):
+            get_ollama_models.clear()
+
+        # Mock get_available_models to return empty list (as it does when Ollama is down)
+        mock_get_available.return_value = []
 
         models = get_ollama_models()
 
-        # Should return default fallback
-        assert "deepseek-r1:8b" in models
+        # Should return empty list when Ollama is unavailable
+        assert models == []
 
 
 # ============================================================================
