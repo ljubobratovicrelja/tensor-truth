@@ -6,3 +6,4 @@ export { SourceCard, SourcesList } from "./SourceCard";
 export { StreamingIndicator } from "./StreamingIndicator";
 export { StreamingText } from "./StreamingText";
 export { ThinkingBox } from "./ThinkingBox";
+export { CommandAutocomplete } from "./CommandAutocomplete";
