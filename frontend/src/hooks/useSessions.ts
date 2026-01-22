@@ -7,6 +7,8 @@ import {
   updateSession,
   deleteSession,
   getSessionMessages,
+  getSessionStats,
+  type SessionStatsResponse,
 } from "@/api/sessions";
 import type { SessionCreate, SessionUpdate } from "@/api/types";
 
@@ -70,5 +72,24 @@ export function useDeleteSession() {
       // Refresh the sessions list
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
     },
+  });
+}
+
+/**
+ * Hook to fetch session statistics (messages, chars, model info)
+ *
+ * Only fetches when sessionId is provided and enabled is true.
+ * Polls every second when enabled for real-time updates.
+ *
+ * @param sessionId - Session ID to fetch stats for (null disables the query)
+ * @param enabled - Whether to enable polling (default: true)
+ */
+export function useSessionStats(sessionId: string | null, enabled = true) {
+  return useQuery<SessionStatsResponse>({
+    queryKey: ["sessions", sessionId, "stats"],
+    queryFn: () => getSessionStats(sessionId!),
+    enabled: enabled && !!sessionId,
+    refetchInterval: enabled && !!sessionId ? 1000 : false,
+    staleTime: 800,
   });
 }

@@ -10,6 +10,7 @@ from tensortruth.api.schemas import (
     SessionCreate,
     SessionListResponse,
     SessionResponse,
+    SessionStatsResponse,
     SessionUpdate,
 )
 from tensortruth.app_utils.paths import get_session_dir
@@ -136,6 +137,44 @@ async def get_messages(
             )
             for msg in messages
         ]
+    )
+
+
+@router.get("/{session_id}/stats", response_model=SessionStatsResponse)
+async def get_session_stats(
+    session_id: str, session_service: SessionServiceDep
+) -> SessionStatsResponse:
+    """Get chat statistics for a specific session.
+
+    Returns:
+    - history_messages: Number of messages in the session
+    - history_chars: Total characters across all messages
+    - model_name: Name of the LLM model configured for the session
+    - context_length: Session's configured context window size
+    """
+    data = session_service.load()
+    session = session_service.get_session(session_id, data)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    messages = session.get("messages", [])
+    params = session.get("params", {})
+    model_name = params.get("model")
+
+    # Calculate history stats
+    history_messages = len(messages)
+    history_chars = sum(len(m.get("content", "")) for m in messages)
+    history_tokens_estimate = history_chars // 4  # Rough approximation
+
+    # Get configured context window from session params
+    context_length = params.get("context_window", 0)
+
+    return SessionStatsResponse(
+        history_messages=history_messages,
+        history_chars=history_chars,
+        history_tokens_estimate=history_tokens_estimate,
+        model_name=model_name,
+        context_length=context_length,
     )
 
 

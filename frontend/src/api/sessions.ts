@@ -42,3 +42,15 @@ export async function addSessionMessage(
 ): Promise<MessageResponse> {
   return apiPost<MessageResponse, MessageCreate>(`/sessions/${sessionId}/messages`, data);
 }
+
+export interface SessionStatsResponse {
+  history_messages: number;
+  history_chars: number;
+  history_tokens_estimate: number;
+  model_name: string | null;
+  context_length: number;
+}
+
+export async function getSessionStats(sessionId: string): Promise<SessionStatsResponse> {
+  return apiGet<SessionStatsResponse>(`/sessions/${sessionId}/stats`);
+}

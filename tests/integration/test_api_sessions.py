@@ -233,3 +233,138 @@ class TestSessionsAPI:
         assert len(messages) == 2
         assert messages[0]["content"] == "Hello"
         assert messages[1]["content"] == "Hi there!"
+
+
+class TestSessionStatsEndpoint:
+    """Tests for GET /api/sessions/{session_id}/stats endpoint."""
+
+    @pytest.fixture
+    async def session_with_messages(self, client, tmp_path, monkeypatch):
+        """Create session with sample messages for stats testing."""
+        sessions_file = tmp_path / "chat_sessions.json"
+        monkeypatch.setattr(
+            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
+        )
+        from tensortruth.api.deps import get_session_service
+
+        get_session_service.cache_clear()
+
+        # Create a session with a specific model
+        create_response = await client.post(
+            "/api/sessions",
+            json={"modules": ["pytorch"], "params": {"model": "test-model:7b"}},
+        )
+        session_id = create_response.json()["session_id"]
+
+        # Add some messages
+        await client.post(
+            f"/api/sessions/{session_id}/messages",
+            json={"role": "user", "content": "Hello, world!"},
+        )
+        await client.post(
+            f"/api/sessions/{session_id}/messages",
+            json={"role": "assistant", "content": "Hi there! How can I help?"},
+        )
+        await client.post(
+            f"/api/sessions/{session_id}/messages",
+            json={"role": "user", "content": "What is PyTorch?"},
+        )
+
+        return session_id
+
+    @pytest.fixture
+    async def empty_session(self, client, tmp_path, monkeypatch):
+        """Create session with no messages."""
+        sessions_file = tmp_path / "chat_sessions.json"
+        monkeypatch.setattr(
+            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
+        )
+        from tensortruth.api.deps import get_session_service
+
+        get_session_service.cache_clear()
+
+        create_response = await client.post(
+            "/api/sessions",
+            json={"params": {"model": "test-model:7b"}},
+        )
+        return create_response.json()["session_id"]
+
+    @pytest.mark.asyncio
+    async def test_get_session_stats_returns_200(self, client, session_with_messages):
+        """Stats endpoint returns 200 for valid session."""
+        response = await client.get(f"/api/sessions/{session_with_messages}/stats")
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_get_session_stats_not_found(self, client, tmp_path, monkeypatch):
+        """Stats endpoint returns 404 for non-existent session."""
+        sessions_file = tmp_path / "chat_sessions.json"
+        monkeypatch.setattr(
+            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
+        )
+        from tensortruth.api.deps import get_session_service
+
+        get_session_service.cache_clear()
+
+        response = await client.get("/api/sessions/nonexistent-id/stats")
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_session_stats_schema(self, client, session_with_messages):
+        """Response matches expected schema."""
+        response = await client.get(f"/api/sessions/{session_with_messages}/stats")
+        data = response.json()
+
+        # Check all expected fields are present
+        assert "history_messages" in data
+        assert "history_chars" in data
+        assert "history_tokens_estimate" in data
+        assert "model_name" in data
+        assert "context_length" in data
+
+        # Check types
+        assert isinstance(data["history_messages"], int)
+        assert isinstance(data["history_chars"], int)
+        assert isinstance(data["history_tokens_estimate"], int)
+        assert isinstance(data["context_length"], int)
+        # model_name can be string or null
+        assert data["model_name"] is None or isinstance(data["model_name"], str)
+
+    @pytest.mark.asyncio
+    async def test_get_session_stats_empty_session(self, client, empty_session):
+        """Stats for session with no messages returns zeros."""
+        response = await client.get(f"/api/sessions/{empty_session}/stats")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["history_messages"] == 0
+        assert data["history_chars"] == 0
+        assert data["history_tokens_estimate"] == 0
+
+    @pytest.mark.asyncio
+    async def test_get_session_stats_calculates_chars(
+        self, client, session_with_messages
+    ):
+        """history_chars correctly sums message content lengths."""
+        response = await client.get(f"/api/sessions/{session_with_messages}/stats")
+        data = response.json()
+
+        # We added 3 messages with content:
+        # "Hello, world!" (13 chars)
+        # "Hi there! How can I help?" (25 chars)
+        # "What is PyTorch?" (16 chars)
+        expected_chars = 13 + 25 + 16  # 54 chars
+        expected_tokens = expected_chars // 4  # 13 tokens (rough approximation)
+        assert data["history_messages"] == 3
+        assert data["history_chars"] == expected_chars
+        assert data["history_tokens_estimate"] == expected_tokens
+
+    @pytest.mark.asyncio
+    async def test_get_session_stats_includes_model_name(
+        self, client, session_with_messages
+    ):
+        """Stats include the model name from session params."""
+        response = await client.get(f"/api/sessions/{session_with_messages}/stats")
+        data = response.json()
+
+        assert data["model_name"] == "test-model:7b"

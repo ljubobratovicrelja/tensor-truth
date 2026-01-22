@@ -64,3 +64,13 @@ class MessagesResponse(BaseModel):
     """Response for listing session messages."""
 
     messages: List[MessageResponse]
+
+
+class SessionStatsResponse(BaseModel):
+    """Response schema for session statistics."""
+
+    history_messages: int
+    history_chars: int
+    history_tokens_estimate: int = 0
+    model_name: Optional[str] = None
+    context_length: int = 0
