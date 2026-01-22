@@ -11,6 +11,8 @@ from tensortruth.app_utils.config import load_config
 ALLOWED_CONTEXT_WINDOWS = [2048, 4096, 8192, 16384, 32768, 65536, 131072]
 ALLOWED_MAX_TOKENS = [1024, 2048, 4096, 8192, 16384]
 ALLOWED_RERANKER_MODELS = [
+    "Qwen/Qwen3-Reranker-0.6B",
+    "Qwen/Qwen3-Reranker-4B",
     "BAAI/bge-reranker-v2-m3",
     "BAAI/bge-reranker-base",
     "cross-encoder/ms-marco-MiniLM-L-6-v2",
@@ -287,30 +289,14 @@ def build_preset_config(
         valid_mods = [m for m in p["modules"] if m in available_mods]
         config["setup_mods"] = valid_mods
 
-    # 2. Model - with fallback to model preference resolution
+    # 2. Model - apply if available, warn otherwise
     if "model" in p:
         if p["model"] in available_models:
             config["setup_model"] = p["model"]
         else:
-            # Model not available - try to resolve from preference if it exists
-            try:
-                from tensortruth.preset_defaults import (
-                    get_default_presets,
-                    resolve_model_for_preset,
-                )
-
-                defaults = get_default_presets()
-                if name in defaults and "model_preference" in defaults[name]:
-                    fallback = resolve_model_for_preset(
-                        defaults[name], available_models
-                    )
-                    if fallback:
-                        config["setup_model"] = fallback
-                        warnings.append(
-                            f"Model '{p['model']}' not available. Using '{fallback}' instead."
-                        )
-            except Exception:
-                pass  # Keep existing model if resolution fails
+            warnings.append(
+                f"Model '{p['model']}' not available. Please select an available model."
+            )
 
     # 3. Parameters - already normalized by load_presets()
     if "reranker_model" in p:

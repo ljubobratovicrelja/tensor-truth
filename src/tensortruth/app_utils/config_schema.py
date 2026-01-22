@@ -21,12 +21,12 @@ class OllamaConfig:
 class UIConfig:
     """User interface preferences."""
 
-    default_temperature: float = 0.1
-    default_context_window: int = 16384
+    default_temperature: float = 0.7
+    default_context_window: int = 8192
     default_max_tokens: int = 4096
     default_top_n: int = 5
-    default_confidence_threshold: float = 0.4
-    default_confidence_cutoff_hard: float = 0.1
+    default_confidence_threshold: float = 0.35
+    default_confidence_cutoff_hard: float = 0.05
 
 
 @dataclass
@@ -101,6 +101,8 @@ DEFAULT_EMBEDDING_MODEL_CONFIG = EmbeddingModelConfig()
 
 # Default reranker models available out of the box
 DEFAULT_RERANKER_MODELS = [
+    "Qwen/Qwen3-Reranker-0.6B",
+    "Qwen/Qwen3-Reranker-4B",
     "BAAI/bge-reranker-v2-m3",
     "BAAI/bge-reranker-base",
     "cross-encoder/ms-marco-MiniLM-L-6-v2",

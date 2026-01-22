@@ -5,7 +5,7 @@ import { Send, Bot, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useModels, useCreateSession, useFavoritePresets, useConfig } from "@/hooks";
+import { useModels, useCreateSession, usePresets, useConfig } from "@/hooks";
 import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
 import { SessionSettingsPanel } from "@/components/config";
@@ -21,7 +21,7 @@ export function WelcomePage() {
   const [isAnimating, setIsAnimating] = useState(false);
 
   const { data: modelsData, isLoading: modelsLoading } = useModels();
-  const { data: favoritesData } = useFavoritePresets();
+  const { data: presetsData } = usePresets();
   const { data: config } = useConfig();
   const createSession = useCreateSession();
   const navigate = useNavigate();
@@ -203,14 +203,14 @@ export function WelcomePage() {
           </p>
         </div>
 
-        {/* Favorite Presets */}
-        {favoritesData && favoritesData.presets.length > 0 && (
+        {/* Presets */}
+        {presetsData && presetsData.presets.length > 0 && (
           <div className="space-y-3">
             <p className="text-muted-foreground text-center text-sm">
               Quick start with a preset
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2">
-              {favoritesData.presets.map((preset) => (
+              {presetsData.presets.map((preset) => (
                 <Button
                   key={preset.name}
                   variant={activePreset === preset.name ? "default" : "outline"}
