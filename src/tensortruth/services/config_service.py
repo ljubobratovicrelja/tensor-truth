@@ -75,6 +75,7 @@ class ConfigService:
         - rag_*: Updates RAG config
         - agent_*: Updates agent config
         - models_*: Updates models config
+        - history_cleaning_*: Updates history cleaning config
 
         Args:
             **kwargs: Config values to update.
@@ -109,6 +110,10 @@ class ConfigService:
                 attr_name = key.replace("models_", "")
                 if hasattr(config.models, attr_name):
                     setattr(config.models, attr_name, value)
+            elif key.startswith("history_cleaning_"):
+                attr_name = key.replace("history_cleaning_", "")
+                if hasattr(config.history_cleaning, attr_name):
+                    setattr(config.history_cleaning, attr_name, value)
 
         self.save(config)
         return config

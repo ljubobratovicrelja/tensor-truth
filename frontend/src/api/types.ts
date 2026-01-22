@@ -185,12 +185,21 @@ export interface AgentConfig {
   intent_classifier_model: string;
 }
 
+export interface HistoryCleaningConfig {
+  enabled: boolean;
+  remove_emojis: boolean;
+  remove_filler_phrases: boolean;
+  normalize_whitespace: boolean;
+  collapse_newlines: boolean;
+}
+
 export interface ConfigResponse {
   ollama: OllamaConfig;
   ui: UIConfig;
   rag: RAGConfig;
   models: ModelsConfig;
   agent: AgentConfig;
+  history_cleaning: HistoryCleaningConfig;
 }
 
 export interface ConfigUpdateRequest {

@@ -7,6 +7,7 @@ from tensortruth.api.schemas import (
     AgentConfigSchema,
     ConfigResponse,
     ConfigUpdateRequest,
+    HistoryCleaningConfigSchema,
     ModelsConfigSchema,
     OllamaConfigSchema,
     RAGConfigSchema,
@@ -48,6 +49,13 @@ def _config_to_response(config) -> ConfigResponse:
             enable_natural_language_agents=config.agent.enable_natural_language_agents,
             intent_classifier_model=config.agent.intent_classifier_model,
         ),
+        history_cleaning=HistoryCleaningConfigSchema(
+            enabled=config.history_cleaning.enabled,
+            remove_emojis=config.history_cleaning.remove_emojis,
+            remove_filler_phrases=config.history_cleaning.remove_filler_phrases,
+            normalize_whitespace=config.history_cleaning.normalize_whitespace,
+            collapse_newlines=config.history_cleaning.collapse_newlines,
+        ),
     )
 
 
@@ -70,6 +78,7 @@ async def update_config(
     - rag_*: Updates RAG config (e.g., rag_default_device)
     - agent_*: Updates agent config (e.g., agent_max_iterations)
     - models_*: Updates models config (e.g., models_default_rag_model)
+    - history_cleaning_*: Updates history cleaning config (e.g., history_cleaning_enabled)
     """
     config = config_service.update(**body.updates)
     return _config_to_response(config)

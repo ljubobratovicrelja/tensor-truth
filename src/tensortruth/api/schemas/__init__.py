@@ -15,6 +15,7 @@ from .config import (
     AgentConfigSchema,
     ConfigResponse,
     ConfigUpdateRequest,
+    HistoryCleaningConfigSchema,
     ModelsConfigSchema,
     OllamaConfigSchema,
     RAGConfigSchema,
@@ -63,6 +64,7 @@ __all__ = [
     "RAGConfigSchema",
     "ModelsConfigSchema",
     "AgentConfigSchema",
+    "HistoryCleaningConfigSchema",
     # Chat
     "ChatRequest",
     "ChatResponse",

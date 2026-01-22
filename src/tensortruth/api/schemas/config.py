@@ -50,6 +50,17 @@ class AgentConfigSchema(BaseModel):
     intent_classifier_model: str = "llama3.2:3b"
 
 
+class HistoryCleaningConfigSchema(BaseModel):
+    """Chat history cleaning configuration."""
+
+    enabled: bool = True
+    remove_emojis: bool = True
+    remove_filler_phrases: bool = True
+    normalize_whitespace: bool = True
+    collapse_newlines: bool = True
+    # Note: filler_phrases list not exposed in UI (advanced/config-file only)
+
+
 class ConfigResponse(BaseModel):
     """Full configuration response."""
 
@@ -58,6 +69,7 @@ class ConfigResponse(BaseModel):
     rag: RAGConfigSchema
     models: ModelsConfigSchema
     agent: AgentConfigSchema
+    history_cleaning: HistoryCleaningConfigSchema
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -69,6 +81,7 @@ class ConfigUpdateRequest(BaseModel):
     - rag_*: Updates RAG config
     - agent_*: Updates agent config
     - models_*: Updates models config
+    - history_cleaning_*: Updates history cleaning config
     """
 
     updates: Dict[str, Any] = Field(

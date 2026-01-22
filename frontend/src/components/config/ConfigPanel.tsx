@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   useConfig,
   useUpdateConfig,
@@ -110,6 +111,21 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     config.rag.default_embedding_model
   );
 
+  // History Cleaning
+  const [historyCleaningEnabled, setHistoryCleaningEnabled] = useState(
+    config.history_cleaning.enabled
+  );
+  const [removeEmojis, setRemoveEmojis] = useState(config.history_cleaning.remove_emojis);
+  const [removeFillerPhrases, setRemoveFillerPhrases] = useState(
+    config.history_cleaning.remove_filler_phrases
+  );
+  const [normalizeWhitespace, setNormalizeWhitespace] = useState(
+    config.history_cleaning.normalize_whitespace
+  );
+  const [collapseNewlines, setCollapseNewlines] = useState(
+    config.history_cleaning.collapse_newlines
+  );
+
   // Fetch available devices from backend
   useEffect(() => {
     import("@/api/config").then(({ getAvailableDevices }) => {
@@ -174,6 +190,11 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
       rag_default_device: device,
       rag_default_embedding_model: embeddingModel,
       rag_default_reranker: reranker,
+      history_cleaning_enabled: historyCleaningEnabled,
+      history_cleaning_remove_emojis: removeEmojis,
+      history_cleaning_remove_filler_phrases: removeFillerPhrases,
+      history_cleaning_normalize_whitespace: normalizeWhitespace,
+      history_cleaning_collapse_newlines: collapseNewlines,
     });
   };
 
@@ -483,6 +504,107 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
           <p className="text-muted-foreground text-xs">
             Device for embedding model and reranker
           </p>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* History Cleaning Section */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium">History Cleaning</h3>
+        <p className="text-muted-foreground text-xs">
+          Reduce token usage by cleaning chat history before sending to the LLM.
+        </p>
+        <div className="space-y-3">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="history-cleaning-enabled"
+              checked={historyCleaningEnabled}
+              onCheckedChange={(checked) => setHistoryCleaningEnabled(checked === true)}
+            />
+            <Label htmlFor="history-cleaning-enabled" className="cursor-pointer">
+              Enable history cleaning
+              <HelpTooltip text="Master switch for all history cleaning operations." />
+            </Label>
+          </div>
+
+          <div className="ml-6 space-y-2">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="remove-emojis"
+                checked={removeEmojis}
+                disabled={!historyCleaningEnabled}
+                onCheckedChange={(checked) => setRemoveEmojis(checked === true)}
+              />
+              <Label
+                htmlFor="remove-emojis"
+                className={
+                  historyCleaningEnabled
+                    ? "cursor-pointer"
+                    : "text-muted-foreground cursor-not-allowed"
+                }
+              >
+                Remove emojis
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="remove-filler-phrases"
+                checked={removeFillerPhrases}
+                disabled={!historyCleaningEnabled}
+                onCheckedChange={(checked) => setRemoveFillerPhrases(checked === true)}
+              />
+              <Label
+                htmlFor="remove-filler-phrases"
+                className={
+                  historyCleaningEnabled
+                    ? "cursor-pointer"
+                    : "text-muted-foreground cursor-not-allowed"
+                }
+              >
+                Remove filler phrases
+                <HelpTooltip text="Removes common LLM pleasantries like 'Great question!' and 'Hope this helps!'" />
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="normalize-whitespace"
+                checked={normalizeWhitespace}
+                disabled={!historyCleaningEnabled}
+                onCheckedChange={(checked) => setNormalizeWhitespace(checked === true)}
+              />
+              <Label
+                htmlFor="normalize-whitespace"
+                className={
+                  historyCleaningEnabled
+                    ? "cursor-pointer"
+                    : "text-muted-foreground cursor-not-allowed"
+                }
+              >
+                Normalize whitespace
+                <HelpTooltip text="Collapses multiple spaces into single spaces (preserves indentation)." />
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="collapse-newlines"
+                checked={collapseNewlines}
+                disabled={!historyCleaningEnabled}
+                onCheckedChange={(checked) => setCollapseNewlines(checked === true)}
+              />
+              <Label
+                htmlFor="collapse-newlines"
+                className={
+                  historyCleaningEnabled
+                    ? "cursor-pointer"
+                    : "text-muted-foreground cursor-not-allowed"
+                }
+              >
+                Collapse excessive newlines
+                <HelpTooltip text="Reduces 3+ consecutive newlines to 2." />
+              </Label>
+            </div>
+          </div>
         </div>
       </div>
 

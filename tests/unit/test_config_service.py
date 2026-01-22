@@ -263,3 +263,46 @@ class TestConfigServiceHelpers:
         enabled = config_service.is_natural_language_agents_enabled()
 
         assert enabled is True  # Default
+
+
+class TestHistoryCleaningConfig:
+    """Tests for history cleaning configuration."""
+
+    def test_default_config_has_history_cleaning(self, config_service: ConfigService):
+        """Default config includes history_cleaning section."""
+        config = config_service.load()
+        assert hasattr(config, "history_cleaning")
+        assert config.history_cleaning.enabled is True
+
+    def test_update_history_cleaning_enabled(self, config_service: ConfigService):
+        """Can update history_cleaning_enabled via prefixed key."""
+        config = config_service.update(history_cleaning_enabled=False)
+        assert config.history_cleaning.enabled is False
+
+    def test_update_history_cleaning_remove_emojis(self, config_service: ConfigService):
+        """Can update history_cleaning_remove_emojis via prefixed key."""
+        config = config_service.update(history_cleaning_remove_emojis=False)
+        assert config.history_cleaning.remove_emojis is False
+
+    def test_update_multiple_history_cleaning_options(
+        self, config_service: ConfigService
+    ):
+        """Can update multiple history cleaning options at once."""
+        config = config_service.update(
+            history_cleaning_enabled=True,
+            history_cleaning_remove_filler_phrases=False,
+            history_cleaning_collapse_newlines=False,
+        )
+        assert config.history_cleaning.enabled is True
+        assert config.history_cleaning.remove_filler_phrases is False
+        assert config.history_cleaning.collapse_newlines is False
+
+    def test_update_history_cleaning_persists(
+        self, config_service: ConfigService, temp_config_file: Path
+    ):
+        """History cleaning updates are persisted to disk."""
+        config_service.update(history_cleaning_enabled=False)
+
+        # Reload and verify
+        saved_data = yaml.safe_load(temp_config_file.read_text())
+        assert saved_data["history_cleaning"]["enabled"] is False
