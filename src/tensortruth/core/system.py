@@ -29,6 +29,10 @@ class MemoryInfo:
 def get_cuda_memory() -> Optional[MemoryInfo]:
     """Get CUDA GPU memory usage.
 
+    Uses torch.cuda.mem_get_info() to get total GPU memory usage (matching nvidia-smi),
+    not just PyTorch allocations. This captures memory used by all processes including
+    Ollama/llama.cpp, other frameworks, and system overhead.
+
     Returns:
         MemoryInfo for CUDA device, or None if CUDA unavailable.
     """
@@ -36,15 +40,23 @@ def get_cuda_memory() -> Optional[MemoryInfo]:
         return None
 
     try:
-        allocated = torch.cuda.memory_allocated() / (1024**3)
-        reserved = torch.cuda.memory_reserved() / (1024**3)
         free, total = torch.cuda.mem_get_info()
+        # Calculate used memory as total - free (matches nvidia-smi Memory-Usage)
+        used_gb = (total - free) / (1024**3)
         total_gb = total / (1024**3)
 
-        details = f"Reserved: {reserved:.2f} GB"
+        # PyTorch-specific allocations for details (useful for debugging)
+        pytorch_allocated = torch.cuda.memory_allocated() / (1024**3)
+        pytorch_reserved = torch.cuda.memory_reserved() / (1024**3)
+
+        if pytorch_allocated > 0.01:  # Only show if meaningful
+            details = f"PyTorch: {pytorch_allocated:.2f} GB (reserved: {pytorch_reserved:.2f} GB)"
+        else:
+            details = None
+
         return MemoryInfo(
             name="CUDA VRAM",
-            allocated_gb=allocated,
+            allocated_gb=used_gb,
             total_gb=total_gb,
             details=details,
         )
