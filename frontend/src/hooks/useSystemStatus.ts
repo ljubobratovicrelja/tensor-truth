@@ -17,7 +17,7 @@ import {
 /**
  * Hook to fetch comprehensive memory usage
  *
- * Refetches every 5 seconds to keep memory stats up-to-date
+ * Refetches every second when enabled (panel open) for responsive updates
  *
  * @param enabled - Whether to enable polling (default: true)
  */
@@ -25,9 +25,9 @@ export function useMemoryInfo(enabled = true) {
   return useQuery<MemoryResponse>({
     queryKey: ["system", "memory"],
     queryFn: getMemoryInfo,
-    refetchInterval: enabled ? 5000 : false, // Only refresh when enabled
-    staleTime: 4000,
-    enabled, // Only fetch when enabled
+    refetchInterval: enabled ? 1000 : false,
+    staleTime: 800,
+    enabled,
   });
 }
 
@@ -48,7 +48,7 @@ export function useDevices() {
 /**
  * Hook to fetch Ollama runtime status
  *
- * Refetches every 10 seconds to track running models
+ * Refetches every second when enabled (panel open) for responsive updates
  *
  * @param enabled - Whether to enable polling (default: true)
  */
@@ -56,9 +56,9 @@ export function useOllamaStatus(enabled = true) {
   return useQuery<OllamaStatusResponse>({
     queryKey: ["system", "ollama", "status"],
     queryFn: getOllamaStatus,
-    refetchInterval: enabled ? 10000 : false, // Only refresh when enabled
-    staleTime: 8000,
-    enabled, // Only fetch when enabled
+    refetchInterval: enabled ? 1000 : false,
+    staleTime: 800,
+    enabled,
   });
 }
 

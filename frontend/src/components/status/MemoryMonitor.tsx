@@ -140,8 +140,6 @@ export function MemoryMonitor({
         </div>
       )}
 
-      {/* Auto-refresh indicator */}
-      <p className="text-muted-foreground mt-4 text-xs">Updates every 5 seconds</p>
     </div>
   );
 }
