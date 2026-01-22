@@ -1,4 +1,4 @@
-import { useLocation } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
 import { PanelLeftClose, PanelLeft, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/stores";
@@ -39,8 +39,10 @@ export function Header() {
         {getIcon()}
       </Button>
       <div className="flex flex-1 items-center gap-2">
-        <img src="/logo.png" alt="TensorTruth" className="h-7 w-7" />
-        <h1 className="hidden text-lg font-semibold sm:block">TensorTruth</h1>
+        <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <img src="/logo.png" alt="TensorTruth" className="h-7 w-7" />
+          <h1 className="hidden text-lg font-semibold sm:block">TensorTruth</h1>
+        </Link>
       </div>
       <SystemStatusPanel />
       <ThemeToggle />
