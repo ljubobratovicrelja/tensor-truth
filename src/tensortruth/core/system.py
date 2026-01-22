@@ -66,7 +66,13 @@ def get_mps_memory() -> Optional[MemoryInfo]:
         return None
 
     try:
-        allocated = torch.mps.current_allocated_memory() / (1024**3)
+        # Use driver_allocated_memory for actual GPU usage
+        # (includes non-PyTorch allocations, more accurate for Apple Silicon)
+        try:
+            allocated = torch.mps.driver_allocated_memory() / (1024**3)
+        except AttributeError:
+            # Fallback to current_allocated_memory for older PyTorch versions
+            allocated = torch.mps.current_allocated_memory() / (1024**3)
 
         # Get total system RAM for context (unified memory)
         try:
