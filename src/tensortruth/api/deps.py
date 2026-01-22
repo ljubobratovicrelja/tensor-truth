@@ -4,7 +4,7 @@ Provides singleton services and per-request dependencies.
 """
 
 from functools import lru_cache
-from typing import Annotated, Generator
+from typing import Annotated
 
 from fastapi import Depends
 
@@ -42,20 +42,16 @@ def get_startup_service() -> StartupService:
     return StartupService(config_service)
 
 
-def get_rag_service() -> Generator[RAGService, None, None]:
-    """Get RAGService instance.
+@lru_cache
+def get_rag_service() -> RAGService:
+    """Get the singleton RAGService instance.
 
-    RAGService manages GPU resources and should be reused within a request,
-    but may need to be reloaded across sessions.
+    RAGService manages GPU resources and engine state. It must be a singleton
+    to preserve the loaded engine across requests.
     """
     config_service = get_config_service()
     config = config_service.load()
-    service = RAGService(config=config, indexes_dir=get_indexes_dir())
-    try:
-        yield service
-    finally:
-        # Don't clear here - let the caller manage lifecycle
-        pass
+    return RAGService(config=config, indexes_dir=get_indexes_dir())
 
 
 def get_intent_service() -> IntentService:

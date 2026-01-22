@@ -25,6 +25,9 @@ export function WelcomePage() {
   const navigate = useNavigate();
   const setPendingMessage = useChatStore((state) => state.setPendingUserMessage);
 
+  // Derive effective model: user selection or config default
+  const effectiveModel = selectedModel || config?.models.default_rag_model || "";
+
   const handleSubmit = async (promptText?: string, preset?: PresetInfo) => {
     const text = promptText ?? message.trim();
     if (!text || isSubmitting) return;
@@ -36,19 +39,13 @@ export function WelcomePage() {
       const presetModel = preset?.config?.model as string | undefined;
 
       const effectiveModules = selectedModules.length > 0 ? selectedModules : undefined;
-      const effectiveModel =
-        selectedModel && selectedModel !== "__none__" ? selectedModel : undefined;
 
-      // Build params: start with session settings, add model if selected
+      // Build params: start with session settings, always include effective model
       const baseParams =
         Object.keys(sessionParams).length > 0 ? { ...sessionParams } : {};
       const params = preset?.config
         ? { ...preset.config, model: presetModel }
-        : effectiveModel
-          ? { ...baseParams, model: effectiveModel }
-          : Object.keys(baseParams).length > 0
-            ? baseParams
-            : undefined;
+        : { ...baseParams, model: effectiveModel };
 
       const result = await createSession.mutateAsync({
         modules: presetModules ?? effectiveModules,
@@ -140,18 +137,9 @@ export function WelcomePage() {
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
                   <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
                     <Bot className="h-3.5 w-3.5" />
-                    <span className="text-xs">
-                      {selectedModel && selectedModel !== "__none__"
-                        ? selectedModel
-                        : config?.models.default_rag_model || "Model"}
-                    </span>
+                    <span className="text-xs">{effectiveModel || "Model"}</span>
                   </SelectTrigger>
                   <SelectContent position="popper" side="top" className="max-h-[300px]">
-                    <SelectItem value="__none__">
-                      <span className="text-muted-foreground">
-                        Default ({config?.models.default_rag_model || "..."})
-                      </span>
-                    </SelectItem>
                     {modelsLoading ? (
                       <SelectItem value="loading" disabled>
                         Loading...

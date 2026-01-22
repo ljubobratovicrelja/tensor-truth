@@ -64,9 +64,12 @@ class TestGetCudaMemory:
 
         assert result is not None
         assert result.name == "CUDA VRAM"
+        # allocated_gb is now (total - free) = 8 - 6 = 2 GB
         assert result.allocated_gb == pytest.approx(2.0, rel=0.01)
         assert result.total_gb == pytest.approx(8.0, rel=0.01)
-        assert "Reserved" in result.details
+        # Details shows PyTorch-specific allocations when meaningful
+        assert "PyTorch" in result.details
+        assert "reserved" in result.details
 
     @patch("tensortruth.core.system.torch")
     def test_cuda_not_available(self, mock_torch):
@@ -203,34 +206,27 @@ class TestGetAllMemoryInfo:
     """Tests for get_all_memory_info function."""
 
     @patch("tensortruth.core.system.get_system_ram")
-    @patch("tensortruth.core.system.get_ollama_memory")
     @patch("tensortruth.core.system.get_mps_memory")
     @patch("tensortruth.core.system.get_cuda_memory")
-    def test_all_memory_info_cuda_system(
-        self, mock_cuda, mock_mps, mock_ollama, mock_ram
-    ):
+    def test_all_memory_info_cuda_system(self, mock_cuda, mock_mps, mock_ram):
         """Test get_all_memory_info on CUDA system."""
         mock_cuda.return_value = MemoryInfo("CUDA VRAM", 4.0, 8.0)
         mock_mps.return_value = None
-        mock_ollama.return_value = MemoryInfo("Ollama VRAM", 3.0)
         mock_ram.return_value = MemoryInfo("System RAM", 8.0, 32.0)
 
         result = get_all_memory_info()
 
-        assert len(result) == 3
+        assert len(result) == 2
         assert result[0].name == "CUDA VRAM"
-        assert result[1].name == "Ollama VRAM"
-        assert result[2].name == "System RAM"
+        assert result[1].name == "System RAM"
 
     @patch("tensortruth.core.system.get_system_ram")
-    @patch("tensortruth.core.system.get_ollama_memory")
     @patch("tensortruth.core.system.get_mps_memory")
     @patch("tensortruth.core.system.get_cuda_memory")
-    def test_all_memory_info_empty(self, mock_cuda, mock_mps, mock_ollama, mock_ram):
+    def test_all_memory_info_empty(self, mock_cuda, mock_mps, mock_ram):
         """Test get_all_memory_info when nothing available."""
         mock_cuda.return_value = None
         mock_mps.return_value = None
-        mock_ollama.return_value = None
         mock_ram.return_value = None
 
         result = get_all_memory_info()

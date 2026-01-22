@@ -139,7 +139,6 @@ export function MemoryMonitor({
           ))}
         </div>
       )}
-
     </div>
   );
 }
