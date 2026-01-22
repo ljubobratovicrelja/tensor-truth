@@ -13,6 +13,10 @@ from tensortruth.api.schemas import (
     SessionStatsResponse,
     SessionUpdate,
 )
+from tensortruth.app_utils.history_cleaner import (
+    HistoryCleanerConfig,
+    clean_history_content,
+)
 from tensortruth.app_utils.paths import get_session_dir
 
 router = APIRouter()
@@ -142,13 +146,15 @@ async def get_messages(
 
 @router.get("/{session_id}/stats", response_model=SessionStatsResponse)
 async def get_session_stats(
-    session_id: str, session_service: SessionServiceDep
+    session_id: str,
+    session_service: SessionServiceDep,
+    config_service: ConfigServiceDep,
 ) -> SessionStatsResponse:
     """Get chat statistics for a specific session.
 
     Returns:
     - history_messages: Number of messages in the session
-    - history_chars: Total characters across all messages
+    - history_chars: Total characters across all messages (after cleaning if enabled)
     - model_name: Name of the LLM model configured for the session
     - context_length: Session's configured context window size
     """
@@ -161,9 +167,26 @@ async def get_session_stats(
     params = session.get("params", {})
     model_name = params.get("model")
 
-    # Calculate history stats
+    # Calculate history stats (apply cleaning if enabled)
     history_messages = len(messages)
-    history_chars = sum(len(m.get("content", "")) for m in messages)
+    config = config_service.load()
+
+    if config.history_cleaning.enabled:
+        cleaner_config = HistoryCleanerConfig(
+            enabled=True,
+            remove_emojis=config.history_cleaning.remove_emojis,
+            remove_filler_phrases=config.history_cleaning.remove_filler_phrases,
+            normalize_whitespace=config.history_cleaning.normalize_whitespace,
+            collapse_newlines=config.history_cleaning.collapse_newlines,
+            filler_phrases=config.history_cleaning.filler_phrases,
+        )
+        history_chars = sum(
+            len(clean_history_content(m.get("content", ""), cleaner_config) or "")
+            for m in messages
+        )
+    else:
+        history_chars = sum(len(m.get("content", "")) for m in messages)
+
     history_tokens_estimate = history_chars // 4  # Rough approximation
 
     # Get configured context window from session params

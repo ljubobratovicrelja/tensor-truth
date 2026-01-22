@@ -6,6 +6,14 @@ import pytest
 from llama_index.core.schema import NodeWithScore, TextNode
 
 
+def _create_mock_config():
+    """Create a mock config with properly structured history_cleaning."""
+    config = Mock()
+    # Configure history_cleaning to be disabled so tests work without actual cleaning
+    config.history_cleaning.enabled = False
+    return config
+
+
 @pytest.mark.unit
 def test_postprocessor_application():
     """Test that postprocessors are applied during retrieval."""
@@ -47,7 +55,7 @@ def test_postprocessor_application():
     engine.memory.put = Mock()
 
     # Create service and set engine
-    service = RAGService(Mock())
+    service = RAGService(_create_mock_config())
     service._engine = engine
 
     # Execute query
@@ -105,7 +113,7 @@ def test_postprocessor_failure_handling():
     engine.memory.put = Mock()
 
     # Create service and set engine
-    service = RAGService(Mock())
+    service = RAGService(_create_mock_config())
     service._engine = engine
 
     # Execute query - should not raise exception
@@ -168,7 +176,7 @@ def test_postprocessor_multiple_stages():
     engine.memory.put = Mock()
 
     # Create service and set engine
-    service = RAGService(Mock())
+    service = RAGService(_create_mock_config())
     service._engine = engine
 
     # Execute query
@@ -231,7 +239,7 @@ def test_prompt_selection_no_sources():
     engine = _create_mock_engine_with_nodes([])
 
     # Create service with confidence threshold
-    service = RAGService(Mock())
+    service = RAGService(_create_mock_config())
     service._engine = engine
     service._current_params = {"confidence_cutoff": 0.5}
 
@@ -272,7 +280,7 @@ def test_prompt_selection_low_confidence():
     engine = _create_mock_engine_with_nodes(low_score_nodes)
 
     # Create service with confidence threshold higher than best score
-    service = RAGService(Mock())
+    service = RAGService(_create_mock_config())
     service._engine = engine
     service._current_params = {"confidence_cutoff": 0.5}
 
@@ -314,7 +322,7 @@ def test_prompt_selection_good_confidence():
     engine = _create_mock_engine_with_nodes(good_score_nodes)
 
     # Create service with confidence threshold below best score
-    service = RAGService(Mock())
+    service = RAGService(_create_mock_config())
     service._engine = engine
     service._current_params = {"confidence_cutoff": 0.5}
 
@@ -353,7 +361,7 @@ def test_prompt_selection_no_threshold():
     engine = _create_mock_engine_with_nodes(low_score_nodes)
 
     # Create service WITHOUT confidence threshold (0.0 or not set)
-    service = RAGService(Mock())
+    service = RAGService(_create_mock_config())
     service._engine = engine
     service._current_params = {"confidence_cutoff": 0.0}  # No threshold
 
@@ -394,7 +402,7 @@ def test_prompt_selection_filters_all_nodes():
     engine._node_postprocessors = [filter_all]
 
     # Create service
-    service = RAGService(Mock())
+    service = RAGService(_create_mock_config())
     service._engine = engine
     service._current_params = {"confidence_cutoff": 0.5}
 
@@ -438,7 +446,7 @@ def test_prompt_includes_chat_history():
     engine = _create_mock_engine_with_nodes(nodes, memory_history=chat_history)
 
     # Create service
-    service = RAGService(Mock())
+    service = RAGService(_create_mock_config())
     service._engine = engine
     service._current_params = {"confidence_cutoff": 0.5}
 

@@ -1,7 +1,7 @@
 """Configuration schema and default values for Tensor-Truth."""
 
 from dataclasses import asdict, dataclass, field
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from tensortruth.core.constants import (
     DEFAULT_AGENT_REASONING_MODEL,
@@ -210,6 +210,47 @@ class AgentConfig:
             )
 
 
+# Default filler phrases for history cleaning (regex patterns, case-insensitive)
+DEFAULT_FILLER_PHRASES = [
+    r"(?i)^(great|good|excellent)\s+(question|point)[!.]*\s*",
+    r"(?i)^i['']?d be happy to help[!.]*\s*",
+    r"(?i)^let me (think|see|help)[^.]*[.!]*\s*",
+    r"(?i)^(sure|certainly|absolutely)[!.,]*\s*",
+    r"(?i)if you have any (more |other )?questions[^.]*[.!]*\s*$",
+    r"(?i)feel free to ask[^.]*[.!]*\s*$",
+    r"(?i)hope this helps[!.]*\s*$",
+]
+
+
+@dataclass
+class HistoryCleaningConfig:
+    """Chat history cleaning configuration.
+
+    Preprocesses chat history to reduce token usage without losing semantic meaning.
+    All settings are enabled by default.
+    """
+
+    # Master switch for history cleaning
+    enabled: bool = True
+
+    # Remove emoji characters from messages
+    remove_emojis: bool = True
+
+    # Remove common filler phrases (e.g., "Great question!", "Hope this helps!")
+    remove_filler_phrases: bool = True
+
+    # Normalize multiple inline spaces to single space (preserves indentation)
+    normalize_whitespace: bool = True
+
+    # Collapse 3+ consecutive newlines to 2
+    collapse_newlines: bool = True
+
+    # Configurable filler phrases (regex patterns, case-insensitive)
+    filler_phrases: List[str] = field(
+        default_factory=lambda: list(DEFAULT_FILLER_PHRASES)
+    )
+
+
 @dataclass
 class TensorTruthConfig:
     """Main configuration for Tensor-Truth application."""
@@ -219,6 +260,7 @@ class TensorTruthConfig:
     rag: RAGConfig
     models: ModelsConfig
     agent: AgentConfig
+    history_cleaning: HistoryCleaningConfig
 
     def to_dict(self) -> dict:
         """Convert config to dictionary for YAML serialization."""
@@ -228,6 +270,7 @@ class TensorTruthConfig:
             "rag": asdict(self.rag),
             "models": asdict(self.models),
             "agent": asdict(self.agent),
+            "history_cleaning": asdict(self.history_cleaning),
         }
 
     @classmethod
@@ -238,6 +281,7 @@ class TensorTruthConfig:
         rag_data = data.get("rag", {})
         models_data = data.get("models", {})
         agent_data = data.get("agent", {})
+        history_cleaning_data = data.get("history_cleaning", {})
 
         return cls(
             ollama=OllamaConfig(**ollama_data),
@@ -245,6 +289,7 @@ class TensorTruthConfig:
             rag=RAGConfig(**rag_data),
             models=ModelsConfig(**models_data),
             agent=AgentConfig(**agent_data),
+            history_cleaning=HistoryCleaningConfig(**history_cleaning_data),
         )
 
     @classmethod
@@ -265,6 +310,7 @@ class TensorTruthConfig:
             ),
             models=ModelsConfig(),
             agent=AgentConfig(),
+            history_cleaning=HistoryCleaningConfig(),
         )
 
     @staticmethod

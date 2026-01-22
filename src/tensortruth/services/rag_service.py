@@ -12,6 +12,10 @@ from llama_index.core.chat_engine import CondensePlusContextChatEngine
 from llama_index.llms.ollama import Ollama
 
 from tensortruth.app_utils.config_schema import TensorTruthConfig
+from tensortruth.app_utils.history_cleaner import (
+    HistoryCleanerConfig,
+    clean_chat_history,
+)
 from tensortruth.rag_engine import (
     CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE,
     CUSTOM_CONTEXT_PROMPT_NO_SOURCES,
@@ -177,6 +181,18 @@ class RAGService:
 
         # Get chat history for context condensation
         chat_history = list(memory.get()) if memory else []
+
+        # Apply history cleaning if enabled
+        if self.config.history_cleaning.enabled:
+            cleaner_config = HistoryCleanerConfig(
+                enabled=True,
+                remove_emojis=self.config.history_cleaning.remove_emojis,
+                remove_filler_phrases=self.config.history_cleaning.remove_filler_phrases,
+                normalize_whitespace=self.config.history_cleaning.normalize_whitespace,
+                collapse_newlines=self.config.history_cleaning.collapse_newlines,
+                filler_phrases=self.config.history_cleaning.filler_phrases,
+            )
+            chat_history = clean_chat_history(chat_history, cleaner_config)
 
         # Condense the question with chat history if we have a condenser
         condensed_question = prompt
@@ -394,6 +410,17 @@ class RAGService:
 
         # Add chat history if provided
         if chat_history:
+            # Apply history cleaning if enabled
+            if self.config.history_cleaning.enabled:
+                cleaner_config = HistoryCleanerConfig(
+                    enabled=True,
+                    remove_emojis=self.config.history_cleaning.remove_emojis,
+                    remove_filler_phrases=self.config.history_cleaning.remove_filler_phrases,
+                    normalize_whitespace=self.config.history_cleaning.normalize_whitespace,
+                    collapse_newlines=self.config.history_cleaning.collapse_newlines,
+                    filler_phrases=self.config.history_cleaning.filler_phrases,
+                )
+                chat_history = clean_chat_history(chat_history, cleaner_config)
             messages.extend(chat_history)
 
         # Add user prompt
