@@ -454,4 +454,34 @@
   .animate-fade-in {
     animation: fade-in 200ms ease-out forwards;
   }
+
+  /* Block reveal animation (alternative to typewriter) */
+  @keyframes block-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-block-reveal {
+    animation: block-reveal 200ms ease-out forwards;
+  }
+
+  /* Block fade-in animation (for math blocks) */
+  @keyframes block-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .animate-block-fade-in {
+    animation: block-fade-in 300ms ease-out forwards;
+  }
 }

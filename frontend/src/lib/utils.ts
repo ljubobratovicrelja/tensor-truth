@@ -12,6 +12,9 @@ export function cn(...inputs: ClassValue[]) {
  * - \(...\) to $...$ (inline math)
  * - \[...\] to $$...$$ (display math)
  *
+ * Also sanitizes problematic delimiter patterns:
+ * - $$$ (three dollar signs) -> $$ $ (prevents remark-math parsing confusion)
+ *
  * LLMs often use standard LaTeX notation \(...\) and \[...\] when generating
  * mathematical content, but remark-math/rehype-katex expect dollar sign delimiters.
  *
@@ -29,6 +32,18 @@ export function convertLatexDelimiters(text: string | null | undefined): string 
 
   // Convert inline math \(...\) to $...$
   converted = converted.replace(/\\\(\s*(.*?)\s*\\\)/gs, (_match, p1) => `$${p1}$`);
+
+  // Sanitize $$$ (triple dollar signs) which confuse remark-math parser
+  // This typically happens when display math ($$) is immediately followed by inline math ($)
+  // Convert $$$ to $$ $ (add space to separate the delimiters)
+  converted = converted.replace(/\${3,}/g, (match) => {
+    // For $$$, insert space: "$$ $"
+    // For $$$$, insert space: "$$ $$"
+    // etc.
+    const pairs = Math.floor(match.length / 2);
+    const remainder = match.length % 2;
+    return "$$".repeat(pairs) + (remainder ? " $" : "");
+  });
 
   return converted;
 }

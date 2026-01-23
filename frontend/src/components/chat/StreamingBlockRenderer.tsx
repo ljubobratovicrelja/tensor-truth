@@ -26,9 +26,8 @@ function getAnimationType(_blockType: BlockType): AnimationType {
 
 interface StreamingBlockRendererProps {
   parserState: ParserState;
-  isStreaming: boolean;
-  /** Called when all block animations have completed */
-  onAllAnimationsComplete?: () => void;
+  /** When false, all blocks render immediately without animation (for historical messages) */
+  animate?: boolean;
 }
 
 // Maximum number of blocks that can animate simultaneously
@@ -43,8 +42,7 @@ const MAX_CONCURRENT_ANIMATIONS = 2;
  */
 export function StreamingBlockRenderer({
   parserState,
-  isStreaming,
-  onAllAnimationsComplete,
+  animate = true,
 }: StreamingBlockRendererProps) {
   const { completedBlocks } = parserState;
 
@@ -53,17 +51,17 @@ export function StreamingBlockRenderer({
     () => new Set()
   );
 
-  // For detecting new stream and completion notification
+  // For detecting new stream reset
   const prevBlockCountRef = useRef(0);
-  const allAnimationsCompleteNotified = useRef(false);
 
   // Derive highest started index: show up to MAX_CONCURRENT_ANIMATIONS more than completed
-  // This allows 2 blocks to animate concurrently while ensuring we don't render blocks
-  // that haven't started animating yet
-  const highestStartedIndex = Math.min(
-    completedBlocks.length - 1,
-    completedAnimations.size + MAX_CONCURRENT_ANIMATIONS - 1
-  );
+  // When animations are disabled, show all blocks immediately
+  const highestStartedIndex = animate
+    ? Math.min(
+        completedBlocks.length - 1,
+        completedAnimations.size + MAX_CONCURRENT_ANIMATIONS - 1
+      )
+    : completedBlocks.length - 1;
 
   // Called when a specific block finishes animating
   const handleBlockAnimationComplete = useCallback((blockIndex: number) => {
@@ -81,31 +79,9 @@ export function StreamingBlockRenderer({
       queueMicrotask(() => {
         setCompletedAnimations(new Set());
       });
-      allAnimationsCompleteNotified.current = false;
     }
     prevBlockCountRef.current = completedBlocks.length;
   }, [completedBlocks.length]);
-
-  // Notify when all animations complete
-  useEffect(() => {
-    const allBlocksFinished = completedAnimations.size >= completedBlocks.length;
-
-    if (
-      !isStreaming &&
-      completedBlocks.length > 0 &&
-      allBlocksFinished &&
-      !allAnimationsCompleteNotified.current &&
-      onAllAnimationsComplete
-    ) {
-      allAnimationsCompleteNotified.current = true;
-      onAllAnimationsComplete();
-    }
-  }, [
-    isStreaming,
-    completedBlocks.length,
-    completedAnimations.size,
-    onAllAnimationsComplete,
-  ]);
 
   return (
     <>
@@ -113,8 +89,8 @@ export function StreamingBlockRenderer({
         // Don't render blocks that haven't started yet
         if (index > highestStartedIndex) return null;
 
-        // Animate if this block hasn't completed its animation yet
-        const isAnimating = !completedAnimations.has(index);
+        // Animate if animations enabled and this block hasn't completed yet
+        const isAnimating = animate && !completedAnimations.has(index);
 
         return (
           <AnimatedBlock

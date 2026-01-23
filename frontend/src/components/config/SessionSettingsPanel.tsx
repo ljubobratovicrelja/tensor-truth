@@ -111,7 +111,7 @@ export function SessionSettingsPanel({
       );
       setMaxTokens((currentParams.max_tokens as number) ?? config.ui.default_max_tokens);
       setRerankerModel(
-        (currentParams.reranker_model as string) ?? config.ui.default_reranker
+        (currentParams.reranker_model as string) ?? config.rag.default_reranker
       );
       setRerankerTopN(
         (currentParams.reranker_top_n as number) ?? config.ui.default_top_n

@@ -18,7 +18,7 @@ interface MemoizedMarkdownProps {
 const remarkPlugins: PluggableList = [remarkGfm, remarkMath];
 const rehypePlugins: PluggableList = [
   [rehypeHighlight, { detect: true }],
-  rehypeKatex,
+  [rehypeKatex, { throwOnError: false, strict: false }],
   rehypeSlug,
   [rehypeAutolinkHeadings, { behavior: "wrap", properties: { className: ["header-anchor"] } }],
 ];

@@ -142,13 +142,16 @@ function MessageItemComponent({
             <span>{isUser ? "You" : "Assistant"}</span>
           </div>
 
-          {isStreaming ? (
-            <StreamingText content={message.content} isStreaming />
+          {/* Always use StreamingText for assistant messages to isolate parsing errors per-block */}
+          {!isUser ? (
+            <div ref={contentRef}>
+              <StreamingText content={message.content} isStreaming={isStreaming} />
+            </div>
           ) : (
             <div ref={contentRef}>
               <MemoizedMarkdown
                 content={message.content}
-                className={cn(isUser && "chat-markdown-user")}
+                className="chat-markdown-user"
               />
             </div>
           )}
