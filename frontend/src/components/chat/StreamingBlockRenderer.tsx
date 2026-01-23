@@ -31,14 +31,15 @@ interface StreamingBlockRendererProps {
   onAllAnimationsComplete?: () => void;
 }
 
+// Maximum number of blocks that can animate simultaneously
+const MAX_CONCURRENT_ANIMATIONS = 2;
+
 /**
  * Renders blocks from the parser state during streaming.
  *
  * - Completed blocks are rendered with markdown (AnimatedBlock)
- * - Animations are queued - only one block animates at a time
- * - Next block's animation starts only when previous completes
+ * - Up to 2 blocks can animate concurrently for smoother appearance
  * - Pending buffer is hidden (to avoid showing raw markdown syntax)
- * - Blinking cursor shows while streaming
  */
 export function StreamingBlockRenderer({
   parserState,
@@ -47,62 +48,84 @@ export function StreamingBlockRenderer({
 }: StreamingBlockRendererProps) {
   const { completedBlocks } = parserState;
 
-  // Track which block is currently animating (by index)
-  // Blocks before this index: fully rendered (no animation)
-  // Block at this index: currently animating
-  // Blocks after this index: waiting to animate
-  const [animatingIndex, setAnimatingIndex] = useState(0);
+  // Track which blocks have completed their animation (using state for reactivity)
+  const [completedAnimations, setCompletedAnimations] = useState<Set<number>>(
+    () => new Set()
+  );
+
+  // For detecting new stream and completion notification
   const prevBlockCountRef = useRef(0);
   const allAnimationsCompleteNotified = useRef(false);
 
-  // When a block finishes animating, move to the next one
-  const handleAnimationComplete = useCallback(() => {
-    setAnimatingIndex((prev) => prev + 1);
+  // Derive highest started index: show up to MAX_CONCURRENT_ANIMATIONS more than completed
+  // This allows 2 blocks to animate concurrently while ensuring we don't render blocks
+  // that haven't started animating yet
+  const highestStartedIndex = Math.min(
+    completedBlocks.length - 1,
+    completedAnimations.size + MAX_CONCURRENT_ANIMATIONS - 1
+  );
+
+  // Called when a specific block finishes animating
+  const handleBlockAnimationComplete = useCallback((blockIndex: number) => {
+    setCompletedAnimations((prev) => {
+      if (prev.has(blockIndex)) return prev;
+      const next = new Set(prev);
+      next.add(blockIndex);
+      return next;
+    });
   }, []);
 
-  // Reset animation index when starting a new stream
+  // Reset when starting a new stream
   useEffect(() => {
     if (completedBlocks.length === 0 && prevBlockCountRef.current > 0) {
-      queueMicrotask(() => setAnimatingIndex(0));
+      queueMicrotask(() => {
+        setCompletedAnimations(new Set());
+      });
       allAnimationsCompleteNotified.current = false;
     }
     prevBlockCountRef.current = completedBlocks.length;
   }, [completedBlocks.length]);
 
-  // Notify when all animations are complete (streaming done + all blocks animated)
+  // Notify when all animations complete
   useEffect(() => {
+    const allBlocksFinished = completedAnimations.size >= completedBlocks.length;
+
     if (
       !isStreaming &&
       completedBlocks.length > 0 &&
-      animatingIndex >= completedBlocks.length &&
+      allBlocksFinished &&
       !allAnimationsCompleteNotified.current &&
       onAllAnimationsComplete
     ) {
       allAnimationsCompleteNotified.current = true;
       onAllAnimationsComplete();
     }
-  }, [isStreaming, animatingIndex, completedBlocks.length, onAllAnimationsComplete]);
+  }, [
+    isStreaming,
+    completedBlocks.length,
+    completedAnimations.size,
+    onAllAnimationsComplete,
+  ]);
 
   return (
     <>
-      {/* Render blocks up to and including the currently animating one */}
       {completedBlocks.map((block, index) => {
-        // Don't render blocks that haven't had their turn yet
-        if (index > animatingIndex) return null;
+        // Don't render blocks that haven't started yet
+        if (index > highestStartedIndex) return null;
+
+        // Animate if this block hasn't completed its animation yet
+        const isAnimating = !completedAnimations.has(index);
 
         return (
           <AnimatedBlock
             key={`block-${index}-${block.type}`}
             block={block}
-            // Only animate if this is the current block in the queue
-            animate={index === animatingIndex}
-            // Math blocks fade in, others use typewriter
+            animate={isAnimating}
             animationType={getAnimationType(block.type)}
-            onAnimationComplete={handleAnimationComplete}
+            onAnimationComplete={() => handleBlockAnimationComplete(index)}
           />
         );
       })}
-
     </>
   );
 }
