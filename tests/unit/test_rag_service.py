@@ -11,8 +11,8 @@ def _create_mock_config():
     config = Mock()
     # Configure history_cleaning to be disabled so tests work without actual cleaning
     config.history_cleaning.enabled = False
-    # Add max_history_messages for ChatHistoryService
-    config.rag.max_history_messages = 3
+    # Add max_history_turns for ChatHistoryService (renamed from max_history_messages)
+    config.rag.max_history_turns = 3
     return config
 
 
@@ -487,3 +487,140 @@ def test_query_with_none_session_messages():
     # Should complete without error
     final_chunks = [c for c in results if hasattr(c, "is_complete") and c.is_complete]
     assert len(final_chunks) == 1
+
+
+# =============================================================================
+# Module Reload Detection Tests
+# =============================================================================
+
+
+@pytest.mark.unit
+def test_needs_reload_detects_module_addition():
+    """needs_reload() should return True when modules change."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+
+    # Simulate loaded state with module_a
+    service._engine = Mock()  # Engine is "loaded"
+    service._current_modules = ["module_a"]
+    service._current_params = {"model": "test-model", "temperature": 0.3}
+    service._current_config_hash = service._compute_config_hash(
+        ["module_a"], service._current_params, None
+    )
+
+    # Adding module_b should trigger reload
+    assert service.needs_reload(
+        ["module_a", "module_b"], service._current_params, None
+    ), "needs_reload() should return True when modules are added"
+
+
+@pytest.mark.unit
+def test_needs_reload_detects_module_removal():
+    """needs_reload() should return True when modules are removed."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+
+    # Simulate loaded state with two modules
+    service._engine = Mock()
+    service._current_modules = ["module_a", "module_b"]
+    service._current_params = {"model": "test-model"}
+    service._current_config_hash = service._compute_config_hash(
+        ["module_a", "module_b"], service._current_params, None
+    )
+
+    # Removing module_b should trigger reload
+    assert service.needs_reload(
+        ["module_a"], service._current_params, None
+    ), "needs_reload() should return True when modules are removed"
+
+
+@pytest.mark.unit
+def test_needs_reload_same_modules_no_reload():
+    """needs_reload() should return False when modules haven't changed."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+
+    # Simulate loaded state
+    service._engine = Mock()
+    service._current_modules = ["module_a", "module_b"]
+    service._current_params = {"model": "test-model", "temperature": 0.3}
+    service._current_config_hash = service._compute_config_hash(
+        ["module_a", "module_b"], service._current_params, None
+    )
+
+    # Same modules (different order) should NOT trigger reload
+    assert not service.needs_reload(
+        ["module_b", "module_a"], service._current_params, None
+    ), "needs_reload() should return False when modules are same (different order)"
+
+
+@pytest.mark.unit
+def test_config_hash_with_nested_params():
+    """Config hash should work with nested dicts in params (not raise TypeError)."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+
+    # Params with nested dict - this would fail with frozenset()
+    nested_params = {
+        "model": "test-model",
+        "temperature": 0.3,
+        "nested": {"key1": "value1", "key2": 123},
+        "list_param": [1, 2, 3],
+    }
+
+    # This should not raise TypeError: unhashable type: 'dict'
+    hash_result = service._compute_config_hash(["module_a"], nested_params, None)
+
+    # Should return a valid tuple
+    assert hash_result is not None
+    assert isinstance(hash_result, tuple)
+
+
+@pytest.mark.unit
+def test_config_hash_consistency_with_nested_params():
+    """Same nested params should produce the same hash."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+
+    nested_params_1 = {
+        "model": "test-model",
+        "nested": {"a": 1, "b": 2},
+    }
+    nested_params_2 = {
+        "model": "test-model",
+        "nested": {"b": 2, "a": 1},  # Same dict, different key order
+    }
+
+    hash1 = service._compute_config_hash(["module_a"], nested_params_1, None)
+    hash2 = service._compute_config_hash(["module_a"], nested_params_2, None)
+
+    # Hashes should be equal for equivalent params
+    assert (
+        hash1 == hash2
+    ), "Config hash should be consistent for equivalent nested params"
+
+
+@pytest.mark.unit
+def test_needs_reload_with_session_index_addition():
+    """needs_reload() should return True when session index is added."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+
+    # Simulate loaded state without session index
+    service._engine = Mock()
+    service._current_modules = ["module_a"]
+    service._current_params = {"model": "test-model"}
+    service._current_config_hash = service._compute_config_hash(
+        ["module_a"], service._current_params, None  # No session index
+    )
+
+    # Adding session index should trigger reload
+    assert service.needs_reload(
+        ["module_a"], service._current_params, "/path/to/session/index"
+    ), "needs_reload() should return True when session index is added"

@@ -1,3 +1,4 @@
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
@@ -31,6 +32,8 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 # Config import for model defaults
 from tensortruth.app_utils.config import load_config
 from tensortruth.core.ollama import check_thinking_support, get_ollama_url
+
+logger = logging.getLogger(__name__)
 
 # --- GLOBAL CONFIG ---
 _BASE_INDEX_DIR_CACHE: str | None = None
@@ -594,11 +597,8 @@ def load_engine_for_modules(
     embedding_indexes_dir = str(get_indexes_dir_for_model(embedding_model))
 
     active_retrievers: list[BaseRetriever] = []
-    print(
-        f"--- MOUNTING: {selected_modules} | MODEL: {engine_params.get('model')} | "
-        f"EMBEDDER: {embedding_model} | RAG DEVICE: {rag_device} | "
-        f"RETRIEVAL: {similarity_top_k} per index → RERANK: top {reranker_top_n} ---"
-    )
+    loaded_modules: list[str] = []
+    skipped_modules: list[str] = []
 
     for module in selected_modules:
         # First try embedding-aware path: indexes/{model_id}/{module}
@@ -608,9 +608,16 @@ def load_engine_for_modules(
         if not os.path.exists(path):
             legacy_path = os.path.join(get_base_index_dir(), module)
             if os.path.exists(legacy_path):
+                logger.info(f"Using legacy index path for module '{module}'")
                 print(f"  Using legacy index path for {module}")
                 path = legacy_path
             else:
+                logger.warning(
+                    f"Module '{module}' not found at '{path}' or legacy path "
+                    f"'{legacy_path}' - skipping. Check if indexed with "
+                    f"embedding model '{embedding_model}'."
+                )
+                skipped_modules.append(module)
                 continue
 
         db = chromadb.PersistentClient(path=path)
@@ -629,6 +636,18 @@ def load_engine_for_modules(
             base, index.storage_context, verbose=False  # type: ignore[arg-type]
         )
         active_retrievers.append(am_retriever)
+        loaded_modules.append(module)
+
+    # Log summary of module loading
+    if skipped_modules:
+        logger.warning(
+            f"Skipped {len(skipped_modules)}/{len(selected_modules)} modules "
+            f"(not found): {skipped_modules}"
+        )
+    logger.info(
+        f"Loaded {len(loaded_modules)}/{len(selected_modules)} modules: "
+        f"{loaded_modules}"
+    )
 
     # Load session-specific PDF index if provided
     if session_index_path and os.path.exists(session_index_path):

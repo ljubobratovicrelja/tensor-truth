@@ -4,6 +4,8 @@ This service wraps the existing rag_engine module with lifecycle management
 and a cleaner interface for the UI layer.
 """
 
+import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
@@ -26,6 +28,8 @@ from tensortruth.rag_engine import (
 from .chat_history import ChatHistoryService
 from .models import RAGChunk, RAGResponse
 from .retrieval_metrics import compute_retrieval_metrics
+
+logger = logging.getLogger(__name__)
 
 
 class RAGService:
@@ -85,15 +89,17 @@ class RAGService:
 
         Args:
             modules: List of module names.
-            params: Engine parameters.
+            params: Engine parameters (may contain nested dicts/lists).
             session_index_path: Optional session index path.
 
         Returns:
             Hashable tuple for comparison.
         """
         modules_tuple = tuple(sorted(modules)) if modules else None
-        param_items = sorted([(k, v) for k, v in params.items()])
-        param_hash = frozenset(param_items)
+        # Use JSON for consistent hashing of nested structures
+        # sort_keys ensures {"a":1,"b":2} == {"b":2,"a":1}
+        # default=str handles non-serializable objects gracefully
+        param_hash = json.dumps(params, sort_keys=True, default=str)
         has_session_index = bool(session_index_path)
 
         if modules_tuple or has_session_index:
@@ -119,6 +125,8 @@ class RAGService:
         # Clear existing engine first to free GPU memory
         self.clear()
 
+        logger.info(f"Loading RAG engine for modules: {modules}")
+
         self._engine = load_engine_for_modules(
             selected_modules=modules,
             engine_params=params,
@@ -130,6 +138,8 @@ class RAGService:
         self._current_config_hash = self._compute_config_hash(
             modules, params, session_index_path
         )
+
+        logger.info(f"RAG engine loaded successfully for {len(modules)} modules")
 
     def needs_reload(
         self,
