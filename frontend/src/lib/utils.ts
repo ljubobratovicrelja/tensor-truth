@@ -27,11 +27,12 @@ export function convertLatexDelimiters(text: string | null | undefined): string 
   }
 
   // Convert display math \[...\] to $$...$$
-  // Use 's' flag for dotall mode to match across newlines
-  let converted = text.replace(/\\\[\s*(.*?)\s*\\\]/gs, (_match, p1) => `$$${p1}$$`);
+  // Preserve all whitespace/newlines for proper remark-math parsing of environments like \begin{aligned}
+  let converted = text.replace(/\\\[([\s\S]*?)\\\]/g, (_match, p1) => `$$${p1}$$`);
 
   // Convert inline math \(...\) to $...$
-  converted = converted.replace(/\\\(\s*(.*?)\s*\\\)/gs, (_match, p1) => `$${p1}$`);
+  // Preserve whitespace to maintain original formatting
+  converted = converted.replace(/\\\(([\s\S]*?)\\\)/g, (_match, p1) => `$${p1}$`);
 
   // Sanitize $$$ (triple dollar signs) which confuse remark-math parser
   // This typically happens when display math ($$) is immediately followed by inline math ($)
@@ -42,7 +43,8 @@ export function convertLatexDelimiters(text: string | null | undefined): string 
     // etc.
     const pairs = Math.floor(match.length / 2);
     const remainder = match.length % 2;
-    return "$$".repeat(pairs) + (remainder ? " $" : "");
+    const pairsStr = Array(pairs).fill("$$").join(" ");
+    return pairsStr + (remainder ? " $" : "");
   });
 
   return converted;
