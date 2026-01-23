@@ -20,6 +20,7 @@ from tensortruth.api.routes import (
     sessions,
     startup,
     system,
+    tools,
 )
 from tensortruth.api.schemas import HealthResponse
 
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         get_config_service,
         get_session_service,
         get_startup_service,
+        get_tool_service,
     )
 
     logger.info("Initializing TensorTruth API...")
@@ -43,6 +45,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Check resources and log status (non-blocking)
     # Note: This performs initialization checks and logs the results
     startup_service.check_startup_status(log=True)
+
+    # Load tools from MCP servers
+    try:
+        tool_service = get_tool_service()
+        await tool_service.load_tools()
+        logger.info(f"✓ Loaded {len(tool_service.tools)} tools from MCP servers")
+    except Exception as e:
+        logger.warning(f"Failed to load MCP tools: {e}")
 
     logger.info("✓ TensorTruth API startup complete")
 
@@ -85,6 +95,7 @@ def create_app() -> FastAPI:
     app.include_router(modules.router, prefix="/api", tags=["modules"])
     app.include_router(pdfs.router, prefix="/api", tags=["pdfs"])
     app.include_router(system.router, prefix="/api/system", tags=["system"])
+    app.include_router(tools.router, prefix="/api", tags=["tools"])
 
     # WebSocket router at /ws (not under /api)
     app.include_router(chat.ws_router, tags=["websocket"])

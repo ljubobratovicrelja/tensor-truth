@@ -14,12 +14,14 @@ from tensortruth.app_utils.paths import (
     get_sessions_file,
 )
 from tensortruth.services import (
+    AgentService,
     ChatHistoryService,
     ConfigService,
     IntentService,
     PDFService,
     RAGService,
     SessionService,
+    ToolService,
 )
 from tensortruth.services.startup_service import StartupService
 
@@ -88,6 +90,34 @@ def get_pdf_service(session_id: str) -> PDFService:
     )
 
 
+# ToolService singleton - loaded at startup
+_tool_service: ToolService | None = None
+
+
+def get_tool_service() -> ToolService:
+    """Get the singleton ToolService instance.
+
+    Note: Tools are loaded asynchronously at startup in the lifespan handler.
+    """
+    global _tool_service
+    if _tool_service is None:
+        _tool_service = ToolService()
+    return _tool_service
+
+
+# AgentService singleton
+_agent_service: AgentService | None = None
+
+
+def get_agent_service() -> AgentService:
+    """Get the singleton AgentService instance."""
+    global _agent_service
+    if _agent_service is None:
+        config = get_config_service().load().to_dict()
+        _agent_service = AgentService(get_tool_service(), config)
+    return _agent_service
+
+
 # Type aliases for FastAPI dependency injection
 SessionServiceDep = Annotated[SessionService, Depends(get_session_service)]
 ConfigServiceDep = Annotated[ConfigService, Depends(get_config_service)]
@@ -95,3 +125,5 @@ StartupServiceDep = Annotated[StartupService, Depends(get_startup_service)]
 RAGServiceDep = Annotated[RAGService, Depends(get_rag_service)]
 IntentServiceDep = Annotated[IntentService, Depends(get_intent_service)]
 ChatHistoryServiceDep = Annotated[ChatHistoryService, Depends(get_chat_history_service)]
+ToolServiceDep = Annotated[ToolService, Depends(get_tool_service)]
+AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]

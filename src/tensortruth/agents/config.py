@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import List, Literal, Optional
 
 
 class MCPServerType(str, Enum):
@@ -61,3 +61,29 @@ class AgentResult:
     tools_called: list[str] = field(default_factory=list)
     urls_browsed: list[str] = field(default_factory=list)
     error: Optional[str] = None
+
+
+@dataclass
+class AgentConfig:
+    """Configuration for creating a LlamaIndex agent.
+
+    Defines the tools, prompts, and behavior of an agent. Used by AgentService
+    to create FunctionAgent or ReActAgent instances.
+
+    Attributes:
+        name: Unique identifier for this agent (used in /agent_name commands)
+        description: Human-readable description shown in agent listings
+        tools: List of tool names required by this agent
+        system_prompt: System prompt that defines the agent's behavior
+        agent_type: Type of LlamaIndex agent to create ("function" or "react")
+        model: Optional model override (uses session model if not specified)
+        max_iterations: Maximum reasoning iterations before stopping
+    """
+
+    name: str
+    description: str
+    tools: List[str]
+    system_prompt: str
+    agent_type: Literal["function", "react"] = "function"
+    model: Optional[str] = None
+    max_iterations: int = 10

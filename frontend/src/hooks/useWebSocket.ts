@@ -26,6 +26,8 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
     setError,
     reset,
     isStreaming,
+    setToolProgress,
+    setAgentProgress,
   } = useChatStore();
 
   // Cleanup on unmount or session change
@@ -137,6 +139,14 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               manualCloseRef.current = true; // Suppress error on clean close
               ws.close();
               break;
+
+            case "tool_progress":
+              setToolProgress(data);
+              break;
+
+            case "agent_progress":
+              setAgentProgress(data);
+              break;
           }
         } catch (error) {
           console.error("Failed to parse WebSocket message:", error);
@@ -168,6 +178,8 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       finishStreaming,
       setError,
       onError,
+      setToolProgress,
+      setAgentProgress,
     ]
   );
 

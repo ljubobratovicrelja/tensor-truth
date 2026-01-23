@@ -81,3 +81,20 @@ class StreamStatus(BaseModel):
 
     type: Literal["status"] = "status"
     status: Literal["retrieving", "thinking", "generating"]
+
+
+class StreamToolProgress(BaseModel):
+    """WebSocket message for tool execution progress."""
+
+    type: Literal["tool_progress"] = "tool_progress"
+    tool: str
+    action: Literal["calling", "completed", "failed"]
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
+class StreamAgentProgress(BaseModel):
+    """WebSocket message for agent execution progress."""
+
+    type: Literal["agent_progress"] = "agent_progress"
+    agent: str
+    status: str  # e.g., "starting", "searching", "synthesizing", "complete"

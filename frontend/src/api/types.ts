@@ -128,6 +128,19 @@ export interface StreamStatus {
   status: "loading_models" | "retrieving" | "reranking" | "thinking" | "generating";
 }
 
+export interface StreamToolProgress {
+  type: "tool_progress";
+  tool: string;
+  action: "calling" | "completed" | "failed";
+  params: Record<string, unknown>;
+}
+
+export interface StreamAgentProgress {
+  type: "agent_progress";
+  agent: string;
+  status: string; // e.g., "starting", "searching", "synthesizing", "complete"
+}
+
 export type StreamMessage =
   | StreamToken
   | StreamSources
@@ -135,7 +148,9 @@ export type StreamMessage =
   | StreamError
   | StreamTitle
   | StreamThinking
-  | StreamStatus;
+  | StreamStatus
+  | StreamToolProgress
+  | StreamAgentProgress;
 
 // Intent types
 export interface IntentRequest {
