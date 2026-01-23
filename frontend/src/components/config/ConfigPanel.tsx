@@ -123,6 +123,12 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     config.history_cleaning.collapse_newlines
   );
 
+  // History Size
+  const [maxHistoryMessages, setMaxHistoryMessages] = useState(
+    config.rag.max_history_messages
+  );
+  const [memoryTokenLimit, setMemoryTokenLimit] = useState(config.rag.memory_token_limit);
+
   // Fetch available devices from backend
   useEffect(() => {
     import("@/api/config").then(({ getAvailableDevices }) => {
@@ -191,6 +197,8 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
       history_cleaning_remove_filler_phrases: removeFillerPhrases,
       history_cleaning_normalize_whitespace: normalizeWhitespace,
       history_cleaning_collapse_newlines: collapseNewlines,
+      rag_max_history_messages: maxHistoryMessages,
+      rag_memory_token_limit: memoryTokenLimit,
     });
   };
 
@@ -487,9 +495,52 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
       <Separator />
 
-      {/* History Cleaning Section */}
+      {/* Chat History Section */}
       <div className="space-y-4">
-        <h3 className="text-sm font-medium">History Cleaning</h3>
+        <h3 className="text-sm font-medium">Chat History</h3>
+        <p className="text-muted-foreground text-xs">
+          Control how much conversation history is included in prompts.
+        </p>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>
+                Max History Messages
+                <HelpTooltip text="Number of recent message pairs (user + assistant) to include in the prompt. This is the primary limit that controls context size. Lower values = faster responses and lower cost." />
+              </Label>
+              <span className="text-muted-foreground text-sm">{maxHistoryMessages}</span>
+            </div>
+            <Slider
+              value={[maxHistoryMessages]}
+              onValueChange={([v]) => setMaxHistoryMessages(v)}
+              min={0}
+              max={10}
+              step={1}
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>
+                Memory Token Limit
+                <HelpTooltip text="Maximum tokens stored in chat memory buffer. Acts as a safety backstop - if total history exceeds this, oldest messages are dropped. Usually the message count limit above is what matters." />
+              </Label>
+              <span className="text-muted-foreground text-sm">
+                {memoryTokenLimit.toLocaleString()}
+              </span>
+            </div>
+            <Slider
+              value={[Math.min(memoryTokenLimit, contextWindow)]}
+              onValueChange={([v]) => setMemoryTokenLimit(v)}
+              min={1000}
+              max={contextWindow}
+              step={1000}
+            />
+          </div>
+        </div>
+
+        <Separator className="my-4" />
+
+        <h4 className="text-sm font-medium">History Cleaning</h4>
         <p className="text-muted-foreground text-xs">
           Reduce token usage by cleaning chat history before sending to the LLM.
         </p>

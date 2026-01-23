@@ -169,6 +169,8 @@ export interface RAGConfig {
   default_balance_strategy: string;
   default_embedding_model: string;
   default_reranker: string;
+  max_history_messages: number;
+  memory_token_limit: number;
 }
 
 export interface ModelsConfig {

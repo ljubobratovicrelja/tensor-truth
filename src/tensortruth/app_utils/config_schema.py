@@ -118,6 +118,13 @@ class RAGConfig:
     default_embedding_model: str = "BAAI/bge-m3"  # HuggingFace embedding model
     default_reranker: str = "BAAI/bge-reranker-v2-m3"  # Default reranker model
 
+    # Number of recent messages to include in prompt (limits context size)
+    max_history_messages: int = 3
+
+    # Token limit for chat memory buffer (safety backstop)
+    # With 8k context, 5 retrievals (~1.5k), system prompt (~1k), this leaves ~5k for history
+    memory_token_limit: int = 4000
+
     # Per-model configurations (model_name -> config dict)
     # On first run, this is populated from DEFAULT_EMBEDDING_MODEL_CONFIGS
     embedding_model_configs: Dict[str, Dict] = field(default_factory=dict)

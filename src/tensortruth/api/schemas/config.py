@@ -30,6 +30,8 @@ class RAGConfigSchema(BaseModel):
     default_balance_strategy: str = "top_k_per_index"
     default_embedding_model: str = "BAAI/bge-m3"
     default_reranker: str = "BAAI/bge-reranker-v2-m3"
+    max_history_messages: int = 3
+    memory_token_limit: int = 4000
 
 
 class ModelsConfigSchema(BaseModel):

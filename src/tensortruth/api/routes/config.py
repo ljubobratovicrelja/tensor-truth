@@ -36,6 +36,8 @@ def _config_to_response(config) -> ConfigResponse:
             default_device=config.rag.default_device,
             default_embedding_model=config.rag.default_embedding_model,
             default_reranker=config.rag.default_reranker,
+            max_history_messages=config.rag.max_history_messages,
+            memory_token_limit=config.rag.memory_token_limit,
         ),
         models=ModelsConfigSchema(
             default_rag_model=config.models.default_rag_model,

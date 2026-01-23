@@ -661,7 +661,16 @@ def load_engine_for_modules(
         active_retrievers, balance_strategy=balance_strategy
     )
 
-    memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
+    # Use config value for token limit - actual limiting done by message count at prompt assembly
+    memory_token_limit = engine_params.get("memory_token_limit")
+    if memory_token_limit is None:
+        try:
+            if config is None:
+                config = load_config()
+            memory_token_limit = config.rag.memory_token_limit
+        except (ImportError, Exception):
+            memory_token_limit = 4000
+    memory = ChatMemoryBuffer.from_defaults(token_limit=memory_token_limit)
 
     # Restore chat history from previous engine if provided
     if preserved_chat_history:

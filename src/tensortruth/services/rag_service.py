@@ -182,6 +182,17 @@ class RAGService:
         # Get chat history for context condensation
         chat_history = list(memory.get()) if memory else []
 
+        # Apply message limit (keep only last N messages)
+        # Session params override global config
+        # 0 = no history (RAG-only mode), N = last N messages
+        max_messages = (self._current_params or {}).get(
+            "max_history_messages", self.config.rag.max_history_messages
+        )
+        if max_messages == 0:
+            chat_history = []
+        elif max_messages and len(chat_history) > max_messages:
+            chat_history = chat_history[-max_messages:]
+
         # Apply history cleaning if enabled
         if self.config.history_cleaning.enabled:
             cleaner_config = HistoryCleanerConfig(
@@ -410,6 +421,17 @@ class RAGService:
 
         # Add chat history if provided
         if chat_history:
+            # Apply message limit (keep only last N messages)
+            # Session params override global config
+            # 0 = no history, N = last N messages
+            max_messages = params.get(
+                "max_history_messages", self.config.rag.max_history_messages
+            )
+            if max_messages == 0:
+                chat_history = []
+            elif max_messages and len(chat_history) > max_messages:
+                chat_history = chat_history[-max_messages:]
+
             # Apply history cleaning if enabled
             if self.config.history_cleaning.enabled:
                 cleaner_config = HistoryCleanerConfig(
