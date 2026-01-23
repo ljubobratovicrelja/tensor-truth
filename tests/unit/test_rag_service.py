@@ -11,6 +11,8 @@ def _create_mock_config():
     config = Mock()
     # Configure history_cleaning to be disabled so tests work without actual cleaning
     config.history_cleaning.enabled = False
+    # Add max_history_messages for ChatHistoryService
+    config.rag.max_history_messages = 3
     return config
 
 
@@ -49,16 +51,11 @@ def test_postprocessor_application():
     mock_chunk.additional_kwargs = {}
     engine._llm.stream_chat.return_value = [mock_chunk]
 
-    # Mock memory
-    engine.memory = Mock()
-    engine.memory.get.return_value = []
-    engine.memory.put = Mock()
-
     # Create service and set engine
     service = RAGService(_create_mock_config())
     service._engine = engine
 
-    # Execute query
+    # Execute query (no session_messages, no history)
     results = list(service.query("test query"))
 
     # Verify postprocessor was called
@@ -106,11 +103,6 @@ def test_postprocessor_failure_handling():
     mock_chunk.delta = "test"
     mock_chunk.additional_kwargs = {}
     engine._llm.stream_chat.return_value = [mock_chunk]
-
-    # Mock memory
-    engine.memory = Mock()
-    engine.memory.get.return_value = []
-    engine.memory.put = Mock()
 
     # Create service and set engine
     service = RAGService(_create_mock_config())
@@ -170,11 +162,6 @@ def test_postprocessor_multiple_stages():
     mock_chunk.additional_kwargs = {}
     engine._llm.stream_chat.return_value = [mock_chunk]
 
-    # Mock memory
-    engine.memory = Mock()
-    engine.memory.get.return_value = []
-    engine.memory.put = Mock()
-
     # Create service and set engine
     service = RAGService(_create_mock_config())
     service._engine = engine
@@ -206,7 +193,7 @@ def test_postprocessor_multiple_stages():
 # =============================================================================
 
 
-def _create_mock_engine_with_nodes(nodes, memory_history=None):
+def _create_mock_engine_with_nodes(nodes):
     """Helper to create a mock engine with specified nodes."""
     engine = Mock()
     engine._retriever.retrieve.return_value = nodes
@@ -221,11 +208,6 @@ def _create_mock_engine_with_nodes(nodes, memory_history=None):
     mock_chunk.delta = "Test response"
     mock_chunk.additional_kwargs = {}
     engine._llm.stream_chat.return_value = [mock_chunk]
-
-    # Mock memory
-    engine.memory = Mock()
-    engine.memory.get.return_value = memory_history or []
-    engine.memory.put = Mock()
 
     return engine
 
@@ -243,7 +225,7 @@ def test_prompt_selection_no_sources():
     service._engine = engine
     service._current_params = {"confidence_cutoff": 0.5}
 
-    # Execute query
+    # Execute query (no session_messages, no history)
     list(service.query("How do I make a carrot cake?"))
 
     # Verify LLM was called
@@ -424,9 +406,7 @@ def test_prompt_selection_filters_all_nodes():
 
 @pytest.mark.unit
 def test_prompt_includes_chat_history():
-    """Test that chat history is included in the prompt."""
-    from llama_index.core.base.llms.types import ChatMessage, MessageRole
-
+    """Test that chat history is included in the prompt when passed as session_messages."""
     from tensortruth.services.rag_service import RAGService
 
     # Create good nodes
@@ -434,24 +414,21 @@ def test_prompt_includes_chat_history():
         NodeWithScore(node=TextNode(text="Content about CNNs"), score=0.8),
     ]
 
-    # Create chat history
-    chat_history = [
-        ChatMessage(role=MessageRole.USER, content="What is a CNN?"),
-        ChatMessage(
-            role=MessageRole.ASSISTANT,
-            content="A CNN is a convolutional neural network.",
-        ),
-    ]
-
-    engine = _create_mock_engine_with_nodes(nodes, memory_history=chat_history)
+    engine = _create_mock_engine_with_nodes(nodes)
 
     # Create service
     service = RAGService(_create_mock_config())
     service._engine = engine
     service._current_params = {"confidence_cutoff": 0.5}
 
-    # Execute query
-    list(service.query("Tell me more about them"))
+    # Create session messages (the new API uses dicts, not ChatMessage)
+    session_messages = [
+        {"role": "user", "content": "What is a CNN?"},
+        {"role": "assistant", "content": "A CNN is a convolutional neural network."},
+    ]
+
+    # Execute query with session_messages
+    list(service.query("Tell me more about them", session_messages=session_messages))
 
     # Verify LLM was called
     assert engine._llm.stream_chat.called
@@ -464,3 +441,49 @@ def test_prompt_includes_chat_history():
     # Verify chat history is in the prompt
     assert "What is a CNN?" in prompt_content
     assert "convolutional neural network" in prompt_content
+
+
+@pytest.mark.unit
+def test_query_with_empty_session_messages():
+    """Test that query works with empty session_messages."""
+    from tensortruth.services.rag_service import RAGService
+
+    nodes = [
+        NodeWithScore(node=TextNode(text="Content"), score=0.8),
+    ]
+
+    engine = _create_mock_engine_with_nodes(nodes)
+
+    service = RAGService(_create_mock_config())
+    service._engine = engine
+    service._current_params = {}
+
+    # Execute query with empty session_messages
+    results = list(service.query("Test query", session_messages=[]))
+
+    # Should complete without error
+    final_chunks = [c for c in results if hasattr(c, "is_complete") and c.is_complete]
+    assert len(final_chunks) == 1
+
+
+@pytest.mark.unit
+def test_query_with_none_session_messages():
+    """Test that query works with None session_messages."""
+    from tensortruth.services.rag_service import RAGService
+
+    nodes = [
+        NodeWithScore(node=TextNode(text="Content"), score=0.8),
+    ]
+
+    engine = _create_mock_engine_with_nodes(nodes)
+
+    service = RAGService(_create_mock_config())
+    service._engine = engine
+    service._current_params = {}
+
+    # Execute query with None session_messages (default)
+    results = list(service.query("Test query"))
+
+    # Should complete without error
+    final_chunks = [c for c in results if hasattr(c, "is_complete") and c.is_complete]
+    assert len(final_chunks) == 1

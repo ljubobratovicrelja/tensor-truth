@@ -2,7 +2,11 @@
 
 from fastapi import APIRouter, HTTPException
 
-from tensortruth.api.deps import ConfigServiceDep, SessionServiceDep
+from tensortruth.api.deps import (
+    ChatHistoryServiceDep,
+    ConfigServiceDep,
+    SessionServiceDep,
+)
 from tensortruth.api.schemas import (
     MessageCreate,
     MessageResponse,
@@ -149,12 +153,14 @@ async def get_session_stats(
     session_id: str,
     session_service: SessionServiceDep,
     config_service: ConfigServiceDep,
+    chat_history_service: ChatHistoryServiceDep,
 ) -> SessionStatsResponse:
     """Get chat statistics for a specific session.
 
     Returns:
-    - history_messages: Number of messages in the session
+    - history_messages: Total number of messages stored in the session
     - history_chars: Total characters across all messages (after cleaning if enabled)
+    - compiled_history_*: Stats for the history actually sent to LLM per config
     - model_name: Name of the LLM model configured for the session
     - context_length: Session's configured context window size
     """
@@ -166,10 +172,10 @@ async def get_session_stats(
     messages = session.get("messages", [])
     params = session.get("params", {})
     model_name = params.get("model")
-
-    # Calculate history stats (apply cleaning if enabled)
-    history_messages = len(messages)
     config = config_service.load()
+
+    # Calculate total history stats (apply cleaning if enabled)
+    history_messages = len(messages)
 
     if config.history_cleaning.enabled:
         cleaner_config = HistoryCleanerConfig(
@@ -189,6 +195,24 @@ async def get_session_stats(
 
     history_tokens_estimate = history_chars // 4  # Rough approximation
 
+    # Calculate compiled history stats (what's actually sent to LLM)
+    # Session params can override max_history_messages
+    max_messages = params.get("max_history_messages")
+    compiled_history = chat_history_service.build_history(
+        messages,
+        max_messages=max_messages,
+        apply_cleaning=config.history_cleaning.enabled,
+    )
+
+    compiled_history_messages = len(compiled_history.messages)
+    compiled_history_chars = sum(len(m.content) for m in compiled_history.messages)
+    compiled_history_tokens_estimate = compiled_history_chars // 4
+
+    # Get the effective max_history_messages limit
+    effective_max = (
+        max_messages if max_messages is not None else config.rag.max_history_messages
+    )
+
     # Get configured context window from session params
     context_length = params.get("context_window", 0)
 
@@ -196,6 +220,10 @@ async def get_session_stats(
         history_messages=history_messages,
         history_chars=history_chars,
         history_tokens_estimate=history_tokens_estimate,
+        compiled_history_messages=compiled_history_messages,
+        compiled_history_chars=compiled_history_chars,
+        compiled_history_tokens_estimate=compiled_history_tokens_estimate,
+        max_history_messages=effective_max,
         model_name=model_name,
         context_length=context_length,
     )

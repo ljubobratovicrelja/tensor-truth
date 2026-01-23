@@ -69,8 +69,16 @@ class MessagesResponse(BaseModel):
 class SessionStatsResponse(BaseModel):
     """Response schema for session statistics."""
 
+    # Total session history (all messages stored)
     history_messages: int
     history_chars: int
     history_tokens_estimate: int = 0
+
+    # Compiled history (what's actually sent to LLM per config)
+    compiled_history_messages: int = 0
+    compiled_history_chars: int = 0
+    compiled_history_tokens_estimate: int = 0
+    max_history_messages: int = 0  # Config limit
+
     model_name: Optional[str] = None
     context_length: int = 0

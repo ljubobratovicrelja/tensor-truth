@@ -1,5 +1,10 @@
-"""Chat history and message conversion utilities."""
+"""Chat history and message conversion utilities.
 
+DEPRECATED: These functions are deprecated in favor of ChatHistoryService.
+Use tensortruth.services.ChatHistoryService.build_history() instead.
+"""
+
+import warnings
 from typing import List, Optional
 
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
@@ -10,6 +15,8 @@ def build_chat_history(
 ) -> List[ChatMessage]:
     """Convert session messages to LlamaIndex ChatMessage format.
 
+    DEPRECATED: Use ChatHistoryService.build_history() instead.
+
     Args:
         session_messages: List of message dicts from session history
         max_messages: Optional limit on number of messages to include
@@ -17,6 +24,12 @@ def build_chat_history(
     Returns:
         List of ChatMessage objects (user and assistant only, no commands)
     """
+    warnings.warn(
+        "build_chat_history is deprecated. Use ChatHistoryService.build_history() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     chat_messages = []
 
     for msg in session_messages:
@@ -42,6 +55,9 @@ def preserve_chat_history(
 ) -> Optional[List[ChatMessage]]:
     """Extract and preserve recent chat history for engine loading.
 
+    DEPRECATED: Chat history is now passed directly to query methods.
+    Use ChatHistoryService.build_history() instead.
+
     This preserves only the last N messages (default 4 = 2 conversation turns)
     to maintain immediate context without causing hallucinations.
 
@@ -52,11 +68,21 @@ def preserve_chat_history(
     Returns:
         List of ChatMessage objects or None if no valid messages
     """
+    warnings.warn(
+        "preserve_chat_history is deprecated. Chat history is now passed directly "
+        "to query methods. Use ChatHistoryService.build_history() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     if not session_messages:
         return None
 
     try:
-        chat_messages = build_chat_history(session_messages)
+        # Use the deprecated function internally for backward compatibility
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            chat_messages = build_chat_history(session_messages)
 
         if not chat_messages:
             return None

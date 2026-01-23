@@ -89,6 +89,9 @@ async def chat(
     # Determine if we're in LLM-only mode (no modules or PDFs)
     llm_only_mode = not modules and not session_index_path
 
+    # Get session messages for history BEFORE adding the new user message
+    session_messages = session.get("messages", [])
+
     # Add user message to session
     data = session_service.add_message(
         session_id, {"role": "user", "content": body.prompt}, data
@@ -102,7 +105,9 @@ async def chat(
 
     if llm_only_mode:
         # LLM-only mode: direct LLM query without RAG
-        for chunk in rag_service.query_llm_only(body.prompt, params):
+        for chunk in rag_service.query_llm_only(
+            body.prompt, params, session_messages=session_messages
+        ):
             if chunk.is_complete:
                 sources = []
                 metrics_dict = chunk.metrics
@@ -111,15 +116,13 @@ async def chat(
     else:
         # RAG mode: load engine if needed and query with retrieval
         if rag_service.needs_reload(modules, params, session_index_path):
-            chat_history = rag_service.get_chat_history()
             rag_service.load_engine(
                 modules=modules,
                 params=params,
                 session_index_path=session_index_path,
-                chat_history=chat_history,
             )
 
-        for chunk in rag_service.query(body.prompt):
+        for chunk in rag_service.query(body.prompt, session_messages=session_messages):
             if chunk.is_complete:
                 sources = _extract_sources(chunk.source_nodes)
                 metrics_dict = chunk.metrics
@@ -282,6 +285,9 @@ async def websocket_chat(
             # Determine if we're in LLM-only mode (no modules or PDFs)
             llm_only_mode = not modules and not session_index_path
 
+            # Get session messages for history BEFORE adding the new user message
+            session_messages = session.get("messages", [])
+
             # Load RAG engine if needed (send status to keep connection alive)
             if not llm_only_mode and rag_service.needs_reload(
                 modules, params, session_index_path
@@ -296,14 +302,12 @@ async def websocket_chat(
 
                 # Run blocking load_engine in thread pool to keep event loop responsive
                 loop = asyncio.get_event_loop()
-                chat_history = rag_service.get_chat_history()
                 await loop.run_in_executor(
                     None,
                     rag_service.load_engine,
                     modules,
                     params,
                     session_index_path,
-                    chat_history,
                 )
 
             # Add user message
@@ -323,10 +327,15 @@ async def websocket_chat(
             metrics_dict = None
 
             # Choose query method based on mode
+            # Pass session_messages for history context
             if llm_only_mode:
-                query_generator = rag_service.query_llm_only(prompt, params)
+                query_generator = rag_service.query_llm_only(
+                    prompt, params, session_messages=session_messages
+                )
             else:
-                query_generator = rag_service.query(prompt)
+                query_generator = rag_service.query(
+                    prompt, session_messages=session_messages
+                )
 
             # Iterate generator in thread pool to prevent blocking event loop
             loop = asyncio.get_event_loop()
@@ -390,7 +399,7 @@ async def websocket_chat(
             )
 
             # Save assistant response (include thinking for UI display, but it won't
-            # be included in LLM chat history - that's handled by RAG service memory)
+            # be included in LLM chat history - that's handled by ChatHistoryService)
             assistant_message: dict = {"role": "assistant", "content": full_response}
             if full_thinking:
                 assistant_message["thinking"] = full_thinking

@@ -4,6 +4,7 @@ This module provides clean, Streamlit-agnostic services for session management,
 configuration, RAG queries, intent classification, and PDF handling.
 """
 
+from .chat_history import ChatHistory, ChatHistoryMessage, ChatHistoryService
 from .config_service import ConfigService
 from .intent_service import IntentService
 from .model_manager import ModelManager
@@ -21,4 +22,7 @@ __all__ = [
     "RAGService",
     "PDFService",
     "ModelManager",
+    "ChatHistory",
+    "ChatHistoryMessage",
+    "ChatHistoryService",
 ]

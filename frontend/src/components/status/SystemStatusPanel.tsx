@@ -198,21 +198,33 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
                       </p>
                     </div>
 
-                    {/* History Stats */}
+                    {/* History Stats - Compiled (what LLM sees) */}
                     <div className="rounded border p-2">
-                      <span className="text-muted-foreground text-xs font-medium">
-                        Chat History
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-xs font-medium">
+                          Context Sent to LLM
+                        </span>
+                        {sessionStats.max_history_messages > 0 && (
+                          <Badge variant="outline" className="text-xs">
+                            max {sessionStats.max_history_messages}
+                          </Badge>
+                        )}
+                      </div>
                       <div className="mt-1 flex items-baseline gap-3">
                         <span className="text-foreground text-sm font-medium">
-                          {sessionStats.history_messages} messages
+                          {formatNumber(sessionStats.compiled_history_chars)} chars
                         </span>
                         <span
                           className="text-muted-foreground cursor-help text-xs"
                           title="Estimated tokens (characters ÷ 4)"
                         >
-                          ~{formatNumber(sessionStats.history_tokens_estimate)} tokens
+                          ~{formatNumber(sessionStats.compiled_history_tokens_estimate)}{" "}
+                          tokens
                         </span>
+                      </div>
+                      <div className="text-muted-foreground mt-1 text-xs">
+                        {sessionStats.compiled_history_messages} of{" "}
+                        {sessionStats.history_messages} messages included
                       </div>
                     </div>
                   </div>

@@ -12,10 +12,6 @@ from llama_index.core.chat_engine import CondensePlusContextChatEngine
 from llama_index.llms.ollama import Ollama
 
 from tensortruth.app_utils.config_schema import TensorTruthConfig
-from tensortruth.app_utils.history_cleaner import (
-    HistoryCleanerConfig,
-    clean_chat_history,
-)
 from tensortruth.rag_engine import (
     CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE,
     CUSTOM_CONTEXT_PROMPT_NO_SOURCES,
@@ -27,6 +23,7 @@ from tensortruth.rag_engine import (
     load_engine_for_modules,
 )
 
+from .chat_history import ChatHistoryService
 from .models import RAGChunk, RAGResponse
 from .retrieval_metrics import compute_retrieval_metrics
 
@@ -36,18 +33,24 @@ class RAGService:
 
     Manages the chat engine instance, handling loading, reloading,
     and cleanup of GPU resources.
+
+    Chat history is now managed via ChatHistoryService and passed
+    explicitly to query methods from session storage.
     """
 
     def __init__(
         self,
         config: Optional[TensorTruthConfig] = None,
         indexes_dir: Optional[Union[str, Path]] = None,
+        chat_history_service: Optional[ChatHistoryService] = None,
     ):
         """Initialize RAG service.
 
         Args:
             config: TensorTruth configuration. If None, loads from default.
             indexes_dir: Base directory for vector indexes.
+            chat_history_service: Optional ChatHistoryService instance.
+                If None, one is created lazily when needed.
         """
         if config is None:
             from tensortruth.app_utils.config import load_config
@@ -63,6 +66,14 @@ class RAGService:
         self._current_config_hash: Optional[Tuple] = None
         self._current_modules: Optional[List[str]] = None
         self._current_params: Optional[Dict[str, Any]] = None
+        self._chat_history_service = chat_history_service
+
+    @property
+    def chat_history_service(self) -> ChatHistoryService:
+        """Get or create the ChatHistoryService instance (lazy initialization)."""
+        if self._chat_history_service is None:
+            self._chat_history_service = ChatHistoryService(self.config)
+        return self._chat_history_service
 
     def _compute_config_hash(
         self,
@@ -94,15 +105,16 @@ class RAGService:
         modules: List[str],
         params: Dict[str, Any],
         session_index_path: Optional[str] = None,
-        chat_history: Optional[List] = None,
     ) -> None:
         """Load or reload the RAG engine with specified configuration.
+
+        Note: Chat history is now passed to query() methods at query time,
+        not here. This simplifies engine lifecycle management.
 
         Args:
             modules: List of module names to load.
             params: Engine parameters (model, temperature, etc).
             session_index_path: Optional path to session-specific PDF index.
-            chat_history: Optional chat history to restore.
         """
         # Clear existing engine first to free GPU memory
         self.clear()
@@ -110,7 +122,6 @@ class RAGService:
         self._engine = load_engine_for_modules(
             selected_modules=modules,
             engine_params=params,
-            preserved_chat_history=chat_history,
             session_index_path=session_index_path,
         )
 
@@ -150,7 +161,11 @@ class RAGService:
         """
         return self._engine is not None
 
-    def query(self, prompt: str) -> Generator[RAGChunk, None, RAGResponse]:
+    def query(
+        self,
+        prompt: str,
+        session_messages: Optional[List[Dict[str, Any]]] = None,
+    ) -> Generator[RAGChunk, None, RAGResponse]:
         """Execute a streaming RAG query with thinking token support.
 
         Yields status updates during retrieval and thinking phases, then
@@ -158,6 +173,9 @@ class RAGService:
 
         Args:
             prompt: User's query prompt.
+            session_messages: Chat history from session storage.
+                Pass session["messages"] or session_service.get_messages().
+                If None, query runs without history context.
 
         Yields:
             RAGChunk with status, thinking, or text content.
@@ -174,46 +192,30 @@ class RAGService:
         # Phase 1: Retrieval
         yield RAGChunk(status="retrieving")
 
-        # Get retriever and condense question if needed
+        # Get retriever and condenser
         retriever = self._engine._retriever
         condenser = getattr(self._engine, "_condenser_prompt_template", None)
-        memory = getattr(self._engine, "memory", None)
 
-        # Get chat history for context condensation
-        chat_history = list(memory.get()) if memory else []
-
-        # Apply message limit (keep only last N messages)
-        # Session params override global config
-        # 0 = no history (RAG-only mode), N = last N messages
-        max_messages = (self._current_params or {}).get(
-            "max_history_messages", self.config.rag.max_history_messages
+        # Build chat history from session messages using ChatHistoryService
+        # Session params can override max_history_messages
+        max_messages = (self._current_params or {}).get("max_history_messages")
+        history = self.chat_history_service.build_history(
+            session_messages,
+            max_messages=max_messages,
+            apply_cleaning=self.config.history_cleaning.enabled,
         )
-        if max_messages == 0:
-            chat_history = []
-        elif max_messages and len(chat_history) > max_messages:
-            chat_history = chat_history[-max_messages:]
 
-        # Apply history cleaning if enabled
-        if self.config.history_cleaning.enabled:
-            cleaner_config = HistoryCleanerConfig(
-                enabled=True,
-                remove_emojis=self.config.history_cleaning.remove_emojis,
-                remove_filler_phrases=self.config.history_cleaning.remove_filler_phrases,
-                normalize_whitespace=self.config.history_cleaning.normalize_whitespace,
-                collapse_newlines=self.config.history_cleaning.collapse_newlines,
-                filler_phrases=self.config.history_cleaning.filler_phrases,
-            )
-            chat_history = clean_chat_history(chat_history, cleaner_config)
+        # Convert to LlamaIndex format for LLM
+        chat_history = history.to_llama_messages()
+        chat_history_str = history.to_prompt_string()
 
         # Condense the question with chat history if we have a condenser
         condensed_question = prompt
-        if condenser and chat_history:
+        if condenser and not history.is_empty:
             try:
                 # Build condensed question using LLM
                 condenser_prompt = condenser.format(
-                    chat_history="\n".join(
-                        [f"{m.role.value}: {m.content}" for m in chat_history]
-                    ),
+                    chat_history=chat_history_str,
                     question=prompt,
                 )
                 condensed_response = self._engine._llm.complete(condenser_prompt)
@@ -264,9 +266,6 @@ class RAGService:
         # Phase 3: Determine prompt template based on source quality
         confidence_threshold = (self._current_params or {}).get(
             "confidence_cutoff", 0.0
-        )
-        chat_history_str = "\n".join(
-            [f"{m.role.value}: {m.content}" for m in chat_history]
         )
 
         # Select appropriate prompt based on source availability and confidence
@@ -342,11 +341,6 @@ class RAGService:
                 full_response += chunk.delta
                 yield RAGChunk(text=chunk.delta)
 
-        # Update memory with the conversation
-        if memory:
-            memory.put(ChatMessage(role=MessageRole.USER, content=prompt))
-            memory.put(ChatMessage(role=MessageRole.ASSISTANT, content=full_response))
-
         # Yield final complete chunk with sources and metrics
         yield RAGChunk(
             source_nodes=source_nodes, is_complete=True, metrics=metrics_dict
@@ -367,7 +361,7 @@ class RAGService:
 
         Args:
             prompt: User's query prompt.
-            chat_history: Optional chat history context.
+            chat_history: Optional chat history context (LlamaIndex ChatMessage list).
 
         Yields:
             Response tokens.
@@ -394,7 +388,7 @@ class RAGService:
         self,
         prompt: str,
         params: Dict[str, Any],
-        chat_history: Optional[List] = None,
+        session_messages: Optional[List[Dict[str, Any]]] = None,
     ) -> Generator[RAGChunk, None, RAGResponse]:
         """Execute a streaming query using LLM only, without RAG retrieval.
 
@@ -404,7 +398,8 @@ class RAGService:
         Args:
             prompt: User's query prompt.
             params: Engine parameters (model, temperature, etc).
-            chat_history: Optional chat history for context.
+            session_messages: Chat history from session storage.
+                If None, query runs without history context.
 
         Yields:
             RAGChunk with status or text content.
@@ -423,36 +418,23 @@ class RAGService:
         else:
             yield RAGChunk(status="generating")
 
-        # Build messages with system prompt and history
+        # Build messages with system prompt
         messages = [
             ChatMessage(role=MessageRole.SYSTEM, content=LLM_ONLY_SYSTEM_PROMPT)
         ]
 
-        # Add chat history if provided
-        if chat_history:
-            # Apply message limit (keep only last N messages)
-            # Session params override global config
-            # 0 = no history, N = last N messages
-            max_messages = params.get(
-                "max_history_messages", self.config.rag.max_history_messages
-            )
-            if max_messages == 0:
-                chat_history = []
-            elif max_messages and len(chat_history) > max_messages:
-                chat_history = chat_history[-max_messages:]
+        # Build chat history from session messages using ChatHistoryService
+        # Session params can override max_history_messages
+        max_messages = params.get("max_history_messages")
+        history = self.chat_history_service.build_history(
+            session_messages,
+            max_messages=max_messages,
+            apply_cleaning=self.config.history_cleaning.enabled,
+        )
 
-            # Apply history cleaning if enabled
-            if self.config.history_cleaning.enabled:
-                cleaner_config = HistoryCleanerConfig(
-                    enabled=True,
-                    remove_emojis=self.config.history_cleaning.remove_emojis,
-                    remove_filler_phrases=self.config.history_cleaning.remove_filler_phrases,
-                    normalize_whitespace=self.config.history_cleaning.normalize_whitespace,
-                    collapse_newlines=self.config.history_cleaning.collapse_newlines,
-                    filler_phrases=self.config.history_cleaning.filler_phrases,
-                )
-                chat_history = clean_chat_history(chat_history, cleaner_config)
-            messages.extend(chat_history)
+        # Add history to messages
+        if not history.is_empty:
+            messages.extend(history.to_llama_messages())
 
         # Add user prompt
         messages.append(ChatMessage(role=MessageRole.USER, content=prompt))
@@ -508,20 +490,6 @@ class RAGService:
             Ollama LLM instance.
         """
         return get_llm(params)
-
-    def get_chat_history(self) -> List:
-        """Get the current chat history from the engine memory.
-
-        Returns:
-            List of chat messages or empty list if engine not loaded.
-        """
-        if self._engine is None:
-            return []
-
-        try:
-            return self._engine._memory.get_all()
-        except (AttributeError, TypeError):
-            return []
 
     def clear(self) -> None:
         """Clear the engine and free GPU memory.

@@ -14,6 +14,7 @@ from tensortruth.app_utils.paths import (
     get_sessions_file,
 )
 from tensortruth.services import (
+    ChatHistoryService,
     ConfigService,
     IntentService,
     PDFService,
@@ -43,6 +44,17 @@ def get_startup_service() -> StartupService:
 
 
 @lru_cache
+def get_chat_history_service() -> ChatHistoryService:
+    """Get the singleton ChatHistoryService instance.
+
+    ChatHistoryService handles chat history operations (building, cleaning, formatting).
+    """
+    config_service = get_config_service()
+    config = config_service.load()
+    return ChatHistoryService(config)
+
+
+@lru_cache
 def get_rag_service() -> RAGService:
     """Get the singleton RAGService instance.
 
@@ -51,7 +63,12 @@ def get_rag_service() -> RAGService:
     """
     config_service = get_config_service()
     config = config_service.load()
-    return RAGService(config=config, indexes_dir=get_indexes_dir())
+    chat_history_service = get_chat_history_service()
+    return RAGService(
+        config=config,
+        indexes_dir=get_indexes_dir(),
+        chat_history_service=chat_history_service,
+    )
 
 
 def get_intent_service() -> IntentService:
@@ -77,3 +94,4 @@ ConfigServiceDep = Annotated[ConfigService, Depends(get_config_service)]
 StartupServiceDep = Annotated[StartupService, Depends(get_startup_service)]
 RAGServiceDep = Annotated[RAGService, Depends(get_rag_service)]
 IntentServiceDep = Annotated[IntentService, Depends(get_intent_service)]
+ChatHistoryServiceDep = Annotated[ChatHistoryService, Depends(get_chat_history_service)]

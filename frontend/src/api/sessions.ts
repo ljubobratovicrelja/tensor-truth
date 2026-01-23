@@ -44,9 +44,17 @@ export async function addSessionMessage(
 }
 
 export interface SessionStatsResponse {
+  // Total session history (all messages stored)
   history_messages: number;
   history_chars: number;
   history_tokens_estimate: number;
+
+  // Compiled history (what's actually sent to LLM per config)
+  compiled_history_messages: number;
+  compiled_history_chars: number;
+  compiled_history_tokens_estimate: number;
+  max_history_messages: number;
+
   model_name: string | null;
   context_length: number;
 }

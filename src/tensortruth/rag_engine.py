@@ -524,15 +524,17 @@ class MultiIndexRetriever(BaseRetriever):
 def load_engine_for_modules(
     selected_modules: List[str],
     engine_params: Optional[Dict[str, Any]] = None,
-    preserved_chat_history: Optional[List] = None,
     session_index_path: Optional[str] = None,
 ) -> CondensePlusContextChatEngine:
     """Load RAG chat engine with selected module indexes.
 
+    Note: Chat history is now passed to query() methods at query time,
+    not restored here. The ChatMemoryBuffer is still created for LlamaIndex
+    internal state but not pre-populated.
+
     Args:
         selected_modules: List of module names to load
         engine_params: Engine configuration parameters
-        preserved_chat_history: Chat history to restore
         session_index_path: Optional session-specific index path
 
     Returns:
@@ -672,11 +674,8 @@ def load_engine_for_modules(
             memory_token_limit = 4000
     memory = ChatMemoryBuffer.from_defaults(token_limit=memory_token_limit)
 
-    # Restore chat history from previous engine if provided
-    if preserved_chat_history:
-        for msg in preserved_chat_history:
-            # Restore each message to the memory buffer
-            memory.put(msg)
+    # Note: Chat history is no longer pre-populated here.
+    # History is passed directly to query methods from session storage.
 
     llm = get_llm(engine_params)
 
