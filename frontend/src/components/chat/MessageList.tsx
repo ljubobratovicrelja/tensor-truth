@@ -12,6 +12,7 @@ import type { MessageResponse, RetrievalMetrics, SourceNode } from "@/api/types"
 import type { PipelineStatus } from "@/stores/chatStore";
 
 interface MessageListProps {
+  sessionId: string;
   messages: MessageResponse[];
   isLoading?: boolean;
   pendingUserMessage?: string | null;
@@ -24,6 +25,7 @@ interface MessageListProps {
 }
 
 export function MessageList({
+  sessionId,
   messages,
   isLoading,
   pendingUserMessage,
@@ -163,7 +165,7 @@ export function MessageList({
         ) : (
           <div className="space-y-2">
             {messages.map((message, index) => (
-              <MessageItem key={index} message={message} />
+              <MessageItem key={`${sessionId}-${index}`} message={message} />
             ))}
             {/* Show pending message only if not already in fetched messages (dedup) */}
             {pendingUserMessage &&

@@ -33,6 +33,10 @@ export function useSessionMessages(sessionId: string | null) {
     queryFn: () =>
       sessionId ? getSessionMessages(sessionId) : Promise.resolve({ messages: [] }),
     enabled: !!sessionId,
+    // Always refetch when session changes to avoid showing stale cached data
+    // from a previously visited session
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }
 

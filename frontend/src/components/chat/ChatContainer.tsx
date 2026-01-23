@@ -29,6 +29,7 @@ export function ChatContainer() {
     pipelineStatus,
     error,
     pendingUserMessage,
+    clearPendingUserMessage,
   } = useChatStore();
   const autoSendTriggered = useRef(false);
   const isMobile = useIsMobile();
@@ -48,16 +49,28 @@ export function ChatContainer() {
     setActiveSessionId(urlSessionId ?? null);
   }, [urlSessionId, setActiveSessionId]);
 
-  // Reset autoSend trigger when session changes
+  // Reset autoSend trigger and clear stale pending message when session changes
+  // This prevents showing a pending message from a different session
   useEffect(() => {
     autoSendTriggered.current = false;
-  }, [urlSessionId]);
+    // Only clear if not auto-sending (autoSend uses pendingUserMessage)
+    const shouldAutoSend = searchParams.get("autoSend") === "true";
+    if (!shouldAutoSend) {
+      clearPendingUserMessage();
+    }
+  }, [urlSessionId, searchParams, clearPendingUserMessage]);
 
   // Use urlSessionId directly for queries (source of truth is the URL)
   const { data: sessionData, error: sessionError } = useSession(urlSessionId ?? null);
-  const { data: messagesData, isLoading: messagesLoading } = useSessionMessages(
-    urlSessionId ?? null
-  );
+  const {
+    data: messagesData,
+    isLoading: messagesLoading,
+    isFetching: messagesFetching,
+  } = useSessionMessages(urlSessionId ?? null);
+
+  // Show loading state during initial load OR when switching sessions (refetching)
+  // This prevents showing stale cached messages from a different session
+  const showMessagesLoading = messagesLoading || (messagesFetching && !messagesData);
   const updateSession = useUpdateSession();
 
   // Redirect to home if session doesn't exist
@@ -157,8 +170,9 @@ export function ChatContainer() {
         <PdfDialog sessionId={urlSessionId} />
       </div>
       <MessageList
+        sessionId={urlSessionId}
         messages={messagesData?.messages ?? []}
-        isLoading={messagesLoading}
+        isLoading={showMessagesLoading}
         pendingUserMessage={pendingUserMessage}
         streamingContent={streamingContent || undefined}
         streamingThinking={streamingThinking || undefined}
