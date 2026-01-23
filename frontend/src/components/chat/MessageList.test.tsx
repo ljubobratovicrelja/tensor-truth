@@ -155,10 +155,7 @@ describe("MessageList", () => {
 
     it("does not show empty state when there are messages", () => {
       render(
-        <MessageList
-          {...defaultProps}
-          messages={[{ role: "user", content: "Hello" }]}
-        />
+        <MessageList {...defaultProps} messages={[{ role: "user", content: "Hello" }]} />
       );
 
       expect(
@@ -167,9 +164,7 @@ describe("MessageList", () => {
     });
 
     it("does not show empty state when pending message exists", () => {
-      render(
-        <MessageList {...defaultProps} pendingUserMessage="Pending message" />
-      );
+      render(<MessageList {...defaultProps} pendingUserMessage="Pending message" />);
 
       expect(
         screen.queryByText("Send a message to start the conversation")
