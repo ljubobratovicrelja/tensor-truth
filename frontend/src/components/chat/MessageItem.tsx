@@ -1,16 +1,10 @@
-import { useState, useRef } from "react";
-import ReactMarkdown from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
-import rehypeSlug from "rehype-slug";
-import rehypeAutolinkHeadings from "rehype-autolink-headings";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
+import { memo, useState, useRef } from "react";
 import { User, Bot, Copy, Check } from "lucide-react";
-import { cn, convertLatexDelimiters } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { SourcesList } from "./SourceCard";
 import { ThinkingBox } from "./ThinkingBox";
 import { StreamingText } from "./StreamingText";
+import { MemoizedMarkdown } from "./MemoizedMarkdown";
 import type { MessageResponse, RetrievalMetrics, SourceNode } from "@/api/types";
 
 interface MessageItemProps {
@@ -23,7 +17,7 @@ interface MessageItemProps {
   isStreaming?: boolean;
 }
 
-export function MessageItem({
+function MessageItemComponent({
   message,
   sources,
   metrics,
@@ -107,7 +101,11 @@ export function MessageItem({
       >
         {/* Show thinking box for assistant messages */}
         {!isUser && thinkingContent && (
-          <ThinkingBox content={thinkingContent} isCollapsed={!isStreaming} />
+          <ThinkingBox
+            content={thinkingContent}
+            isCollapsed={!isStreaming}
+            thinkingComplete={isStreaming && message.content.length > 0}
+          />
         )}
         <div
           className={cn(
@@ -147,29 +145,11 @@ export function MessageItem({
           {isStreaming ? (
             <StreamingText content={message.content} isStreaming />
           ) : (
-            <div
-              ref={contentRef}
-              className={cn("chat-markdown max-w-none", isUser && "chat-markdown-user")}
-            >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[
-                  [rehypeHighlight, { detect: true }],
-                  rehypeKatex,
-                  rehypeSlug,
-                  [
-                    rehypeAutolinkHeadings,
-                    {
-                      behavior: "wrap",
-                      properties: {
-                        className: ["header-anchor"],
-                      },
-                    },
-                  ],
-                ]}
-              >
-                {convertLatexDelimiters(message.content)}
-              </ReactMarkdown>
+            <div ref={contentRef}>
+              <MemoizedMarkdown
+                content={message.content}
+                className={cn(isUser && "chat-markdown-user")}
+              />
             </div>
           )}
           {!isUser && (messageSources?.length || messageMetrics) && (
@@ -180,3 +160,18 @@ export function MessageItem({
     </div>
   );
 }
+
+// Memoize to prevent re-renders of historical messages during streaming
+export const MessageItem = memo(MessageItemComponent, (prev, next) => {
+  // For streaming messages, always re-render (content is changing)
+  if (prev.isStreaming || next.isStreaming) return false;
+
+  // For historical messages, only re-render if props actually changed
+  return (
+    prev.message.content === next.message.content &&
+    prev.message.role === next.message.role &&
+    prev.thinking === next.thinking &&
+    prev.sources === next.sources &&
+    prev.metrics === next.metrics
+  );
+});
