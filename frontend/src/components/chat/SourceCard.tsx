@@ -485,7 +485,10 @@ export function SourceCard({ source, index }: SourceCardProps) {
           <div className="chat-markdown text-muted-foreground max-h-64 max-w-none overflow-y-auto text-xs leading-relaxed">
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeHighlight, [rehypeKatex, { throwOnError: false, strict: false }]]}
+              rehypePlugins={[
+                rehypeHighlight,
+                [rehypeKatex, { throwOnError: false, strict: false }],
+              ]}
             >
               {convertLatexDelimiters(source.text)}
             </ReactMarkdown>

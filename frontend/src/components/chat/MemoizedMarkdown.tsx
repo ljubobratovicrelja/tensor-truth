@@ -20,7 +20,10 @@ const rehypePlugins: PluggableList = [
   [rehypeHighlight, { detect: true }],
   [rehypeKatex, { throwOnError: false, strict: false }],
   rehypeSlug,
-  [rehypeAutolinkHeadings, { behavior: "wrap", properties: { className: ["header-anchor"] } }],
+  [
+    rehypeAutolinkHeadings,
+    { behavior: "wrap", properties: { className: ["header-anchor"] } },
+  ],
 ];
 
 function MarkdownRenderer({ content, className }: MemoizedMarkdownProps) {

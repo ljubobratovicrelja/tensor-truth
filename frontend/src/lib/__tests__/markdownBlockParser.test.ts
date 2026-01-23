@@ -10,10 +10,7 @@ import {
 /**
  * Helper to simulate streaming text character by character or in chunks.
  */
-function streamText(
-  text: string,
-  chunkSize: number | "char" = "char"
-): ParserState {
+function streamText(text: string, chunkSize: number | "char" = "char"): ParserState {
   let state = { ...initialParserState };
   const size = chunkSize === "char" ? 1 : chunkSize;
 
@@ -183,9 +180,7 @@ describe("markdownBlockParser", () => {
     });
 
     test("inline math \\(...\\) stays in paragraph", () => {
-      const state = streamAndFinalize(
-        "The formula \\(x^2\\) is quadratic.\n\n"
-      );
+      const state = streamAndFinalize("The formula \\(x^2\\) is quadratic.\n\n");
       expect(state.completedBlocks).toHaveLength(1);
       expect(state.completedBlocks[0].type).toBe("paragraph");
       expect(state.completedBlocks[0].content).toContain("\\(");
@@ -208,9 +203,7 @@ describe("markdownBlockParser", () => {
       // When streaming char-by-char, consecutive math blocks may have
       // small intermediate blocks. What matters is content integrity.
       expect(getAllContent(state)).toBe(text);
-      const mathBlocks = state.completedBlocks.filter(
-        (b) => b.type === "math_display"
-      );
+      const mathBlocks = state.completedBlocks.filter((b) => b.type === "math_display");
       expect(mathBlocks).toHaveLength(2);
     });
   });
@@ -313,8 +306,7 @@ describe("markdownBlockParser", () => {
     });
 
     test("various chunk sizes produce same content", () => {
-      const fullText =
-        "# Title\n\nParagraph with \\(math\\).\n\n\\[display\\]\n- List\n";
+      const fullText = "# Title\n\nParagraph with \\(math\\).\n\n\\[display\\]\n- List\n";
 
       for (const chunkSize of [1, 2, 3, 5, 7, 10, 20]) {
         const state = streamAndFinalize(fullText, chunkSize);

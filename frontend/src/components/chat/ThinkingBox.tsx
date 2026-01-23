@@ -60,7 +60,7 @@ function ThinkingBoxComponent({
         )}
       >
         {isThinkingStreaming ? (
-          <pre className="text-muted-foreground whitespace-pre-wrap font-mono">
+          <pre className="text-muted-foreground font-mono whitespace-pre-wrap">
             {content}
           </pre>
         ) : (

@@ -145,9 +145,7 @@ function TypewriterAnimatedBlock({
   batchInterval,
   onAnimationComplete,
 }: TypewriterAnimatedBlockProps) {
-  const [displayLength, setDisplayLength] = useState(
-    animate ? 0 : block.content.length
-  );
+  const [displayLength, setDisplayLength] = useState(animate ? 0 : block.content.length);
   const animationStarted = useRef(false);
   const animationCompleteNotified = useRef(false);
 
@@ -170,13 +168,18 @@ function TypewriterAnimatedBlock({
 
     // Animate in batches for performance
     const timer = setTimeout(() => {
-      setDisplayLength((prev) =>
-        Math.min(prev + charsPerBatch, block.content.length)
-      );
+      setDisplayLength((prev) => Math.min(prev + charsPerBatch, block.content.length));
     }, batchInterval);
 
     return () => clearTimeout(timer);
-  }, [displayLength, block.content.length, animate, charsPerBatch, batchInterval, onAnimationComplete]);
+  }, [
+    displayLength,
+    block.content.length,
+    animate,
+    charsPerBatch,
+    batchInterval,
+    onAnimationComplete,
+  ]);
 
   // Update display length if block content changes (e.g., trailing whitespace merged)
   useEffect(() => {

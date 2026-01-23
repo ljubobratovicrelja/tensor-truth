@@ -23,11 +23,7 @@ interface StreamingTextProps {
  * - Keeps block-by-block rendering permanently (isolates parsing errors)
  * - Works for both streaming and non-streaming (historical) content
  */
-export function StreamingText({
-  content,
-  isStreaming,
-  className,
-}: StreamingTextProps) {
+export function StreamingText({ content, isStreaming, className }: StreamingTextProps) {
   // Track if this message was ever streamed (vs loaded as history)
   // If it started as non-streaming with content, it's historical - no animations
   const [shouldAnimate] = useState(() => isStreaming === true || !content);

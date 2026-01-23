@@ -41,10 +41,7 @@ export const initialParserState: ParserState = {
 /**
  * Main parser function - processes new tokens and returns updated state.
  */
-export function parseMarkdownBlocks(
-  state: ParserState,
-  newToken: string
-): ParserState {
+export function parseMarkdownBlocks(state: ParserState, newToken: string): ParserState {
   let buffer = state.pendingBuffer + newToken;
   const completedBlocks = [...state.completedBlocks];
   let inCodeBlock = state.inCodeBlock;
@@ -161,10 +158,7 @@ export function parseMarkdownBlocks(
 /**
  * Helper to check if we're at the start of a line (for header/list detection).
  */
-function isAtLineStart(
-  _buffer: string,
-  completedBlocks: MarkdownBlock[]
-): boolean {
+function isAtLineStart(_buffer: string, completedBlocks: MarkdownBlock[]): boolean {
   if (completedBlocks.length === 0) {
     return true;
   }
@@ -387,9 +381,7 @@ function tryCompleteParagraph(buffer: string): {
  * Used for integrity checks - should equal original input.
  */
 export function getAllContent(state: ParserState): string {
-  return (
-    state.completedBlocks.map((b) => b.content).join("") + state.pendingBuffer
-  );
+  return state.completedBlocks.map((b) => b.content).join("") + state.pendingBuffer;
 }
 
 /**

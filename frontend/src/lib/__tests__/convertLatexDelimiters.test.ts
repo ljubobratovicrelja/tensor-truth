@@ -12,8 +12,7 @@ describe("convertLatexDelimiters", () => {
     });
 
     test("multiline aligned environment - preserves newlines", () => {
-      const input =
-        "\\[\n\\begin{aligned}\n& x = 1 \\\\\n& y = 2\n\\end{aligned}\n\\]";
+      const input = "\\[\n\\begin{aligned}\n& x = 1 \\\\\n& y = 2\n\\end{aligned}\n\\]";
       const output = convertLatexDelimiters(input);
       // Must preserve newlines for remark-math to parse correctly
       expect(output).toContain("$$\n");
@@ -30,8 +29,7 @@ describe("convertLatexDelimiters", () => {
     });
 
     test("matrix environment", () => {
-      const input =
-        "\\[\n\\begin{pmatrix}\na & b \\\\\nc & d\n\\end{pmatrix}\n\\]";
+      const input = "\\[\n\\begin{pmatrix}\na & b \\\\\nc & d\n\\end{pmatrix}\n\\]";
       const output = convertLatexDelimiters(input);
       expect(output).toContain("\\begin{pmatrix}");
     });
@@ -54,23 +52,18 @@ describe("convertLatexDelimiters", () => {
 
     test("inline math in sentence", () => {
       const input = "The equation \\( E = mc^2 \\) is famous.";
-      expect(convertLatexDelimiters(input)).toBe(
-        "The equation $ E = mc^2 $ is famous."
-      );
+      expect(convertLatexDelimiters(input)).toBe("The equation $ E = mc^2 $ is famous.");
     });
 
     test("multiple inline math", () => {
       const input = "Given \\( x \\) and \\( y \\), find \\( z \\).";
-      expect(convertLatexDelimiters(input)).toBe(
-        "Given $ x $ and $ y $, find $ z $."
-      );
+      expect(convertLatexDelimiters(input)).toBe("Given $ x $ and $ y $, find $ z $.");
     });
   });
 
   describe("Mixed content", () => {
     test("display and inline math together", () => {
-      const input =
-        "Consider \\( x \\in \\mathbb{R} \\). Then:\n\\[ f(x) = x^2 \\]";
+      const input = "Consider \\( x \\in \\mathbb{R} \\). Then:\n\\[ f(x) = x^2 \\]";
       const output = convertLatexDelimiters(input);
       expect(output).toContain("$ x \\in \\mathbb{R} $");
       expect(output).toContain("$$ f(x) = x^2 $$");
