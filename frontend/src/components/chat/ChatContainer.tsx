@@ -32,6 +32,7 @@ export function ChatContainer() {
     clearPendingUserMessage,
   } = useChatStore();
   const autoSendTriggered = useRef(false);
+  const prevSessionIdRef = useRef<string | undefined>(undefined);
   const isMobile = useIsMobile();
   const setHeaderHidden = useUIStore((state) => state.setHeaderHidden);
   const inputHidden = useUIStore((state) => state.inputHidden);
@@ -52,13 +53,18 @@ export function ChatContainer() {
   // Reset autoSend trigger and clear stale pending message when session changes
   // This prevents showing a pending message from a different session
   useEffect(() => {
+    const prevSessionId = prevSessionIdRef.current;
+    prevSessionIdRef.current = urlSessionId;
+
     autoSendTriggered.current = false;
-    // Only clear if not auto-sending (autoSend uses pendingUserMessage)
-    const shouldAutoSend = searchParams.get("autoSend") === "true";
-    if (!shouldAutoSend) {
+
+    // Only clear pending message when switching FROM one session TO another
+    // Don't clear when coming from welcome page (prevSessionId undefined)
+    // Don't clear on initial mount
+    if (prevSessionId && prevSessionId !== urlSessionId) {
       clearPendingUserMessage();
     }
-  }, [urlSessionId, searchParams, clearPendingUserMessage]);
+  }, [urlSessionId, clearPendingUserMessage]);
 
   // Use urlSessionId directly for queries (source of truth is the URL)
   const { data: sessionData, error: sessionError } = useSession(urlSessionId ?? null);

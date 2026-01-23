@@ -143,7 +143,10 @@ export function MessageList({
     });
   }, [scrollContainer]);
 
-  if (isLoading) {
+  // Only show loading skeleton if we have nothing to display
+  // If there's a pending message or streaming content, show that instead
+  const hasContentToShow = pendingUserMessage || isStreaming || messages.length > 0;
+  if (isLoading && !hasContentToShow) {
     return (
       <div className="flex-1 py-4">
         <div className="chat-content-width space-y-4">
