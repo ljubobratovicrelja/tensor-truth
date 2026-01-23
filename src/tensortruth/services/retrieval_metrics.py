@@ -48,6 +48,9 @@ class RetrievalMetrics:
     high_confidence_ratio: float = 0.0
     low_confidence_ratio: float = 0.0
 
+    # Configuration (for debugging/verification)
+    configured_top_n: Optional[int] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize metrics for JSON response.
 
@@ -102,6 +105,9 @@ class RetrievalMetrics:
             "quality": {
                 "high_confidence_ratio": to_native(self.high_confidence_ratio),
                 "low_confidence_ratio": to_native(self.low_confidence_ratio),
+            },
+            "configuration": {
+                "configured_top_n": to_native(self.configured_top_n),
             },
         }
 

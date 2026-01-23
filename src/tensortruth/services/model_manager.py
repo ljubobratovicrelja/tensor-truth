@@ -146,20 +146,20 @@ class ModelManager:
         device = device or self._default_device
 
         with self._model_lock:
-            # Check if we need to swap models (top_n change doesn't require reload)
+            # Check if we need to swap models
+            # Note: We reload on top_n change because LlamaIndex's
+            # SentenceTransformerRerank may cache top_n internally during
+            # initialization and not respect attribute updates at postprocess time
             needs_reload = (
                 self._reranker is None
                 or self._reranker_model_name != model_name
                 or self._reranker_device != device
+                or self._reranker_top_n != top_n
             )
 
             if needs_reload:
                 self._unload_reranker()
                 self._load_reranker(model_name, top_n, device)
-            elif self._reranker_top_n != top_n and self._reranker is not None:
-                # Just update top_n without full reload
-                self._reranker.top_n = top_n
-                self._reranker_top_n = top_n
 
             return self._reranker  # type: ignore[return-value]
 

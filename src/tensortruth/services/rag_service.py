@@ -248,8 +248,17 @@ class RAGService:
                 # Log but don't break streaming if postprocessor fails
                 logger.warning(f"Postprocessor failed, using unprocessed nodes: {e}")
 
+        # Enforce reranker_top_n limit as a safeguard
+        # LlamaIndex's SentenceTransformerRerank may not always respect top_n
+        reranker_top_n = (self._current_params or {}).get("reranker_top_n")
+        if reranker_top_n and len(source_nodes) > reranker_top_n:
+            source_nodes = source_nodes[:reranker_top_n]
+
         # Compute retrieval metrics from final reranked nodes
         metrics = compute_retrieval_metrics(source_nodes)
+        # Add configured top_n for debugging/verification
+        configured_top_n = (self._current_params or {}).get("reranker_top_n")
+        metrics.configured_top_n = configured_top_n
         metrics_dict = metrics.to_dict()
 
         # Phase 3: Determine prompt template based on source quality
