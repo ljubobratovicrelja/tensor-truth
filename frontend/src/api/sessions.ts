@@ -53,7 +53,9 @@ export interface SessionStatsResponse {
   compiled_history_messages: number;
   compiled_history_chars: number;
   compiled_history_tokens_estimate: number;
-  max_history_messages: number;
+
+  // Config limit: max conversation turns (1 turn = user query + assistant response)
+  max_history_turns: number;
 
   model_name: string | null;
   context_length: number;

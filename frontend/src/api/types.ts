@@ -169,7 +169,8 @@ export interface RAGConfig {
   default_balance_strategy: string;
   default_embedding_model: string;
   default_reranker: string;
-  max_history_messages: number;
+  // Max conversation turns (1 turn = user query + assistant response)
+  max_history_turns: number;
   memory_token_limit: number;
 }
 

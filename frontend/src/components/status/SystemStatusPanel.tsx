@@ -204,9 +204,13 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
                         <span className="text-muted-foreground text-xs font-medium">
                           Context Sent to LLM
                         </span>
-                        {sessionStats.max_history_messages > 0 && (
-                          <Badge variant="outline" className="text-xs">
-                            max {sessionStats.max_history_messages}
+                        {sessionStats.max_history_turns > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="cursor-help text-xs"
+                            title="1 turn = 1 user query + 1 assistant response"
+                          >
+                            max {sessionStats.max_history_turns} turns
                           </Badge>
                         )}
                       </div>

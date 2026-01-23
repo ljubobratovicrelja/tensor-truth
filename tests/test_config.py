@@ -51,10 +51,10 @@ class TestConfigSchema:
     def test_ui_config_defaults(self):
         """Test UIConfig default values."""
         config = UIConfig()
-        assert config.default_temperature == 0.1
-        assert config.default_context_window == 16384
+        assert config.default_temperature == 0.7
+        assert config.default_context_window == 8192
         assert config.default_top_n == 5
-        assert config.default_confidence_threshold == 0.4
+        assert config.default_confidence_threshold == 0.35
 
     def test_rag_config_defaults(self):
         """Test RAGConfig default values."""
@@ -109,17 +109,20 @@ class TestConfigSchema:
 
     def test_config_to_dict(self):
         """Test TensorTruthConfig serialization to dict."""
+        from tensortruth.app_utils.config_schema import HistoryCleaningConfig
+
         config = TensorTruthConfig(
             ollama=OllamaConfig(),
             ui=UIConfig(),
             rag=RAGConfig(default_device="cuda"),
             models=ModelsConfig(),
             agent=AgentConfig(),
+            history_cleaning=HistoryCleaningConfig(),
         )
         data = config.to_dict()
 
         assert data["ollama"]["base_url"] == "http://localhost:11434"
-        assert data["ui"]["default_temperature"] == 0.1
+        assert data["ui"]["default_temperature"] == 0.7
         assert data["rag"]["default_device"] == "cuda"
         assert data["agent"]["max_iterations"] == 10
 
@@ -159,7 +162,7 @@ class TestConfigSchema:
 
         assert config.ollama.base_url == "http://custom:11434"
         assert config.ollama.timeout == 300  # Default
-        assert config.ui.default_temperature == 0.1  # Default
+        assert config.ui.default_temperature == 0.7  # Default
         assert config.rag.default_device == "cpu"  # Default
 
 
@@ -278,7 +281,7 @@ class TestConfigFileOperations:
 
         # Verify config has expected defaults
         assert config.ollama.base_url == "http://localhost:11434"
-        assert config.ui.default_temperature == 0.1
+        assert config.ui.default_temperature == 0.7
 
     def test_default_config_with_mps(self, temp_config_dir):
         """Test that default config detects MPS and saves it to file."""
@@ -340,6 +343,8 @@ class TestConfigFileOperations:
 
     def test_save_and_load_config(self, temp_config_dir):
         """Test saving and loading config maintains data integrity."""
+        from tensortruth.app_utils.config_schema import HistoryCleaningConfig
+
         # Create custom config
         config = TensorTruthConfig(
             ollama=OllamaConfig(base_url="http://custom:11434", timeout=600),
@@ -347,6 +352,7 @@ class TestConfigFileOperations:
             rag=RAGConfig(default_device="cuda"),
             models=ModelsConfig(),
             agent=AgentConfig(max_iterations=15),
+            history_cleaning=HistoryCleaningConfig(),
         )
 
         # Save it
@@ -574,3 +580,31 @@ class TestConfigHash:
 
         # Should be different
         assert hash1 != hash2
+
+
+class TestConfigAPIRoutes:
+    """Test configuration API routes and schema consistency."""
+
+    def test_config_to_response_uses_max_history_turns(self):
+        """Config API should use max_history_turns (not max_history_messages)."""
+        from tensortruth.api.routes.config import _config_to_response
+        from tensortruth.app_utils.config_schema import TensorTruthConfig
+
+        config = TensorTruthConfig.create_default()
+
+        # This should not raise AttributeError
+        response = _config_to_response(config)
+
+        # Verify the response has max_history_turns
+        assert hasattr(response.rag, "max_history_turns")
+        assert response.rag.max_history_turns == config.rag.max_history_turns
+
+    def test_rag_config_schema_has_max_history_turns(self):
+        """RAGConfigSchema should have max_history_turns field."""
+        from tensortruth.api.schemas.config import RAGConfigSchema
+
+        schema = RAGConfigSchema()
+
+        # Should have max_history_turns, not max_history_messages
+        assert hasattr(schema, "max_history_turns")
+        assert not hasattr(schema, "max_history_messages")

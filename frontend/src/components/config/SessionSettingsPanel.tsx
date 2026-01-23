@@ -87,7 +87,7 @@ export function SessionSettingsPanel({
   const [llmDevice, setLlmDevice] = useState<string>("gpu");
   const [embeddingModel, setEmbeddingModel] = useState<string>("");
   const [availableDevices, setAvailableDevices] = useState<string[]>(DEVICE_OPTIONS);
-  const [maxHistoryMessages, setMaxHistoryMessages] = useState<number>(3);
+  const [maxHistoryTurns, setMaxHistoryTurns] = useState<number>(3);
   const [memoryTokenLimit, setMemoryTokenLimit] = useState<number>(4000);
 
   // Fetch available devices from backend
@@ -132,8 +132,8 @@ export function SessionSettingsPanel({
       setEmbeddingModel(
         (currentParams.embedding_model as string) ?? config.rag.default_embedding_model
       );
-      setMaxHistoryMessages(
-        (currentParams.max_history_messages as number) ?? config.rag.max_history_messages
+      setMaxHistoryTurns(
+        (currentParams.max_history_turns as number) ?? config.rag.max_history_turns
       );
       setMemoryTokenLimit(
         (currentParams.memory_token_limit as number) ?? config.rag.memory_token_limit
@@ -154,7 +154,7 @@ export function SessionSettingsPanel({
       rag_device: ragDevice,
       llm_device: llmDevice,
       embedding_model: embeddingModel,
-      max_history_messages: maxHistoryMessages,
+      max_history_turns: maxHistoryTurns,
       memory_token_limit: memoryTokenLimit,
     };
 
@@ -441,16 +441,14 @@ export function SessionSettingsPanel({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>
-                    Max History Messages
-                    <HelpTooltip text="Number of recent message pairs (user + assistant) to include in the prompt. This is the primary limit that controls context size. Lower values = faster responses and lower cost." />
+                    Max History Turns
+                    <HelpTooltip text="Number of conversation turns to include in the prompt. 1 turn = 1 user query + 1 assistant response. Lower values = faster responses and lower cost." />
                   </Label>
-                  <span className="text-muted-foreground text-sm">
-                    {maxHistoryMessages}
-                  </span>
+                  <span className="text-muted-foreground text-sm">{maxHistoryTurns}</span>
                 </div>
                 <Slider
-                  value={[maxHistoryMessages]}
-                  onValueChange={([v]) => setMaxHistoryMessages(v)}
+                  value={[maxHistoryTurns]}
+                  onValueChange={([v]) => setMaxHistoryTurns(v)}
                   min={0}
                   max={10}
                   step={1}

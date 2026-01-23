@@ -118,8 +118,9 @@ class RAGConfig:
     default_embedding_model: str = "BAAI/bge-m3"  # HuggingFace embedding model
     default_reranker: str = "BAAI/bge-reranker-v2-m3"  # Default reranker model
 
-    # Number of recent messages to include in prompt (limits context size)
-    max_history_messages: int = 3
+    # Number of recent conversation turns to include in prompt (limits context size)
+    # A turn = one user query + one assistant response (2 messages)
+    max_history_turns: int = 3
 
     # Token limit for chat memory buffer (safety backstop)
     # With 8k context, 5 retrievals (~1.5k), system prompt (~1k), this leaves ~5k for history

@@ -196,11 +196,11 @@ async def get_session_stats(
     history_tokens_estimate = history_chars // 4  # Rough approximation
 
     # Calculate compiled history stats (what's actually sent to LLM)
-    # Session params can override max_history_messages
-    max_messages = params.get("max_history_messages")
+    # Session params can override max_history_turns
+    max_turns = params.get("max_history_turns")
     compiled_history = chat_history_service.build_history(
         messages,
-        max_messages=max_messages,
+        max_turns=max_turns,
         apply_cleaning=config.history_cleaning.enabled,
     )
 
@@ -208,9 +208,9 @@ async def get_session_stats(
     compiled_history_chars = sum(len(m.content) for m in compiled_history.messages)
     compiled_history_tokens_estimate = compiled_history_chars // 4
 
-    # Get the effective max_history_messages limit
-    effective_max = (
-        max_messages if max_messages is not None else config.rag.max_history_messages
+    # Get the effective max_history_turns limit
+    effective_max_turns = (
+        max_turns if max_turns is not None else config.rag.max_history_turns
     )
 
     # Get configured context window from session params
@@ -223,7 +223,7 @@ async def get_session_stats(
         compiled_history_messages=compiled_history_messages,
         compiled_history_chars=compiled_history_chars,
         compiled_history_tokens_estimate=compiled_history_tokens_estimate,
-        max_history_messages=effective_max,
+        max_history_turns=effective_max_turns,
         model_name=model_name,
         context_length=context_length,
     )

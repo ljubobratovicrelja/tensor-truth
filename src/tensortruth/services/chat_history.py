@@ -119,17 +119,21 @@ class ChatHistoryService:
     All methods are stateless (accept input, return new output).
 
     Constants:
-        MAX_HISTORY_MESSAGES: Hard safety limit (100) to prevent memory issues
+        MAX_HISTORY_TURNS: Hard safety limit (50 turns = 100 messages) to prevent memory issues
+
+    A "turn" is defined as one user query + one assistant response (2 messages).
+    This ensures we never include an orphaned response without its query.
 
     Example:
         service = get_chat_history_service()
-        history = service.build_history(session["messages"], max_messages=5)
+        history = service.build_history(session["messages"], max_turns=5)
         cleaned = service.build_cleaned(history)
         llama_msgs = cleaned.to_llama_messages()
     """
 
-    # Hard safety limit to prevent memory issues
-    MAX_HISTORY_MESSAGES = 100
+    # Hard safety limit to prevent memory issues (in turns, not messages)
+    # 50 turns = up to 100 messages
+    MAX_HISTORY_TURNS = 50
 
     # Valid roles for chat messages
     VALID_ROLES = {"user", "assistant", "system"}
@@ -145,7 +149,7 @@ class ChatHistoryService:
     def build_history(
         self,
         session_messages: Optional[List[Dict[str, Any]]],
-        max_messages: Optional[int] = None,
+        max_turns: Optional[int] = None,
         apply_cleaning: Optional[bool] = None,
     ) -> ChatHistory:
         """Build ChatHistory from session messages.
@@ -153,10 +157,11 @@ class ChatHistoryService:
         Args:
             session_messages: Raw message dicts from session storage
                 Expected format: [{"role": "user", "content": "..."}, ...]
-            max_messages: Override max messages limit
-                None = use config.rag.max_history_messages
+            max_turns: Override max conversation turns limit
+                A turn = one user query + one assistant response (2 messages)
+                None = use config.rag.max_history_turns
                 0 = return empty history (disabled)
-                N = keep last N messages
+                N = keep last N turns (up to 2*N messages)
             apply_cleaning: Override history cleaning
                 None = use config.history_cleaning.enabled
 
@@ -165,15 +170,16 @@ class ChatHistoryService:
 
         Note:
             - Validates messages, skips malformed (doesn't raise)
-            - Enforces MAX_HISTORY_MESSAGES (100) as hard safety limit
+            - Enforces MAX_HISTORY_TURNS (50) as hard safety limit
             - Filters to user/assistant/system messages only
+            - Always includes complete turns (never orphans an assistant response)
         """
         # Handle None or empty input
         if not session_messages:
             return ChatHistory(messages=())
 
         # Check for explicit disable (0 means no history)
-        if max_messages == 0:
+        if max_turns == 0:
             return ChatHistory(messages=())
 
         # Convert valid messages
@@ -201,18 +207,18 @@ class ChatHistoryService:
 
             valid_messages.append(ChatHistoryMessage(role=role, content=content_str))
 
-        # Apply limits
-        # First, apply config/override limit
-        effective_limit = max_messages
-        if effective_limit is None:
-            effective_limit = self.config.rag.max_history_messages
+        # Apply turn-based limits
+        # A turn = user query + assistant response
+        effective_turns = max_turns
+        if effective_turns is None:
+            effective_turns = self.config.rag.max_history_turns
 
-        if effective_limit and len(valid_messages) > effective_limit:
-            valid_messages = valid_messages[-effective_limit:]
+        # Apply hard safety limit first
+        if effective_turns is None or effective_turns > self.MAX_HISTORY_TURNS:
+            effective_turns = self.MAX_HISTORY_TURNS
 
-        # Then apply hard safety limit
-        if len(valid_messages) > self.MAX_HISTORY_MESSAGES:
-            valid_messages = valid_messages[-self.MAX_HISTORY_MESSAGES :]
+        if effective_turns and valid_messages:
+            valid_messages = self._limit_to_turns(valid_messages, effective_turns)
 
         # Create immutable history
         history = ChatHistory(messages=tuple(valid_messages))
@@ -226,6 +232,57 @@ class ChatHistoryService:
             history = self.build_cleaned(history)
 
         return history
+
+    def _limit_to_turns(
+        self, messages: List[ChatHistoryMessage], max_turns: int
+    ) -> List[ChatHistoryMessage]:
+        """Limit messages to the last N conversation turns.
+
+        A turn consists of a user message followed by an assistant response.
+        This ensures we never include an orphaned assistant response without
+        its corresponding user query.
+
+        Args:
+            messages: List of chat messages
+            max_turns: Maximum number of turns to keep
+
+        Returns:
+            List with at most max_turns worth of messages
+        """
+        if not messages or max_turns <= 0:
+            return []
+
+        # Count complete turns (user+assistant pairs) in the messages
+        complete_turns = 0
+        i = 0
+        while i < len(messages) - 1:
+            if messages[i].role == "user" and messages[i + 1].role == "assistant":
+                complete_turns += 1
+                i += 2
+            else:
+                i += 1
+
+        # If we have fewer complete turns than the limit, return all messages
+        if complete_turns <= max_turns:
+            return messages
+
+        # Otherwise, find the cut point by counting turns from the end
+        turns_to_skip = complete_turns - max_turns
+        turns_skipped = 0
+        cut_index = 0
+
+        i = 0
+        while i < len(messages) - 1 and turns_skipped < turns_to_skip:
+            if messages[i].role == "user" and messages[i + 1].role == "assistant":
+                turns_skipped += 1
+                cut_index = i + 2
+                i += 2
+            else:
+                # Non-turn message at the start, skip it too
+                cut_index = i + 1
+                i += 1
+
+        return messages[cut_index:]
 
     def build_cleaned(self, history: ChatHistory) -> ChatHistory:
         """Apply history cleaning transformations.

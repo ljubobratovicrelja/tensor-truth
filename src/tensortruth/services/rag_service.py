@@ -197,11 +197,11 @@ class RAGService:
         condenser = getattr(self._engine, "_condenser_prompt_template", None)
 
         # Build chat history from session messages using ChatHistoryService
-        # Session params can override max_history_messages
-        max_messages = (self._current_params or {}).get("max_history_messages")
+        # Session params can override max_history_turns
+        max_turns = (self._current_params or {}).get("max_history_turns")
         history = self.chat_history_service.build_history(
             session_messages,
-            max_messages=max_messages,
+            max_turns=max_turns,
             apply_cleaning=self.config.history_cleaning.enabled,
         )
 
@@ -424,11 +424,11 @@ class RAGService:
         ]
 
         # Build chat history from session messages using ChatHistoryService
-        # Session params can override max_history_messages
-        max_messages = params.get("max_history_messages")
+        # Session params can override max_history_turns
+        max_turns = params.get("max_history_turns")
         history = self.chat_history_service.build_history(
             session_messages,
-            max_messages=max_messages,
+            max_turns=max_turns,
             apply_cleaning=self.config.history_cleaning.enabled,
         )
 

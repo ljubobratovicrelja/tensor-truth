@@ -228,10 +228,10 @@ def test_chat_history_to_llama_messages_system_role():
 # =============================================================================
 
 
-def _create_mock_config(max_history=3, cleaning_enabled=False):
+def _create_mock_config(max_history_turns=3, cleaning_enabled=False):
     """Create a mock TensorTruthConfig for testing."""
     config = Mock()
-    config.rag.max_history_messages = max_history
+    config.rag.max_history_turns = max_history_turns
     config.history_cleaning.enabled = cleaning_enabled
     config.history_cleaning.remove_emojis = True
     config.history_cleaning.remove_filler_phrases = True
@@ -327,49 +327,52 @@ def test_build_history_handles_non_string_content():
 
 @pytest.mark.unit
 def test_build_history_applies_hard_limit():
-    """Should enforce MAX_HISTORY_MESSAGES (100) as safety net."""
+    """Should enforce MAX_HISTORY_TURNS (50) as safety net."""
     from tensortruth.services.chat_history import ChatHistoryService
 
-    config = _create_mock_config(max_history=1000)  # Config wants more
+    config = _create_mock_config(max_history_turns=1000)  # Config wants more
     service = ChatHistoryService(config)
 
-    # Create 150 messages
+    # Create 120 messages (60 turns)
     session_messages = [
         {"role": "user" if i % 2 == 0 else "assistant", "content": f"Message {i}"}
-        for i in range(150)
+        for i in range(120)
     ]
 
     history = service.build_history(session_messages)
 
-    # Should be capped at 100 (hard limit)
+    # Should be capped at 50 turns = 100 messages
     assert len(history.messages) == 100
-    # Should keep the LAST 100 messages (50-149)
-    assert history.messages[0].content == "Message 50"
+    # Should keep the LAST 50 turns (messages 20-119)
+    assert history.messages[0].content == "Message 20"
 
 
 @pytest.mark.unit
-def test_build_history_applies_max_messages_limit():
-    """Should keep only last N messages when limit specified."""
+def test_build_history_applies_max_turns_limit():
+    """Should keep only last N turns when limit specified."""
     from tensortruth.services.chat_history import ChatHistoryService
 
-    config = _create_mock_config(max_history=10)
+    config = _create_mock_config(max_history_turns=10)
     service = ChatHistoryService(config)
 
+    # Create 10 messages = 5 turns
     session_messages = [
         {"role": "user" if i % 2 == 0 else "assistant", "content": f"Message {i}"}
         for i in range(10)
     ]
 
-    history = service.build_history(session_messages, max_messages=3)
+    # Request 2 turns = 4 messages
+    history = service.build_history(session_messages, max_turns=2)
 
-    assert len(history.messages) == 3
-    # Should keep last 3: 7, 8, 9
-    assert history.messages[0].content == "Message 7"
+    assert len(history.messages) == 4
+    # Should keep last 2 turns: messages 6, 7, 8, 9
+    assert history.messages[0].content == "Message 6"
+    assert history.messages[-1].content == "Message 9"
 
 
 @pytest.mark.unit
-def test_build_history_respects_zero_max_messages():
-    """max_messages=0 should return empty history."""
+def test_build_history_respects_zero_max_turns():
+    """max_turns=0 should return empty history."""
     from tensortruth.services.chat_history import ChatHistoryService
 
     config = _create_mock_config()
@@ -380,7 +383,7 @@ def test_build_history_respects_zero_max_messages():
         {"role": "assistant", "content": "Hi"},
     ]
 
-    history = service.build_history(session_messages, max_messages=0)
+    history = service.build_history(session_messages, max_turns=0)
 
     assert history.is_empty
     assert len(history.messages) == 0
@@ -388,12 +391,13 @@ def test_build_history_respects_zero_max_messages():
 
 @pytest.mark.unit
 def test_build_history_uses_config_defaults():
-    """Should use config.rag.max_history_messages when not specified."""
+    """Should use config.rag.max_history_turns when not specified."""
     from tensortruth.services.chat_history import ChatHistoryService
 
-    config = _create_mock_config(max_history=2)  # Config says 2
+    config = _create_mock_config(max_history_turns=1)  # Config says 1 turn
     service = ChatHistoryService(config)
 
+    # 4 messages = 2 turns
     session_messages = [
         {"role": "user", "content": "Message 0"},
         {"role": "assistant", "content": "Message 1"},
@@ -401,9 +405,9 @@ def test_build_history_uses_config_defaults():
         {"role": "assistant", "content": "Message 3"},
     ]
 
-    history = service.build_history(session_messages)  # No max_messages arg
+    history = service.build_history(session_messages)  # No max_turns arg
 
-    # Should use config default of 2
+    # Should use config default of 1 turn = 2 messages
     assert len(history.messages) == 2
     assert history.messages[0].content == "Message 2"
     assert history.messages[1].content == "Message 3"

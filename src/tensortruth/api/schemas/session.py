@@ -78,7 +78,9 @@ class SessionStatsResponse(BaseModel):
     compiled_history_messages: int = 0
     compiled_history_chars: int = 0
     compiled_history_tokens_estimate: int = 0
-    max_history_messages: int = 0  # Config limit
+
+    # Config limit: max conversation turns (1 turn = user query + assistant response)
+    max_history_turns: int = 0
 
     model_name: Optional[str] = None
     context_length: int = 0
