@@ -246,17 +246,17 @@ async def websocket_chat(
 
                     # Save assistant response to session (with sources if available)
                     if full_response:
-                        assistant_message: dict = {
+                        cmd_response: dict = {
                             "role": "assistant",
                             "content": full_response,
                         }
                         if captured_sources:
-                            assistant_message["sources"] = captured_sources
+                            cmd_response["sources"] = captured_sources
 
                         data = session_service.load()
                         data = session_service.add_message(
                             session_id,
-                            assistant_message,
+                            cmd_response,
                             data,
                         )
                         session_service.save(data)

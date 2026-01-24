@@ -231,6 +231,8 @@ class RAGService:
         condensed_question = prompt
         if condenser and not history.is_empty:
             try:
+                from tensortruth.core.constants import DEFAULT_AGENT_REASONING_MODEL
+
                 # Build condensed question using LLM
                 logger.info(f"Original query: {prompt}")
                 logger.info(f"History length: {len(history.messages)} messages")
@@ -239,9 +241,10 @@ class RAGService:
                 # This reuses the same Ollama model server-side (no extra VRAM)
                 # but disables thinking to speed up the condensation step
                 main_llm = self._engine._llm
+                # Access Ollama-specific attributes via getattr for type safety
                 condenser_llm = Ollama(
-                    model=main_llm.model,
-                    base_url=main_llm.base_url,
+                    model=getattr(main_llm, "model", DEFAULT_AGENT_REASONING_MODEL),
+                    base_url=getattr(main_llm, "base_url", "http://localhost:11434"),
                     temperature=0.0,  # Deterministic for condensation
                     thinking=False,  # Disable thinking for speed
                     request_timeout=30.0,

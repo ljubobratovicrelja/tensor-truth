@@ -5,7 +5,13 @@ import { Send, Bot, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useModels, useCreateSession, usePresets, useConfig, useCommandDetection } from "@/hooks";
+import {
+  useModels,
+  useCreateSession,
+  usePresets,
+  useConfig,
+  useCommandDetection,
+} from "@/hooks";
 import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
 import { CommandAutocomplete } from "@/components/chat/CommandAutocomplete";

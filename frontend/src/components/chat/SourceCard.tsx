@@ -415,7 +415,10 @@ export function SourceCard({ source, index }: SourceCardProps) {
   const fetchError = source.metadata?.fetch_error as string | undefined;
 
   // Determine badge based on fetch_status (for web sources) or score
-  const getBadgeInfo = (): { variant: "default" | "secondary" | "destructive" | "outline"; label: string } => {
+  const getBadgeInfo = (): {
+    variant: "default" | "secondary" | "destructive" | "outline";
+    label: string;
+  } => {
     // For web sources, use fetch_status for failures, confidence for success
     if (docType === "web" && fetchStatus) {
       if (fetchStatus === "failed") {
@@ -515,7 +518,9 @@ export function SourceCard({ source, index }: SourceCardProps) {
             <p
               className={cn(
                 "mb-2 text-xs",
-                fetchStatus === "failed" ? "text-destructive" : "text-muted-foreground italic"
+                fetchStatus === "failed"
+                  ? "text-destructive"
+                  : "text-muted-foreground italic"
               )}
             >
               {fetchError}
@@ -693,7 +698,9 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
     ? {
         fetched: sources.filter((s) => s.metadata?.fetch_status === "success").length,
         failed: sources.filter(
-          (s) => s.metadata?.fetch_status === "failed" || s.metadata?.fetch_status === "skipped"
+          (s) =>
+            s.metadata?.fetch_status === "failed" ||
+            s.metadata?.fetch_status === "skipped"
         ).length,
         totalChars: sources.reduce(
           (sum, s) => sum + ((s.metadata?.content_chars as number) || 0),
@@ -720,13 +727,6 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
         }
       : null;
 
-  // Format character count for display
-  const formatChars = (chars: number): string => {
-    if (chars >= 1000000) return `${(chars / 1000000).toFixed(1)}M`;
-    if (chars >= 1000) return `${(chars / 1000).toFixed(1)}k`;
-    return `${chars}`;
-  };
-
   return (
     <div className="mt-2 border-t pt-2">
       <button
@@ -746,7 +746,11 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
               )}
               {/* Show relevance range for web sources with scores */}
               {stats && (
-                <> | Relevance: {(stats.min * 100).toFixed(0)}%-{(stats.max * 100).toFixed(0)}%</>
+                <>
+                  {" "}
+                  | Relevance: {(stats.min * 100).toFixed(0)}%-
+                  {(stats.max * 100).toFixed(0)}%
+                </>
               )}
             </span>
           ) : metrics ? (

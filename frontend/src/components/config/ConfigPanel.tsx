@@ -129,7 +129,9 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
   // Web Search
   const [ddgMaxResults, setDdgMaxResults] = useState(config.web_search.ddg_max_results);
-  const [maxPagesToFetch, setMaxPagesToFetch] = useState(config.web_search.max_pages_to_fetch);
+  const [maxPagesToFetch, setMaxPagesToFetch] = useState(
+    config.web_search.max_pages_to_fetch
+  );
   const [rerankTitleThreshold, setRerankTitleThreshold] = useState(
     config.web_search.rerank_title_threshold
   );
@@ -139,7 +141,9 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   const [maxSourceContextPct, setMaxSourceContextPct] = useState(
     config.web_search.max_source_context_pct
   );
-  const [inputContextPct, setInputContextPct] = useState(config.web_search.input_context_pct);
+  const [inputContextPct, setInputContextPct] = useState(
+    config.web_search.input_context_pct
+  );
 
   // Fetch available devices from backend
   useEffect(() => {
@@ -666,7 +670,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
         {/* Search Limits */}
         <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
-          <h4 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+          <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
             Search Limits
           </h4>
           <div className="space-y-2">
@@ -705,7 +709,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
         {/* Relevance Thresholds */}
         <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
-          <h4 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+          <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
             Relevance Thresholds
           </h4>
           <p className="text-muted-foreground text-xs">
@@ -751,7 +755,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
         {/* Context Fitting */}
         <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
-          <h4 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+          <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
             Context Fitting
           </h4>
           <p className="text-muted-foreground text-xs">

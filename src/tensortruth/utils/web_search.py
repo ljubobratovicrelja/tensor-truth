@@ -1436,7 +1436,7 @@ async def web_search_stream(
                         }
                     )
                 else:
-                    markdown, status, error_msg = result
+                    markdown, status, _ = result
                     if status == "success" and markdown:
                         pages.append((url, title, markdown))
                         pages_fetched += 1
