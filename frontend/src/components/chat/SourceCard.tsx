@@ -695,8 +695,12 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
       }
     : null;
 
-  // Calculate confidence statistics (for all sources with scores)
-  const scores = sources
+  // Calculate confidence statistics (only for successfully fetched sources in web search)
+  const sourcesForStats = isWebSearch
+    ? sources.filter((s) => s.metadata?.fetch_status === "success")
+    : sources;
+
+  const scores = sourcesForStats
     .map((s) => s.score)
     .filter((score): score is number => score !== null && score !== undefined);
 
