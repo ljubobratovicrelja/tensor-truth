@@ -335,13 +335,26 @@ def _execute_web_search(
     # Execute search
     from tensortruth.core.ollama import get_ollama_url
 
-    response = web_search(
+    response, sources = web_search(
         query=query,
         model_name=params.get("model", "llama3.2"),
         ollama_url=get_ollama_url(),
         max_pages=5,
         progress_callback=update_progress,
     )
+
+    # Build sources section from WebSearchSource list
+    if sources:
+        sources_lines = []
+        for i, src in enumerate(sources):
+            if src.status == "success":
+                sources_lines.append(f"{i+1}. [{src.title}]({src.url})")
+            else:
+                error_display = src.error if src.error else src.status
+                sources_lines.append(
+                    f"{i+1}. [{src.title}]({src.url}) - {error_display}"
+                )
+        response = f"{response}\n### Sources\n" + "\n".join(sources_lines)
 
     # Add to history
     session["messages"].append({"role": "user", "content": f"Search: {query}"})

@@ -1,5 +1,6 @@
 """Chat-related schemas."""
 
+from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -92,9 +93,45 @@ class StreamToolProgress(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentPhase(str, Enum):
+    """Phases of agent execution."""
+
+    SEARCHING = "searching"
+    FETCHING = "fetching"
+    SUMMARIZING = "summarizing"
+    COMPLETE = "complete"
+
+
 class StreamAgentProgress(BaseModel):
     """WebSocket message for agent execution progress."""
 
     type: Literal["agent_progress"] = "agent_progress"
-    agent: str
-    status: str  # e.g., "starting", "searching", "synthesizing", "complete"
+    agent: str  # "web_search", future agents
+    phase: str  # AgentPhase value
+    message: str  # Human-readable status (no emoji)
+
+    # Phase-specific data (all optional)
+    search_query: Optional[str] = None
+    search_hits: Optional[int] = None
+    pages_target: Optional[int] = None
+    pages_fetched: Optional[int] = None
+    pages_failed: Optional[int] = None
+    current_page: Optional[Dict[str, Any]] = None  # {url, title, status, error}
+    model_name: Optional[str] = None
+
+
+class WebSearchSource(BaseModel):
+    """A single web search source result."""
+
+    url: str
+    title: str
+    status: Literal["success", "failed", "skipped"]
+    error: Optional[str] = None
+    snippet: Optional[str] = None
+
+
+class StreamWebSearchSources(BaseModel):
+    """WebSocket message for web search sources."""
+
+    type: Literal["web_sources"] = "web_sources"
+    sources: List[WebSearchSource]

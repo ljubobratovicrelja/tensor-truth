@@ -516,7 +516,7 @@ class WebSearchCommand(Command):
                 )
 
             # Execute search with real-time progress updates
-            response = web_search(
+            response, sources = web_search(
                 query=query,
                 model_name=model_name,
                 ollama_url=ollama_url,
@@ -526,6 +526,19 @@ class WebSearchCommand(Command):
                 context_window=context_window,
                 custom_instructions=custom_instructions,
             )
+
+            # Build sources section from WebSearchSource list
+            if sources:
+                sources_lines = []
+                for i, src in enumerate(sources):
+                    if src.status == "success":
+                        sources_lines.append(f"{i+1}. [{src.title}]({src.url})")
+                    else:
+                        error_display = src.error if src.error else src.status
+                        sources_lines.append(
+                            f"{i+1}. [{src.title}]({src.url}) - {error_display}"
+                        )
+                response = f"{response}\n### Sources\n" + "\n".join(sources_lines)
 
             # Clear progress display after completion
             progress_placeholder.empty()
