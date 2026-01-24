@@ -66,6 +66,8 @@ class WebSearchSource:
     status: Literal["success", "failed", "skipped"]
     error: Optional[str] = None
     snippet: Optional[str] = None
+    content: Optional[str] = None  # Full fetched content (for successful pages)
+    content_chars: int = 0  # Character count of content passed to LLM
 
 
 @dataclass
@@ -106,8 +108,11 @@ def web_source_to_source_node(source: WebSearchSource) -> Dict[str, any]:
     Returns:
         Dict matching SourceNode schema with web-specific metadata
     """
+    # Use full content if available (for successful fetches), else snippet
+    text = source.content if source.content else (source.snippet or "")
+
     return {
-        "text": source.snippet or "",
+        "text": text,
         "score": 1.0 if source.status == "success" else 0.0,
         "metadata": {
             "source_url": source.url,
@@ -115,6 +120,7 @@ def web_source_to_source_node(source: WebSearchSource) -> Dict[str, any]:
             "doc_type": "web",
             "fetch_status": source.status,
             "fetch_error": source.error,
+            "content_chars": source.content_chars,
         },
     }
 
@@ -991,6 +997,8 @@ async def web_search_stream(
                                 status="success",
                                 error=None,
                                 snippet=snippet_map.get(url),
+                                content=markdown,
+                                content_chars=len(markdown),
                             )
                         )
                         yield WebSearchChunk(

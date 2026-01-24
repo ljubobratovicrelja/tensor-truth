@@ -512,7 +512,7 @@ export function SourceCard({ source, index }: SourceCardProps) {
           )}
           {/* Show content if available */}
           {source.text && (
-            <div className="chat-markdown text-muted-foreground max-h-64 max-w-none overflow-y-auto text-xs leading-relaxed">
+            <div className="chat-markdown text-muted-foreground max-h-96 max-w-none overflow-y-auto text-xs leading-relaxed">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[
@@ -664,19 +664,43 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
     );
   }
 
-  // Calculate confidence statistics
+  // Detect if these are web search sources
+  const isWebSearch = sources.length > 0 && sources[0]?.metadata?.doc_type === "web";
+
+  // Calculate web search stats
+  const webStats = isWebSearch
+    ? {
+        fetched: sources.filter((s) => s.metadata?.fetch_status === "success").length,
+        failed: sources.filter(
+          (s) => s.metadata?.fetch_status === "failed" || s.metadata?.fetch_status === "skipped"
+        ).length,
+        totalChars: sources.reduce(
+          (sum, s) => sum + ((s.metadata?.content_chars as number) || 0),
+          0
+        ),
+      }
+    : null;
+
+  // Calculate confidence statistics (for RAG sources)
   const scores = sources
     .map((s) => s.score)
     .filter((score): score is number => score !== null && score !== undefined);
 
   const stats =
-    scores.length > 0
+    scores.length > 0 && !isWebSearch
       ? {
           max: Math.max(...scores),
           min: Math.min(...scores),
           mean: scores.reduce((a, b) => a + b, 0) / scores.length,
         }
       : null;
+
+  // Format character count for display
+  const formatChars = (chars: number): string => {
+    if (chars >= 1000000) return `${(chars / 1000000).toFixed(1)}M`;
+    if (chars >= 1000) return `${(chars / 1000).toFixed(1)}k`;
+    return `${chars}`;
+  };
 
   return (
     <div className="mt-2 border-t pt-2">
@@ -688,7 +712,15 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
           <span className="font-medium tracking-wide uppercase">
             Sources ({sources.length})
           </span>
-          {metrics ? (
+          {webStats ? (
+            <span className="text-muted-foreground/70 font-normal tracking-normal normal-case">
+              | {webStats.fetched} fetched
+              {webStats.failed > 0 && <> | {webStats.failed} failed</>}
+              {webStats.totalChars > 0 && (
+                <> | ~{Math.round(webStats.totalChars / 4).toLocaleString()} tokens</>
+              )}
+            </span>
+          ) : metrics ? (
             <span className="text-muted-foreground/70 font-normal tracking-normal normal-case">
               | Avg: {((metrics.score_distribution.mean || 0) * 100).toFixed(0)}% | Range:{" "}
               {((metrics.score_distribution.min || 0) * 100).toFixed(0)}%-
@@ -718,8 +750,8 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
           collapsed ? "max-h-0" : "max-h-[2000px]"
         )}
       >
-        {/* Expanded metrics panel */}
-        {metrics && <MetricsPanel metrics={metrics} />}
+        {/* Expanded metrics panel (only for RAG sources, not web search) */}
+        {metrics && !isWebSearch && <MetricsPanel metrics={metrics} />}
 
         {/* Source cards */}
         {sources.map((source, index) => (
