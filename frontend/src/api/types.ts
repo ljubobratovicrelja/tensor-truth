@@ -135,7 +135,7 @@ export interface StreamToolProgress {
   params: Record<string, unknown>;
 }
 
-export type AgentPhase = "searching" | "fetching" | "summarizing" | "complete";
+export type AgentPhase = "searching" | "ranking" | "fetching" | "summarizing" | "complete";
 
 export interface StreamAgentProgress {
   type: "agent_progress";

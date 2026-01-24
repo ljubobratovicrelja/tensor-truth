@@ -1,4 +1,4 @@
-import { Search, Download, Brain, CheckCircle } from "lucide-react";
+import { Search, Download, Brain, CheckCircle, BarChart2 } from "lucide-react";
 import type { StreamAgentProgress, AgentPhase } from "@/api/types";
 
 interface AgentProgressProps {
@@ -15,6 +15,10 @@ const PHASE_CONFIG: Record<
   searching: {
     icon: Search,
     animation: "animate-bounce",
+  },
+  ranking: {
+    icon: BarChart2,
+    animation: "animate-pulse",
   },
   fetching: {
     icon: Download,

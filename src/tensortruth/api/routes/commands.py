@@ -198,6 +198,9 @@ class WebSearchCommand(ToolCommand):
         max_results = params.get("web_search_max_results", 10)
         max_pages = params.get("web_search_pages_to_fetch", 5)
         context_window = params.get("context_window", 16384)
+        # Reranking params - uses session's reranker model if configured
+        reranker_model = params.get("reranker_model")
+        reranker_device = params.get("rag_device", "cuda")
 
         try:
             full_response = ""
@@ -212,6 +215,8 @@ class WebSearchCommand(ToolCommand):
                 max_pages=max_pages,
                 context_window=context_window,
                 custom_instructions=custom_instructions,
+                reranker_model=reranker_model,
+                reranker_device=reranker_device,
             ):
                 if chunk.agent_progress:
                     # Send agent progress for search/fetch phases
@@ -228,9 +233,7 @@ class WebSearchCommand(ToolCommand):
                 elif chunk.token:
                     # Stream token to client
                     full_response += chunk.token
-                    await websocket.send_json(
-                        {"type": "token", "content": chunk.token}
-                    )
+                    await websocket.send_json({"type": "token", "content": chunk.token})
 
                 elif chunk.sources is not None:
                     # Store sources for session saving
@@ -256,11 +259,11 @@ class WebSearchCommand(ToolCommand):
                     "confidence_level": "web_search",
                     "title_pending": is_first,
                     # Include sources in done for session saving
-                    "sources": [
-                        web_source_to_source_node(s) for s in sources_for_session
-                    ]
-                    if sources_for_session
-                    else None,
+                    "sources": (
+                        [web_source_to_source_node(s) for s in sources_for_session]
+                        if sources_for_session
+                        else None
+                    ),
                 }
             )
 

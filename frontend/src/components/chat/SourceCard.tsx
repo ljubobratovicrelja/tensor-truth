@@ -416,7 +416,7 @@ export function SourceCard({ source, index }: SourceCardProps) {
 
   // Determine badge based on fetch_status (for web sources) or score
   const getBadgeInfo = (): { variant: "default" | "secondary" | "destructive" | "outline"; label: string } => {
-    // For web sources, use fetch_status
+    // For web sources, use fetch_status for failures, confidence for success
     if (docType === "web" && fetchStatus) {
       if (fetchStatus === "failed") {
         return { variant: "destructive", label: "Failed" };
@@ -425,6 +425,10 @@ export function SourceCard({ source, index }: SourceCardProps) {
         return { variant: "secondary", label: "Skipped" };
       }
       if (fetchStatus === "success") {
+        // For successful web fetches with relevance scores, show confidence level
+        if (source.score !== null && source.score !== undefined) {
+          return getConfidenceBadgeVariant(source.score);
+        }
         return { variant: "default", label: "Fetched" };
       }
     }
@@ -524,8 +528,8 @@ export function SourceCard({ source, index }: SourceCardProps) {
               </ReactMarkdown>
             </div>
           )}
-          {/* Show relevance score for non-web sources */}
-          {docType !== "web" && source.score !== null && source.score !== undefined && (
+          {/* Show relevance score when available */}
+          {source.score !== null && source.score !== undefined && (
             <p className="text-muted-foreground mt-1.5 text-xs">
               Relevance: {(source.score * 100).toFixed(1)}%
             </p>
@@ -667,6 +671,16 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
   // Detect if these are web search sources
   const isWebSearch = sources.length > 0 && sources[0]?.metadata?.doc_type === "web";
 
+  // Sort sources by score (highest first) for web search sources with relevance scores
+  const sortedSources = isWebSearch
+    ? [...sources].sort((a, b) => {
+        // Sort by score descending, putting null/undefined scores last
+        const scoreA = a.score ?? -1;
+        const scoreB = b.score ?? -1;
+        return scoreB - scoreA;
+      })
+    : sources;
+
   // Calculate web search stats
   const webStats = isWebSearch
     ? {
@@ -681,13 +695,13 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
       }
     : null;
 
-  // Calculate confidence statistics (for RAG sources)
+  // Calculate confidence statistics (for all sources with scores)
   const scores = sources
     .map((s) => s.score)
     .filter((score): score is number => score !== null && score !== undefined);
 
   const stats =
-    scores.length > 0 && !isWebSearch
+    scores.length > 0
       ? {
           max: Math.max(...scores),
           min: Math.min(...scores),
@@ -718,6 +732,10 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
               {webStats.failed > 0 && <> | {webStats.failed} failed</>}
               {webStats.totalChars > 0 && (
                 <> | ~{Math.round(webStats.totalChars / 4).toLocaleString()} tokens</>
+              )}
+              {/* Show relevance range for web sources with scores */}
+              {stats && (
+                <> | Relevance: {(stats.min * 100).toFixed(0)}%-{(stats.max * 100).toFixed(0)}%</>
               )}
             </span>
           ) : metrics ? (
@@ -754,7 +772,7 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
         {metrics && !isWebSearch && <MetricsPanel metrics={metrics} />}
 
         {/* Source cards */}
-        {sources.map((source, index) => (
+        {sortedSources.map((source, index) => (
           <SourceCard key={index} source={source} index={index} />
         ))}
       </div>

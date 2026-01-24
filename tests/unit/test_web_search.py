@@ -722,3 +722,398 @@ class TestWebSearch:
 
             assert result == "Test result"
             mock_run.assert_called_once()
+
+
+# ============================================================================
+# Tests for rerank_search_results
+# ============================================================================
+
+
+@pytest.mark.unit
+class TestRerankSearchResults:
+    """Tests for search result reranking by title+snippet."""
+
+    def test_returns_all_results_sorted_by_score(self):
+        """All results returned, sorted highest score first."""
+        from tensortruth.utils.web_search import rerank_search_results
+
+        results = [
+            {
+                "url": "https://example.com/1",
+                "title": "Low relevance",
+                "snippet": "Not related",
+            },
+            {
+                "url": "https://example.com/2",
+                "title": "PyTorch features",
+                "snippet": "New PyTorch 2.0",
+            },
+            {
+                "url": "https://example.com/3",
+                "title": "Medium",
+                "snippet": "Some ML content",
+            },
+        ]
+
+        # Mock reranker
+        mock_reranker = MagicMock()
+
+        # Mock postprocess_nodes to return nodes with scores
+        def mock_postprocess(nodes, query_bundle):
+            # Simulate reranker assigning scores - return in different order
+            scored_nodes = []
+            for node in nodes:
+                mock_node = MagicMock()
+                mock_node.node = node.node
+                # Assign scores based on content (simulate reranker behavior)
+                if "PyTorch" in node.text:
+                    mock_node.score = 0.95
+                elif "ML" in node.text:
+                    mock_node.score = 0.6
+                else:
+                    mock_node.score = 0.2
+                scored_nodes.append(mock_node)
+            return scored_nodes
+
+        mock_reranker.postprocess_nodes = mock_postprocess
+
+        ranked = rerank_search_results("PyTorch 2.0", results, 10, mock_reranker)
+
+        # Should return all results
+        assert len(ranked) == 3
+        # Should be sorted by score (highest first)
+        assert ranked[0][1] == 0.95  # PyTorch result
+        assert ranked[1][1] == 0.6  # ML result
+        assert ranked[2][1] == 0.2  # Low relevance
+        # Check URLs are correctly associated
+        assert ranked[0][0]["url"] == "https://example.com/2"
+
+    def test_handles_empty_results(self):
+        """Empty input returns empty output."""
+        from tensortruth.utils.web_search import rerank_search_results
+
+        mock_reranker = MagicMock()
+        mock_reranker.postprocess_nodes = MagicMock(return_value=[])
+
+        ranked = rerank_search_results("test query", [], 10, mock_reranker)
+
+        assert ranked == []
+
+    def test_creates_text_from_title_and_snippet(self):
+        """TextNode text should be 'title\\nsnippet'."""
+        from tensortruth.utils.web_search import rerank_search_results
+
+        results = [
+            {
+                "url": "https://example.com",
+                "title": "Test Title",
+                "snippet": "Test snippet content",
+            }
+        ]
+
+        mock_reranker = MagicMock()
+        captured_nodes = []
+
+        def capture_nodes(nodes, query_bundle):
+            captured_nodes.extend(nodes)
+            # Return with score
+            for node in nodes:
+                node.score = 0.5
+            return nodes
+
+        mock_reranker.postprocess_nodes = capture_nodes
+
+        rerank_search_results("query", results, 10, mock_reranker)
+
+        # Verify the text format
+        assert len(captured_nodes) == 1
+        assert captured_nodes[0].text == "Test Title\nTest snippet content"
+
+
+# ============================================================================
+# Tests for rerank_fetched_pages
+# ============================================================================
+
+
+@pytest.mark.unit
+class TestRerankFetchedPages:
+    """Tests for fetched page content reranking."""
+
+    def test_includes_custom_instructions_in_query(self):
+        """Custom instructions appended to query for ranking."""
+        from tensortruth.utils.web_search import rerank_fetched_pages
+
+        pages = [("https://example.com", "Test", "Content here")]
+
+        mock_reranker = MagicMock()
+        captured_query = []
+
+        def capture_query(nodes, query_bundle):
+            captured_query.append(query_bundle.query_str)
+            for node in nodes:
+                node.score = 0.5
+            return nodes
+
+        mock_reranker.postprocess_nodes = capture_query
+
+        rerank_fetched_pages(
+            "PyTorch features", "make an overview", pages, mock_reranker
+        )
+
+        assert len(captured_query) == 1
+        assert "PyTorch features" in captured_query[0]
+        assert "make an overview" in captured_query[0]
+
+    def test_works_without_custom_instructions(self):
+        """Functions correctly when custom_instructions is None."""
+        from tensortruth.utils.web_search import rerank_fetched_pages
+
+        pages = [("https://example.com", "Test", "Content here")]
+
+        mock_reranker = MagicMock()
+        captured_query = []
+
+        def capture_query(nodes, query_bundle):
+            captured_query.append(query_bundle.query_str)
+            for node in nodes:
+                node.score = 0.5
+            return nodes
+
+        mock_reranker.postprocess_nodes = capture_query
+
+        rerank_fetched_pages("PyTorch features", None, pages, mock_reranker)
+
+        assert len(captured_query) == 1
+        assert captured_query[0] == "PyTorch features"  # No additional text
+
+    def test_returns_pages_with_scores(self):
+        """Each page has associated relevance score."""
+        from tensortruth.utils.web_search import rerank_fetched_pages
+
+        pages = [
+            ("https://example.com/1", "Page 1", "Content 1"),
+            ("https://example.com/2", "Page 2", "Content 2"),
+        ]
+
+        mock_reranker = MagicMock()
+
+        def assign_scores(nodes, query_bundle):
+            for i, node in enumerate(nodes):
+                node.score = 0.9 - (i * 0.2)  # 0.9, 0.7
+            return nodes
+
+        mock_reranker.postprocess_nodes = assign_scores
+
+        ranked = rerank_fetched_pages("query", None, pages, mock_reranker)
+
+        assert len(ranked) == 2
+        # Each result is (page_tuple, score)
+        assert ranked[0][1] == 0.9
+        assert ranked[1][1] == 0.7
+        # Pages are tuples
+        assert ranked[0][0] == ("https://example.com/1", "Page 1", "Content 1")
+
+    def test_truncates_long_content(self):
+        """Content truncated for efficiency in ranking."""
+        from tensortruth.utils.web_search import rerank_fetched_pages
+
+        # Create very long content
+        long_content = "x" * 10000
+        pages = [("https://example.com", "Long Page", long_content)]
+
+        mock_reranker = MagicMock()
+        captured_nodes = []
+
+        def capture_nodes(nodes, query_bundle):
+            captured_nodes.extend(nodes)
+            for node in nodes:
+                node.score = 0.5
+            return nodes
+
+        mock_reranker.postprocess_nodes = capture_nodes
+
+        rerank_fetched_pages("query", None, pages, mock_reranker)
+
+        # Content should be truncated (default ~2000 chars)
+        assert len(captured_nodes) == 1
+        assert len(captured_nodes[0].text) <= 2500  # Some margin for truncation
+
+
+# ============================================================================
+# Tests for web_search_stream with reranking
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestWebSearchStreamWithReranking:
+    """Tests for web search streaming with reranking enabled."""
+
+    async def test_yields_ranking_phase_when_reranker_enabled(self):
+        """Should yield agent_progress with phase='ranking'."""
+        from tensortruth.utils.web_search import web_search_stream
+
+        with patch("tensortruth.utils.web_search.search_duckduckgo") as mock_search:
+            with patch(
+                "tensortruth.utils.web_search.get_reranker_for_web"
+            ) as mock_get_reranker:
+                with patch(
+                    "tensortruth.utils.web_search.rerank_search_results"
+                ) as mock_rerank_search:
+                    with patch(
+                        "tensortruth.utils.web_search.fetch_page_as_markdown"
+                    ) as mock_fetch:
+                        with patch(
+                            "tensortruth.utils.web_search.rerank_fetched_pages"
+                        ) as mock_rerank_pages:
+                            with patch(
+                                "tensortruth.utils.web_search.summarize_with_llm_stream"
+                            ) as mock_summarize:
+                                # Setup mocks
+                                mock_search.return_value = [
+                                    {
+                                        "url": "https://example.com",
+                                        "title": "Test",
+                                        "snippet": "...",
+                                    }
+                                ]
+                                mock_reranker = MagicMock()
+                                mock_get_reranker.return_value = mock_reranker
+                                mock_rerank_search.return_value = [
+                                    (
+                                        {
+                                            "url": "https://example.com",
+                                            "title": "Test",
+                                            "snippet": "...",
+                                        },
+                                        0.9,
+                                    )
+                                ]
+                                mock_fetch.return_value = ("# Content", "success", None)
+                                mock_rerank_pages.return_value = [
+                                    (("https://example.com", "Test", "# Content"), 0.85)
+                                ]
+
+                                async def mock_stream():
+                                    yield "Summary"
+
+                                mock_summarize.return_value = mock_stream()
+
+                                phases_seen = []
+                                async for chunk in web_search_stream(
+                                    query="test",
+                                    model_name="llama3.2",
+                                    ollama_url="http://localhost:11434",
+                                    reranker_model="BAAI/bge-reranker-v2-m3",
+                                ):
+                                    if (
+                                        chunk.agent_progress
+                                        and chunk.agent_progress.get("phase")
+                                    ):
+                                        phases_seen.append(
+                                            chunk.agent_progress["phase"]
+                                        )
+
+                                assert "ranking" in phases_seen
+
+    async def test_skips_ranking_when_reranker_disabled(self):
+        """No ranking phase when reranker_model is None."""
+        from tensortruth.utils.web_search import web_search_stream
+
+        with patch("tensortruth.utils.web_search.search_duckduckgo") as mock_search:
+            with patch(
+                "tensortruth.utils.web_search.fetch_page_as_markdown"
+            ) as mock_fetch:
+                with patch(
+                    "tensortruth.utils.web_search.summarize_with_llm_stream"
+                ) as mock_summarize:
+                    mock_search.return_value = [
+                        {
+                            "url": "https://example.com",
+                            "title": "Test",
+                            "snippet": "...",
+                        }
+                    ]
+                    mock_fetch.return_value = ("# Content", "success", None)
+
+                    async def mock_stream():
+                        yield "Summary"
+
+                    mock_summarize.return_value = mock_stream()
+
+                    phases_seen = []
+                    async for chunk in web_search_stream(
+                        query="test",
+                        model_name="llama3.2",
+                        ollama_url="http://localhost:11434",
+                        reranker_model=None,  # Disabled
+                    ):
+                        if chunk.agent_progress and chunk.agent_progress.get("phase"):
+                            phases_seen.append(chunk.agent_progress["phase"])
+
+                    # Should have searching, fetching, summarizing but NOT ranking
+                    assert "ranking" not in phases_seen
+                    assert "searching" in phases_seen
+
+    async def test_sources_have_relevance_scores(self):
+        """Final sources include relevance_score field."""
+        from tensortruth.utils.web_search import web_search_stream
+
+        with patch("tensortruth.utils.web_search.search_duckduckgo") as mock_search:
+            with patch(
+                "tensortruth.utils.web_search.get_reranker_for_web"
+            ) as mock_get_reranker:
+                with patch(
+                    "tensortruth.utils.web_search.rerank_search_results"
+                ) as mock_rerank_search:
+                    with patch(
+                        "tensortruth.utils.web_search.fetch_page_as_markdown"
+                    ) as mock_fetch:
+                        with patch(
+                            "tensortruth.utils.web_search.rerank_fetched_pages"
+                        ) as mock_rerank_pages:
+                            with patch(
+                                "tensortruth.utils.web_search.summarize_with_llm_stream"
+                            ) as mock_summarize:
+                                mock_search.return_value = [
+                                    {
+                                        "url": "https://example.com",
+                                        "title": "Test",
+                                        "snippet": "...",
+                                    }
+                                ]
+                                mock_reranker = MagicMock()
+                                mock_get_reranker.return_value = mock_reranker
+                                mock_rerank_search.return_value = [
+                                    (
+                                        {
+                                            "url": "https://example.com",
+                                            "title": "Test",
+                                            "snippet": "...",
+                                        },
+                                        0.9,
+                                    )
+                                ]
+                                mock_fetch.return_value = ("# Content", "success", None)
+                                mock_rerank_pages.return_value = [
+                                    (("https://example.com", "Test", "# Content"), 0.85)
+                                ]
+
+                                async def mock_stream():
+                                    yield "Summary"
+
+                                mock_summarize.return_value = mock_stream()
+
+                                final_sources = None
+                                async for chunk in web_search_stream(
+                                    query="test",
+                                    model_name="llama3.2",
+                                    ollama_url="http://localhost:11434",
+                                    reranker_model="BAAI/bge-reranker-v2-m3",
+                                ):
+                                    if chunk.sources is not None:
+                                        final_sources = chunk.sources
+
+                                assert final_sources is not None
+                                assert len(final_sources) == 1
+                                assert final_sources[0].relevance_score == 0.85

@@ -2,12 +2,14 @@
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Tuple
 
 import aiohttp
 from bs4 import BeautifulSoup, Tag
 from ddgs import DDGS
+from llama_index.core.postprocessor import SentenceTransformerRerank
+from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
 from llama_index.llms.ollama import Ollama
 from markdownify import markdownify as md
 
@@ -20,6 +22,151 @@ from . import github_handler  # noqa: F401, E402
 from . import wikipedia_handler  # noqa: F401, E402
 from . import youtube_handler  # noqa: F401, E402
 from .domain_handlers import get_handler_for_url  # noqa: E402
+
+# =============================================================================
+# Reranking Utilities
+# =============================================================================
+
+
+def get_reranker_for_web(
+    model_name: str,
+    device: str = "cuda",
+    top_n: int = 100,
+) -> SentenceTransformerRerank:
+    """Get reranker instance for web search.
+
+    Reuses the RAG ModelManager singleton for efficient model caching.
+
+    Args:
+        model_name: HuggingFace model path for the reranker
+        device: Device to load model on ("cuda", "cpu", "mps")
+        top_n: High top_n since we sort all results, not filter
+
+    Returns:
+        SentenceTransformerRerank instance ready for use
+    """
+    from tensortruth.services.model_manager import ModelManager
+
+    manager = ModelManager.get_instance()
+    return manager.get_reranker(model_name=model_name, top_n=top_n, device=device)
+
+
+def rerank_search_results(
+    query: str,
+    results: List[Dict[str, str]],
+    top_n: int,
+    reranker: SentenceTransformerRerank,
+) -> List[Tuple[Dict[str, str], float]]:
+    """Rerank search results by title+snippet relevance.
+
+    Creates TextNodes from title+snippet and uses the reranker to score them.
+    Returns ALL results sorted by score (highest first), with scores attached.
+
+    Args:
+        query: The search query to rank against
+        results: DDG search results with 'url', 'title', 'snippet' keys
+        top_n: Unused, kept for API compatibility (returns all results)
+        reranker: SentenceTransformerRerank instance to use
+
+    Returns:
+        List of (result_dict, score) tuples sorted by score descending
+    """
+    if not results:
+        return []
+
+    # Create TextNodes from title+snippet
+    nodes_with_score = []
+    for result in results:
+        title = result.get("title", "")
+        snippet = result.get("snippet", "")
+        text = f"{title}\n{snippet}"
+
+        node = TextNode(text=text)
+        # Store original result in metadata for retrieval
+        node.metadata = {"original_result": result}
+        nodes_with_score.append(NodeWithScore(node=node, score=0.0))
+
+    # Rerank using the reranker
+    query_bundle = QueryBundle(query_str=query)
+    ranked_nodes = reranker.postprocess_nodes(nodes_with_score, query_bundle)
+
+    # Extract results with scores, sorted by score descending
+    ranked_results: List[Tuple[Dict[str, str], float]] = []
+    for node_with_score in ranked_nodes:
+        original_result = node_with_score.node.metadata.get("original_result")
+        if original_result:
+            # Convert numpy float32 to Python float for JSON serialization
+            score = float(node_with_score.score) if node_with_score.score is not None else 0.0
+            ranked_results.append((original_result, score))
+
+    # Sort by score descending (reranker may not guarantee order)
+    ranked_results.sort(key=lambda x: x[1], reverse=True)
+
+    return ranked_results
+
+
+def rerank_fetched_pages(
+    query: str,
+    custom_instructions: Optional[str],
+    pages: List[Tuple[str, str, str]],
+    reranker: SentenceTransformerRerank,
+    max_content_chars: int = 2000,
+) -> List[Tuple[Tuple[str, str, str], float]]:
+    """Rerank fetched pages by content relevance.
+
+    Query is enhanced with custom_instructions if provided to influence
+    the ranking based on user intent.
+
+    Args:
+        query: The search query to rank against
+        custom_instructions: Optional user instructions to include in ranking
+        pages: List of (url, title, content) tuples
+        reranker: SentenceTransformerRerank instance to use
+        max_content_chars: Max chars of content to use for ranking (efficiency)
+
+    Returns:
+        List of (page_tuple, score) tuples sorted by score descending
+    """
+    if not pages:
+        return []
+
+    # Build ranking query with optional custom instructions
+    if custom_instructions:
+        ranking_query = f"{query}\n\nUser focus: {custom_instructions}"
+    else:
+        ranking_query = query
+
+    # Create TextNodes from page content (truncated for efficiency)
+    nodes_with_score = []
+    for page in pages:
+        url, title, content = page
+        # Truncate content for efficient ranking
+        truncated_content = content[:max_content_chars]
+        text = f"{title}\n\n{truncated_content}"
+
+        node = TextNode(text=text)
+        # Store original page tuple in metadata
+        node.metadata = {"original_page": page}
+        nodes_with_score.append(NodeWithScore(node=node, score=0.0))
+
+    # Rerank using the reranker
+    query_bundle = QueryBundle(query_str=ranking_query)
+    ranked_nodes = reranker.postprocess_nodes(nodes_with_score, query_bundle)
+
+    # Extract pages with scores, sorted by score descending
+    ranked_pages: List[Tuple[Tuple[str, str, str], float]] = []
+    for node_with_score in ranked_nodes:
+        original_page = node_with_score.node.metadata.get("original_page")
+        if original_page:
+            # Convert numpy float32 to Python float for JSON serialization
+            score = float(node_with_score.score) if node_with_score.score is not None else 0.0
+            ranked_pages.append((original_page, score))
+
+    # Sort by score descending
+    ranked_pages.sort(key=lambda x: x[1], reverse=True)
+
+    return ranked_pages
+
 
 # =============================================================================
 # Progress Dataclasses for Structured Callbacks
@@ -68,6 +215,7 @@ class WebSearchSource:
     snippet: Optional[str] = None
     content: Optional[str] = None  # Full fetched content (for successful pages)
     content_chars: int = 0  # Character count of content passed to LLM
+    relevance_score: Optional[float] = None  # Reranker score (0.0-1.0)
 
 
 @dataclass
@@ -96,7 +244,7 @@ class WebSearchChunk:
     is_complete: bool = False
 
 
-def web_source_to_source_node(source: WebSearchSource) -> Dict[str, any]:
+def web_source_to_source_node(source: WebSearchSource) -> Dict[str, Any]:
     """Convert WebSearchSource to SourceNode format for unified UI.
 
     This enables web search sources to be displayed using the same SourcesList
@@ -111,9 +259,16 @@ def web_source_to_source_node(source: WebSearchSource) -> Dict[str, any]:
     # Use full content if available (for successful fetches), else snippet
     text = source.content if source.content else (source.snippet or "")
 
+    # Use relevance_score for display if available, else fallback to status-based score
+    score = (
+        source.relevance_score
+        if source.relevance_score is not None
+        else (1.0 if source.status == "success" else 0.0)
+    )
+
     return {
         "text": text,
-        "score": 1.0 if source.status == "success" else 0.0,
+        "score": score,
         "metadata": {
             "source_url": source.url,
             "display_name": source.title,
@@ -747,6 +902,7 @@ async def summarize_with_llm_stream(
     ollama_url: str,
     context_window: Optional[int] = None,
     custom_instructions: Optional[str] = None,
+    source_scores: Optional[Dict[str, float]] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream tokens from LLM summarization instead of blocking.
@@ -758,6 +914,7 @@ async def summarize_with_llm_stream(
         ollama_url: Ollama API URL
         context_window: Optional context window size
         custom_instructions: Optional custom instructions for LLM
+        source_scores: Optional dict of url -> relevance score for display
 
     Yields:
         str: Individual tokens from the LLM response
@@ -779,12 +936,19 @@ async def summarize_with_llm_stream(
     max_total_chars = max_input_tokens * 4
     max_per_page = min(max_total_chars // len(pages), 4000)
 
-    # Build source list with numbered markdown links
+    # Build source list with numbered markdown links (and relevance scores if available)
     sources_list = []
     combined = []
 
     for idx, (url, title, content) in enumerate(pages, 1):
-        sources_list.append(f"{idx}. [{title}]({url})")
+        # Add relevance score to source list if available
+        if source_scores and url in source_scores:
+            score = source_scores[url]
+            sources_list.append(
+                f"{idx}. [{title}]({url}) — Relevance: {score*100:.0f}%"
+            )
+        else:
+            sources_list.append(f"{idx}. [{title}]({url})")
         truncated = content[:max_per_page]
         if len(content) > max_per_page:
             truncated += "\n\n[Content truncated...]"
@@ -806,10 +970,18 @@ async def summarize_with_llm_stream(
             f"\n\n**Additional Instructions:** {custom_instructions}"
         )
 
+    # Add relevance guidance when scores are available
+    relevance_guidance = ""
+    if source_scores:
+        relevance_guidance = (
+            "\n\n**Note:** Sources are ordered by relevance. "
+            "Prioritize information from higher-scored sources when synthesizing your answer."
+        )
+
     prompt = f"""You are a research assistant. User asked: "{query}"
 
 ## Available Sources
-{sources_text}
+{sources_text}{relevance_guidance}
 
 ## Content from Sources
 {combined_text}
@@ -875,15 +1047,19 @@ async def web_search_stream(
     max_pages: int = 5,
     context_window: Optional[int] = None,
     custom_instructions: Optional[str] = None,
+    reranker_model: Optional[str] = None,
+    reranker_device: str = "cuda",
 ) -> AsyncGenerator[WebSearchChunk, None]:
     """
     Streaming web search that yields chunks like RAG does.
 
     This generator yields WebSearchChunk objects for each phase:
     1. Search phase: agent_progress with search status
-    2. Fetch phase: agent_progress per page attempt
-    3. Summarize phase: status='generating' then token chunks
-    4. Complete: sources and is_complete=True
+    2. Ranking phase (optional): agent_progress when reranking results
+    3. Fetch phase: agent_progress per page attempt (in ranked order if reranker enabled)
+    4. Ranking phase (optional): agent_progress when reranking fetched content
+    5. Summarize phase: status='generating' then token chunks
+    6. Complete: sources and is_complete=True
 
     Args:
         query: Search query
@@ -893,6 +1069,8 @@ async def web_search_stream(
         max_pages: Max pages to download and process
         context_window: Optional context window size
         custom_instructions: Optional custom instructions for LLM
+        reranker_model: Optional reranker model name (None = disabled)
+        reranker_device: Device for reranker ("cuda", "cpu", "mps")
 
     Yields:
         WebSearchChunk: Streaming chunks with progress, tokens, or sources
@@ -936,7 +1114,26 @@ async def web_search_stream(
         yield WebSearchChunk(sources=[], is_complete=True)
         return
 
-    # Phase 2: Fetch pages - yield agent_progress per attempt
+    # Phase 2: Rerank search results (if reranker enabled)
+    reranker = None
+    if reranker_model:
+        yield WebSearchChunk(
+            agent_progress={
+                "agent": "web_search",
+                "phase": "ranking",
+                "message": "Ranking search results...",
+            }
+        )
+        reranker = get_reranker_for_web(reranker_model, reranker_device)
+        ranked_results = rerank_search_results(
+            query, search_results, max_results, reranker
+        )
+        # Extract just the results in ranked order
+        search_results_ordered = [r for r, _ in ranked_results]
+    else:
+        search_results_ordered = search_results
+
+    # Phase 3: Fetch pages - yield agent_progress per attempt (in ranked order)
     snippet_map = {r["url"]: r.get("snippet", "") for r in search_results}
     pages: List[Tuple[str, str, str]] = []
     sources: List[WebSearchSource] = []
@@ -945,10 +1142,10 @@ async def web_search_stream(
     pages_failed = 0
 
     async with aiohttp.ClientSession() as session:
-        while len(pages) < max_pages and current_idx < len(search_results):
+        while len(pages) < max_pages and current_idx < len(search_results_ordered):
             needed = max_pages - len(pages)
-            batch_size = min(needed + 2, len(search_results) - current_idx)
-            batch = search_results[current_idx : current_idx + batch_size]
+            batch_size = min(needed + 2, len(search_results_ordered) - current_idx)
+            batch = search_results_ordered[current_idx : current_idx + batch_size]
 
             # Fetch batch
             tasks = [fetch_page_as_markdown(r["url"], session) for r in batch]
@@ -1074,7 +1271,31 @@ async def web_search_stream(
         yield WebSearchChunk(sources=sources, is_complete=True)
         return
 
-    # Phase 3: Summarize - yield status then tokens
+    # Phase 4: Rerank fetched content (if reranker enabled)
+    source_scores: Dict[str, float] = {}
+    if reranker_model and reranker and pages:
+        yield WebSearchChunk(
+            agent_progress={
+                "agent": "web_search",
+                "phase": "ranking",
+                "message": "Ranking fetched content...",
+            }
+        )
+        ranked_pages = rerank_fetched_pages(query, custom_instructions, pages, reranker)
+
+        # Update sources with relevance scores
+        for (url, title, content), score in ranked_pages:
+            source_scores[url] = score
+            # Find and update the matching source
+            for source in sources:
+                if source.url == url and source.status == "success":
+                    source.relevance_score = score
+                    break
+
+        # Reorder pages by relevance score for summarization
+        pages = [(url, title, content) for (url, title, content), _ in ranked_pages]
+
+    # Phase 5: Summarize - yield status then tokens
     yield WebSearchChunk(
         agent_progress={
             "agent": "web_search",
@@ -1092,6 +1313,7 @@ async def web_search_stream(
         ollama_url,
         context_window,
         custom_instructions,
+        source_scores=source_scores if source_scores else None,
     ):
         yield WebSearchChunk(token=token)
 
