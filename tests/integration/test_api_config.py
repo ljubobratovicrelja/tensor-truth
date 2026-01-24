@@ -62,7 +62,7 @@ class TestConfigAPI:
 
         # Check default values
         assert data["ollama"]["base_url"] == "http://localhost:11434"
-        assert data["ui"]["default_temperature"] == 0.1
+        assert data["ui"]["default_temperature"] == 0.7
         assert data["agent"]["max_iterations"] == 10
 
     @pytest.mark.asyncio

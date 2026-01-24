@@ -225,7 +225,11 @@ async def test_web_command_handles_errors():
 
 @pytest.mark.asyncio
 async def test_web_command_uses_session_params():
-    """WebSearchCommand extracts parameters from session."""
+    """WebSearchCommand extracts model/ollama parameters from session.
+
+    Note: Web search specific settings (max_results, max_pages) come from config,
+    not session params, to maintain consistency across sessions.
+    """
     from tensortruth.api.routes.commands import WebSearchCommand
 
     cmd = WebSearchCommand()
@@ -235,8 +239,6 @@ async def test_web_command_uses_session_params():
         "params": {
             "model": "custom-model:8b",
             "ollama_url": "http://custom:11434",
-            "web_search_max_results": 15,
-            "web_search_pages_to_fetch": 8,
             "context_window": 32768,
         }
     }
@@ -250,9 +252,10 @@ async def test_web_command_uses_session_params():
         call_kwargs = mock_search.call_args[1]
         assert call_kwargs["model_name"] == "custom-model:8b"
         assert call_kwargs["ollama_url"] == "http://custom:11434"
-        assert call_kwargs["max_results"] == 15
-        assert call_kwargs["max_pages"] == 8
         assert call_kwargs["context_window"] == 32768
+        # Web search settings come from config, not session params
+        assert call_kwargs["max_results"] == 10  # default from config
+        assert call_kwargs["max_pages"] == 5  # default from config
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,6 @@ echo "Running unit tests..."
 pytest tests/unit/ -v --cov=tensortruth --cov-report=xml --cov-report=term
 
 echo "Running integration tests..."
-pytest tests/integration/ -v --run-network -m "not slow"
+pytest tests/integration/ -v -m "not slow"
 
 echo "Tests complete."

@@ -259,9 +259,14 @@ class TestWebSearchCommand:
         # Should have sent multiple messages
         assert len(ws.messages) > 0
 
-        # First message should be status
-        status_msgs = [m for m in ws.messages if m.get("type") == "status"]
-        assert len(status_msgs) > 0
+        # Get message types
+        message_types = [m.get("type") for m in ws.messages]
+
+        # Should have status messages (agent_progress or status type)
+        status_msgs = [
+            m for m in ws.messages if m.get("type") in ["status", "agent_progress"]
+        ]
+        assert len(status_msgs) > 0, f"No status messages found. Got: {message_types}"
 
         # Should have a done message at the end
         done_msgs = [m for m in ws.messages if m.get("type") == "done"]

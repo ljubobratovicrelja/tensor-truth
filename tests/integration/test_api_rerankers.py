@@ -30,7 +30,11 @@ class TestRerankersAPI:
     async def test_list_rerankers(self, client, tmp_path, monkeypatch):
         """Test getting list of configured rerankers."""
         # Create a fresh ConfigService for the test
+        from tensortruth.api import deps
         from tensortruth.services import ConfigService
+
+        # Clear the LRU cache to ensure fresh config service
+        deps.get_config_service.cache_clear()
 
         config_file = tmp_path / "config.yaml"
         test_service = ConfigService(config_file=config_file)
@@ -61,7 +65,11 @@ class TestRerankersAPI:
     @pytest.mark.asyncio
     async def test_add_reranker_success(self, client, tmp_path, monkeypatch):
         """Test adding a new reranker model (mocked validation)."""
+        from tensortruth.api import deps
         from tensortruth.services import ConfigService
+
+        # Clear the LRU cache to ensure fresh config service
+        deps.get_config_service.cache_clear()
 
         config_file = tmp_path / "config.yaml"
         test_service = ConfigService(config_file=config_file)
@@ -216,7 +224,11 @@ class TestRerankersAPI:
     @pytest.mark.asyncio
     async def test_remove_default_reranker_fails(self, client, tmp_path, monkeypatch):
         """Test that removing the currently selected default reranker fails."""
+        from tensortruth.api import deps
         from tensortruth.services import ConfigService
+
+        # Clear the LRU cache to ensure fresh config service
+        deps.get_config_service.cache_clear()
 
         config_file = tmp_path / "config.yaml"
         test_service = ConfigService(config_file=config_file)
@@ -228,7 +240,7 @@ class TestRerankersAPI:
             "tensortruth.api.deps.get_config_service", get_test_config_service
         )
 
-        # Try to remove the default reranker
+        # Try to remove the default reranker - should fail
         response = await client.delete("/api/rerankers/BAAI%2Fbge-reranker-v2-m3")
         assert response.status_code == 200
         data = response.json()

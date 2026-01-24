@@ -667,16 +667,28 @@ class TestDeviceCommand:
 class TestWebSearchCommand:
     """Tests for /search and /web commands."""
 
+    @patch("tensortruth.app_utils.commands.st")
     @patch("tensortruth.utils.web_search.web_search")
     @patch("tensortruth.core.ollama.get_ollama_url")
     def test_search_command_basic(
-        self, mock_get_url, mock_web_search, base_session, available_modules
+        self, mock_get_url, mock_web_search, mock_st, base_session, available_modules
     ):
         """Test /search command with basic query."""
+        from tensortruth.utils.web_search import WebSearchSource
+
         mock_get_url.return_value = "http://localhost:11434"
+        mock_st.empty.return_value = MagicMock()
         mock_web_search.return_value = (
-            '## Web Search: "PyTorch features"\n\n### Summary\nTest summary\n\n'
-            "### Sources\n1. [Test](https://example.com)"
+            '## Web Search: "PyTorch features"\n\n### Summary\nTest summary',
+            [
+                WebSearchSource(
+                    url="https://example.com",
+                    title="Test",
+                    status="success",
+                    error=None,
+                    snippet="Test snippet",
+                )
+            ],
         )
 
         is_cmd, response, state_modifier = process_command(
@@ -695,14 +707,16 @@ class TestWebSearchCommand:
         call_kwargs = mock_web_search.call_args[1]
         assert call_kwargs["model_name"] == "deepseek-r1:8b"
 
+    @patch("tensortruth.app_utils.commands.st")
     @patch("tensortruth.utils.web_search.web_search")
     @patch("tensortruth.core.ollama.get_ollama_url")
     def test_search_web_alias(
-        self, mock_get_url, mock_web_search, base_session, available_modules
+        self, mock_get_url, mock_web_search, mock_st, base_session, available_modules
     ):
         """Test /web alias for /search command."""
         mock_get_url.return_value = "http://localhost:11434"
-        mock_web_search.return_value = "## Web Search Results"
+        mock_st.empty.return_value = MagicMock()
+        mock_web_search.return_value = ("## Web Search Results", [])
 
         is_cmd, response, state_modifier = process_command(
             "/web test query", base_session, available_modules
@@ -725,14 +739,16 @@ class TestWebSearchCommand:
         assert "Usage" in response
         assert "/search <query>" in response
 
+    @patch("tensortruth.app_utils.commands.st")
     @patch("tensortruth.utils.web_search.web_search")
     @patch("tensortruth.core.ollama.get_ollama_url")
     def test_search_multi_word_query(
-        self, mock_get_url, mock_web_search, base_session, available_modules
+        self, mock_get_url, mock_web_search, mock_st, base_session, available_modules
     ):
         """Test /search with multi-word query."""
         mock_get_url.return_value = "http://localhost:11434"
-        mock_web_search.return_value = "## Results"
+        mock_st.empty.return_value = MagicMock()
+        mock_web_search.return_value = ("## Results", [])
 
         is_cmd, response, state_modifier = process_command(
             "/search how to use PyTorch 2.9", base_session, available_modules
@@ -743,14 +759,16 @@ class TestWebSearchCommand:
         call_kwargs = mock_web_search.call_args[1]
         assert call_kwargs["query"] == "how to use PyTorch 2.9"
 
+    @patch("tensortruth.app_utils.commands.st")
     @patch("tensortruth.utils.web_search.web_search")
     @patch("tensortruth.core.ollama.get_ollama_url")
     def test_search_uses_session_config(
-        self, mock_get_url, mock_web_search, base_session, available_modules
+        self, mock_get_url, mock_web_search, mock_st, base_session, available_modules
     ):
         """Test /search uses session configuration parameters."""
         mock_get_url.return_value = "http://localhost:11434"
-        mock_web_search.return_value = "## Results"
+        mock_st.empty.return_value = MagicMock()
+        mock_web_search.return_value = ("## Results", [])
 
         # Add web search config to session
         base_session["params"]["web_search_max_results"] = 10
@@ -765,14 +783,16 @@ class TestWebSearchCommand:
         assert call_kwargs["max_results"] == 10
         assert call_kwargs["max_pages"] == 7
 
+    @patch("tensortruth.app_utils.commands.st")
     @patch("tensortruth.utils.web_search.web_search")
     @patch("tensortruth.core.ollama.get_ollama_url")
     def test_search_uses_defaults_when_no_config(
-        self, mock_get_url, mock_web_search, base_session, available_modules
+        self, mock_get_url, mock_web_search, mock_st, base_session, available_modules
     ):
         """Test /search uses default values when not in session config."""
         mock_get_url.return_value = "http://localhost:11434"
-        mock_web_search.return_value = "## Results"
+        mock_st.empty.return_value = MagicMock()
+        mock_web_search.return_value = ("## Results", [])
 
         is_cmd, response, state_modifier = process_command(
             "/search test", base_session, available_modules
@@ -802,14 +822,16 @@ class TestWebSearchCommand:
         assert "Web search failed" in response
         assert "Network error" in response
 
+    @patch("tensortruth.app_utils.commands.st")
     @patch("tensortruth.utils.web_search.web_search")
     @patch("tensortruth.core.ollama.get_ollama_url")
     def test_search_reuses_session_model(
-        self, mock_get_url, mock_web_search, base_session, available_modules
+        self, mock_get_url, mock_web_search, mock_st, base_session, available_modules
     ):
         """Test /search uses the current session model (reuses VRAM)."""
         mock_get_url.return_value = "http://localhost:11434"
-        mock_web_search.return_value = "## Results"
+        mock_st.empty.return_value = MagicMock()
+        mock_web_search.return_value = ("## Results", [])
 
         # Change model in session
         base_session["params"]["model"] = "llama2:7b"

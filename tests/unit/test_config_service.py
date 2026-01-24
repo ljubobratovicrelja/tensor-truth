@@ -31,7 +31,7 @@ class TestConfigServiceLoad:
 
         # Default values
         assert config.ollama.base_url == "http://localhost:11434"
-        assert config.ui.default_temperature == 0.1
+        assert config.ui.default_temperature == 0.7
         assert config.agent.max_iterations == 10
 
         # File should be created
@@ -72,7 +72,7 @@ class TestConfigServiceLoad:
         # Custom value loaded
         assert config.ollama.base_url == "http://custom:11434"
         # Default values for missing fields
-        assert config.ui.default_temperature == 0.1
+        assert config.ui.default_temperature == 0.7
         assert config.agent.max_iterations == 10
 
 

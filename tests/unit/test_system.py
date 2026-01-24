@@ -99,7 +99,7 @@ class TestGetMpsMemory:
     def test_mps_available(self, mock_torch):
         """Test get_mps_memory when MPS is available."""
         mock_torch.backends.mps.is_available.return_value = True
-        mock_torch.mps.current_allocated_memory.return_value = 2 * (1024**3)  # 2 GB
+        mock_torch.mps.driver_allocated_memory.return_value = 2 * (1024**3)  # 2 GB
 
         with patch("psutil.virtual_memory") as mock_vmem:
             mock_vmem.return_value = MagicMock(total=16 * (1024**3))

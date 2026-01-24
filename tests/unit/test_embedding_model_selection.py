@@ -484,11 +484,16 @@ class TestModelManagerReranker:
 
     @patch("tensortruth.services.model_manager.SentenceTransformerRerank")
     def test_get_reranker_top_n_change_no_reload(self, mock_reranker):
-        """Test that changing top_n does not trigger full reload."""
+        """Test that changing top_n triggers a reload.
+
+        Note: LlamaIndex's SentenceTransformerRerank may cache top_n internally,
+        so we reload the model when top_n changes to ensure correct behavior.
+        """
         from tensortruth.services.model_manager import ModelManager
 
-        mock_instance = MagicMock()
-        mock_reranker.return_value = mock_instance
+        mock_instance1 = MagicMock()
+        mock_instance2 = MagicMock()
+        mock_reranker.side_effect = [mock_instance1, mock_instance2]
 
         manager = ModelManager.get_instance()
         reranker1 = manager.get_reranker(
@@ -498,11 +503,12 @@ class TestModelManagerReranker:
             model_name="BAAI/bge-reranker-v2-m3", top_n=10, device="cpu"
         )
 
-        # Same instance, just top_n updated
-        assert reranker1 is reranker2
-        assert mock_reranker.call_count == 1
-        # Verify top_n was updated on the instance
-        assert mock_instance.top_n == 10
+        # Different instances due to top_n change
+        assert reranker1 is not reranker2
+        assert mock_reranker.call_count == 2
+        # Verify both were created with correct top_n
+        assert mock_reranker.call_args_list[0].kwargs["top_n"] == 5
+        assert mock_reranker.call_args_list[1].kwargs["top_n"] == 10
 
 
 # ============================================================================
