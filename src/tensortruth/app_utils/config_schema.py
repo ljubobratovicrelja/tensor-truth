@@ -229,6 +229,23 @@ DEFAULT_FILLER_PHRASES = [
 
 
 @dataclass
+class WebSearchConfig:
+    """Web search pipeline configuration."""
+
+    # DDG search settings
+    ddg_max_results: int = 10  # Max results to fetch from DuckDuckGo
+    max_pages_to_fetch: int = 5  # Max pages to actually download and process
+
+    # Reranking thresholds (0.0-1.0)
+    rerank_title_threshold: float = 0.1  # Min score after title/snippet reranking
+    rerank_content_threshold: float = 0.1  # Min score after content reranking
+
+    # Context fitting (percentages of context window)
+    max_source_context_pct: float = 0.15  # Max % of context per source
+    input_context_pct: float = 0.6  # % of context window for input (rest for output)
+
+
+@dataclass
 class HistoryCleaningConfig:
     """Chat history cleaning configuration.
 
@@ -267,6 +284,7 @@ class TensorTruthConfig:
     models: ModelsConfig
     agent: AgentConfig
     history_cleaning: HistoryCleaningConfig
+    web_search: WebSearchConfig
 
     def to_dict(self) -> dict:
         """Convert config to dictionary for YAML serialization."""
@@ -277,6 +295,7 @@ class TensorTruthConfig:
             "models": asdict(self.models),
             "agent": asdict(self.agent),
             "history_cleaning": asdict(self.history_cleaning),
+            "web_search": asdict(self.web_search),
         }
 
     @classmethod
@@ -288,6 +307,7 @@ class TensorTruthConfig:
         models_data = data.get("models", {})
         agent_data = data.get("agent", {})
         history_cleaning_data = data.get("history_cleaning", {})
+        web_search_data = data.get("web_search", {})
 
         return cls(
             ollama=OllamaConfig(**ollama_data),
@@ -296,6 +316,7 @@ class TensorTruthConfig:
             models=ModelsConfig(**models_data),
             agent=AgentConfig(**agent_data),
             history_cleaning=HistoryCleaningConfig(**history_cleaning_data),
+            web_search=WebSearchConfig(**web_search_data),
         )
 
     @classmethod
@@ -317,6 +338,7 @@ class TensorTruthConfig:
             models=ModelsConfig(),
             agent=AgentConfig(),
             history_cleaning=HistoryCleaningConfig(),
+            web_search=WebSearchConfig(),
         )
 
     @staticmethod

@@ -63,6 +63,17 @@ class HistoryCleaningConfigSchema(BaseModel):
     # Note: filler_phrases list not exposed in UI (advanced/config-file only)
 
 
+class WebSearchConfigSchema(BaseModel):
+    """Web search pipeline configuration."""
+
+    ddg_max_results: int = 10
+    max_pages_to_fetch: int = 5
+    rerank_title_threshold: float = 0.1
+    rerank_content_threshold: float = 0.1
+    max_source_context_pct: float = 0.15
+    input_context_pct: float = 0.6
+
+
 class ConfigResponse(BaseModel):
     """Full configuration response."""
 
@@ -72,6 +83,7 @@ class ConfigResponse(BaseModel):
     models: ModelsConfigSchema
     agent: AgentConfigSchema
     history_cleaning: HistoryCleaningConfigSchema
+    web_search: WebSearchConfigSchema
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -84,6 +96,7 @@ class ConfigUpdateRequest(BaseModel):
     - agent_*: Updates agent config
     - models_*: Updates models config
     - history_cleaning_*: Updates history cleaning config
+    - web_search_*: Updates web search config
     """
 
     updates: Dict[str, Any] = Field(

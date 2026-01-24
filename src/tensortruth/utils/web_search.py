@@ -3,7 +3,17 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Tuple
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 import aiohttp
 from bs4 import BeautifulSoup, Tag
@@ -96,7 +106,11 @@ def rerank_search_results(
         original_result = node_with_score.node.metadata.get("original_result")
         if original_result:
             # Convert numpy float32 to Python float for JSON serialization
-            score = float(node_with_score.score) if node_with_score.score is not None else 0.0
+            score = (
+                float(node_with_score.score)
+                if node_with_score.score is not None
+                else 0.0
+            )
             ranked_results.append((original_result, score))
 
     # Sort by score descending (reranker may not guarantee order)
@@ -159,13 +173,204 @@ def rerank_fetched_pages(
         original_page = node_with_score.node.metadata.get("original_page")
         if original_page:
             # Convert numpy float32 to Python float for JSON serialization
-            score = float(node_with_score.score) if node_with_score.score is not None else 0.0
+            score = (
+                float(node_with_score.score)
+                if node_with_score.score is not None
+                else 0.0
+            )
             ranked_pages.append((original_page, score))
 
     # Sort by score descending
     ranked_pages.sort(key=lambda x: x[1], reverse=True)
 
     return ranked_pages
+
+
+# Type variable for generic filter function
+T = TypeVar("T")
+
+
+def filter_by_threshold(
+    ranked_items: List[Tuple[T, float]],
+    threshold: float,
+) -> Tuple[List[Tuple[T, float]], List[Tuple[T, float]]]:
+    """Split ranked items into passing and rejected based on threshold.
+
+    Items with score >= threshold pass; items with score < threshold are rejected.
+    Order is preserved in both output lists.
+
+    Args:
+        ranked_items: List of (item, score) tuples
+        threshold: Minimum score to pass (0.0-1.0)
+
+    Returns:
+        Tuple of (passing, rejected) lists, each containing (item, score) tuples
+    """
+    passing: List[Tuple[T, float]] = []
+    rejected: List[Tuple[T, float]] = []
+
+    for item, score in ranked_items:
+        if score >= threshold:
+            passing.append((item, score))
+        else:
+            rejected.append((item, score))
+
+    return passing, rejected
+
+
+def fit_sources_to_context(
+    pages: List[Tuple[str, str, str]],  # (url, title, content)
+    source_scores: Dict[str, float],
+    context_window: int,
+    input_context_pct: float = 0.6,
+    max_source_context_pct: float = 0.15,
+) -> Tuple[List[Tuple[str, str, str]], Dict[str, int]]:
+    """Fit sources to context window using fill-from-top strategy.
+
+    Pages must be pre-sorted by relevance (highest first).
+    Uses a greedy algorithm to maximize content from highest-ranked sources.
+
+    Args:
+        pages: List of (url, title, content) tuples, sorted by relevance
+        source_scores: Dict of url -> relevance score for each source
+        context_window: Total context window size in tokens
+        input_context_pct: Percentage of context window for input (rest for output)
+        max_source_context_pct: Max percentage of context per source
+
+    Returns:
+        Tuple of:
+        - List of (url, title, truncated_content) that fit
+        - Dict of url -> allocated_chars for each included source
+
+    Strategy:
+    1. Calculate total budget: context_window * input_context_pct * 4 (chars)
+    2. Calculate per-source cap: context_window * max_source_context_pct * 4
+    3. Greedily fill from top until budget exhausted
+    4. Last source may be truncated to fit remaining budget
+    """
+    if not pages:
+        return [], {}
+
+    # Calculate budgets in characters (rough: 1 token ≈ 4 chars)
+    total_budget = int(context_window * input_context_pct * 4)
+    per_source_cap = int(context_window * max_source_context_pct * 4)
+
+    fitted: List[Tuple[str, str, str]] = []
+    allocations: Dict[str, int] = {}
+    remaining_budget = total_budget
+
+    for url, title, content in pages:
+        if remaining_budget <= 0:
+            break
+
+        # Cap content at per-source maximum
+        content_to_use = content[:per_source_cap]
+
+        # If content fits fully within remaining budget
+        if len(content_to_use) <= remaining_budget:
+            fitted.append((url, title, content_to_use))
+            allocations[url] = len(content_to_use)
+            remaining_budget -= len(content_to_use)
+        else:
+            # Truncate to fit remaining budget
+            truncated = content_to_use[:remaining_budget]
+            fitted.append((url, title, truncated))
+            allocations[url] = len(truncated)
+            remaining_budget = 0
+
+    return fitted, allocations
+
+
+async def generate_no_sources_explanation(
+    query: str,
+    rejected_titles: List[Tuple[str, float]],  # (title, score)
+    rejected_content: List[Tuple[str, float]],  # (title, score)
+    title_threshold: float,
+    content_threshold: float,
+    model_name: str,
+    ollama_url: str,
+) -> AsyncGenerator[str, None]:
+    """Generate LLM explanation when no sources pass thresholds.
+
+    Streams tokens explaining:
+    - What was searched
+    - How many results were found
+    - Why they were rejected (scores vs thresholds)
+    - Suggestions for the user
+
+    Args:
+        query: Original search query
+        rejected_titles: List of (title, score) for sources rejected at title stage
+        rejected_content: List of (title, score) for sources rejected at content stage
+        title_threshold: Minimum score threshold for titles
+        content_threshold: Minimum score threshold for content
+        model_name: LLM model name
+        ollama_url: Ollama API URL
+
+    Yields:
+        str: Individual tokens from the LLM explanation
+    """
+    # Build context about what was rejected
+    title_rejected_info = ""
+    if rejected_titles:
+        title_rejected_info = "\n".join(
+            f'  - "{title}" (score: {score*100:.0f}%)'
+            for title, score in rejected_titles[:5]  # Limit to top 5
+        )
+
+    content_rejected_info = ""
+    if rejected_content:
+        content_rejected_info = "\n".join(
+            f'  - "{title}" (score: {score*100:.0f}%)'
+            for title, score in rejected_content[:5]
+        )
+
+    total_rejected = len(rejected_titles) + len(rejected_content)
+
+    prompt = f"""You are a helpful assistant explaining why \
+a web search couldn't find relevant information.
+
+Query: "{query}"
+
+Search Results Summary:
+- Total results found: {total_rejected}
+- Title relevance threshold: {title_threshold*100:.0f}%
+- Content relevance threshold: {content_threshold*100:.0f}%
+
+Sources rejected at title/snippet stage (below {title_threshold*100:.0f}% relevance):
+{title_rejected_info if title_rejected_info else "  (none)"}
+
+Sources rejected at content stage (below {content_threshold*100:.0f}% relevance):
+{content_rejected_info if content_rejected_info else "  (none)"}
+
+Write a brief, helpful explanation (2-3 sentences) that:
+1. Acknowledges the search was performed
+2. Explains that no sources were relevant enough (without being too technical)
+3. Suggests ways to improve the query (more specific terms, different phrasing, etc.)
+
+Keep it concise and actionable. Don't apologize excessively."""
+
+    try:
+        thinking_enabled = check_thinking_support(model_name)
+
+        llm = Ollama(
+            model=model_name,
+            base_url=ollama_url,
+            request_timeout=60.0,
+            temperature=0.3,
+            thinking=thinking_enabled,
+        )
+
+        async for chunk in await llm.astream_complete(prompt):
+            if chunk.delta:
+                yield chunk.delta
+
+    except Exception as e:
+        logger.error(f"No-sources explanation generation failed: {e}")
+        yield (
+            f'I searched for "{query}" but couldn\'t find sources that met the '
+            f"relevance threshold. Try rephrasing your query or using more specific terms."
+        )
 
 
 # =============================================================================
@@ -1049,6 +1254,11 @@ async def web_search_stream(
     custom_instructions: Optional[str] = None,
     reranker_model: Optional[str] = None,
     reranker_device: str = "cuda",
+    # Threshold and context fitting params (from config)
+    rerank_title_threshold: float = 0.1,
+    rerank_content_threshold: float = 0.1,
+    max_source_context_pct: float = 0.15,
+    input_context_pct: float = 0.6,
 ) -> AsyncGenerator[WebSearchChunk, None]:
     """
     Streaming web search that yields chunks like RAG does.
@@ -1056,21 +1266,29 @@ async def web_search_stream(
     This generator yields WebSearchChunk objects for each phase:
     1. Search phase: agent_progress with search status
     2. Ranking phase (optional): agent_progress when reranking results
+       - Applies title threshold to reject low-relevance results
     3. Fetch phase: agent_progress per page attempt (in ranked order if reranker enabled)
     4. Ranking phase (optional): agent_progress when reranking fetched content
-    5. Summarize phase: status='generating' then token chunks
-    6. Complete: sources and is_complete=True
+       - Applies content threshold to reject low-relevance pages
+    5. Context fitting: Trims sources to fit context window (fill-from-top)
+    6. Zero-source handling: LLM explains why no sources passed (if applicable)
+    7. Summarize phase: status='generating' then token chunks
+    8. Complete: sources and is_complete=True
 
     Args:
         query: Search query
         model_name: Ollama model name
         ollama_url: Ollama API base URL
-        max_results: Max search results to fetch
+        max_results: Max search results to fetch from DDG
         max_pages: Max pages to download and process
         context_window: Optional context window size
         custom_instructions: Optional custom instructions for LLM
         reranker_model: Optional reranker model name (None = disabled)
         reranker_device: Device for reranker ("cuda", "cpu", "mps")
+        rerank_title_threshold: Min score after title/snippet reranking (0.0-1.0)
+        rerank_content_threshold: Min score after content reranking (0.0-1.0)
+        max_source_context_pct: Max % of context per source
+        input_context_pct: % of context window for input (rest for output)
 
     Yields:
         WebSearchChunk: Streaming chunks with progress, tokens, or sources
@@ -1116,6 +1334,9 @@ async def web_search_stream(
 
     # Phase 2: Rerank search results (if reranker enabled)
     reranker = None
+    rejected_at_title: List[Tuple[str, float]] = (
+        []
+    )  # (title, score) for no-source explanation
     if reranker_model:
         yield WebSearchChunk(
             agent_progress={
@@ -1128,8 +1349,40 @@ async def web_search_stream(
         ranked_results = rerank_search_results(
             query, search_results, max_results, reranker
         )
-        # Extract just the results in ranked order
-        search_results_ordered = [r for r, _ in ranked_results]
+
+        # Apply title threshold filtering
+        passing_results, rejected_results = filter_by_threshold(
+            ranked_results, rerank_title_threshold
+        )
+
+        # Track rejected for potential no-source explanation
+        rejected_at_title = [
+            (r.get("title", "Untitled"), score) for r, score in rejected_results
+        ]
+
+        if not passing_results:
+            # All results rejected at title stage - will handle after fetch phase
+            search_results_ordered = []
+            yield WebSearchChunk(
+                agent_progress={
+                    "agent": "web_search",
+                    "phase": "ranking",
+                    "message": f"All {len(rejected_results)} results below relevance threshold",
+                }
+            )
+        else:
+            # Extract just the results in ranked order
+            search_results_ordered = [r for r, _ in passing_results]
+            yield WebSearchChunk(
+                agent_progress={
+                    "agent": "web_search",
+                    "phase": "ranking",
+                    "message": (
+                        f"{len(passing_results)} results passed threshold "
+                        f"({len(rejected_results)} rejected)"
+                    ),
+                }
+            )
     else:
         search_results_ordered = search_results
 
@@ -1273,6 +1526,7 @@ async def web_search_stream(
 
     # Phase 4: Rerank fetched content (if reranker enabled)
     source_scores: Dict[str, float] = {}
+    rejected_at_content: List[Tuple[str, float]] = []  # (title, score)
     if reranker_model and reranker and pages:
         yield WebSearchChunk(
             agent_progress={
@@ -1283,7 +1537,17 @@ async def web_search_stream(
         )
         ranked_pages = rerank_fetched_pages(query, custom_instructions, pages, reranker)
 
-        # Update sources with relevance scores
+        # Apply content threshold filtering
+        passing_pages, rejected_pages = filter_by_threshold(
+            ranked_pages, rerank_content_threshold
+        )
+
+        # Track rejected for potential no-source explanation
+        rejected_at_content = [
+            (title, score) for (url, title, content), score in rejected_pages
+        ]
+
+        # Update sources with relevance scores for ALL pages (passing and rejected)
         for (url, title, content), score in ranked_pages:
             source_scores[url] = score
             # Find and update the matching source
@@ -1292,10 +1556,89 @@ async def web_search_stream(
                     source.relevance_score = score
                     break
 
-        # Reorder pages by relevance score for summarization
-        pages = [(url, title, content) for (url, title, content), _ in ranked_pages]
+        # Mark rejected sources as skipped with reason
+        rejected_urls = {url for (url, title, content), score in rejected_pages}
+        for source in sources:
+            if source.url in rejected_urls and source.status == "success":
+                score_pct = int((source.relevance_score or 0) * 100)
+                threshold_pct = int(rerank_content_threshold * 100)
+                source.status = "skipped"
+                source.error = f"Low relevance ({score_pct}% < {threshold_pct}%)"
 
-    # Phase 5: Summarize - yield status then tokens
+        # Only keep passing pages for summarization
+        if passing_pages:
+            pages = [
+                (url, title, content) for (url, title, content), _ in passing_pages
+            ]
+            yield WebSearchChunk(
+                agent_progress={
+                    "agent": "web_search",
+                    "phase": "ranking",
+                    "message": (
+                        f"{len(passing_pages)} pages passed threshold "
+                        f"({len(rejected_pages)} rejected)"
+                    ),
+                }
+            )
+        else:
+            pages = []
+            yield WebSearchChunk(
+                agent_progress={
+                    "agent": "web_search",
+                    "phase": "ranking",
+                    "message": f"All {len(rejected_pages)} pages below relevance threshold",
+                }
+            )
+
+    # Phase 5: Handle zero sources - generate explanation
+    if not pages:
+        yield WebSearchChunk(
+            agent_progress={
+                "agent": "web_search",
+                "phase": "summarizing",
+                "message": "Explaining search results...",
+                "model_name": model_name,
+            }
+        )
+        yield WebSearchChunk(status="generating")
+
+        async for token in generate_no_sources_explanation(
+            query=query,
+            rejected_titles=rejected_at_title,
+            rejected_content=rejected_at_content,
+            title_threshold=rerank_title_threshold,
+            content_threshold=rerank_content_threshold,
+            model_name=model_name,
+            ollama_url=ollama_url,
+        ):
+            yield WebSearchChunk(token=token)
+
+        yield WebSearchChunk(sources=sources, is_complete=True)
+        return
+
+    # Phase 6: Context fitting - trim sources to fit context window
+    if context_window is None:
+        context_window = await get_model_context_window(
+            model_name, ollama_url, default=16384
+        )
+
+    fitted_pages, allocations = fit_sources_to_context(
+        pages=pages,
+        source_scores=source_scores,
+        context_window=context_window,
+        input_context_pct=input_context_pct,
+        max_source_context_pct=max_source_context_pct,
+    )
+
+    # Update sources with content_chars based on allocations
+    for source in sources:
+        if source.url in allocations:
+            source.content_chars = allocations[source.url]
+
+    # Use fitted pages for summarization
+    pages = fitted_pages
+
+    # Phase 8: Summarize - yield status then tokens
     yield WebSearchChunk(
         agent_progress={
             "agent": "web_search",

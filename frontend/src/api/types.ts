@@ -241,6 +241,15 @@ export interface HistoryCleaningConfig {
   collapse_newlines: boolean;
 }
 
+export interface WebSearchConfig {
+  ddg_max_results: number;
+  max_pages_to_fetch: number;
+  rerank_title_threshold: number;
+  rerank_content_threshold: number;
+  max_source_context_pct: number;
+  input_context_pct: number;
+}
+
 export interface ConfigResponse {
   ollama: OllamaConfig;
   ui: UIConfig;
@@ -248,6 +257,7 @@ export interface ConfigResponse {
   models: ModelsConfig;
   agent: AgentConfig;
   history_cleaning: HistoryCleaningConfig;
+  web_search: WebSearchConfig;
 }
 
 export interface ConfigUpdateRequest {

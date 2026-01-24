@@ -20,6 +20,7 @@ from .config import (
     OllamaConfigSchema,
     RAGConfigSchema,
     UIConfigSchema,
+    WebSearchConfigSchema,
 )
 from .pdf import PDFListResponse, PDFMetadataResponse, ReindexResponse
 from .session import (
@@ -65,6 +66,7 @@ __all__ = [
     "ModelsConfigSchema",
     "AgentConfigSchema",
     "HistoryCleaningConfigSchema",
+    "WebSearchConfigSchema",
     # Chat
     "ChatRequest",
     "ChatResponse",

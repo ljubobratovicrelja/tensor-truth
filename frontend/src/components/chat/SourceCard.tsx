@@ -510,9 +510,16 @@ export function SourceCard({ source, index }: SourceCardProps) {
         )}
       >
         <div className="border-border border-t px-2.5 py-2">
-          {/* Show fetch error for failed web sources */}
+          {/* Show fetch error/skip reason for failed/skipped web sources */}
           {docType === "web" && fetchError && (
-            <p className="text-destructive mb-2 text-xs">{fetchError}</p>
+            <p
+              className={cn(
+                "mb-2 text-xs",
+                fetchStatus === "failed" ? "text-destructive" : "text-muted-foreground italic"
+              )}
+            >
+              {fetchError}
+            </p>
           )}
           {/* Show content if available */}
           {source.text && (

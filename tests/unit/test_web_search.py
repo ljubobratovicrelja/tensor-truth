@@ -1117,3 +1117,549 @@ class TestWebSearchStreamWithReranking:
                                 assert final_sources is not None
                                 assert len(final_sources) == 1
                                 assert final_sources[0].relevance_score == 0.85
+
+
+# ============================================================================
+# Tests for filter_by_threshold
+# ============================================================================
+
+
+@pytest.mark.unit
+class TestFilterByThreshold:
+    """Tests for threshold-based filtering of ranked items."""
+
+    def test_filters_below_threshold(self):
+        """Items below threshold go to rejected list."""
+        from tensortruth.utils.web_search import filter_by_threshold
+
+        items = [
+            ({"url": "https://a.com", "title": "A"}, 0.9),
+            ({"url": "https://b.com", "title": "B"}, 0.05),
+            ({"url": "https://c.com", "title": "C"}, 0.3),
+        ]
+
+        passing, rejected = filter_by_threshold(items, threshold=0.1)
+
+        assert len(passing) == 2
+        assert len(rejected) == 1
+        assert rejected[0][0]["url"] == "https://b.com"
+        assert rejected[0][1] == 0.05
+
+    def test_keeps_at_or_above_threshold(self):
+        """Items at or above threshold pass."""
+        from tensortruth.utils.web_search import filter_by_threshold
+
+        items = [
+            ({"url": "https://a.com"}, 0.1),  # Exactly at threshold
+            ({"url": "https://b.com"}, 0.11),  # Above threshold
+            ({"url": "https://c.com"}, 0.09),  # Below threshold
+        ]
+
+        passing, rejected = filter_by_threshold(items, threshold=0.1)
+
+        assert len(passing) == 2
+        assert len(rejected) == 1
+        # Items at threshold should pass
+        assert any(item[0]["url"] == "https://a.com" for item in passing)
+        assert any(item[0]["url"] == "https://b.com" for item in passing)
+
+    def test_handles_empty_input(self):
+        """Empty input returns empty outputs."""
+        from tensortruth.utils.web_search import filter_by_threshold
+
+        passing, rejected = filter_by_threshold([], threshold=0.1)
+
+        assert passing == []
+        assert rejected == []
+
+    def test_preserves_order(self):
+        """Order is preserved in both output lists."""
+        from tensortruth.utils.web_search import filter_by_threshold
+
+        items = [
+            ({"url": "https://a.com"}, 0.8),
+            ({"url": "https://b.com"}, 0.05),
+            ({"url": "https://c.com"}, 0.6),
+            ({"url": "https://d.com"}, 0.02),
+        ]
+
+        passing, rejected = filter_by_threshold(items, threshold=0.1)
+
+        # Check order in passing
+        assert passing[0][0]["url"] == "https://a.com"
+        assert passing[1][0]["url"] == "https://c.com"
+
+        # Check order in rejected
+        assert rejected[0][0]["url"] == "https://b.com"
+        assert rejected[1][0]["url"] == "https://d.com"
+
+    def test_all_pass_when_threshold_zero(self):
+        """All items pass when threshold is 0."""
+        from tensortruth.utils.web_search import filter_by_threshold
+
+        items = [
+            ({"url": "https://a.com"}, 0.01),
+            ({"url": "https://b.com"}, 0.0),
+        ]
+
+        passing, rejected = filter_by_threshold(items, threshold=0.0)
+
+        assert len(passing) == 2
+        assert len(rejected) == 0
+
+    def test_all_rejected_when_threshold_one(self):
+        """All items rejected when threshold is 1.0 (except 1.0 scores)."""
+        from tensortruth.utils.web_search import filter_by_threshold
+
+        items = [
+            ({"url": "https://a.com"}, 0.99),
+            ({"url": "https://b.com"}, 0.5),
+        ]
+
+        passing, rejected = filter_by_threshold(items, threshold=1.0)
+
+        assert len(passing) == 0
+        assert len(rejected) == 2
+
+
+# ============================================================================
+# Tests for fit_sources_to_context
+# ============================================================================
+
+
+@pytest.mark.unit
+class TestFitSourcesToContext:
+    """Tests for context window fitting with fill-from-top strategy."""
+
+    def test_includes_all_when_under_budget(self):
+        """All sources included when total < budget."""
+        from tensortruth.utils.web_search import fit_sources_to_context
+
+        pages = [
+            ("https://a.com", "Page A", "Short content A"),
+            ("https://b.com", "Page B", "Short content B"),
+        ]
+        source_scores = {"https://a.com": 0.9, "https://b.com": 0.7}
+
+        fitted, allocations = fit_sources_to_context(
+            pages=pages,
+            source_scores=source_scores,
+            context_window=8192,  # Large context window
+            input_context_pct=0.6,
+            max_source_context_pct=0.15,
+        )
+
+        assert len(fitted) == 2
+        assert fitted[0][0] == "https://a.com"
+        assert fitted[1][0] == "https://b.com"
+        # All content should be included fully
+        assert fitted[0][2] == "Short content A"
+        assert fitted[1][2] == "Short content B"
+
+    def test_respects_per_source_cap(self):
+        """No source exceeds max_source_context_pct."""
+        from tensortruth.utils.web_search import fit_sources_to_context
+
+        # Create a very long content
+        long_content = "x" * 50000  # 50k chars
+        pages = [("https://a.com", "Long Page", long_content)]
+        source_scores = {"https://a.com": 0.9}
+
+        fitted, allocations = fit_sources_to_context(
+            pages=pages,
+            source_scores=source_scores,
+            context_window=8192,
+            input_context_pct=0.6,
+            max_source_context_pct=0.15,  # 15% of 8192 * 4 = ~4915 chars
+        )
+
+        assert len(fitted) == 1
+        # Content should be capped at ~15% of context window * 4 chars/token
+        max_chars = int(8192 * 0.15 * 4)
+        assert len(fitted[0][2]) <= max_chars
+
+    def test_truncates_third_source_when_over_budget(self):
+        """Third source truncated when budget nearly exhausted."""
+        from tensortruth.utils.web_search import fit_sources_to_context
+
+        # Create pages where third will need truncation
+        # Budget: 2048 * 0.6 * 4 = 4915 chars total
+        # Per source cap: 2048 * 0.3 * 4 = 2457 chars per source
+        # Page A (2000) → 4915 - 2000 = 2915 remaining
+        # Page B (2000) → 2915 - 2000 = 915 remaining
+        # Page C (2000) → truncated to 915
+        pages = [
+            ("https://a.com", "Page A", "A" * 2000),  # Highest ranked
+            ("https://b.com", "Page B", "B" * 2000),
+            ("https://c.com", "Page C", "C" * 2000),  # Will be truncated
+        ]
+        source_scores = {
+            "https://a.com": 0.9,
+            "https://b.com": 0.7,
+            "https://c.com": 0.5,
+        }
+
+        fitted, allocations = fit_sources_to_context(
+            pages=pages,
+            source_scores=source_scores,
+            context_window=2048,  # Small context: 2048 * 0.6 * 4 = 4915 chars total
+            input_context_pct=0.6,
+            max_source_context_pct=0.3,  # 30% = ~2457 chars per source
+        )
+
+        # All 3 sources included (last one truncated)
+        assert len(fitted) == 3
+        # First page should always be included
+        assert fitted[0][0] == "https://a.com"
+        # Third page should be truncated
+        assert len(fitted[2][2]) < 2000
+
+    def test_truncates_last_fitting_source(self):
+        """Last source truncated to fit remaining budget."""
+        from tensortruth.utils.web_search import fit_sources_to_context
+
+        pages = [
+            ("https://a.com", "Page A", "A" * 1000),
+            ("https://b.com", "Page B", "B" * 5000),  # This should be truncated
+        ]
+        source_scores = {"https://a.com": 0.9, "https://b.com": 0.7}
+
+        # Budget: 2048 * 0.6 * 4 = 4915 chars
+        # After first page (1000 chars): 3915 remaining
+        # Second page (5000 chars) should be truncated to ~3915
+        fitted, allocations = fit_sources_to_context(
+            pages=pages,
+            source_scores=source_scores,
+            context_window=2048,
+            input_context_pct=0.6,
+            max_source_context_pct=0.5,  # Higher cap to allow truncation test
+        )
+
+        assert len(fitted) == 2
+        # Second page should be truncated
+        assert len(fitted[1][2]) < 5000
+
+    def test_returns_empty_when_nothing_fits(self):
+        """Returns empty if even first source too large for minimum budget."""
+        from tensortruth.utils.web_search import fit_sources_to_context
+
+        # Create huge content that exceeds entire budget
+        pages = [("https://a.com", "Huge Page", "x" * 100000)]
+        source_scores = {"https://a.com": 0.9}
+
+        fitted, allocations = fit_sources_to_context(
+            pages=pages,
+            source_scores=source_scores,
+            context_window=100,  # Tiny context: 100 * 0.6 * 4 = 240 chars
+            input_context_pct=0.6,
+            max_source_context_pct=0.15,
+        )
+
+        # Should still include something (truncated) - fill-from-top always includes first
+        # Actually, even with tiny budget, we truncate to fit
+        assert len(fitted) == 1
+        assert len(fitted[0][2]) <= int(100 * 0.15 * 4)
+
+    def test_scales_with_context_window(self):
+        """Larger context window = more content included."""
+        from tensortruth.utils.web_search import fit_sources_to_context
+
+        content = "x" * 10000
+        pages = [("https://a.com", "Page A", content)]
+        source_scores = {"https://a.com": 0.9}
+
+        # Small context
+        fitted_small, _ = fit_sources_to_context(
+            pages=pages,
+            source_scores=source_scores,
+            context_window=2048,
+            input_context_pct=0.6,
+            max_source_context_pct=0.15,
+        )
+
+        # Large context
+        fitted_large, _ = fit_sources_to_context(
+            pages=pages,
+            source_scores=source_scores,
+            context_window=32768,
+            input_context_pct=0.6,
+            max_source_context_pct=0.15,
+        )
+
+        # Larger context should include more content
+        assert len(fitted_large[0][2]) > len(fitted_small[0][2])
+
+    def test_handles_empty_pages(self):
+        """Empty pages list returns empty results."""
+        from tensortruth.utils.web_search import fit_sources_to_context
+
+        fitted, allocations = fit_sources_to_context(
+            pages=[],
+            source_scores={},
+            context_window=8192,
+            input_context_pct=0.6,
+            max_source_context_pct=0.15,
+        )
+
+        assert fitted == []
+        assert allocations == {}
+
+
+# ============================================================================
+# Tests for generate_no_sources_explanation
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestGenerateNoSourcesExplanation:
+    """Tests for LLM explanation when no sources pass thresholds."""
+
+    async def test_mentions_query(self):
+        """Explanation includes original query."""
+        from tensortruth.utils.web_search import generate_no_sources_explanation
+
+        with patch("tensortruth.utils.web_search.Ollama") as mock_ollama_class:
+            mock_llm = MagicMock()
+
+            async def mock_stream():
+                yield MagicMock(delta='No relevant sources found for "test query"')
+
+            mock_llm.astream_complete = AsyncMock(return_value=mock_stream())
+            mock_ollama_class.return_value = mock_llm
+
+            collected = []
+            async for token in generate_no_sources_explanation(
+                query="test query",
+                rejected_titles=[("Title A", 0.05)],
+                rejected_content=[],
+                title_threshold=0.1,
+                content_threshold=0.1,
+                model_name="llama3.2",
+                ollama_url="http://localhost:11434",
+            ):
+                collected.append(token)
+
+            # The prompt should include the query
+            call_args = mock_llm.astream_complete.call_args[0][0]
+            assert "test query" in call_args
+
+    async def test_mentions_thresholds(self):
+        """Explains the threshold values used."""
+        from tensortruth.utils.web_search import generate_no_sources_explanation
+
+        with patch("tensortruth.utils.web_search.Ollama") as mock_ollama_class:
+            mock_llm = MagicMock()
+
+            async def mock_stream():
+                yield MagicMock(delta="Explanation")
+
+            mock_llm.astream_complete = AsyncMock(return_value=mock_stream())
+            mock_ollama_class.return_value = mock_llm
+
+            async for _ in generate_no_sources_explanation(
+                query="test",
+                rejected_titles=[("Title", 0.05)],
+                rejected_content=[],
+                title_threshold=0.15,
+                content_threshold=0.2,
+                model_name="llama3.2",
+                ollama_url="http://localhost:11434",
+            ):
+                pass
+
+            # Check the prompt includes threshold info
+            call_args = mock_llm.astream_complete.call_args[0][0]
+            assert "0.15" in call_args or "15%" in call_args  # Title threshold
+
+    async def test_lists_rejected_sources(self):
+        """Shows what was rejected and why."""
+        from tensortruth.utils.web_search import generate_no_sources_explanation
+
+        with patch("tensortruth.utils.web_search.Ollama") as mock_ollama_class:
+            mock_llm = MagicMock()
+
+            async def mock_stream():
+                yield MagicMock(delta="Explanation")
+
+            mock_llm.astream_complete = AsyncMock(return_value=mock_stream())
+            mock_ollama_class.return_value = mock_llm
+
+            async for _ in generate_no_sources_explanation(
+                query="test",
+                rejected_titles=[
+                    ("Low Quality Page", 0.03),
+                    ("Another Bad Result", 0.05),
+                ],
+                rejected_content=[("Irrelevant Content", 0.08)],
+                title_threshold=0.1,
+                content_threshold=0.1,
+                model_name="llama3.2",
+                ollama_url="http://localhost:11434",
+            ):
+                pass
+
+            # Check the prompt includes rejected sources
+            call_args = mock_llm.astream_complete.call_args[0][0]
+            assert "Low Quality Page" in call_args
+            assert "Another Bad Result" in call_args
+
+
+# ============================================================================
+# Tests for web_search_stream with thresholds
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestWebSearchStreamWithThresholds:
+    """Tests for web search streaming with threshold-based filtering."""
+
+    async def test_rejects_low_title_scores(self):
+        """Sources below title threshold not fetched."""
+        from tensortruth.utils.web_search import web_search_stream
+
+        with patch("tensortruth.utils.web_search.search_duckduckgo") as mock_search:
+            with patch(
+                "tensortruth.utils.web_search.get_reranker_for_web"
+            ) as mock_get_reranker:
+                with patch(
+                    "tensortruth.utils.web_search.rerank_search_results"
+                ) as mock_rerank:
+                    with patch(
+                        "tensortruth.utils.web_search.fetch_page_as_markdown"
+                    ) as mock_fetch:
+                        with patch(
+                            "tensortruth.utils.web_search.summarize_with_llm_stream"
+                        ) as mock_summarize:
+                            # All results have low scores
+                            mock_search.return_value = [
+                                {
+                                    "url": "https://a.com",
+                                    "title": "Low A",
+                                    "snippet": "...",
+                                },
+                                {
+                                    "url": "https://b.com",
+                                    "title": "Low B",
+                                    "snippet": "...",
+                                },
+                            ]
+                            mock_reranker = MagicMock()
+                            mock_get_reranker.return_value = mock_reranker
+                            mock_rerank.return_value = [
+                                (
+                                    {
+                                        "url": "https://a.com",
+                                        "title": "Low A",
+                                        "snippet": "...",
+                                    },
+                                    0.05,
+                                ),
+                                (
+                                    {
+                                        "url": "https://b.com",
+                                        "title": "Low B",
+                                        "snippet": "...",
+                                    },
+                                    0.03,
+                                ),
+                            ]
+
+                            async def mock_stream():
+                                yield "No sources"
+
+                            mock_summarize.return_value = mock_stream()
+
+                            chunks = []
+                            async for chunk in web_search_stream(
+                                query="test",
+                                model_name="llama3.2",
+                                ollama_url="http://localhost:11434",
+                                reranker_model="BAAI/bge-reranker-v2-m3",
+                                rerank_title_threshold=0.1,  # Higher than all scores
+                            ):
+                                chunks.append(chunk)
+
+                            # fetch_page_as_markdown should NOT be called since all rejected
+                            assert mock_fetch.call_count == 0
+
+    async def test_context_fitting_applied(self):
+        """Sources are trimmed to fit context window."""
+        from tensortruth.utils.web_search import web_search_stream
+
+        with patch("tensortruth.utils.web_search.search_duckduckgo") as mock_search:
+            with patch(
+                "tensortruth.utils.web_search.get_reranker_for_web"
+            ) as mock_get_reranker:
+                with patch(
+                    "tensortruth.utils.web_search.rerank_search_results"
+                ) as mock_rerank_search:
+                    with patch(
+                        "tensortruth.utils.web_search.fetch_page_as_markdown"
+                    ) as mock_fetch:
+                        with patch(
+                            "tensortruth.utils.web_search.rerank_fetched_pages"
+                        ) as mock_rerank_pages:
+                            with patch(
+                                "tensortruth.utils.web_search.fit_sources_to_context"
+                            ) as mock_fit:
+                                with patch(
+                                    "tensortruth.utils.web_search.summarize_with_llm_stream"
+                                ) as mock_summarize:
+                                    mock_search.return_value = [
+                                        {
+                                            "url": "https://a.com",
+                                            "title": "A",
+                                            "snippet": "...",
+                                        }
+                                    ]
+                                    mock_reranker = MagicMock()
+                                    mock_get_reranker.return_value = mock_reranker
+                                    mock_rerank_search.return_value = [
+                                        (
+                                            {
+                                                "url": "https://a.com",
+                                                "title": "A",
+                                                "snippet": "...",
+                                            },
+                                            0.9,
+                                        )
+                                    ]
+                                    mock_fetch.return_value = (
+                                        "# Long content " * 1000,
+                                        "success",
+                                        None,
+                                    )
+                                    mock_rerank_pages.return_value = [
+                                        (
+                                            (
+                                                "https://a.com",
+                                                "A",
+                                                "# Long content " * 1000,
+                                            ),
+                                            0.85,
+                                        )
+                                    ]
+                                    # Mock fit_sources_to_context to return truncated content
+                                    mock_fit.return_value = (
+                                        [("https://a.com", "A", "# Truncated")],
+                                        {"https://a.com": 100},
+                                    )
+
+                                    async def mock_stream():
+                                        yield "Summary"
+
+                                    mock_summarize.return_value = mock_stream()
+
+                                    async for _ in web_search_stream(
+                                        query="test",
+                                        model_name="llama3.2",
+                                        ollama_url="http://localhost:11434",
+                                        reranker_model="BAAI/bge-reranker-v2-m3",
+                                        context_window=2048,  # Small context
+                                    ):
+                                        pass
+
+                                    # fit_sources_to_context should be called
+                                    assert mock_fit.called

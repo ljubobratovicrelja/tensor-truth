@@ -114,6 +114,10 @@ class ConfigService:
                 attr_name = key.replace("history_cleaning_", "")
                 if hasattr(config.history_cleaning, attr_name):
                     setattr(config.history_cleaning, attr_name, value)
+            elif key.startswith("web_search_"):
+                attr_name = key.replace("web_search_", "")
+                if hasattr(config.web_search, attr_name):
+                    setattr(config.web_search, attr_name, value)
 
         self.save(config)
         return config

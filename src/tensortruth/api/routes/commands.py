@@ -17,6 +17,7 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, WebSocket
 
+from tensortruth.services.config_service import ConfigService
 from tensortruth.utils.web_search import (
     web_search_stream,
     web_source_to_source_node,
@@ -191,12 +192,15 @@ class WebSearchCommand(ToolCommand):
                 custom_instructions = parts[1].strip() if len(parts) > 1 else None
                 break
 
+        # Load configuration
+        config_service = ConfigService()
+        config = config_service.load()
+        ws_config = config.web_search
+
         # Extract params from session
         params = session.get("params", {})
         model_name = params.get("model", "llama3.1:8b")
         ollama_url = params.get("ollama_url", "http://localhost:11434")
-        max_results = params.get("web_search_max_results", 10)
-        max_pages = params.get("web_search_pages_to_fetch", 5)
         context_window = params.get("context_window", 16384)
         # Reranking params - uses session's reranker model if configured
         reranker_model = params.get("reranker_model")
@@ -211,12 +215,16 @@ class WebSearchCommand(ToolCommand):
                 query=query,
                 model_name=model_name,
                 ollama_url=ollama_url,
-                max_results=max_results,
-                max_pages=max_pages,
+                max_results=ws_config.ddg_max_results,
+                max_pages=ws_config.max_pages_to_fetch,
                 context_window=context_window,
                 custom_instructions=custom_instructions,
                 reranker_model=reranker_model,
                 reranker_device=reranker_device,
+                rerank_title_threshold=ws_config.rerank_title_threshold,
+                rerank_content_threshold=ws_config.rerank_content_threshold,
+                max_source_context_pct=ws_config.max_source_context_pct,
+                input_context_pct=ws_config.input_context_pct,
             ):
                 if chunk.agent_progress:
                     # Send agent progress for search/fetch phases

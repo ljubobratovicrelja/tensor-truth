@@ -127,6 +127,20 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   const [maxHistoryTurns, setMaxHistoryTurns] = useState(config.rag.max_history_turns);
   const [memoryTokenLimit, setMemoryTokenLimit] = useState(config.rag.memory_token_limit);
 
+  // Web Search
+  const [ddgMaxResults, setDdgMaxResults] = useState(config.web_search.ddg_max_results);
+  const [maxPagesToFetch, setMaxPagesToFetch] = useState(config.web_search.max_pages_to_fetch);
+  const [rerankTitleThreshold, setRerankTitleThreshold] = useState(
+    config.web_search.rerank_title_threshold
+  );
+  const [rerankContentThreshold, setRerankContentThreshold] = useState(
+    config.web_search.rerank_content_threshold
+  );
+  const [maxSourceContextPct, setMaxSourceContextPct] = useState(
+    config.web_search.max_source_context_pct
+  );
+  const [inputContextPct, setInputContextPct] = useState(config.web_search.input_context_pct);
+
   // Fetch available devices from backend
   useEffect(() => {
     import("@/api/config").then(({ getAvailableDevices }) => {
@@ -197,6 +211,12 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
       history_cleaning_collapse_newlines: collapseNewlines,
       rag_max_history_turns: maxHistoryTurns,
       rag_memory_token_limit: memoryTokenLimit,
+      web_search_ddg_max_results: ddgMaxResults,
+      web_search_max_pages_to_fetch: maxPagesToFetch,
+      web_search_rerank_title_threshold: rerankTitleThreshold,
+      web_search_rerank_content_threshold: rerankContentThreshold,
+      web_search_max_source_context_pct: maxSourceContextPct,
+      web_search_input_context_pct: inputContextPct,
     });
   };
 
@@ -631,6 +651,147 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
                 <HelpTooltip text="Reduces 3+ consecutive newlines to 2." />
               </Label>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Web Search Section */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium">Web Search</h3>
+        <p className="text-muted-foreground text-xs">
+          Configure web search behavior and quality thresholds for /web commands.
+        </p>
+
+        {/* Search Limits */}
+        <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
+          <h4 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+            Search Limits
+          </h4>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">
+                Max Search Results
+                <HelpTooltip text="Maximum results to fetch from DuckDuckGo. Higher values = more candidates to choose from." />
+              </Label>
+              <span className="text-muted-foreground text-sm">{ddgMaxResults}</span>
+            </div>
+            <Slider
+              value={[ddgMaxResults]}
+              onValueChange={([v]) => setDdgMaxResults(v)}
+              min={5}
+              max={20}
+              step={1}
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">
+                Max Pages to Fetch
+                <HelpTooltip text="Maximum pages to download and process. Higher values = more comprehensive results." />
+              </Label>
+              <span className="text-muted-foreground text-sm">{maxPagesToFetch}</span>
+            </div>
+            <Slider
+              value={[maxPagesToFetch]}
+              onValueChange={([v]) => setMaxPagesToFetch(v)}
+              min={1}
+              max={10}
+              step={1}
+            />
+          </div>
+        </div>
+
+        {/* Relevance Thresholds */}
+        <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
+          <h4 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+            Relevance Thresholds
+          </h4>
+          <p className="text-muted-foreground text-xs">
+            Sources below these thresholds are rejected. Lower = more lenient.
+          </p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">
+                Title Threshold
+                <HelpTooltip text="Minimum relevance score for search result titles/snippets (0-50%). Sources below this are not fetched." />
+              </Label>
+              <span className="text-muted-foreground text-sm">
+                {(rerankTitleThreshold * 100).toFixed(0)}%
+              </span>
+            </div>
+            <Slider
+              value={[rerankTitleThreshold]}
+              onValueChange={([v]) => setRerankTitleThreshold(v)}
+              min={0}
+              max={0.5}
+              step={0.05}
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">
+                Content Threshold
+                <HelpTooltip text="Minimum relevance score for fetched page content (0-50%). Sources below this are excluded from summary." />
+              </Label>
+              <span className="text-muted-foreground text-sm">
+                {(rerankContentThreshold * 100).toFixed(0)}%
+              </span>
+            </div>
+            <Slider
+              value={[rerankContentThreshold]}
+              onValueChange={([v]) => setRerankContentThreshold(v)}
+              min={0}
+              max={0.5}
+              step={0.05}
+            />
+          </div>
+        </div>
+
+        {/* Context Fitting */}
+        <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
+          <h4 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+            Context Fitting
+          </h4>
+          <p className="text-muted-foreground text-xs">
+            Control how source content is distributed within the context window.
+          </p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">
+                Max Source Context
+                <HelpTooltip text="Maximum % of context window for a single source. Prevents one source from dominating." />
+              </Label>
+              <span className="text-muted-foreground text-sm">
+                {(maxSourceContextPct * 100).toFixed(0)}%
+              </span>
+            </div>
+            <Slider
+              value={[maxSourceContextPct]}
+              onValueChange={([v]) => setMaxSourceContextPct(v)}
+              min={0.05}
+              max={0.3}
+              step={0.01}
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">
+                Input Context
+                <HelpTooltip text="% of context window for input (sources). Rest is reserved for LLM output." />
+              </Label>
+              <span className="text-muted-foreground text-sm">
+                {(inputContextPct * 100).toFixed(0)}%
+              </span>
+            </div>
+            <Slider
+              value={[inputContextPct]}
+              onValueChange={([v]) => setInputContextPct(v)}
+              min={0.4}
+              max={0.8}
+              step={0.05}
+            />
           </div>
         </div>
       </div>

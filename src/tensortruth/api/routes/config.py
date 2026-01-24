@@ -12,6 +12,7 @@ from tensortruth.api.schemas import (
     OllamaConfigSchema,
     RAGConfigSchema,
     UIConfigSchema,
+    WebSearchConfigSchema,
 )
 
 router = APIRouter()
@@ -57,6 +58,14 @@ def _config_to_response(config) -> ConfigResponse:
             normalize_whitespace=config.history_cleaning.normalize_whitespace,
             collapse_newlines=config.history_cleaning.collapse_newlines,
         ),
+        web_search=WebSearchConfigSchema(
+            ddg_max_results=config.web_search.ddg_max_results,
+            max_pages_to_fetch=config.web_search.max_pages_to_fetch,
+            rerank_title_threshold=config.web_search.rerank_title_threshold,
+            rerank_content_threshold=config.web_search.rerank_content_threshold,
+            max_source_context_pct=config.web_search.max_source_context_pct,
+            input_context_pct=config.web_search.input_context_pct,
+        ),
     )
 
 
@@ -80,6 +89,7 @@ async def update_config(
     - agent_*: Updates agent config (e.g., agent_max_iterations)
     - models_*: Updates models config (e.g., models_default_rag_model)
     - history_cleaning_*: Updates history cleaning config (e.g., history_cleaning_enabled)
+    - web_search_*: Updates web search config (e.g., web_search_ddg_max_results)
     """
     config = config_service.update(**body.updates)
     return _config_to_response(config)
