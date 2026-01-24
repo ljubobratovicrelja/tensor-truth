@@ -199,12 +199,20 @@ class RAGService:
         if self._engine is None:
             raise RuntimeError("RAG engine not loaded. Call load_engine() first.")
 
+        logger.info(f"=== RAG Query Start: '{prompt}' ===")
+        logger.info(
+            f"Session has {len(session_messages) if session_messages else 0} messages"
+        )
+
         # Phase 1: Retrieval
         yield RAGChunk(status="retrieving")
 
         # Get retriever and condenser
         retriever = self._engine._retriever
-        condenser = getattr(self._engine, "_condenser_prompt_template", None)
+        condenser = getattr(self._engine, "_condense_prompt_template", None)
+        logger.info(f"Condenser value: {condenser}")
+        logger.info(f"Condenser type: {type(condenser)}")
+        logger.info(f"_skip_condense: {getattr(self._engine, '_skip_condense', None)}")
 
         # Build chat history from session messages using ChatHistoryService
         # Session params can override max_history_turns
@@ -224,18 +232,46 @@ class RAGService:
         if condenser and not history.is_empty:
             try:
                 # Build condensed question using LLM
+                logger.info(f"Original query: {prompt}")
+                logger.info(f"History length: {len(history.messages)} messages")
+
+                # Create a non-thinking version of the LLM for fast condensation
+                # This reuses the same Ollama model server-side (no extra VRAM)
+                # but disables thinking to speed up the condensation step
+                main_llm = self._engine._llm
+                condenser_llm = Ollama(
+                    model=main_llm.model,
+                    base_url=main_llm.base_url,
+                    temperature=0.0,  # Deterministic for condensation
+                    thinking=False,  # Disable thinking for speed
+                    request_timeout=30.0,
+                )
+
                 condenser_prompt = condenser.format(
                     chat_history=chat_history_str,
                     question=prompt,
                 )
-                condensed_response = self._engine._llm.complete(condenser_prompt)
-                condensed_question = str(condensed_response)
-            except Exception:
+                condensed_response = condenser_llm.complete(condenser_prompt)
+                condensed_question = str(condensed_response).strip()
+                logger.info(f"Condensed query: {condensed_question}")
+
+                # Validate: If condensation produces empty/whitespace, use original
+                if not condensed_question:
+                    logger.warning("Condensation produced empty result, using original")
+                    condensed_question = prompt
+            except Exception as e:
                 # Fall back to original prompt if condensation fails
+                logger.error(f"Condensation failed: {e}", exc_info=True)
                 condensed_question = prompt
+        else:
+            if not condenser:
+                logger.debug("No condenser configured, using original query")
+            elif history.is_empty:
+                logger.debug("History is empty, skipping condensation")
 
         # Retrieve context nodes
         source_nodes = retriever.retrieve(condensed_question)
+        logger.info(f"Retrieved {len(source_nodes)} nodes before reranking")
 
         # Phase 2: Reranking (if postprocessors exist)
         if (
@@ -244,11 +280,8 @@ class RAGService:
         ):
             yield RAGChunk(status="reranking")
 
-            import logging
-
             from llama_index.core.schema import QueryBundle
 
-            logger = logging.getLogger(__name__)
             query_bundle = QueryBundle(query_str=condensed_question)
 
             try:
@@ -263,8 +296,12 @@ class RAGService:
         # Enforce reranker_top_n limit as a safeguard
         # LlamaIndex's SentenceTransformerRerank may not always respect top_n
         reranker_top_n = (self._current_params or {}).get("reranker_top_n")
+        logger.info(
+            f"After reranking: {len(source_nodes)} nodes (reranker_top_n={reranker_top_n})"
+        )
         if reranker_top_n and len(source_nodes) > reranker_top_n:
             source_nodes = source_nodes[:reranker_top_n]
+            logger.info(f"Truncated to {len(source_nodes)} nodes")
 
         # Compute retrieval metrics from final reranked nodes
         metrics = compute_retrieval_metrics(source_nodes)
