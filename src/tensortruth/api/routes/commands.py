@@ -12,10 +12,13 @@ Key features:
 - Backend-first design with frontend UX layer
 """
 
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, WebSocket
+
+from tensortruth.utils.web_search import web_search_async
 
 # REST endpoints (mounted under /api)
 router = APIRouter()
@@ -146,100 +149,84 @@ class HelpCommand(ToolCommand):
 
 
 class WebSearchCommand(ToolCommand):
-    """Command to search the web using DuckDuckGo and get AI summary."""
+    """Search the web and get AI-generated summary."""
 
     name = "web"
     aliases = ["search", "websearch"]
     description = "Search the web and get AI-generated summary"
-    usage = "/web <search query>"
+    usage = "/web <query>[;instructions]"
 
     async def execute(self, args: str, session: dict, websocket: WebSocket) -> None:
         """Execute web search and stream AI summary.
 
         Args:
-            args: Search query
+            args: Full text after command name (query[;instructions])
             session: Current session data
             websocket: WebSocket for streaming response
         """
-        # Handle empty query
         if not args or not args.strip():
             await websocket.send_json(
                 {
                     "type": "error",
-                    "detail": "Please provide a search query. Usage: /web <search query>",
+                    "detail": "Usage: /web <query>[;instructions for summary]",
                 }
             )
             return
 
-        # Send searching status
-        await websocket.send_json({"type": "status", "status": "searching"})
+        # Parse query and optional instructions
+        full_text = args.strip()
+        query = full_text
+        custom_instructions = None
+
+        # Semicolon takes precedence over comma
+        for separator in [";", ","]:
+            if separator in full_text:
+                parts = full_text.split(separator, 1)
+                query = parts[0].strip()
+                custom_instructions = parts[1].strip() if len(parts) > 1 else None
+                break
+
+        # Progress callback - web_search_async uses SYNC callbacks
+        # Use get_running_loop().create_task() to schedule async sends
+        def progress_callback(message: str) -> None:
+            # Get the running loop (we're inside an async context)
+            loop = asyncio.get_running_loop()
+            loop.create_task(websocket.send_json({"type": "status", "status": message}))
+
+        # Extract params from session
+        params = session.get("params", {})
+        model_name = params.get("model", "llama3.1:8b")
+        ollama_url = params.get("ollama_url", "http://localhost:11434")
+        max_results = params.get("web_search_max_results", 10)
+        max_pages = params.get("web_search_pages_to_fetch", 5)
+        context_window = params.get("context_window", 16384)
 
         try:
-            # Execute DuckDuckGo search
-            search_results = await self._duckduckgo_search(args.strip())
+            # Use existing pipeline from utils/web_search.py
+            result = await web_search_async(
+                query=query,
+                model_name=model_name,
+                ollama_url=ollama_url,
+                max_results=max_results,
+                max_pages=max_pages,
+                progress_callback=progress_callback,
+                context_window=context_window,
+                custom_instructions=custom_instructions,
+            )
 
-            if not search_results:
-                await websocket.send_json(
-                    {
-                        "type": "done",
-                        "content": "No search results found. Try a different query.",
-                    }
-                )
-                return
-
-            # Send generating status
-            await websocket.send_json({"type": "status", "status": "generating"})
-
-            # Generate AI summary
-            summary = await self._generate_summary(search_results, session)
-
-            # Send complete response
-            await websocket.send_json({"type": "done", "content": summary})
+            # Send final response
+            await websocket.send_json(
+                {
+                    "type": "done",
+                    "content": result,
+                    "confidence_level": "normal",
+                }
+            )
 
         except Exception as e:
             await websocket.send_json(
-                {"type": "error", "detail": f"Search failed: {str(e)}"}
+                {"type": "error", "detail": f"Web search failed: {str(e)}"}
             )
-
-    async def _duckduckgo_search(self, query: str) -> List[dict]:
-        """Execute DuckDuckGo search.
-
-        Args:
-            query: Search query string
-
-        Returns:
-            List of search result dicts with title, snippet, url
-        """
-        # TODO: Extract and refactor from existing Streamlit implementation
-        # For now, return stub data for tests to pass
-        return [
-            {
-                "title": "Example Result",
-                "snippet": "Example snippet for: " + query,
-                "url": "https://example.com",
-            }
-        ]
-
-    async def _generate_summary(self, search_results: List[dict], session: dict) -> str:
-        """Generate AI summary of search results.
-
-        Args:
-            search_results: List of search result dicts
-            session: Session data for LLM params
-
-        Returns:
-            AI-generated summary text
-        """
-        # TODO: Implement LLM summary generation
-        # For now, return formatted results for tests to pass
-        summary = f"Found {len(search_results)} results:\n\n"
-
-        for i, result in enumerate(search_results[:5], 1):
-            summary += f"{i}. **{result['title']}**\n"
-            summary += f"   {result['snippet']}\n"
-            summary += f"   {result['url']}\n\n"
-
-        return summary
 
 
 # Register built-in commands
