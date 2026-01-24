@@ -30,6 +30,7 @@ export function ChatContainer() {
     error,
     pendingUserMessage,
     clearPendingUserMessage,
+    agentProgress,
   } = useChatStore();
   const autoSendTriggered = useRef(false);
   const prevSessionIdRef = useRef<string | undefined>(undefined);
@@ -186,6 +187,7 @@ export function ChatContainer() {
         streamingMetrics={streamingMetrics}
         isStreaming={isStreaming}
         pipelineStatus={pipelineStatus}
+        agentProgress={agentProgress}
       />
       {error && (
         <div className="border-destructive bg-destructive/10 text-destructive border-t py-2 text-sm">

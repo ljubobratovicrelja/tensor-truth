@@ -208,26 +208,31 @@ async def websocket_chat(
                     )
                     session_service.save(data)
 
-                    # Execute command (streams response via websocket)
-                    # Note: Command is responsible for sending done message with full response
-                    # The done message will include the full response text in content field
-                    # We'll intercept it here to save to session
+                    # Check if we need to generate a title (first message in session)
+                    needs_title = session_service.needs_title_update(session_id, data)
 
-                    # Create a wrapper websocket that captures the response
+                    # Execute command (streams response via websocket)
+                    # Create a wrapper websocket that captures response and sources
                     full_response = ""
+                    captured_sources = None
+                    title_pending = False
 
                     class ResponseCapturingWebSocket:
-                        """Wrapper that captures command response for session saving."""
+                        """Wrapper that captures command response and sources."""
 
                         def __init__(self, ws: WebSocket):
                             self.ws = ws
-                            self.response = ""
 
                         async def send_json(self, data: dict) -> None:
-                            nonlocal full_response
-                            # Capture the full response from done message
-                            if data.get("type") == "done" and "content" in data:
-                                full_response = data["content"]
+                            nonlocal full_response, captured_sources, title_pending
+                            # Capture response and sources from done message
+                            if data.get("type") == "done":
+                                if "content" in data:
+                                    full_response = data["content"]
+                                if "sources" in data:
+                                    captured_sources = data["sources"]
+                                if data.get("title_pending"):
+                                    title_pending = True
                             # Forward all messages to real websocket
                             await self.ws.send_json(data)
 
@@ -239,15 +244,36 @@ async def websocket_chat(
                     # Type ignore because wrapper is duck-typed compatible
                     await command.execute(cmd_args, session, wrapper)  # type: ignore
 
-                    # Save assistant response to session
+                    # Save assistant response to session (with sources if available)
                     if full_response:
+                        assistant_message: dict = {
+                            "role": "assistant",
+                            "content": full_response,
+                        }
+                        if captured_sources:
+                            assistant_message["sources"] = captured_sources
+
                         data = session_service.load()
                         data = session_service.add_message(
                             session_id,
-                            {"role": "assistant", "content": full_response},
+                            assistant_message,
                             data,
                         )
                         session_service.save(data)
+
+                    # Generate title for first message (same as regular chat)
+                    if needs_title and full_response:
+                        try:
+                            title = await generate_smart_title_async(full_response)
+                            fresh_data = session_service.load()
+                            fresh_data = session_service.update_title(
+                                session_id, title, fresh_data
+                            )
+                            session_service.save(fresh_data)
+                            await websocket.send_json({"type": "title", "title": title})
+                        except Exception:
+                            # Title generation failure is non-critical
+                            pass
 
                     # Continue to next iteration to wait for next message
                     continue

@@ -8,6 +8,7 @@ import {
   Book,
   HelpCircle,
   AlertTriangle,
+  Globe,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -399,7 +400,6 @@ function getConfidenceBadgeVariant(score: number | null | undefined): {
 
 export function SourceCard({ source, index }: SourceCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const { variant, label } = getConfidenceBadgeVariant(source.score);
 
   // Extract metadata
   const filename =
@@ -411,6 +411,28 @@ export function SourceCard({ source, index }: SourceCardProps) {
   const authors = source.metadata?.authors as string | undefined;
   const docType = source.metadata?.doc_type as string | undefined;
   const pageNumber = source.metadata?.page as number | undefined;
+  const fetchStatus = source.metadata?.fetch_status as string | undefined;
+  const fetchError = source.metadata?.fetch_error as string | undefined;
+
+  // Determine badge based on fetch_status (for web sources) or score
+  const getBadgeInfo = (): { variant: "default" | "secondary" | "destructive" | "outline"; label: string } => {
+    // For web sources, use fetch_status
+    if (docType === "web" && fetchStatus) {
+      if (fetchStatus === "failed") {
+        return { variant: "destructive", label: "Failed" };
+      }
+      if (fetchStatus === "skipped") {
+        return { variant: "secondary", label: "Skipped" };
+      }
+      if (fetchStatus === "success") {
+        return { variant: "default", label: "Fetched" };
+      }
+    }
+    // Fall back to confidence-based badge
+    return getConfidenceBadgeVariant(source.score);
+  };
+
+  const { variant, label } = getBadgeInfo();
 
   const renderIcon = () => {
     const iconClassName = "text-muted-foreground h-3.5 w-3.5 shrink-0";
@@ -423,6 +445,8 @@ export function SourceCard({ source, index }: SourceCardProps) {
         return <Paperclip className={iconClassName} />;
       case "book":
         return <Book className={iconClassName} />;
+      case "web":
+        return <Globe className={iconClassName} />;
       default:
         return <FileText className={iconClassName} />;
     }
@@ -482,18 +506,26 @@ export function SourceCard({ source, index }: SourceCardProps) {
         )}
       >
         <div className="border-border border-t px-2.5 py-2">
-          <div className="chat-markdown text-muted-foreground max-h-64 max-w-none overflow-y-auto text-xs leading-relaxed">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[
-                rehypeHighlight,
-                [rehypeKatex, { throwOnError: false, strict: false }],
-              ]}
-            >
-              {convertLatexDelimiters(source.text)}
-            </ReactMarkdown>
-          </div>
-          {source.score !== null && source.score !== undefined && (
+          {/* Show fetch error for failed web sources */}
+          {docType === "web" && fetchError && (
+            <p className="text-destructive mb-2 text-xs">{fetchError}</p>
+          )}
+          {/* Show content if available */}
+          {source.text && (
+            <div className="chat-markdown text-muted-foreground max-h-64 max-w-none overflow-y-auto text-xs leading-relaxed">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[
+                  rehypeHighlight,
+                  [rehypeKatex, { throwOnError: false, strict: false }],
+                ]}
+              >
+                {convertLatexDelimiters(source.text)}
+              </ReactMarkdown>
+            </div>
+          )}
+          {/* Show relevance score for non-web sources */}
+          {docType !== "web" && source.score !== null && source.score !== undefined && (
             <p className="text-muted-foreground mt-1.5 text-xs">
               Relevance: {(source.score * 100).toFixed(1)}%
             </p>

@@ -135,10 +135,40 @@ export interface StreamToolProgress {
   params: Record<string, unknown>;
 }
 
+export type AgentPhase = "searching" | "fetching" | "summarizing" | "complete";
+
 export interface StreamAgentProgress {
   type: "agent_progress";
-  agent: string;
-  status: string; // e.g., "starting", "searching", "synthesizing", "complete"
+  agent: string; // "web_search", future agents
+  phase: AgentPhase;
+  message: string; // Human-readable status (no emoji)
+
+  // Phase-specific data (all optional)
+  search_query?: string;
+  search_hits?: number;
+  pages_target?: number;
+  pages_fetched?: number;
+  pages_failed?: number;
+  current_page?: {
+    url: string;
+    title: string;
+    status: string;
+    error?: string | null;
+  };
+  model_name?: string;
+}
+
+export interface WebSearchSource {
+  url: string;
+  title: string;
+  status: "success" | "failed" | "skipped";
+  error?: string | null;
+  snippet?: string | null;
+}
+
+export interface StreamWebSearchSources {
+  type: "web_sources";
+  sources: WebSearchSource[];
 }
 
 export type StreamMessage =
@@ -150,7 +180,8 @@ export type StreamMessage =
   | StreamThinking
   | StreamStatus
   | StreamToolProgress
-  | StreamAgentProgress;
+  | StreamAgentProgress
+  | StreamWebSearchSources;
 
 // Intent types
 export interface IntentRequest {

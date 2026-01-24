@@ -12,13 +12,15 @@ Key features:
 - Backend-first design with frontend UX layer
 """
 
-import asyncio
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, WebSocket
 
-from tensortruth.utils.web_search import web_search_async
+from tensortruth.utils.web_search import (
+    web_search_stream,
+    web_source_to_source_node,
+)
 
 # REST endpoints (mounted under /api)
 router = APIRouter()
@@ -159,6 +161,9 @@ class WebSearchCommand(ToolCommand):
     async def execute(self, args: str, session: dict, websocket: WebSocket) -> None:
         """Execute web search and stream AI summary.
 
+        Uses the streaming web_search_stream() generator to emit tokens
+        incrementally, matching the same pattern as RAG streaming.
+
         Args:
             args: Full text after command name (query[;instructions])
             session: Current session data
@@ -186,13 +191,6 @@ class WebSearchCommand(ToolCommand):
                 custom_instructions = parts[1].strip() if len(parts) > 1 else None
                 break
 
-        # Progress callback - web_search_async uses SYNC callbacks
-        # Use get_running_loop().create_task() to schedule async sends
-        def progress_callback(message: str) -> None:
-            # Get the running loop (we're inside an async context)
-            loop = asyncio.get_running_loop()
-            loop.create_task(websocket.send_json({"type": "status", "status": message}))
-
         # Extract params from session
         params = session.get("params", {})
         model_name = params.get("model", "llama3.1:8b")
@@ -202,24 +200,67 @@ class WebSearchCommand(ToolCommand):
         context_window = params.get("context_window", 16384)
 
         try:
-            # Use existing pipeline from utils/web_search.py
-            result = await web_search_async(
+            full_response = ""
+            sources_for_session = []
+
+            # Use streaming generator for real-time token output
+            async for chunk in web_search_stream(
                 query=query,
                 model_name=model_name,
                 ollama_url=ollama_url,
                 max_results=max_results,
                 max_pages=max_pages,
-                progress_callback=progress_callback,
                 context_window=context_window,
                 custom_instructions=custom_instructions,
-            )
+            ):
+                if chunk.agent_progress:
+                    # Send agent progress for search/fetch phases
+                    await websocket.send_json(
+                        {"type": "agent_progress", **chunk.agent_progress}
+                    )
 
-            # Send final response
+                elif chunk.status:
+                    # Send pipeline status (e.g., "generating")
+                    await websocket.send_json(
+                        {"type": "status", "status": chunk.status}
+                    )
+
+                elif chunk.token:
+                    # Stream token to client
+                    full_response += chunk.token
+                    await websocket.send_json(
+                        {"type": "token", "content": chunk.token}
+                    )
+
+                elif chunk.sources is not None:
+                    # Store sources for session saving
+                    sources_for_session = chunk.sources
+                    # Convert to SourceNode format for unified UI
+                    if chunk.sources:
+                        source_nodes = [
+                            web_source_to_source_node(s) for s in chunk.sources
+                        ]
+                        await websocket.send_json(
+                            {"type": "sources", "data": source_nodes}
+                        )
+
+            # Check if this is first message (for title generation)
+            messages = session.get("messages", [])
+            is_first = len(messages) <= 1
+
+            # Send final done message
             await websocket.send_json(
                 {
                     "type": "done",
-                    "content": result,
-                    "confidence_level": "normal",
+                    "content": full_response,
+                    "confidence_level": "web_search",
+                    "title_pending": is_first,
+                    # Include sources in done for session saving
+                    "sources": [
+                        web_source_to_source_node(s) for s in sources_for_session
+                    ]
+                    if sources_for_session
+                    else None,
                 }
             )
 

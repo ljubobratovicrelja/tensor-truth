@@ -642,25 +642,25 @@ class TestWebSearchAsync:
                     mock_fetch.return_value = (successful, all_attempts)
                     mock_summarize.return_value = "### Summary\nTest summary"
 
-                    result = await web_search_async(
+                    result, sources = await web_search_async(
                         "test query",
                         "deepseek-r1:8b",
                         "http://localhost:11434",
                     )
 
-                    # Successful results don't include the "Web Search:" header
-                    # that's only in error cases
+                    # Successful results include summary text
                     assert "Test summary" in result
-                    assert "### Sources" in result
-                    assert "✅" in result  # Success icon
-                    assert "[Test Page](https://example.com)" in result
+                    # Sources are returned separately
+                    assert len(sources) == 1
+                    assert sources[0].url == "https://example.com"
+                    assert sources[0].status == "success"
 
     async def test_no_search_results(self):
         """Test handling when search returns no results."""
         with patch("tensortruth.utils.web_search.search_duckduckgo") as mock_search:
             mock_search.return_value = []
 
-            result = await web_search_async(
+            result, sources = await web_search_async(
                 "nonexistent query",
                 "deepseek-r1:8b",
                 "http://localhost:11434",
@@ -668,6 +668,7 @@ class TestWebSearchAsync:
 
             assert "No results found" in result
             assert "nonexistent query" in result
+            assert sources == []
 
     async def test_search_results_but_no_pages_fetched(self):
         """Test fallback when search succeeds but all page fetches fail."""
@@ -685,7 +686,7 @@ class TestWebSearchAsync:
                 # Return empty successful list and some failed attempts
                 mock_fetch.return_value = ([], [])  # All fetches failed
 
-                result = await web_search_async(
+                result, sources = await web_search_async(
                     "test query",
                     "deepseek-r1:8b",
                     "http://localhost:11434",
@@ -693,6 +694,8 @@ class TestWebSearchAsync:
 
                 assert "couldn't fetch full pages" in result
                 assert "Test snippet" in result  # Shows snippets as fallback
+                # Sources list is empty when all fetches fail
+                assert sources == []
 
 
 # ============================================================================

@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Tuple
 
 import aiohttp
 from bs4 import BeautifulSoup, Tag
@@ -12,12 +13,115 @@ from markdownify import markdownify as md
 
 from tensortruth.core.ollama import check_thinking_support
 
-# Import handlers to register them
-from . import arxiv_handler  # noqa: F401
-from . import github_handler  # noqa: F401
-from . import wikipedia_handler  # noqa: F401
-from . import youtube_handler  # noqa: F401
-from .domain_handlers import get_handler_for_url
+# Import handlers to register them (must be after this module is defined)
+# These are imported at module load time to register handlers via decorators
+from . import arxiv_handler  # noqa: F401, E402
+from . import github_handler  # noqa: F401, E402
+from . import wikipedia_handler  # noqa: F401, E402
+from . import youtube_handler  # noqa: F401, E402
+from .domain_handlers import get_handler_for_url  # noqa: E402
+
+# =============================================================================
+# Progress Dataclasses for Structured Callbacks
+# =============================================================================
+
+
+@dataclass
+class SearchProgress:
+    """Progress data for search phase."""
+
+    phase: Literal["searching"] = "searching"
+    query: str = ""
+    hits: Optional[int] = None
+
+
+@dataclass
+class FetchProgress:
+    """Progress data for fetch phase."""
+
+    phase: Literal["fetching"] = "fetching"
+    url: str = ""
+    title: str = ""
+    status: str = ""  # "fetching", "success", "failed", "skipped"
+    error: Optional[str] = None
+    pages_target: int = 0
+    pages_fetched: int = 0
+    pages_failed: int = 0
+
+
+@dataclass
+class SummarizeProgress:
+    """Progress data for summarize phase."""
+
+    phase: Literal["summarizing"] = "summarizing"
+    model_name: str = ""
+
+
+@dataclass
+class WebSearchSource:
+    """A single web search source result."""
+
+    url: str
+    title: str
+    status: Literal["success", "failed", "skipped"]
+    error: Optional[str] = None
+    snippet: Optional[str] = None
+
+
+@dataclass
+class WebSearchChunk:
+    """A chunk from web search streaming, compatible with chat consumption.
+
+    This dataclass mirrors RAGChunk's pattern to enable unified streaming:
+    - agent_progress: For search/fetch phases (unique to web search agents)
+    - status: Pipeline status like 'generating' (shared with RAG/LLM)
+    - token: LLM output token for streaming (shared with RAG/LLM)
+    - sources: Final sources at completion
+    - is_complete: Whether this is the final chunk
+
+    Attributes:
+        agent_progress: Dict with agent phase info (searching, fetching, summarizing).
+        status: Pipeline status indicator (e.g., 'generating').
+        token: LLM output token delta.
+        sources: List of WebSearchSource at completion.
+        is_complete: Whether this is the final chunk with sources.
+    """
+
+    agent_progress: Optional[Dict[str, Any]] = None
+    status: Optional[str] = None
+    token: Optional[str] = None
+    sources: Optional[List["WebSearchSource"]] = None
+    is_complete: bool = False
+
+
+def web_source_to_source_node(source: WebSearchSource) -> Dict[str, any]:
+    """Convert WebSearchSource to SourceNode format for unified UI.
+
+    This enables web search sources to be displayed using the same SourcesList
+    component used for RAG sources, providing a consistent user experience.
+
+    Args:
+        source: WebSearchSource from web search pipeline
+
+    Returns:
+        Dict matching SourceNode schema with web-specific metadata
+    """
+    return {
+        "text": source.snippet or "",
+        "score": 1.0 if source.status == "success" else 0.0,
+        "metadata": {
+            "source_url": source.url,
+            "display_name": source.title,
+            "doc_type": "web",
+            "fetch_status": source.status,
+            "fetch_error": source.error,
+        },
+    }
+
+
+# Type alias for progress callbacks
+# Callbacks can accept strings (backward-compatible) or structured progress objects
+ProgressCallback = Callable[..., None]
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +163,7 @@ async def search_duckduckgo(
     """
     logger.info(f"Searching DuckDuckGo for: {query}")
     if progress_callback:
-        progress_callback(f"🔎 Searching DuckDuckGo for: *{query}*...")
+        progress_callback(f"Searching DuckDuckGo for: {query}")
 
     try:
         # DuckDuckGo search with exponential backoff
@@ -92,7 +196,7 @@ async def search_duckduckgo(
 
                 logger.info(f"Found {len(formatted)} search results")
                 if progress_callback:
-                    progress_callback(f"✅ Found {len(formatted)} search results")
+                    progress_callback(f"Found {len(formatted)} search results")
                 return formatted
 
             except Exception as e:
@@ -329,7 +433,7 @@ async def fetch_pages_parallel(
 
     logger.info(f"Fetching up to {max_pages} pages with look-forward strategy...")
     if progress_callback:
-        progress_callback(f"📥 Fetching up to {max_pages} pages...")
+        progress_callback(f"Fetching up to {max_pages} pages")
 
     successful: list[tuple[str, str, str]] = []
     all_attempts: list[tuple[str, str, str, str | None]] = []
@@ -350,9 +454,7 @@ async def fetch_pages_parallel(
                 f"Trying batch of {len(batch)} pages (need {needed} more successes)..."
             )
             if progress_callback:
-                progress_callback(
-                    f"📄 Trying {len(batch)} pages (need {needed} more successes)..."
-                )
+                progress_callback(f"Trying {len(batch)} pages, need {needed} more")
 
             # Fetch batch in parallel
             tasks = [fetch_page_as_markdown(r["url"], session) for r in batch]
@@ -368,7 +470,7 @@ async def fetch_pages_parallel(
                     all_attempts.append((url, title, "exception", exception_msg))
                     logger.warning(f"Exception fetching {url}: {result}")
                     if progress_callback:
-                        progress_callback(f"❌ Failed: *{title}* - {exception_msg}")
+                        progress_callback(f"Failed: {title} - {exception_msg}")
                 else:
                     markdown, status, error_msg = result
 
@@ -377,12 +479,12 @@ async def fetch_pages_parallel(
                         all_attempts.append((url, title, "success", None))
                         if progress_callback:
                             progress_callback(
-                                f"✅ Fetched: *{title}* ({len(successful)}/{max_pages})"
+                                f"Fetched: {title} ({len(successful)}/{max_pages})"
                             )
                     else:
                         all_attempts.append((url, title, status, error_msg))
                         if progress_callback:
-                            progress_callback(f"⚠️ Skipped: *{title}* - {error_msg}")
+                            progress_callback(f"Skipped: {title} - {error_msg}")
 
                 # Stop if we have enough successful pages
                 if len(successful) >= max_pages:
@@ -500,10 +602,10 @@ async def summarize_with_llm(
     """
     logger.info(f"Summarizing {len(pages)} pages with {model_name}...")
     if progress_callback:
-        progress_callback(f"🤖 Generating summary with {model_name}...")
+        progress_callback(f"Generating summary with {model_name}")
 
     if not pages:
-        return "❌ **No pages could be fetched.** Please try a different query."
+        return "**No pages could be fetched.** Please try a different query."
 
     # Get model's actual context window (use provided or fetch from model)
     if context_window is None:
@@ -583,9 +685,9 @@ CRITICAL CITATION RULES - READ CAREFULLY:
 2. **Correct citation format**: "According to [Source Title](url), the key point is..."
 3. **Example**: "The [YOLO algorithm](https://pjreddie.com/darknet/yolo/) \
 detects objects..."
-4. **WRONG**: "According to [1], the algorithm..." ❌
+4. **WRONG**: "According to [1], the algorithm..." (incorrect)
 5. **RIGHT**: "According to [YOLO Documentation]\
-(https://pjreddie.com/darknet/yolo/), the algorithm..." ✓
+(https://pjreddie.com/darknet/yolo/), the algorithm..." (correct)
 6. **Preserve ALL existing hyperlinks** from the source content
 7. **Link technical terms** to their definitions when sources provide them
 
@@ -624,12 +726,369 @@ Begin your response:"""
         response = await llm.acomplete(prompt)
         summary = response.text.strip()
 
-        logger.info("✅ Summary generated successfully")
+        logger.info("Summary generated successfully")
         return summary
 
     except Exception as e:
         logger.error(f"LLM summarization failed: {e}")
-        return f"❌ **Summarization failed:** {str(e)}\n\nPlease try again."
+        return f"**Summarization failed:** {str(e)}\n\nPlease try again."
+
+
+async def summarize_with_llm_stream(
+    query: str,
+    pages: List[Tuple[str, str, str]],
+    model_name: str,
+    ollama_url: str,
+    context_window: Optional[int] = None,
+    custom_instructions: Optional[str] = None,
+) -> AsyncGenerator[str, None]:
+    """
+    Stream tokens from LLM summarization instead of blocking.
+
+    Args:
+        query: Original search query
+        pages: List of (url, title, markdown_content) tuples
+        model_name: Ollama model name
+        ollama_url: Ollama API URL
+        context_window: Optional context window size
+        custom_instructions: Optional custom instructions for LLM
+
+    Yields:
+        str: Individual tokens from the LLM response
+    """
+    logger.info(f"Streaming summary of {len(pages)} pages with {model_name}...")
+
+    if not pages:
+        yield "**No pages could be fetched.** Please try a different query."
+        return
+
+    # Get model's actual context window (use provided or fetch from model)
+    if context_window is None:
+        context_window = await get_model_context_window(
+            model_name, ollama_url, default=16384
+        )
+
+    # Calculate max chars based on context window
+    max_input_tokens = int(context_window * 0.6)
+    max_total_chars = max_input_tokens * 4
+    max_per_page = min(max_total_chars // len(pages), 4000)
+
+    # Build source list with numbered markdown links
+    sources_list = []
+    combined = []
+
+    for idx, (url, title, content) in enumerate(pages, 1):
+        sources_list.append(f"{idx}. [{title}]({url})")
+        truncated = content[:max_per_page]
+        if len(content) > max_per_page:
+            truncated += "\n\n[Content truncated...]"
+        combined.append(f"### Source {idx}: [{title}]({url})\n\n{truncated}\n\n---\n")
+
+    sources_text = "\n".join(sources_list)
+    combined_text = "\n".join(combined)
+
+    if len(combined_text) > max_total_chars:
+        combined_text = combined_text[:max_total_chars]
+        combined_text += "\n\n[Additional content truncated for length...]"
+
+    max_output_tokens = int(context_window * 0.4)
+    target_words = max_output_tokens
+
+    custom_instruction_text = ""
+    if custom_instructions:
+        custom_instruction_text = (
+            f"\n\n**Additional Instructions:** {custom_instructions}"
+        )
+
+    prompt = f"""You are a research assistant. User asked: "{query}"
+
+## Available Sources
+{sources_text}
+
+## Content from Sources
+{combined_text}
+
+CRITICAL CITATION RULES - READ CAREFULLY:
+1. **ALWAYS cite using markdown hyperlinks**, NEVER use plain [1] or [2] style
+2. **Correct citation format**: "According to [Source Title](url), the key point is..."
+3. **Example**: "The [YOLO algorithm](https://pjreddie.com/darknet/yolo/) \
+detects objects..."
+4. **WRONG**: "According to [1], the algorithm..." (incorrect)
+5. **RIGHT**: "According to [YOLO Documentation]\
+(https://pjreddie.com/darknet/yolo/), the algorithm..." (correct)
+6. **Preserve ALL existing hyperlinks** from the source content
+7. **Link technical terms** to their definitions when sources provide them
+
+Provide a comprehensive summary ({target_words} words approx.) \
+answering the question.{custom_instruction_text}
+
+### Summary
+[Thorough overview with inline hyperlinked citations. Example: \
+"[Source 1]({pages[0][0]}) explains that..." or \
+"The main approach involves [technique name]({pages[0][0]})..."]
+
+### Detailed Findings
+[Organize by topic. ALWAYS use hyperlinked citations like "[title](url)" - never bare [1] numbers. \
+Include relevant details and preserve all markdown links from sources.]
+
+### Key Takeaways
+[Important points with inline hyperlinked sources where appropriate]
+
+Begin your response:"""
+
+    try:
+        thinking_enabled = check_thinking_support(model_name)
+
+        llm = Ollama(
+            model=model_name,
+            base_url=ollama_url,
+            request_timeout=120.0,
+            temperature=0.3,
+            context_window=context_window,
+            num_ctx=context_window,
+            thinking=thinking_enabled,
+        )
+
+        # Use astream_complete for streaming
+        async for chunk in await llm.astream_complete(prompt):
+            if chunk.delta:
+                yield chunk.delta
+
+        logger.info("Streaming summary completed successfully")
+
+    except Exception as e:
+        logger.error(f"LLM streaming summarization failed: {e}")
+        yield f"**Summarization failed:** {str(e)}\n\nPlease try again."
+
+
+async def web_search_stream(
+    query: str,
+    model_name: str,
+    ollama_url: str,
+    max_results: int = 10,
+    max_pages: int = 5,
+    context_window: Optional[int] = None,
+    custom_instructions: Optional[str] = None,
+) -> AsyncGenerator[WebSearchChunk, None]:
+    """
+    Streaming web search that yields chunks like RAG does.
+
+    This generator yields WebSearchChunk objects for each phase:
+    1. Search phase: agent_progress with search status
+    2. Fetch phase: agent_progress per page attempt
+    3. Summarize phase: status='generating' then token chunks
+    4. Complete: sources and is_complete=True
+
+    Args:
+        query: Search query
+        model_name: Ollama model name
+        ollama_url: Ollama API base URL
+        max_results: Max search results to fetch
+        max_pages: Max pages to download and process
+        context_window: Optional context window size
+        custom_instructions: Optional custom instructions for LLM
+
+    Yields:
+        WebSearchChunk: Streaming chunks with progress, tokens, or sources
+    """
+    # Phase 1: Search - yield agent_progress
+    yield WebSearchChunk(
+        agent_progress={
+            "agent": "web_search",
+            "phase": "searching",
+            "message": f"Searching for: {query}",
+            "search_query": query,
+            "search_hits": None,
+        }
+    )
+
+    search_results = await search_duckduckgo(query, max_results)
+
+    yield WebSearchChunk(
+        agent_progress={
+            "agent": "web_search",
+            "phase": "searching",
+            "message": f"Found {len(search_results)} results",
+            "search_query": query,
+            "search_hits": len(search_results),
+        }
+    )
+
+    if not search_results:
+        # No results - yield error message as token and complete
+        error_msg = (
+            f'## Web Search: "{query}"\n\n'
+            f"**No results found.**\n\n"
+            f"This could be due to:\n"
+            f"- Network connectivity issues\n"
+            f"- DuckDuckGo rate limiting\n"
+            f"- Very specific or unusual query\n\n"
+            f"Please try rephrasing your query or try again later."
+        )
+        yield WebSearchChunk(status="generating")
+        yield WebSearchChunk(token=error_msg)
+        yield WebSearchChunk(sources=[], is_complete=True)
+        return
+
+    # Phase 2: Fetch pages - yield agent_progress per attempt
+    snippet_map = {r["url"]: r.get("snippet", "") for r in search_results}
+    pages: List[Tuple[str, str, str]] = []
+    sources: List[WebSearchSource] = []
+    current_idx = 0
+    pages_fetched = 0
+    pages_failed = 0
+
+    async with aiohttp.ClientSession() as session:
+        while len(pages) < max_pages and current_idx < len(search_results):
+            needed = max_pages - len(pages)
+            batch_size = min(needed + 2, len(search_results) - current_idx)
+            batch = search_results[current_idx : current_idx + batch_size]
+
+            # Fetch batch
+            tasks = [fetch_page_as_markdown(r["url"], session) for r in batch]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for search_result, result in zip(batch, batch_results):
+                url = search_result["url"]
+                title = search_result["title"]
+
+                if isinstance(result, BaseException):
+                    pages_failed += 1
+                    sources.append(
+                        WebSearchSource(
+                            url=url,
+                            title=title,
+                            status="failed",
+                            error=str(result),
+                            snippet=snippet_map.get(url),
+                        )
+                    )
+                    yield WebSearchChunk(
+                        agent_progress={
+                            "agent": "web_search",
+                            "phase": "fetching",
+                            "message": f"Failed: {title}",
+                            "pages_target": max_pages,
+                            "pages_fetched": pages_fetched,
+                            "pages_failed": pages_failed,
+                            "current_page": {
+                                "url": url,
+                                "title": title,
+                                "status": "failed",
+                                "error": str(result),
+                            },
+                        }
+                    )
+                else:
+                    markdown, status, error_msg = result
+                    if status == "success" and markdown:
+                        pages.append((url, title, markdown))
+                        pages_fetched += 1
+                        sources.append(
+                            WebSearchSource(
+                                url=url,
+                                title=title,
+                                status="success",
+                                error=None,
+                                snippet=snippet_map.get(url),
+                            )
+                        )
+                        yield WebSearchChunk(
+                            agent_progress={
+                                "agent": "web_search",
+                                "phase": "fetching",
+                                "message": f"Fetched: {title}",
+                                "pages_target": max_pages,
+                                "pages_fetched": pages_fetched,
+                                "pages_failed": pages_failed,
+                                "current_page": {
+                                    "url": url,
+                                    "title": title,
+                                    "status": "success",
+                                    "error": None,
+                                },
+                            }
+                        )
+                    else:
+                        source_status: Literal["success", "failed", "skipped"] = (
+                            "skipped"
+                            if status in ("too_short", "parse_error")
+                            else "failed"
+                        )
+                        pages_failed += 1
+                        sources.append(
+                            WebSearchSource(
+                                url=url,
+                                title=title,
+                                status=source_status,
+                                error=error_msg,
+                                snippet=snippet_map.get(url),
+                            )
+                        )
+                        yield WebSearchChunk(
+                            agent_progress={
+                                "agent": "web_search",
+                                "phase": "fetching",
+                                "message": f"{source_status.title()}: {title}",
+                                "pages_target": max_pages,
+                                "pages_fetched": pages_fetched,
+                                "pages_failed": pages_failed,
+                                "current_page": {
+                                    "url": url,
+                                    "title": title,
+                                    "status": source_status,
+                                    "error": error_msg,
+                                },
+                            }
+                        )
+
+                if len(pages) >= max_pages:
+                    break
+
+            current_idx += batch_size
+
+    # Handle no pages fetched
+    if not pages:
+        snippets = "\n\n".join(
+            [
+                f"**{i+1}. [{r['title']}]({r['url']})**\n{r['snippet']}"
+                for i, r in enumerate(search_results[:max_pages])
+            ]
+        )
+        fallback_msg = (
+            f'## Web Search: "{query}"\n\n'
+            f"**Found results but couldn't fetch full pages.**\n\n"
+            f"Here are the search snippets:\n\n{snippets}\n\n"
+            f"---\n*Page fetching failed. Try visiting the links directly.*"
+        )
+        yield WebSearchChunk(status="generating")
+        yield WebSearchChunk(token=fallback_msg)
+        yield WebSearchChunk(sources=sources, is_complete=True)
+        return
+
+    # Phase 3: Summarize - yield status then tokens
+    yield WebSearchChunk(
+        agent_progress={
+            "agent": "web_search",
+            "phase": "summarizing",
+            "message": f"Generating summary with {model_name}",
+            "model_name": model_name,
+        }
+    )
+    yield WebSearchChunk(status="generating")
+
+    async for token in summarize_with_llm_stream(
+        query,
+        pages,
+        model_name,
+        ollama_url,
+        context_window,
+        custom_instructions,
+    ):
+        yield WebSearchChunk(token=token)
+
+    # Final: yield sources and complete
+    yield WebSearchChunk(sources=sources, is_complete=True)
 
 
 async def web_search_async(
@@ -638,12 +1097,12 @@ async def web_search_async(
     ollama_url: str,
     max_results: int = 10,
     max_pages: int = 5,
-    progress_callback=None,
+    progress_callback: Optional[ProgressCallback] = None,
     context_window: Optional[int] = None,
     custom_instructions: Optional[str] = None,
-) -> str:
+) -> Tuple[str, List[WebSearchSource]]:
     """
-    Complete web search pipeline: search → fetch → summarize.
+    Complete web search pipeline: search -> fetch -> summarize.
 
     Args:
         query: Search query
@@ -656,7 +1115,7 @@ async def web_search_async(
         custom_instructions: Optional custom instructions for LLM summarization
 
     Returns:
-        Formatted markdown response for chat
+        Tuple of (formatted markdown response, list of WebSearchSource)
     """
     # Step 1: Search DuckDuckGo
     search_results = await search_duckduckgo(query, max_results, progress_callback)
@@ -664,18 +1123,50 @@ async def web_search_async(
     if not search_results:
         return (
             f'## Web Search: "{query}"\n\n'
-            f"❌ **No results found.**\n\n"
+            f"**No results found.**\n\n"
             f"This could be due to:\n"
             f"- Network connectivity issues\n"
             f"- DuckDuckGo rate limiting\n"
             f"- Very specific or unusual query\n\n"
-            f"Please try rephrasing your query or try again later."
+            f"Please try rephrasing your query or try again later.",
+            [],
         )
 
     # Step 2: Fetch pages in parallel with look-forward strategy
     pages, all_attempts = await fetch_pages_parallel(
         search_results, max_pages, progress_callback
     )
+
+    # Build sources list from all_attempts
+    sources: List[WebSearchSource] = []
+    # Create a mapping of url -> snippet from search results
+    snippet_map = {r["url"]: r.get("snippet", "") for r in search_results}
+
+    for url, title, status, error_msg in all_attempts:
+        if status == "success":
+            sources.append(
+                WebSearchSource(
+                    url=url,
+                    title=title,
+                    status="success",
+                    error=None,
+                    snippet=snippet_map.get(url),
+                )
+            )
+        else:
+            # Map various failure statuses to "failed" or "skipped"
+            source_status: Literal["success", "failed", "skipped"] = (
+                "skipped" if status in ("too_short", "parse_error") else "failed"
+            )
+            sources.append(
+                WebSearchSource(
+                    url=url,
+                    title=title,
+                    status=source_status,
+                    error=error_msg,
+                    snippet=snippet_map.get(url),
+                )
+            )
 
     if not pages:
         # Fallback: show search snippets if ALL page fetches fail
@@ -687,9 +1178,10 @@ async def web_search_async(
         )
         return (
             f'## Web Search: "{query}"\n\n'
-            f"⚠️ **Found results but couldn't fetch full pages.**\n\n"
+            f"**Found results but couldn't fetch full pages.**\n\n"
             f"Here are the search snippets:\n\n{snippets}\n\n"
-            f"---\n💡 *Page fetching failed. Try visiting the links directly.*"
+            f"---\n*Page fetching failed. Try visiting the links directly.*",
+            sources,
         )
 
     # Step 3: LLM Summarization
@@ -703,21 +1195,8 @@ async def web_search_async(
         custom_instructions,
     )
 
-    # Step 4: Format final response with ALL sources (successful and failed)
-    sources_section_lines = []
-    for i, (url, title, status, error_msg) in enumerate(all_attempts):
-        if status == "success":
-            sources_section_lines.append(f"{i+1}. ✅ [{title}]({url})")
-        else:
-            # Format error message
-            error_display = error_msg if error_msg else status
-            sources_section_lines.append(
-                f"{i+1}. ⚠️ [{title}]({url}) - {error_display}"
-            )
-
-    sources_section = "\n".join(sources_section_lines)
-
-    return f"{summary}\n\n" f"### Sources\n{sources_section}\n\n"
+    # Step 4: Format final response (sources are returned separately now)
+    return f"{summary}\n\n", sources
 
 
 def web_search(
@@ -726,10 +1205,10 @@ def web_search(
     ollama_url: str,
     max_results: int = 10,
     max_pages: int = 5,
-    progress_callback=None,
+    progress_callback: Optional[ProgressCallback] = None,
     context_window: Optional[int] = None,
     custom_instructions: Optional[str] = None,
-) -> str:
+) -> Tuple[str, List[WebSearchSource]]:
     """
     Sync wrapper for web search (Streamlit compatible).
 
@@ -744,7 +1223,7 @@ def web_search(
         custom_instructions: Optional custom instructions for LLM summarization
 
     Returns:
-        Formatted markdown response for chat
+        Tuple of (formatted markdown response, list of WebSearchSource)
     """
     return asyncio.run(
         web_search_async(

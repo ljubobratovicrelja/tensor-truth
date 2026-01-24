@@ -5,10 +5,16 @@ import { Button } from "@/components/ui/button";
 import { MessageItem } from "./MessageItem";
 import { StreamingIndicator } from "./StreamingIndicator";
 import { ThinkingBox } from "./ThinkingBox";
+import { AgentProgress } from "./AgentProgress";
 import { useScrollDirection, useIsMobile } from "@/hooks";
 import { useUIStore } from "@/stores";
 import { cn } from "@/lib/utils";
-import type { MessageResponse, RetrievalMetrics, SourceNode } from "@/api/types";
+import type {
+  MessageResponse,
+  RetrievalMetrics,
+  SourceNode,
+  StreamAgentProgress,
+} from "@/api/types";
 import type { PipelineStatus } from "@/stores/chatStore";
 
 interface MessageListProps {
@@ -22,6 +28,7 @@ interface MessageListProps {
   streamingMetrics?: RetrievalMetrics | null;
   isStreaming?: boolean;
   pipelineStatus?: PipelineStatus;
+  agentProgress?: StreamAgentProgress | null;
 }
 
 export function MessageList({
@@ -35,6 +42,7 @@ export function MessageList({
   streamingMetrics,
   isStreaming,
   pipelineStatus,
+  agentProgress,
 }: MessageListProps) {
   // Use state for container so effects re-run when it's set
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
@@ -181,13 +189,21 @@ export function MessageList({
             {isStreaming && !streamingContent && (
               <>
                 {streamingThinking && <ThinkingBox content={streamingThinking} />}
-                <StreamingIndicator status={pipelineStatus} />
+                {agentProgress ? (
+                  <AgentProgress progress={agentProgress} />
+                ) : (
+                  <StreamingIndicator status={pipelineStatus} />
+                )}
               </>
             )}
             {/* Streaming: show streaming response with thinking and status */}
             {isStreaming && streamingContent && (
               <>
-                {pipelineStatus && <StreamingIndicator status={pipelineStatus} />}
+                {agentProgress ? (
+                  <AgentProgress progress={agentProgress} />
+                ) : (
+                  pipelineStatus && <StreamingIndicator status={pipelineStatus} />
+                )}
                 <MessageItem
                   message={{ role: "assistant", content: streamingContent }}
                   sources={streamingSources}
