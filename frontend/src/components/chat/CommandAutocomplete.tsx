@@ -123,7 +123,7 @@ export function CommandAutocomplete({
   return (
     <div
       className={cn(
-        "border-border bg-popover absolute bottom-full left-0 mb-2 w-full max-w-md rounded-lg border shadow-lg",
+        "border-border bg-popover absolute bottom-full left-0 z-50 mb-2 w-full max-w-md rounded-lg border shadow-lg",
         "animate-in fade-in slide-in-from-bottom-2 duration-200",
         className
       )}

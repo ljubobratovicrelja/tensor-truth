@@ -197,7 +197,7 @@ export function ChatContainer() {
       <div
         className={cn(
           "bg-background border-t pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]",
-          "max-h-[320px] transition-all duration-300 ease-in-out",
+          "max-h-[320px] overflow-visible transition-all duration-300 ease-in-out",
           isMobile && inputHidden && "max-h-0 overflow-hidden border-t-0 !p-0 opacity-0"
         )}
       >

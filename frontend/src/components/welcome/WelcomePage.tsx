@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Send, Bot, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useModels, useCreateSession, usePresets, useConfig } from "@/hooks";
+import { useModels, useCreateSession, usePresets, useConfig, useCommandDetection } from "@/hooks";
 import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
+import { CommandAutocomplete } from "@/components/chat/CommandAutocomplete";
 import { SessionSettingsPanel } from "@/components/config";
 import type { PresetInfo } from "@/api/types";
+import type { CommandDefinition } from "@/types/commands";
 
 export function WelcomePage() {
   const [message, setMessage] = useState("");
@@ -19,6 +21,8 @@ export function WelcomePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [autocompleteHasResults, setAutocompleteHasResults] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { data: modelsData, isLoading: modelsLoading } = useModels();
   const { data: presetsData } = usePresets();
@@ -26,6 +30,13 @@ export function WelcomePage() {
   const createSession = useCreateSession();
   const navigate = useNavigate();
   const setPendingMessage = useChatStore((state) => state.setPendingUserMessage);
+  const detection = useCommandDetection(message);
+
+  // Show autocomplete only if command detected AND no space after command name
+  const commandEndPos =
+    detection.commandPosition + (detection.commandName?.length || 0) + 1;
+  const hasSpaceAfterCommand = message.charAt(commandEndPos) === " ";
+  const showAutocomplete = detection.hasCommand && !hasSpaceAfterCommand;
 
   // Derive effective model: user selection or config default
   const effectiveModel = selectedModel || config?.models.default_rag_model || "";
@@ -55,7 +66,32 @@ export function WelcomePage() {
     }
   };
 
+  const handleCommandSelect = (command: CommandDefinition) => {
+    // Replace the current command with the selected one
+    if (detection.commandPosition >= 0) {
+      const before = message.slice(0, detection.commandPosition);
+      const after = message.slice(
+        detection.commandPosition + (detection.commandName?.length || 0) + 1
+      );
+      const commandName = command.usage.split(" ")[0];
+      setMessage(`${before}${commandName} ${after}`.trim() + " ");
+    } else {
+      const commandName = command.usage.split(" ")[0];
+      setMessage(`${message} ${commandName} `);
+    }
+    textareaRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Let autocomplete handle navigation keys if it's open and has results
+    if (
+      showAutocomplete &&
+      autocompleteHasResults &&
+      ["Enter", "Tab", "ArrowUp", "ArrowDown", "Escape"].includes(e.key)
+    ) {
+      return;
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
@@ -120,11 +156,30 @@ export function WelcomePage() {
         <div className="space-y-4">
           <div
             className={cn(
-              "bg-muted/50 border-input relative rounded-2xl border shadow-sm transition-all duration-500",
+              "bg-muted/50 border-input relative overflow-visible rounded-2xl border shadow-sm transition-all duration-500",
               isAnimating && "preset-glow"
             )}
           >
+            {/* Command Autocomplete */}
+            <CommandAutocomplete
+              input={message}
+              isOpen={showAutocomplete}
+              onSelect={handleCommandSelect}
+              onHasResultsChange={setAutocompleteHasResults}
+              onClose={() => {
+                if (detection.commandPosition >= 0) {
+                  const before = message.slice(0, detection.commandPosition);
+                  const after = message.slice(
+                    detection.commandPosition + (detection.commandName?.length || 0) + 1
+                  );
+                  setMessage((before + after).trim());
+                }
+                textareaRef.current?.focus();
+              }}
+            />
+
             <textarea
+              ref={textareaRef}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
