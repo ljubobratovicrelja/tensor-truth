@@ -473,3 +473,48 @@ def skip_if_network_required(request):
         # Skip by default unless --run-network flag is provided
         if not request.config.getoption("--run-network"):
             pytest.skip("Skipped: requires network (use --run-network to run)")
+
+
+@pytest.fixture(autouse=True)
+def mock_ollama_for_non_ollama_tests(request, monkeypatch):
+    """Mock Ollama API calls for tests that don't require Ollama.
+
+    This prevents integration tests from accidentally hitting Ollama during app startup.
+    Tests marked with @pytest.mark.requires_ollama will skip this fixture.
+    """
+    # Skip mocking if test requires Ollama
+    if "requires_ollama" in request.keywords:
+        return
+
+    # Skip mocking if --run-ollama flag is set
+    if request.config.getoption("--run-ollama"):
+        return
+
+    # Import requests to preserve original functionality
+    import requests as original_requests
+
+    # Mock response for Ollama endpoints
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"models": []}
+
+    def mock_requests_get(url, *args, **kwargs):
+        # Only mock Ollama API calls (localhost:11434)
+        if "localhost:11434" in url or ":11434" in url:
+            return mock_response
+        # Pass through all other requests
+        return original_requests.get(url, *args, **kwargs)
+
+    def mock_requests_post(url, *args, **kwargs):
+        # Only mock Ollama API calls (localhost:11434)
+        if "localhost:11434" in url or ":11434" in url:
+            mock_post_response = MagicMock()
+            mock_post_response.status_code = 200
+            mock_post_response.json.return_value = {}
+            return mock_post_response
+        # Pass through all other requests
+        return original_requests.post(url, *args, **kwargs)
+
+    # Patch only the tensortruth.core.ollama module to avoid interfering with other tests
+    monkeypatch.setattr("tensortruth.core.ollama.requests.get", mock_requests_get)
+    monkeypatch.setattr("tensortruth.core.ollama.requests.post", mock_requests_post)

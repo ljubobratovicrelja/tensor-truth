@@ -1,5 +1,6 @@
 """Integration tests for system info API endpoints."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tensortruth.api.main import app
@@ -92,6 +93,7 @@ class TestSystemDevicesEndpoint:
         assert devices[-1] == "cpu"
 
 
+@pytest.mark.requires_ollama
 class TestSystemOllamaEndpoint:
     """Tests for GET /api/system/ollama/status."""
 
