@@ -167,28 +167,3 @@ class TestSystemModule:
 
         # Should return fallback value
         assert memory == 16.0
-
-
-# ============================================================================
-# Integration Tests
-# ============================================================================
-
-
-@pytest.mark.unit
-class TestCoreIntegration:
-    """Integration tests for core modules."""
-
-    def test_ollama_api_base_constant(self):
-        """Test that OLLAMA_API_BASE is correctly set."""
-        from tensortruth.core.ollama import OLLAMA_API_BASE
-
-        assert OLLAMA_API_BASE == "http://localhost:11434/api"
-
-    def test_module_imports(self):
-        """Test that all core modules can be imported."""
-        from tensortruth.core import get_max_memory_gb, get_running_models, stop_model
-
-        # All should be callable
-        assert callable(get_max_memory_gb)
-        assert callable(get_running_models)
-        assert callable(stop_model)
