@@ -17,7 +17,7 @@ class TestBrowseStateInitialization:
         assert state.phase == WorkflowPhase.INITIAL
         assert state.search_results is None
         assert state.pages is None
-        assert state.min_pages_required == 3
+        assert state.min_pages_required == 5
         assert state.max_content_chars == 0
         assert state.total_content_chars == 0
         assert state.content_overflow is False

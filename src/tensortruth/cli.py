@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Command-line interface for Tensor-Truth.
 
-Unified CLI for managing documentation, papers, databases, and the web interface.
+Unified CLI for managing documentation, papers, databases, and the React frontend.
 """
 
 import sys
@@ -26,55 +26,29 @@ def _missing_imports_message(tool, package, error):
 
 
 def main():
-    """Main entry point - launches the Streamlit web application."""
-    # Get the project root directory (where app.py lives)
-    package_dir = Path(__file__).parent.resolve()
-    app_path = package_dir / "app.py"
+    """Main entry point - displays usage information."""
+    help_text = """
+TensorTruth - Local RAG System
 
-    # Check and pull required Ollama models before starting the app
-    try:
-        from tensortruth.core.ollama import ensure_required_models_available
+Available Commands:
+  tensor-truth-api    Start the FastAPI backend server
+  tensor-truth-ui     Start the React frontend dev server
+  tensor-truth-docs   Scrape and fetch documentation sources
+  tensor-truth-build  Build the vector database from sources
 
-        print("🔍 Checking for required Ollama models...")
-        pulled_models = ensure_required_models_available()
-        if pulled_models:
-            print(
-                f"✅ Successfully pulled {len(pulled_models)} models: {', '.join(pulled_models)}"
-            )
-        else:
-            print("✅ All required models are already available")
-    except ImportError:
-        print("⚠️  Could not import Ollama utilities - model auto-pulling disabled")
-    except Exception as e:
-        print(f"⚠️  Error checking/pulling models: {e}")
-        print("💡 You can manually pull required models with:")
-        from tensortruth.core.constants import (
-            DEFAULT_AGENT_REASONING_MODEL,
-            DEFAULT_FALLBACK_MODEL,
-            DEFAULT_RAG_MODEL,
-        )
+Quick Start:
+  1. Start the API server:
+     $ tensor-truth-api
 
-        print(f"   ollama pull {DEFAULT_RAG_MODEL}")
-        print(f"   ollama pull {DEFAULT_FALLBACK_MODEL}")
-        print(f"   ollama pull {DEFAULT_AGENT_REASONING_MODEL}")
+  2. In a new terminal, start the frontend:
+     $ tensor-truth-ui
 
-    if not app_path.exists():
-        print(f"Error: Could not find app.py at {app_path}", file=sys.stderr)
-        sys.exit(1)
+  3. Open your browser to:
+     http://localhost:5173
 
-    # Import streamlit.web.cli as st_cli to avoid loading the entire streamlit module
-    try:
-        from streamlit.web import cli as st_cli
-    except ImportError:
-        print(
-            "Error: Streamlit is not installed. Install with: pip install streamlit",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # Run the Streamlit app
-    sys.argv = ["streamlit", "run", str(app_path)] + sys.argv[1:]
-    sys.exit(st_cli.main())
+For more information, visit: https://github.com/ljubobratovicrelja/tensor-truth
+"""
+    print(help_text)
 
 
 def scrape_docs():

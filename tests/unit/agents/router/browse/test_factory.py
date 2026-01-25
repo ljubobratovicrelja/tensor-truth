@@ -40,7 +40,7 @@ def test_create_browse_agent_with_required_params():
     agent = create_browse_agent(config, tools, llm, session_params)
 
     assert isinstance(agent, BrowseAgent)
-    assert agent.min_pages_required == 3  # default
+    assert agent.min_pages_required == 5  # default
     assert agent.max_iterations == 10  # from config
 
 

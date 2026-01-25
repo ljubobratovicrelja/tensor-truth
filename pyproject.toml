@@ -42,9 +42,6 @@ dependencies = [
     "torch>=2.9",
     "psutil",     # For system memory detection
 
-    # --- Web App ---
-    "streamlit",
-
     # --- Utilities ---
     "requests", # Ollama API & downloads
     "aiohttp",  # Async HTTP for better UI responsiveness

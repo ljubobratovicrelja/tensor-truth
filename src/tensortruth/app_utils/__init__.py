@@ -31,14 +31,6 @@ def __getattr__(name: str):
         return process_command
 
     # Helpers
-    if name == "download_indexes_with_ui":
-        from .helpers import download_indexes_with_ui
-
-        return download_indexes_with_ui
-    if name == "ensure_engine_loaded":
-        from .helpers import ensure_engine_loaded
-
-        return ensure_engine_loaded
     if name == "free_memory":
         from .helpers import free_memory
 
@@ -69,10 +61,6 @@ def __getattr__(name: str):
         return get_system_devices
 
     # Presets
-    if name == "apply_preset":
-        from .presets import apply_preset
-
-        return apply_preset
     if name == "delete_preset":
         from .presets import delete_preset
 
@@ -163,8 +151,6 @@ __all__ = [
     # Commands
     "process_command",
     # Helpers
-    "download_indexes_with_ui",
-    "ensure_engine_loaded",
     "free_memory",
     "get_available_modules",
     "get_ollama_models",
@@ -180,7 +166,6 @@ __all__ = [
     "get_sessions_file",
     "get_user_data_dir",
     # Presets
-    "apply_preset",
     "delete_preset",
     "get_favorites",
     "load_presets",

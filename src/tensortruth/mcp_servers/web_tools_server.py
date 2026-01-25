@@ -31,8 +31,9 @@ def create_server() -> Server:
                 name="search_web",
                 description=(
                     "Search DuckDuckGo for information on any topic. "
-                    "SUPPORTS MULTIPLE QUERIES: Pass a single query string or list of diverse queries "
-                    "for comprehensive coverage. Results are combined and deduplicated. "
+                    "SUPPORTS MULTIPLE QUERIES: Pass a single query string or "
+                    "list of diverse queries for comprehensive coverage. "
+                    "Results are combined and deduplicated. "
                     "Returns a list of results with url, title, and snippet."
                 ),
                 inputSchema={

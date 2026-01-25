@@ -5,7 +5,7 @@ interface for PDF upload, conversion, indexing, and cleanup.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from tensortruth.pdf_handler import PDFHandler
 from tensortruth.session_index import SessionIndexBuilder
@@ -78,27 +78,6 @@ class PDFService:
 
         mock_file = MockUploadedFile(file_content, filename)
         result = self._pdf_handler.upload_pdf(mock_file)
-
-        return PDFMetadata(
-            pdf_id=result["id"],
-            filename=result["filename"],
-            path=str(result["path"]),
-            file_size=result["file_size"],
-            page_count=result["page_count"],
-        )
-
-    def upload_from_streamlit(self, uploaded_file: Any) -> PDFMetadata:
-        """Upload a PDF from a Streamlit UploadedFile object.
-
-        This is a convenience method for Streamlit integration.
-
-        Args:
-            uploaded_file: Streamlit UploadedFile object.
-
-        Returns:
-            PDFMetadata with file info.
-        """
-        result = self._pdf_handler.upload_pdf(uploaded_file)
 
         return PDFMetadata(
             pdf_id=result["id"],

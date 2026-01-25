@@ -104,7 +104,10 @@ class BrowseAgent(RouterAgent):
         return await self.router.route(cast(BrowseState, state))
 
     async def execute(
-        self, action: str, state: RouterState, callbacks: AgentCallbacks = None
+        self,
+        action: str,
+        state: RouterState,
+        callbacks: Optional[AgentCallbacks] = None,
     ) -> RouterState:
         """Execute action using BrowseExecutor.
 

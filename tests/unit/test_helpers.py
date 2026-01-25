@@ -149,27 +149,6 @@ class TestFreeMemory:
                 # Should not raise
                 free_memory(engine=mock_engine)
 
-    def test_free_memory_clears_streamlit_session_retriever_cache(self):
-        """Test that free_memory clears cache from st.session_state engine."""
-        mock_retriever = MagicMock()
-        mock_engine = MagicMock()
-        mock_engine._retriever = mock_retriever
-
-        mock_session_state = {"engine": mock_engine}
-
-        with patch("tensortruth.app_utils.helpers.gc.collect"):
-            with patch("tensortruth.app_utils.helpers.torch") as mock_torch:
-                mock_torch.cuda.is_available.return_value = False
-                mock_torch.backends.mps.is_available.return_value = False
-
-                with patch.dict(
-                    "sys.modules",
-                    {"streamlit": MagicMock(session_state=mock_session_state)},
-                ):
-                    free_memory(engine=None)
-
-        mock_retriever.clear_cache.assert_called_once()
-
     def test_free_memory_handles_cache_clear_exception(self):
         """Test that free_memory continues cleanup even if clear_cache raises."""
         mock_retriever = MagicMock()
@@ -240,34 +219,6 @@ class TestFreeMemory:
                 free_memory(engine=None)
 
         assert call_order == ["synchronize", "empty_cache"]
-
-    def test_free_memory_resets_loaded_config(self):
-        """Test that free_memory resets loaded_config in session_state."""
-        import streamlit as st
-
-        # Set up real session_state with loaded_config
-        if not hasattr(st, "session_state"):
-            pytest.skip("Streamlit session_state not available in test mode")
-
-        original_config = st.session_state.get("loaded_config")
-
-        try:
-            st.session_state["loaded_config"] = ("module", "hash")
-
-            with patch("tensortruth.app_utils.helpers.gc.collect"):
-                with patch("tensortruth.app_utils.helpers.torch") as mock_torch:
-                    mock_torch.cuda.is_available.return_value = False
-                    mock_torch.backends.mps.is_available.return_value = False
-
-                    free_memory(engine=None)
-
-            assert st.session_state.get("loaded_config") is None
-        finally:
-            # Restore original state
-            if original_config is not None:
-                st.session_state["loaded_config"] = original_config
-            elif "loaded_config" in st.session_state:
-                del st.session_state["loaded_config"]
 
 
 @pytest.mark.unit

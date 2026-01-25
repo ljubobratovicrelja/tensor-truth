@@ -184,7 +184,10 @@ class YouTubeHandler(ContentHandler):
             def get_transcript():
                 try:
                     # Try to get transcript (prefer manually created ones)
-                    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                    # Note: type ignore needed due to missing type stubs
+                    transcript_list = YouTubeTranscriptApi.list_transcripts(  # type: ignore[attr-defined]  # noqa: E501
+                        video_id
+                    )
 
                     # Try manual transcripts first
                     try:

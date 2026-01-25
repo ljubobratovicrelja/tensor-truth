@@ -335,46 +335,6 @@ def get_random_rag_processing_message():
     return messages[int(time.time()) % len(messages)]
 
 
-def download_indexes_with_ui(
-    user_dir: Union[str, Path],
-    repo_id: str = HF_REPO_ID,
-    filename: Optional[str] = None,
-    embedding_model: Optional[str] = None,
-):
-    """Wrapper for download_and_extract_indexes that provides Streamlit UI feedback.
-
-    Args:
-        user_dir: Directory to extract indexes to.
-        repo_id: HuggingFace repository ID.
-        filename: Specific tarball to download (optional if embedding_model provided).
-        embedding_model: Embedding model to download indexes for.
-    """
-    import streamlit as st
-
-    model_info = f" for {embedding_model}" if embedding_model else ""
-
-    try:
-        with st.spinner(
-            f"📥 Downloading indexes{model_info} from HuggingFace Hub "
-            f"(this may take a few minutes)..."
-        ):
-            success = download_and_extract_indexes(
-                user_dir,
-                repo_id=repo_id,
-                filename=filename,
-                embedding_model=embedding_model,
-            )
-            if success:
-                st.success("✅ Indexes downloaded and extracted successfully!")
-    except Exception as e:
-        st.error(f"❌ Error downloading/extracting indexes: {e}")
-        display_filename = filename or HF_FILENAME
-        hf_link = (
-            f"https://huggingface.co/datasets/{repo_id}/blob/main/{display_filename}"
-        )
-        st.info(f"Try fetching manually from: {hf_link}, and storing in: {user_dir}")
-
-
 def get_available_modules(
     index_dir: Union[str, Path],
     embedding_model: Optional[str] = None,
@@ -462,15 +422,6 @@ def get_available_modules(
     return [(mod, name) for mod, name, _ in results]
 
 
-# Cache decorator will be applied by Streamlit app if streamlit is available
-try:
-    import streamlit as st
-
-    get_available_modules = st.cache_data(ttl=10)(get_available_modules)
-except ImportError:
-    pass
-
-
 def get_ollama_models():
     """Fetches list of available models from local Ollama instance."""
     from tensortruth.core.ollama import get_available_models
@@ -483,15 +434,6 @@ def get_ollama_ps():
     from tensortruth.core.ollama import get_running_models_detailed
 
     return get_running_models_detailed()
-
-
-# Cache decorator will be applied by Streamlit app if streamlit is available
-try:
-    import streamlit as st
-
-    get_ollama_models = st.cache_data(ttl=60)(get_ollama_models)
-except ImportError:
-    pass
 
 
 def get_system_devices():
@@ -528,28 +470,12 @@ def free_memory(engine=None):
     """Free GPU/MPS memory by clearing caches.
 
     Args:
-        engine: Optional engine reference to delete. If None, will try to clean
-                up from st.session_state if streamlit is available.
+        engine: Optional engine reference to delete.
     """
     # Clear retriever LRU cache before deleting engine to release GPU tensors
     if engine is not None:
         _clear_retriever_cache(engine)
         del engine
-
-    # Also try to clean up from streamlit session_state if available
-    try:
-        import streamlit as st
-
-        if "engine" in st.session_state:
-            _clear_retriever_cache(st.session_state["engine"])
-            del st.session_state["engine"]
-
-        # Reset loaded_config to force engine reload on next use
-        if "loaded_config" in st.session_state:
-            st.session_state.loaded_config = None
-    except (ImportError, AttributeError):
-        # Streamlit not available or session_state not initialized
-        pass
 
     # Clear LlamaIndex Settings embedding model (~1-2GB VRAM)
     # Note: Access _embed_model directly to avoid auto-initialization of default model
@@ -581,43 +507,6 @@ def free_memory(engine=None):
         torch.cuda.empty_cache()
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         torch.mps.empty_cache()
-
-
-def ensure_engine_loaded(target_modules, target_params):
-    """Ensure the RAG engine is loaded with the specified configuration."""
-    import streamlit as st
-
-    from tensortruth import load_engine_for_modules
-
-    target_tuple = tuple(sorted(target_modules))
-    param_items = sorted([(k, v) for k, v in target_params.items()])
-    param_hash = frozenset(param_items)
-
-    current_config = st.session_state.get("loaded_config")
-
-    if current_config == (target_tuple, param_hash):
-        return st.session_state.engine
-
-    # Always show loading message for better UX
-    placeholder = st.empty()
-    placeholder.info(
-        f"⏳ Loading Model: {target_params.get('model')} | "
-        f"Pipeline: {target_params.get('rag_device')} | "
-        f"LLM: {target_params.get('llm_device')}..."
-    )
-
-    if current_config is not None:
-        free_memory()
-
-    try:
-        engine = load_engine_for_modules(list(target_tuple), target_params)
-        st.session_state.engine = engine
-        st.session_state.loaded_config = (target_tuple, param_hash)
-        placeholder.empty()
-        return engine
-    except Exception as e:
-        placeholder.error(f"Failed: {e}")
-        st.stop()
 
 
 def format_ollama_runtime_info() -> List[str]:

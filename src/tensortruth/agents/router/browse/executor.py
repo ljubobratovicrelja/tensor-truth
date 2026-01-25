@@ -46,19 +46,25 @@ class BrowseExecutor:
         # Case 1: ToolOutput object - try raw_output first, then content
         if not isinstance(result, str) and hasattr(result, "raw_output"):
             result_data = result.raw_output
-            logger.info(f"_parse_tool_result: extracted raw_output, type = {type(result_data)}")
+            logger.info(
+                f"_parse_tool_result: extracted raw_output, type = {type(result_data)}"
+            )
         elif not isinstance(result, str) and hasattr(result, "content"):
             result_data = result.content
-            logger.info(f"_parse_tool_result: extracted content, type = {type(result_data)}")
+            logger.info(
+                f"_parse_tool_result: extracted content, type = {type(result_data)}"
+            )
         else:
             # Case 2, 3, or 4: Direct result
             result_data = result
-            logger.info(f"_parse_tool_result: using result directly")
+            logger.info("_parse_tool_result: using result directly")
 
         # Handle MCP CallToolResult type (has .content attribute)
         if hasattr(result_data, "content") and not isinstance(result_data, str):
             result_data = result_data.content
-            logger.info(f"_parse_tool_result: extracted from CallToolResult, type = {type(result_data)}")
+            logger.info(
+                f"_parse_tool_result: extracted from CallToolResult, type = {type(result_data)}"
+            )
 
         # Case 4: List of TextContent objects (from MCP servers)
         if isinstance(result_data, list) and len(result_data) > 0:

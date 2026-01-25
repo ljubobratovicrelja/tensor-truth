@@ -2,7 +2,7 @@
 
 import logging
 from abc import abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from llama_index.core.tools import FunctionTool
 from llama_index.llms.ollama import Ollama
@@ -60,7 +60,10 @@ class RouterAgent(Agent):
 
     @abstractmethod
     async def execute(
-        self, action: str, state: RouterState, callbacks: AgentCallbacks = None
+        self,
+        action: str,
+        state: RouterState,
+        callbacks: Optional[AgentCallbacks] = None,
     ) -> RouterState:
         """Execute action and return updated state.
 

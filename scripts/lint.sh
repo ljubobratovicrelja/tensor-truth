@@ -24,7 +24,7 @@ echo "Running flake8..."
 flake8 $TARGETS || true
 
 echo "Running mypy..."
-mypy src/tensortruth --ignore-missing-imports || true
+mypy src/tensortruth --ignore-missing-imports --check-untyped-defs || true
 
 echo ""
 echo "=== Frontend Linting ==="

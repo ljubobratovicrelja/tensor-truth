@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
+from typing import List, Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -65,9 +65,19 @@ class ConcreteRouterAgent(RouterAgent):
         else:
             return "done"
 
-    async def execute(self, action: str, state: RouterState) -> RouterState:
+    async def execute(
+        self,
+        action: str,
+        state: RouterState,
+        callbacks: Optional[AgentCallbacks] = None,
+    ) -> RouterState:
         """Mock execution."""
         self.execute_calls.append((action, state))
+
+        # Simulate tool call for callback testing
+        if callbacks and callbacks.on_tool_call:
+            callbacks.on_tool_call(action, {"state": state.query})
+
         state.actions_taken.append(action)
         state.iteration_count += 1
 
@@ -189,7 +199,7 @@ class TestRouterAgentRunWorkflow:
             async def route(self, state):
                 return "continue"
 
-            async def execute(self, action, state):
+            async def execute(self, action, state, callbacks=None):
                 state.actions_taken.append(action)
                 state.iteration_count += 1
                 # Never mark as complete

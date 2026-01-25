@@ -15,10 +15,12 @@ def mock_tools():
     """Create mock tools for testing."""
     search_tool = MagicMock()
     search_tool.async_fn = AsyncMock()
+    search_tool.acall = AsyncMock()
     search_tool.metadata.name = "search_web"
 
     fetch_tool = MagicMock()
     fetch_tool.async_fn = AsyncMock()
+    fetch_tool.acall = AsyncMock()
     fetch_tool.metadata.name = "fetch_pages_batch"
 
     return {
@@ -44,7 +46,7 @@ def browse_agent(mock_llm, mock_tools):
         router_llm=mock_llm,
         synthesis_llm=mock_llm,
         tools=mock_tools,
-        min_pages_required=3,
+        min_pages_required=5,
         max_iterations=10,
         context_window=16384,
     )
@@ -75,7 +77,7 @@ async def test_browse_agent_complete_workflow(browse_agent, mock_tools, mock_llm
         {"url": "https://example.com/2", "title": "Result 2"},
         {"url": "https://example.com/3", "title": "Result 3"},
     ]
-    mock_tools["search_web"].async_fn.return_value = json.dumps(search_results)
+    mock_tools["search_web"].acall.return_value = json.dumps(search_results)
 
     # Mock fetch results
     fetch_result = {
@@ -105,7 +107,7 @@ async def test_browse_agent_complete_workflow(browse_agent, mock_tools, mock_llm
         "overflow": False,
         "total_chars": 200,
     }
-    mock_tools["fetch_pages_batch"].async_fn.return_value = json.dumps(fetch_result)
+    mock_tools["fetch_pages_batch"].acall.return_value = json.dumps(fetch_result)
 
     # Mock LLM routing responses
     mock_llm.acomplete.side_effect = [
@@ -144,7 +146,7 @@ async def test_browse_agent_handles_overflow(browse_agent, mock_tools, mock_llm)
 
     # Mock search results
     search_results = [{"url": "https://example.com/1", "title": "Result 1"}]
-    mock_tools["search_web"].async_fn.return_value = json.dumps(search_results)
+    mock_tools["search_web"].acall.return_value = json.dumps(search_results)
 
     # Mock fetch with overflow
     fetch_result = {
@@ -160,7 +162,7 @@ async def test_browse_agent_handles_overflow(browse_agent, mock_tools, mock_llm)
         "overflow": True,
         "total_chars": 5000,
     }
-    mock_tools["fetch_pages_batch"].async_fn.return_value = json.dumps(fetch_result)
+    mock_tools["fetch_pages_batch"].acall.return_value = json.dumps(fetch_result)
 
     # Mock LLM routing
     mock_llm.acomplete.side_effect = [
@@ -211,7 +213,7 @@ def test_browse_agent_creates_initial_state(browse_agent):
 
     assert state.query == "test query"
     assert state.phase == WorkflowPhase.INITIAL
-    assert state.min_pages_required == 3
+    assert state.min_pages_required == 5
     assert state.max_content_chars == browse_agent.max_content_chars
     assert state.actions_taken == []
     assert state.iteration_count == 0
@@ -251,7 +253,7 @@ async def test_browse_agent_execute_search(browse_agent, mock_tools):
 
     # Mock search results
     search_results = [{"url": "https://example.com", "title": "Result"}]
-    mock_tools["search_web"].async_fn.return_value = json.dumps(search_results)
+    mock_tools["search_web"].acall.return_value = json.dumps(search_results)
 
     updated_state = await browse_agent.execute("search_web", state)
 
@@ -286,7 +288,7 @@ async def test_browse_agent_execute_fetch(browse_agent, mock_tools):
         "overflow": False,
         "total_chars": 100,
     }
-    mock_tools["fetch_pages_batch"].async_fn.return_value = json.dumps(fetch_result)
+    mock_tools["fetch_pages_batch"].acall.return_value = json.dumps(fetch_result)
 
     updated_state = await browse_agent.execute("fetch_pages_batch", state)
 
@@ -330,8 +332,10 @@ def test_browse_agent_extract_urls(browse_agent):
 
     urls = browse_agent._extract_urls(state)
 
-    assert len(urls) == 2
+    # Now returns all pages regardless of status for transparency
+    assert len(urls) == 3
     assert "https://example.com/1" in urls
+    assert "https://example.com/2" in urls
     assert "https://example.com/3" in urls
 
 

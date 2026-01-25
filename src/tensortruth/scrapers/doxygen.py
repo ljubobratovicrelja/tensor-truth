@@ -41,6 +41,10 @@ def fetch_doxygen_urls(config):
             for link in soup.find_all("a", href=True):
                 href = link["href"]
 
+                # Ensure href is a string
+                if not isinstance(href, str):
+                    continue
+
                 # Skip external links, anchors, and non-HTML
                 if href.startswith(("http://", "https://", "#", "javascript:")):
                     continue
