@@ -241,7 +241,7 @@ async def websocket_chat(
                             return getattr(self.ws, name)
 
                     wrapper = ResponseCapturingWebSocket(websocket)
-                    # Type ignore because wrapper is duck-typed compatible
+                    # ResponseCapturingWebSocket duck-types WebSocket (safe)
                     await command.execute(cmd_args, session, wrapper)  # type: ignore
 
                     # Save assistant response to session (with sources if available)

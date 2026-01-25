@@ -31,22 +31,33 @@ def create_server() -> Server:
                 name="search_web",
                 description=(
                     "Search DuckDuckGo for information on any topic. "
+                    "SUPPORTS MULTIPLE QUERIES: Pass a single query string or list of diverse queries "
+                    "for comprehensive coverage. Results are combined and deduplicated. "
                     "Returns a list of results with url, title, and snippet."
                 ),
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The search query",
+                        "queries": {
+                            "oneOf": [
+                                {"type": "string"},
+                                {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                            ],
+                            "description": (
+                                "Single search query string OR list of diverse query strings. "
+                                "Use multiple queries for comprehensive coverage."
+                            ),
                         },
-                        "max_results": {
+                        "max_results_per_query": {
                             "type": "integer",
-                            "description": "Maximum number of results (default: 10)",
-                            "default": 10,
+                            "description": "Maximum results per query (default: 5)",
+                            "default": 5,
                         },
                     },
-                    "required": ["query"],
+                    "required": ["queries"],
                 },
             ),
             Tool(
@@ -80,16 +91,44 @@ def create_server() -> Server:
         logger.info(f"Calling tool: {name} with args: {arguments}")
 
         if name == "search_web":
-            query = arguments["query"]
-            max_results = arguments.get("max_results", 10)
+            queries = arguments["queries"]
+            max_results_per_query = arguments.get("max_results_per_query", 5)
 
-            results = await search_duckduckgo(query, max_results)
+            # Normalize to list
+            query_list = queries if isinstance(queries, list) else [queries]
+
+            # Execute all queries in parallel
+            tasks = [
+                search_duckduckgo(query, max_results=max_results_per_query)
+                for query in query_list
+            ]
+            results_per_query = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Combine and deduplicate by URL
+            seen_urls = set()
+            combined_results = []
+
+            for query, results in zip(query_list, results_per_query):
+                # Handle exceptions from individual queries
+                if isinstance(results, Exception):
+                    logger.warning(f"Query '{query}' failed: {results}")
+                    continue
+
+                # Add results, deduplicating by URL
+                if not isinstance(results, list):
+                    continue
+                for result in results:
+                    url = result.get("url", "")
+                    if url and url not in seen_urls:
+                        seen_urls.add(url)
+                        result["query"] = query  # Track which search returned this
+                        combined_results.append(result)
 
             # Format results as JSON
             return [
                 TextContent(
                     type="text",
-                    text=json.dumps(results, indent=2),
+                    text=json.dumps(combined_results, indent=2),
                 )
             ]
 

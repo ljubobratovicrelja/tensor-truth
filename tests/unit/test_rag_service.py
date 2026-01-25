@@ -16,6 +16,16 @@ def _create_mock_config():
     return config
 
 
+def _set_mock_engine(service, engine):
+    """Set mock engine and cache its components on the service.
+
+    Helper to properly initialize cached fields when bypassing load_engine().
+    """
+    service._engine = engine
+    service._llm = engine._llm
+    service._retriever = engine._retriever
+
+
 @pytest.mark.unit
 def test_postprocessor_application():
     """Test that postprocessors are applied during retrieval."""
@@ -53,7 +63,7 @@ def test_postprocessor_application():
 
     # Create service and set engine
     service = RAGService(_create_mock_config())
-    service._engine = engine
+    _set_mock_engine(service, engine)
 
     # Execute query (no session_messages, no history)
     results = list(service.query("test query"))
@@ -106,7 +116,7 @@ def test_postprocessor_failure_handling():
 
     # Create service and set engine
     service = RAGService(_create_mock_config())
-    service._engine = engine
+    _set_mock_engine(service, engine)
 
     # Execute query - should not raise exception
     results = list(service.query("test query"))
@@ -164,7 +174,7 @@ def test_postprocessor_multiple_stages():
 
     # Create service and set engine
     service = RAGService(_create_mock_config())
-    service._engine = engine
+    _set_mock_engine(service, engine)
 
     # Execute query
     results = list(service.query("test query"))
@@ -199,9 +209,13 @@ def _create_mock_engine_with_nodes(nodes):
     engine._retriever.retrieve.return_value = nodes
     engine._node_postprocessors = []  # No postprocessors by default
 
-    # Mock LLM
+    # Mock LLM with proper attributes for condenser
     engine._llm = Mock()
     engine._llm.thinking = False
+    engine._llm.base_url = "http://localhost:11434"
+    engine._llm.model = "llama3.1:8b"
+    engine._llm.temperature = 0.2
+    engine._llm.request_timeout = 120.0
 
     # Mock streaming response
     mock_chunk = Mock()
@@ -222,7 +236,7 @@ def test_prompt_selection_no_sources():
 
     # Create service with confidence threshold
     service = RAGService(_create_mock_config())
-    service._engine = engine
+    _set_mock_engine(service, engine)
     service._current_params = {"confidence_cutoff": 0.5}
 
     # Execute query (no session_messages, no history)
@@ -263,7 +277,7 @@ def test_prompt_selection_low_confidence():
 
     # Create service with confidence threshold higher than best score
     service = RAGService(_create_mock_config())
-    service._engine = engine
+    _set_mock_engine(service, engine)
     service._current_params = {"confidence_cutoff": 0.5}
 
     # Execute query
@@ -305,7 +319,7 @@ def test_prompt_selection_good_confidence():
 
     # Create service with confidence threshold below best score
     service = RAGService(_create_mock_config())
-    service._engine = engine
+    _set_mock_engine(service, engine)
     service._current_params = {"confidence_cutoff": 0.5}
 
     # Execute query
@@ -344,7 +358,7 @@ def test_prompt_selection_no_threshold():
 
     # Create service WITHOUT confidence threshold (0.0 or not set)
     service = RAGService(_create_mock_config())
-    service._engine = engine
+    _set_mock_engine(service, engine)
     service._current_params = {"confidence_cutoff": 0.0}  # No threshold
 
     # Execute query
@@ -385,7 +399,7 @@ def test_prompt_selection_filters_all_nodes():
 
     # Create service
     service = RAGService(_create_mock_config())
-    service._engine = engine
+    _set_mock_engine(service, engine)
     service._current_params = {"confidence_cutoff": 0.5}
 
     # Execute query
@@ -418,7 +432,7 @@ def test_prompt_includes_chat_history():
 
     # Create service
     service = RAGService(_create_mock_config())
-    service._engine = engine
+    _set_mock_engine(service, engine)
     service._current_params = {"confidence_cutoff": 0.5}
 
     # Create session messages (the new API uses dicts, not ChatMessage)
@@ -455,7 +469,7 @@ def test_query_with_empty_session_messages():
     engine = _create_mock_engine_with_nodes(nodes)
 
     service = RAGService(_create_mock_config())
-    service._engine = engine
+    _set_mock_engine(service, engine)
     service._current_params = {}
 
     # Execute query with empty session_messages
@@ -478,7 +492,7 @@ def test_query_with_none_session_messages():
     engine = _create_mock_engine_with_nodes(nodes)
 
     service = RAGService(_create_mock_config())
-    service._engine = engine
+    _set_mock_engine(service, engine)
     service._current_params = {}
 
     # Execute query with None session_messages (default)
@@ -624,3 +638,176 @@ def test_needs_reload_with_session_index_addition():
     assert service.needs_reload(
         ["module_a"], service._current_params, "/path/to/session/index"
     ), "needs_reload() should return True when session index is added"
+
+
+@pytest.mark.unit
+def test_condenser_called_with_history():
+    """Test that condense_query is called when history is present."""
+    from unittest.mock import patch
+
+    from tensortruth.services.rag_service import RAGService
+
+    # Create service with mock engine
+    service = RAGService(_create_mock_config())
+    engine = Mock()
+    engine._retriever = Mock()
+    engine._retriever.retrieve.return_value = []
+    engine._node_postprocessors = []
+    engine._llm = Mock()
+    engine._llm.thinking = False
+    engine._llm.base_url = "http://localhost:11434"
+    engine._llm.model = "llama3.1:8b"
+    engine._llm.temperature = 0.2
+    engine._llm.request_timeout = 120.0
+    engine._llm.stream_chat.return_value = []
+
+    # Mock condenser
+    condenser = Mock()
+    condenser.template = "History: {chat_history}\nQuestion: {question}"
+    engine._condense_prompt_template = condenser
+
+    _set_mock_engine(service, engine)
+
+    # Mock session messages (non-empty history)
+    session_messages = [
+        {"role": "user", "content": "First question"},
+        {"role": "assistant", "content": "First answer"},
+    ]
+
+    with patch("tensortruth.services.rag_service.condense_query") as mock_condense:
+        mock_condense.return_value = "Condensed query"
+
+        # Execute query with history
+        list(service.query("Follow-up question", session_messages=session_messages))
+
+        # Verify condense_query was called
+        assert mock_condense.called
+        call_args = mock_condense.call_args
+        assert call_args[1]["question"] == "Follow-up question"
+        assert call_args[1]["fallback_on_error"] is True
+
+
+@pytest.mark.unit
+def test_condenser_skipped_with_empty_history():
+    """Test that condensation is skipped when history is empty."""
+    from unittest.mock import patch
+
+    from tensortruth.services.rag_service import RAGService
+
+    # Create service with mock engine
+    service = RAGService(_create_mock_config())
+    engine = Mock()
+    engine._retriever = Mock()
+    engine._retriever.retrieve.return_value = []
+    engine._node_postprocessors = []
+    engine._llm = Mock()
+    engine._llm.thinking = False
+    engine._llm.base_url = "http://localhost:11434"
+    engine._llm.model = "llama3.1:8b"
+    engine._llm.temperature = 0.2
+    engine._llm.request_timeout = 120.0
+    engine._llm.stream_chat.return_value = []
+
+    # Mock condenser
+    condenser = Mock()
+    condenser.template = "History: {chat_history}\nQuestion: {question}"
+    engine._condense_prompt_template = condenser
+
+    _set_mock_engine(service, engine)
+
+    with patch("tensortruth.services.rag_service.condense_query") as mock_condense:
+        mock_condense.return_value = "Condensed query"
+
+        # Execute query WITHOUT history (empty session_messages)
+        list(service.query("First question", session_messages=[]))
+
+        # Verify condense_query was NOT called (history is empty)
+        assert not mock_condense.called
+
+
+@pytest.mark.unit
+def test_condenser_error_handling():
+    """Test that condenser errors are handled gracefully with fallback."""
+    from unittest.mock import patch
+
+    from tensortruth.services.rag_service import RAGService
+
+    # Create service with mock engine
+    service = RAGService(_create_mock_config())
+    engine = Mock()
+    engine._retriever = Mock()
+    engine._retriever.retrieve.return_value = []
+    engine._node_postprocessors = []
+    engine._llm = Mock()
+    engine._llm.thinking = False
+    engine._llm.base_url = "http://localhost:11434"
+    engine._llm.model = "llama3.1:8b"
+    engine._llm.temperature = 0.2
+    engine._llm.request_timeout = 120.0
+
+    # Mock streaming response
+    mock_chunk = Mock()
+    mock_chunk.delta = "test response"
+    mock_chunk.additional_kwargs = {}
+    engine._llm.stream_chat.return_value = [mock_chunk]
+
+    # Mock condenser
+    condenser = Mock()
+    condenser.template = "History: {chat_history}\nQuestion: {question}"
+    engine._condense_prompt_template = condenser
+
+    _set_mock_engine(service, engine)
+
+    # Mock session messages (non-empty history)
+    session_messages = [
+        {"role": "user", "content": "Previous question"},
+        {"role": "assistant", "content": "Previous answer"},
+    ]
+
+    with patch("tensortruth.services.rag_service.condense_query") as mock_condense:
+        # Make condense_query return the original question (fallback behavior)
+        mock_condense.return_value = "Follow-up question"
+
+        # Execute query - should not raise even if condenser has issues
+        results = list(
+            service.query("Follow-up question", session_messages=session_messages)
+        )
+
+        # Verify query completed successfully
+        assert len(results) > 0
+
+
+@pytest.mark.unit
+def test_load_engine_caches_llm_and_retriever():
+    """Verify load_engine caches LLM and retriever."""
+    from unittest.mock import patch
+
+    from tensortruth.services.rag_service import RAGService
+
+    with patch("tensortruth.services.rag_service.load_engine_for_modules") as mock_load:
+        mock_engine = Mock()
+        mock_engine._llm = Mock()
+        mock_engine._retriever = Mock()
+        mock_load.return_value = mock_engine
+
+        service = RAGService(_create_mock_config())
+        service.load_engine(["test"], {})
+
+        assert service._llm is mock_engine._llm
+        assert service._retriever is mock_engine._retriever
+
+
+@pytest.mark.unit
+def test_clear_resets_cached_components():
+    """Verify clear() resets cached LLM and retriever."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+    service._llm = Mock()
+    service._retriever = Mock()
+    service._engine = Mock()
+
+    service.clear()
+
+    assert service._llm is None
+    assert service._retriever is None

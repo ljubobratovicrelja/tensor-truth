@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from tensortruth.core.constants import (
     DEFAULT_AGENT_REASONING_MODEL,
     DEFAULT_RAG_MODEL,
+    DEFAULT_ROUTER_MODEL,
 )
 
 
@@ -187,11 +188,15 @@ class AgentConfig:
 
     # Minimum pages agent must fetch during web research
     # Higher values = more thorough research, but slower
-    min_pages_required: int = 3
+    min_pages_required: int = 5
 
     # Model to use for agent reasoning (fast model for decisions)
     # Falls back to main chat model if not specified
-    reasoning_model: str = "llama3.1:8b"
+    reasoning_model: str = DEFAULT_AGENT_REASONING_MODEL
+
+    # Router-based agent configuration
+    router_model: str = DEFAULT_ROUTER_MODEL
+    enable_search_reranking: bool = True
 
     # Natural language agent routing
     # When enabled, messages with trigger words are classified to route to agents
@@ -213,6 +218,10 @@ class AgentConfig:
         if not self.reasoning_model or not isinstance(self.reasoning_model, str):
             raise ValueError(
                 f"reasoning_model must be a non-empty string, got {self.reasoning_model!r}"
+            )
+        if not self.router_model or not isinstance(self.router_model, str):
+            raise ValueError(
+                f"router_model must be a non-empty string, got {self.router_model!r}"
             )
 
 

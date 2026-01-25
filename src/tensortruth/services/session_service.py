@@ -61,6 +61,7 @@ class SessionService:
                 "balance_strategy": config.rag.default_balance_strategy,
                 "embedding_model": config.rag.default_embedding_model,
                 "llm_device": "gpu",  # Reasonable default
+                "router_model": config.agent.router_model,
             }
 
             # User params override defaults

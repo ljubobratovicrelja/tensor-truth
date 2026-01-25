@@ -43,21 +43,22 @@ class TestToolServiceLoadTools:
 
     @pytest.mark.asyncio
     async def test_load_tools_from_mcp_registry(self):
-        """Should load tools from MCP registry."""
+        """Should load tools from MCP registry plus built-in tools."""
         mock_registry = MagicMock()
         mock_tool1 = MagicMock()
-        mock_tool1.metadata.name = "search_web"
-        mock_tool1.metadata.description = "Search the web"
+        mock_tool1.metadata.name = "mcp_tool1"
+        mock_tool1.metadata.description = "MCP tool 1"
         mock_tool2 = MagicMock()
-        mock_tool2.metadata.name = "fetch_page"
-        mock_tool2.metadata.description = "Fetch a web page"
+        mock_tool2.metadata.name = "mcp_tool2"
+        mock_tool2.metadata.description = "MCP tool 2"
         mock_registry.load_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
 
         service = ToolService(mcp_registry=mock_registry)
         await service.load_tools()
 
         mock_registry.load_tools.assert_awaited_once()
-        assert len(service.tools) == 2
+        # Should have 4 built-in tools + 2 MCP tools = 6 total
+        assert len(service.tools) == 6
         assert service._loaded is True
 
     @pytest.mark.asyncio
@@ -75,14 +76,15 @@ class TestToolServiceLoadTools:
 
     @pytest.mark.asyncio
     async def test_load_tools_empty_registry(self):
-        """Should handle empty tool list gracefully."""
+        """Should handle empty MCP tool list gracefully, still loads built-in tools."""
         mock_registry = MagicMock()
         mock_registry.load_tools = AsyncMock(return_value=[])
 
         service = ToolService(mcp_registry=mock_registry)
         await service.load_tools()
 
-        assert service.tools == []
+        # Should still have 4 built-in tools even with no MCP tools
+        assert len(service.tools) == 4
         assert service._loaded is True
 
 
@@ -276,3 +278,90 @@ class TestToolServiceExecuteTool:
         )
 
         tool.acall.assert_awaited_once_with(url="https://example.com", timeout=30)
+
+
+class TestToolServiceBuiltinTools:
+    """Test ToolService built-in tools functionality."""
+
+    @pytest.mark.asyncio
+    async def test_load_tools_includes_builtin_tools(self):
+        """Should include built-in tools (search_web, fetch_page, search_focused)."""
+        mock_registry = MagicMock()
+        mock_registry.load_tools = AsyncMock(return_value=[])
+
+        service = ToolService(mcp_registry=mock_registry)
+        await service.load_tools()
+
+        # Check that built-in tools are present
+        tool_names = [t.metadata.name for t in service.tools]
+        assert "search_web" in tool_names
+        assert "fetch_page" in tool_names
+        assert "search_focused" in tool_names
+
+    @pytest.mark.asyncio
+    async def test_load_tools_combines_builtin_and_mcp(self):
+        """Should combine built-in tools with MCP tools."""
+        mock_registry = MagicMock()
+        mcp_tool = MagicMock()
+        mcp_tool.metadata.name = "mcp_custom_tool"
+        mock_registry.load_tools = AsyncMock(return_value=[mcp_tool])
+
+        service = ToolService(mcp_registry=mock_registry)
+        await service.load_tools()
+
+        # Should have 4 built-in + 1 MCP = 5 total
+        assert len(service.tools) == 5
+        tool_names = [t.metadata.name for t in service.tools]
+        assert "search_web" in tool_names
+        assert "mcp_custom_tool" in tool_names
+
+    def test_get_tools_by_names_finds_builtin_tools(self):
+        """Should be able to retrieve built-in tools by name."""
+        mock_registry = MagicMock()
+        service = ToolService(mcp_registry=mock_registry)
+
+        # Create mock built-in tools
+        search_tool = MagicMock()
+        search_tool.metadata.name = "search_web"
+        fetch_tool = MagicMock()
+        fetch_tool.metadata.name = "fetch_page"
+        service._tools = [search_tool, fetch_tool]
+
+        result = service.get_tools_by_names(["search_web"])
+
+        assert len(result) == 1
+        assert result[0].metadata.name == "search_web"
+
+    def test_list_tools_includes_builtin_tools(self):
+        """Should list built-in tools in API response."""
+        mock_registry = MagicMock()
+        service = ToolService(mcp_registry=mock_registry)
+
+        # Create mock built-in tool
+        tool = MagicMock()
+        tool.metadata.name = "search_web"
+        tool.metadata.description = "Search the web"
+        tool.metadata.get_parameters_dict.return_value = {}
+        service._tools = [tool]
+
+        result = service.list_tools()
+
+        assert len(result) == 1
+        assert result[0]["name"] == "search_web"
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_works_with_builtin_tools(self):
+        """Should be able to execute built-in tools."""
+        mock_registry = MagicMock()
+        service = ToolService(mcp_registry=mock_registry)
+
+        # Create mock built-in tool
+        tool = MagicMock()
+        tool.metadata.name = "search_web"
+        tool.acall = AsyncMock(return_value='[{"url": "test"}]')
+        service._tools = [tool]
+
+        result = await service.execute_tool("search_web", {"query": "test"})
+
+        assert result["success"] is True
+        assert result["data"] == '[{"url": "test"}]'

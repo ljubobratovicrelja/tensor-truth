@@ -412,7 +412,7 @@ def build_module(
             chunk_sizes=chunk_sizes,
             chunk_overlap=chunk_overlap,
         )
-        # semantic_nodes are BaseNode, but get_nodes_from_documents works with them
+        # LlamaIndex design: accepts BaseNode but stubs declare Document
         nodes = hierarchical_parser.get_nodes_from_documents(
             semantic_nodes  # type: ignore[arg-type]
         )

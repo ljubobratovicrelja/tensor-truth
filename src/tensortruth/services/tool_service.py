@@ -6,7 +6,7 @@ custom tool interfaces.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from llama_index.core.tools import FunctionTool
 
@@ -14,6 +14,7 @@ from tensortruth.agents.server_registry import (
     MCPServerRegistry,
     create_default_registry,
 )
+from tensortruth.services import builtin_tools
 
 logger = logging.getLogger(__name__)
 
@@ -36,20 +37,149 @@ class ToolService:
         self._tools: List[FunctionTool] = []
         self._loaded = False
 
+    async def _load_builtin_tools(self) -> List[FunctionTool]:
+        """Load built-in tools for agents.
+
+        Creates FunctionTool instances for built-in utilities like web search
+        and page fetching. These tools are always available to agents.
+
+        Returns:
+            List of FunctionTool instances for built-in tools.
+        """
+        logger.info("Loading built-in tools...")
+
+        # Import pydantic for explicit schemas
+        from pydantic import BaseModel, Field
+
+        # Define explicit parameter schemas for clarity
+        class SearchWebInput(BaseModel):
+            """Input for search_web tool - supports multi-query searches."""
+
+            queries: Union[str, List[str]] = Field(
+                description=(
+                    "Single search query string OR list of diverse query strings. "
+                    "Use multiple queries for comprehensive coverage: "
+                    "['broad overview', 'technical details', 'recent 2025-2026 developments']"
+                )
+            )
+            max_results_per_query: int = Field(
+                default=5, description="Maximum results per query (default: 5)"
+            )
+
+        class FetchPageInput(BaseModel):
+            """Input for fetch_page tool."""
+
+            url: str = Field(description="The URL to fetch")
+            timeout: int = Field(
+                default=10, description="Timeout in seconds for the request"
+            )
+
+        class FetchPagesBatchInput(BaseModel):
+            """Input for fetch_pages_batch tool - fetch multiple pages in parallel."""
+
+            urls: List[str] = Field(
+                description=(
+                    "List of URLs to fetch in parallel (recommended: 3-5 URLs). "
+                    "All pages are fetched simultaneously for efficiency."
+                )
+            )
+            timeout: int = Field(
+                default=10, description="Timeout in seconds per page (default: 10)"
+            )
+
+        class SearchFocusedInput(BaseModel):
+            """Input for search_focused tool."""
+
+            query: str = Field(description="The search query string")
+            domain: str = Field(
+                description="Domain to search within (e.g., 'stackoverflow.com')"
+            )
+            max_results: int = Field(
+                default=5, description="Maximum number of results to return"
+            )
+
+        tools = [
+            FunctionTool.from_defaults(
+                async_fn=builtin_tools.search_web,
+                name="search_web",
+                description=(
+                    "Search the web using DuckDuckGo. "
+                    "SUPPORTS MULTIPLE QUERIES: Pass a list of diverse queries "
+                    "for comprehensive coverage. "
+                    "Example: queries=['AI overview 2026', 'AI papers', 'AI news']. "
+                    "Results are combined and deduplicated. "
+                    "Required: queries (str or list[str]). "
+                    "Optional: max_results_per_query (int, default=5)."
+                ),
+                fn_schema=SearchWebInput,
+            ),
+            FunctionTool.from_defaults(
+                async_fn=builtin_tools.fetch_page,
+                name="fetch_page",
+                description=(
+                    "Fetch a web page and convert it to clean markdown. "
+                    "Uses domain-specific handlers for Wikipedia, GitHub, arXiv, YouTube, etc. "
+                    "Returns markdown content on success or error message on failure. "
+                    "Required parameter: url (str). Optional: timeout (int, default=10)."
+                ),
+                fn_schema=FetchPageInput,
+            ),
+            FunctionTool.from_defaults(
+                async_fn=builtin_tools.fetch_pages_batch,
+                name="fetch_pages_batch",
+                description=(
+                    "Fetch multiple web pages in parallel "
+                    "(RECOMMENDED for research). "
+                    "Much faster than calling fetch_page multiple times. "
+                    "Returns JSON array with results for each URL. "
+                    "Example: urls=['https://...', 'https://...', 'https://...']. "
+                    "Required parameter: urls (list[str]). "
+                    "Optional: timeout (int, default=10)."
+                ),
+                fn_schema=FetchPagesBatchInput,
+            ),
+            FunctionTool.from_defaults(
+                async_fn=builtin_tools.search_focused,
+                name="search_focused",
+                description=(
+                    "Search within a specific domain using DuckDuckGo site search. "
+                    "Useful for finding content on specific websites like "
+                    "Stack Overflow, GitHub, official documentation sites, etc. "
+                    "Returns JSON results. "
+                    "Required parameters: query (str), domain (str). "
+                    "Optional: max_results (int, default=5)."
+                ),
+                fn_schema=SearchFocusedInput,
+            ),
+        ]
+
+        logger.info(f"Loaded {len(tools)} built-in tools")
+        return tools
+
     async def load_tools(self) -> None:
         """Load tools from all configured sources.
 
-        Loads tools from MCP servers via the registry. This method is idempotent -
-        calling it multiple times will only load tools once.
+        Loads built-in tools and tools from MCP servers via the registry.
+        This method is idempotent - calling it multiple times will only load tools once.
         """
         if self._loaded:
             logger.debug("Tools already loaded, skipping")
             return
 
+        # Load built-in tools
+        builtin = await self._load_builtin_tools()
+
+        # Load MCP tools
         logger.info("Loading tools from MCP servers...")
-        self._tools = await self._mcp_registry.load_tools()
+        mcp_tools = await self._mcp_registry.load_tools()
+
+        # Combine all tools
+        self._tools = builtin + mcp_tools
         self._loaded = True
-        logger.info(f"Loaded {len(self._tools)} tools")
+        logger.info(
+            f"Loaded {len(self._tools)} total tools "
+            f"({len(builtin)} built-in, {len(mcp_tools)} MCP)"
+        )
 
     @property
     def tools(self) -> List[FunctionTool]:

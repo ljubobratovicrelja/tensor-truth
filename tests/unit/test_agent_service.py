@@ -1,15 +1,29 @@
-"""Tests for AgentService.
+"""Tests for refactored AgentService using factory registry."""
 
-AgentService creates and executes LlamaIndex agents from configuration.
-Does NOT subclass or wrap agents - creates FunctionAgent/ReActAgent directly.
-"""
-
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tensortruth.agents.config import AgentConfig
-from tensortruth.services.agent_service import AgentCallbacks, AgentService
+from tensortruth.agents.base import Agent
+from tensortruth.agents.config import AgentCallbacks, AgentConfig, AgentResult
+from tensortruth.services.agent_service import AgentService
+
+
+class MockAgent(Agent):
+    """Mock agent for testing."""
+
+    def __init__(self, name: str):
+        self.name = name
+        self.run_called = False
+        self.run_query = None
+
+    async def run(self, query, callbacks, **kwargs):
+        self.run_called = True
+        self.run_query = query
+        return AgentResult(final_answer=f"Answer from {self.name}")
+
+    def get_metadata(self):
+        return {"name": self.name, "type": "mock"}
 
 
 class TestAgentConfig:
@@ -21,72 +35,46 @@ class TestAgentConfig:
             name="test",
             description="Test agent",
             tools=["tool1"],
-            system_prompt="You are a test agent.",
         )
 
         assert config.name == "test"
         assert config.description == "Test agent"
         assert config.tools == ["tool1"]
-        assert config.system_prompt == "You are a test agent."
-        assert config.agent_type == "function"
+        assert config.system_prompt == ""
+        assert config.agent_type == "router"  # Changed default
         assert config.model is None
         assert config.max_iterations == 10
+        assert config.factory_params == {}
 
-    def test_agent_config_custom_values(self):
-        """Should accept custom values."""
+    def test_agent_config_with_factory_params(self):
+        """Should accept factory_params."""
         config = AgentConfig(
-            name="browse",
-            description="Browse agent",
-            tools=["search_web", "fetch_page"],
-            system_prompt="You are a web researcher.",
-            agent_type="react",
-            model="llama3.1:8b",
-            max_iterations=20,
+            name="test",
+            description="Test",
+            tools=["tool1"],
+            factory_params={"param1": "value1"},
         )
 
-        assert config.agent_type == "react"
-        assert config.model == "llama3.1:8b"
-        assert config.max_iterations == 20
+        assert config.factory_params == {"param1": "value1"}
 
-
-class TestAgentCallbacks:
-    """Test AgentCallbacks dataclass."""
-
-    def test_callbacks_defaults(self):
-        """Should have None defaults."""
-        callbacks = AgentCallbacks()
-
-        assert callbacks.on_progress is None
-        assert callbacks.on_tool_call is None
-        assert callbacks.on_token is None
-
-    def test_callbacks_with_functions(self):
-        """Should accept callback functions."""
-
-        def progress_fn(msg):
-            pass
-
-        def tool_fn(name, params):
-            pass
-
-        def token_fn(token):
-            pass
-
-        callbacks = AgentCallbacks(
-            on_progress=progress_fn,
-            on_tool_call=tool_fn,
-            on_token=token_fn,
+    def test_agent_type_is_extensible(self):
+        """Should accept any string for agent_type."""
+        config = AgentConfig(
+            name="test",
+            description="Test",
+            tools=[],
+            agent_type="custom_type",
         )
 
-        assert callbacks.on_progress == progress_fn
-        assert callbacks.on_tool_call == tool_fn
-        assert callbacks.on_token == token_fn
+        assert config.agent_type == "custom_type"
 
 
 class TestAgentServiceInit:
     """Test AgentService initialization."""
 
-    def test_init_with_tool_service(self):
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
+    def test_init_with_tool_service(self, mock_import, mock_load):
         """Should initialize with tool service and config."""
         mock_tool_service = MagicMock()
         config = {"ollama_url": "http://localhost:11434"}
@@ -95,204 +83,145 @@ class TestAgentServiceInit:
 
         assert service._tool_service == mock_tool_service
         assert service._config == config
-        assert service._agent_configs == {}
-
-    def test_init_calls_load_builtin_agents(self):
-        """Should call _load_builtin_agents on init."""
-        mock_tool_service = MagicMock()
-
-        with patch.object(AgentService, "_load_builtin_agents") as mock_load:
-            AgentService(tool_service=mock_tool_service, config={})
-
+        assert service._factory_registry is not None
+        mock_import.assert_called_once()
         mock_load.assert_called_once()
+
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
+    def test_init_imports_factories(self, mock_import, mock_load):
+        """Should import factories on init."""
+        mock_tool_service = MagicMock()
+        _ = AgentService(tool_service=mock_tool_service, config={})
+
+        mock_import.assert_called_once()
+
+
+class TestLoadBuiltinAgents:
+    """Test AgentService._load_builtin_agents()."""
+
+    @patch.object(AgentService, "_import_factories")
+    def test_load_builtin_agents_registers_browse(self, mock_import):
+        """Should register browse agent with router type."""
+        mock_tool_service = MagicMock()
+        service = AgentService(tool_service=mock_tool_service, config={})
+
+        assert "browse" in service._agent_configs
+        browse_config = service._agent_configs["browse"]
+        assert browse_config.name == "browse"
+        assert browse_config.tools == [
+            "search_web",
+            "fetch_pages_batch",
+            "search_focused",
+        ]
+        assert browse_config.agent_type == "router"
+        assert browse_config.model is None
+
+    @patch.object(AgentService, "_import_factories")
+    def test_load_builtin_agents_registers_research_alias(self, mock_import):
+        """Should register research as alias for browse."""
+        mock_tool_service = MagicMock()
+        service = AgentService(tool_service=mock_tool_service, config={})
+
+        assert "research" in service._agent_configs
+        research_config = service._agent_configs["research"]
+        assert research_config.name == "research"
+        assert research_config.agent_type == "router"
+
+    @patch.object(AgentService, "_import_factories")
+    def test_load_builtin_agents_uses_config_values(self, mock_import):
+        """Should use config values for max_iterations and min_pages."""
+        mock_tool_service = MagicMock()
+        config = {"agent": {"max_iterations": 20, "min_pages_required": 7}}
+        service = AgentService(tool_service=mock_tool_service, config=config)
+
+        browse_config = service._agent_configs["browse"]
+        assert browse_config.max_iterations == 20
+        assert browse_config.factory_params["min_pages_required"] == 7
+
+    @patch.object(AgentService, "_import_factories")
+    def test_load_builtin_agents_uses_defaults_when_no_config(self, mock_import):
+        """Should use default values when config section missing."""
+        mock_tool_service = MagicMock()
+        service = AgentService(tool_service=mock_tool_service, config={})
+
+        browse_config = service._agent_configs["browse"]
+        assert browse_config.max_iterations == 10
+        assert browse_config.factory_params["min_pages_required"] == 3
+
+    @patch.object(AgentService, "_import_factories")
+    def test_list_agents_includes_builtin_agents(self, mock_import):
+        """Should list browse and research agents after initialization."""
+        mock_tool_service = MagicMock()
+        service = AgentService(tool_service=mock_tool_service, config={})
+
+        agents = service.list_agents()
+        agent_names = [agent["name"] for agent in agents]
+
+        assert "browse" in agent_names
+        assert "research" in agent_names
+        assert len(agents) == 2
+
+    @patch.object(AgentService, "_import_factories")
+    def test_list_agents_includes_agent_type(self, mock_import):
+        """Should include agent_type in list_agents output."""
+        mock_tool_service = MagicMock()
+        service = AgentService(tool_service=mock_tool_service, config={})
+
+        agents = service.list_agents()
+        browse_agent = next(a for a in agents if a["name"] == "browse")
+
+        assert "agent_type" in browse_agent
+        assert browse_agent["agent_type"] == "router"
 
 
 class TestAgentServiceRegisterAgent:
     """Test AgentService.register_agent()."""
 
-    def test_register_agent_adds_config(self):
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
+    def test_register_agent_adds_config(self, mock_import, mock_load):
         """Should add agent config to registry."""
         mock_tool_service = MagicMock()
         service = AgentService(tool_service=mock_tool_service, config={})
 
         config = AgentConfig(
-            name="test_agent",
-            description="Test",
+            name="custom",
+            description="Custom agent",
             tools=["tool1"],
-            system_prompt="Test prompt",
         )
+
         service.register_agent(config)
 
-        assert "test_agent" in service._agent_configs
-        assert service._agent_configs["test_agent"] == config
-
-    def test_register_agent_overwrites_existing(self):
-        """Should overwrite existing agent with same name."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        config1 = AgentConfig(
-            name="test",
-            description="First",
-            tools=["tool1"],
-            system_prompt="First prompt",
-        )
-        config2 = AgentConfig(
-            name="test",
-            description="Second",
-            tools=["tool2"],
-            system_prompt="Second prompt",
-        )
-
-        service.register_agent(config1)
-        service.register_agent(config2)
-
-        assert service._agent_configs["test"].description == "Second"
+        assert "custom" in service._agent_configs
+        assert service._agent_configs["custom"] == config
 
 
-class TestAgentServiceListAgents:
-    """Test AgentService.list_agents()."""
-
-    def test_list_agents_empty(self):
-        """Should return empty list when no agents registered."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        result = service.list_agents()
-
-        assert result == []
-
-    def test_list_agents_returns_metadata(self):
-        """Should return agent metadata for API."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        config = AgentConfig(
-            name="browse",
-            description="Browse the web",
-            tools=["search_web", "fetch_page"],
-            system_prompt="You are a researcher.",
-        )
-        service.register_agent(config)
-
-        result = service.list_agents()
-
-        assert len(result) == 1
-        assert result[0]["name"] == "browse"
-        assert result[0]["description"] == "Browse the web"
-        assert result[0]["tools"] == ["search_web", "fetch_page"]
-
-
-class TestAgentServiceCreateLLM:
-    """Test AgentService._create_llm()."""
-
-    def test_create_llm_with_default_url(self):
-        """Should create Ollama LLM with default URL."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        with patch("tensortruth.services.agent_service.Ollama") as mock_ollama:
-            service._create_llm("llama3.1:8b")
-
-        mock_ollama.assert_called_once_with(
-            model="llama3.1:8b",
-            base_url="http://localhost:11434",
-            temperature=0.2,
-            request_timeout=120.0,
-        )
-
-    def test_create_llm_with_custom_url(self):
-        """Should use custom Ollama URL from config."""
-        mock_tool_service = MagicMock()
-        config = {"ollama_url": "http://custom:11434"}
-        service = AgentService(tool_service=mock_tool_service, config=config)
-
-        with patch("tensortruth.services.agent_service.Ollama") as mock_ollama:
-            service._create_llm("llama3.1:8b")
-
-        mock_ollama.assert_called_once_with(
-            model="llama3.1:8b",
-            base_url="http://custom:11434",
-            temperature=0.2,
-            request_timeout=120.0,
-        )
-
-
-class TestAgentServiceCreateAgent:
-    """Test AgentService._create_agent()."""
-
-    def test_create_function_agent(self):
-        """Should create FunctionAgent for function type."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        config = AgentConfig(
-            name="test",
-            description="Test",
-            tools=["tool1"],
-            system_prompt="Test prompt",
-            agent_type="function",
-        )
-        mock_tools = [MagicMock()]
-        mock_llm = MagicMock()
-
-        with patch("tensortruth.services.agent_service.FunctionAgent") as mock_fn_agent:
-            service._create_agent(config, mock_tools, mock_llm)
-
-        mock_fn_agent.assert_called_once_with(
-            tools=mock_tools,
-            llm=mock_llm,
-            system_prompt="Test prompt",
-        )
-
-    def test_create_react_agent(self):
-        """Should create ReActAgent for react type."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        config = AgentConfig(
-            name="test",
-            description="Test",
-            tools=["tool1"],
-            system_prompt="Test prompt",
-            agent_type="react",
-        )
-        mock_tools = [MagicMock()]
-        mock_llm = MagicMock()
-
-        with patch("tensortruth.services.agent_service.ReActAgent") as mock_react:
-            service._create_agent(config, mock_tools, mock_llm)
-
-        mock_react.assert_called_once_with(
-            tools=mock_tools,
-            llm=mock_llm,
-            system_prompt="Test prompt",
-            verbose=True,
-        )
-
-
+@pytest.mark.asyncio
 class TestAgentServiceRun:
-    """Test AgentService.run()."""
+    """Test AgentService.run() with factory pattern."""
 
-    @pytest.mark.asyncio
-    async def test_run_unknown_agent(self):
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
+    async def test_run_unknown_agent_returns_error(self, mock_import, mock_load):
         """Should return error for unknown agent."""
         mock_tool_service = MagicMock()
         service = AgentService(tool_service=mock_tool_service, config={})
 
         result = await service.run(
             agent_name="nonexistent",
-            goal="test goal",
+            goal="test",
             callbacks=AgentCallbacks(),
             session_params={},
         )
 
-        assert result.error is not None
-        assert "Unknown agent" in result.error
+        assert result.error == "Unknown agent: nonexistent"
+        assert result.final_answer == ""
 
-    @pytest.mark.asyncio
-    async def test_run_missing_tools(self):
-        """Should return error when required tools are missing."""
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
+    async def test_run_missing_tools_returns_error(self, mock_import, mock_load):
+        """Should return error when tools are missing."""
         mock_tool_service = MagicMock()
         mock_tool_service.get_tools_by_names.return_value = []
         service = AgentService(tool_service=mock_tool_service, config={})
@@ -300,222 +229,172 @@ class TestAgentServiceRun:
         config = AgentConfig(
             name="test",
             description="Test",
-            tools=["missing_tool"],
-            system_prompt="Test",
+            tools=["tool1", "tool2"],
         )
         service.register_agent(config)
 
         result = await service.run(
             agent_name="test",
-            goal="test goal",
+            goal="test query",
             callbacks=AgentCallbacks(),
             session_params={},
         )
 
-        assert result.error is not None
         assert "Missing tools" in result.error
+        assert "tool1" in result.error or "tool2" in result.error
 
-    @pytest.mark.asyncio
-    async def test_run_success(self):
-        """Should execute agent and return result."""
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
+    async def test_run_creates_agent_via_factory(self, mock_import, mock_load):
+        """Should create agent via factory registry."""
+        from llama_index.core.tools import FunctionTool
+
         mock_tool_service = MagicMock()
-        mock_tool = MagicMock()
-        mock_tool.metadata.name = "tool1"
-        mock_tool_service.get_tools_by_names.return_value = [mock_tool]
+        tool = FunctionTool.from_defaults(fn=lambda: "test", name="test_tool")
+        mock_tool_service.get_tools_by_names.return_value = [tool]
+
+        service = AgentService(tool_service=mock_tool_service, config={})
+
+        # Register a config
+        config = AgentConfig(
+            name="test",
+            description="Test",
+            tools=["test_tool"],
+            agent_type="mock_type",
+        )
+        service.register_agent(config)
+
+        # Mock the factory
+        mock_agent = MockAgent("test")
+
+        def mock_factory(config, tools, llm, params):
+            return mock_agent
+
+        service._factory_registry.register("mock_type", mock_factory)
+
+        # Run
+        result = await service.run(
+            agent_name="test",
+            goal="test query",
+            callbacks=AgentCallbacks(),
+            session_params={},
+        )
+
+        assert mock_agent.run_called
+        assert mock_agent.run_query == "test query"
+        assert result.final_answer == "Answer from test"
+
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
+    async def test_run_passes_factory_params(self, mock_import, mock_load):
+        """Should pass factory_params to factory."""
+        from llama_index.core.tools import FunctionTool
+
+        mock_tool_service = MagicMock()
+        tool = FunctionTool.from_defaults(fn=lambda: "test", name="test_tool")
+        mock_tool_service.get_tools_by_names.return_value = [tool]
+
+        service = AgentService(
+            tool_service=mock_tool_service,
+            config={"agent": {"router_model": "llama3.2:3b", "min_pages_required": 5}},
+        )
+
+        config = AgentConfig(
+            name="test",
+            description="Test",
+            tools=["test_tool"],
+            agent_type="mock_type_params",  # Unique type name
+            factory_params={"custom_param": "custom_value"},
+        )
+        service.register_agent(config)
+
+        received_params = {}
+
+        def capturing_factory(config, tools, llm, params):
+            received_params.update(params)
+            return MockAgent("test")
+
+        service._factory_registry.register("mock_type_params", capturing_factory)
+
+        await service.run(
+            agent_name="test",
+            goal="test",
+            callbacks=AgentCallbacks(),
+            session_params={"context_window": 8192},
+        )
+
+        # Check params were passed correctly
+        assert received_params["router_model"] == "llama3.2:3b"
+        assert received_params["min_pages_required"] == 5
+        assert received_params["custom_param"] == "custom_value"
+        assert received_params["context_window"] == 8192
+
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
+    async def test_run_handles_exceptions(self, mock_import, mock_load):
+        """Should handle exceptions and return error."""
+        from llama_index.core.tools import FunctionTool
+
+        mock_tool_service = MagicMock()
+        tool = FunctionTool.from_defaults(fn=lambda: "test", name="test_tool")
+        mock_tool_service.get_tools_by_names.return_value = [tool]
 
         service = AgentService(tool_service=mock_tool_service, config={})
 
         config = AgentConfig(
             name="test",
             description="Test",
-            tools=["tool1"],
-            system_prompt="Test",
+            tools=["test_tool"],
+            agent_type="mock_type_exception",  # Unique type name
         )
         service.register_agent(config)
 
-        mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(return_value="Agent response")
+        def failing_factory(config, tools, llm, params):
+            raise ValueError("Factory failed")
 
-        with (
-            patch.object(service, "_create_llm") as mock_create_llm,
-            patch.object(service, "_create_agent", return_value=mock_agent),
-        ):
-            mock_create_llm.return_value = MagicMock()
+        service._factory_registry.register("mock_type_exception", failing_factory)
 
-            result = await service.run(
-                agent_name="test",
-                goal="test goal",
-                callbacks=AgentCallbacks(),
-                session_params={"model": "llama3.1:8b"},
-            )
-
-        assert result.final_answer == "Agent response"
-        assert result.error is None
-
-    @pytest.mark.asyncio
-    async def test_run_uses_config_model(self):
-        """Should use model from config if specified."""
-        mock_tool_service = MagicMock()
-        mock_tool = MagicMock()
-        mock_tool.metadata.name = "tool1"
-        mock_tool_service.get_tools_by_names.return_value = [mock_tool]
-
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        config = AgentConfig(
-            name="test",
-            description="Test",
-            tools=["tool1"],
-            system_prompt="Test",
-            model="custom-model",  # Specific model override
+        result = await service.run(
+            agent_name="test",
+            goal="test",
+            callbacks=AgentCallbacks(),
+            session_params={},
         )
-        service.register_agent(config)
 
-        mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(return_value="response")
+        assert result.error == "Factory failed"
+        assert result.final_answer == ""
 
-        with (
-            patch.object(service, "_create_llm") as mock_create_llm,
-            patch.object(service, "_create_agent", return_value=mock_agent),
-        ):
-            mock_create_llm.return_value = MagicMock()
 
-            await service.run(
-                agent_name="test",
-                goal="goal",
-                callbacks=AgentCallbacks(),
-                session_params={"model": "session-model"},
-            )
+class TestAgentServiceLLMCreation:
+    """Test LLM creation methods."""
 
-        # Should use config model, not session model
-        mock_create_llm.assert_called_once_with("custom-model")
-
-    @pytest.mark.asyncio
-    async def test_run_calls_progress_callback(self):
-        """Should call on_progress callback."""
-        mock_tool_service = MagicMock()
-        mock_tool = MagicMock()
-        mock_tool.metadata.name = "tool1"
-        mock_tool_service.get_tools_by_names.return_value = [mock_tool]
-
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        config = AgentConfig(
-            name="test",
-            description="Test",
-            tools=["tool1"],
-            system_prompt="Test",
+    def test_create_llm_static(self):
+        """Should create Ollama LLM with correct params."""
+        llm = AgentService._create_llm_static(
+            "llama3.1:8b", context_window=8192, ollama_url="http://test:11434"
         )
-        service.register_agent(config)
 
-        mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(return_value="response")
+        assert llm.model == "llama3.1:8b"
+        assert llm.base_url == "http://test:11434"
+        assert llm.context_window == 8192
 
-        progress_calls = []
+    def test_create_llm_static_uses_defaults(self):
+        """Should use default values when not provided."""
+        llm = AgentService._create_llm_static("llama3.1:8b")
 
-        def on_progress(msg):
-            progress_calls.append(msg)
+        assert llm.base_url == "http://localhost:11434"
+        assert llm.context_window == 16384
 
-        callbacks = AgentCallbacks(on_progress=on_progress)
-
-        with (
-            patch.object(service, "_create_llm"),
-            patch.object(service, "_create_agent", return_value=mock_agent),
-        ):
-            await service.run(
-                agent_name="test",
-                goal="goal",
-                callbacks=callbacks,
-                session_params={},
-            )
-
-        assert len(progress_calls) > 0
-        assert "test" in progress_calls[0]
-
-    @pytest.mark.asyncio
-    async def test_run_handles_exception(self):
-        """Should return error when agent execution fails."""
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
+    def test_create_llm_instance_method(self, mock_import, mock_load):
+        """Should create LLM using instance method."""
         mock_tool_service = MagicMock()
-        mock_tool = MagicMock()
-        mock_tool.metadata.name = "tool1"
-        mock_tool_service.get_tools_by_names.return_value = [mock_tool]
+        config = {"ollama_url": "http://custom:11434"}
+        service = AgentService(tool_service=mock_tool_service, config=config)
 
-        service = AgentService(tool_service=mock_tool_service, config={})
+        llm = service._create_llm("llama3.1:8b", context_window=8192)
 
-        config = AgentConfig(
-            name="test",
-            description="Test",
-            tools=["tool1"],
-            system_prompt="Test",
-        )
-        service.register_agent(config)
-
-        mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(side_effect=Exception("Agent failed"))
-
-        with (
-            patch.object(service, "_create_llm"),
-            patch.object(service, "_create_agent", return_value=mock_agent),
-        ):
-            result = await service.run(
-                agent_name="test",
-                goal="goal",
-                callbacks=AgentCallbacks(),
-                session_params={},
-            )
-
-        assert result.error is not None
-        assert "Agent failed" in result.error
-
-
-class TestAgentServiceWrapToolsForCallbacks:
-    """Test AgentService._wrap_tools_for_callbacks()."""
-
-    def test_wrap_tools_no_callback(self):
-        """Should return tools unchanged when no callback."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        tools = [MagicMock(), MagicMock()]
-        callbacks = AgentCallbacks()  # No on_tool_call
-
-        result = service._wrap_tools_for_callbacks(tools, callbacks)
-
-        # When no callback, should return original tools
-        assert result == tools
-
-    @pytest.mark.asyncio
-    async def test_wrap_tools_with_callback(self):
-        """Should wrap tools to emit callback on call."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        # Create mock tool
-        mock_tool = MagicMock()
-        mock_tool.metadata.name = "search_web"
-        mock_tool.metadata.description = "Search the web"
-        mock_tool.fn = None
-        mock_tool.async_fn = AsyncMock(return_value="result")
-
-        tool_calls = []
-
-        def on_tool_call(name, params):
-            tool_calls.append((name, params))
-
-        callbacks = AgentCallbacks(on_tool_call=on_tool_call)
-
-        wrapped = service._wrap_tools_for_callbacks([mock_tool], callbacks)
-
-        # Should have created new wrapped tool
-        assert len(wrapped) == 1
-
-        # Call the wrapped tool
-        result = await wrapped[0].async_fn(query="test")
-
-        # Should have called callback
-        assert len(tool_calls) == 1
-        assert tool_calls[0][0] == "search_web"
-        assert tool_calls[0][1] == {"query": "test"}
-
-        # Should have returned original result
-        assert result == "result"
+        assert llm.model == "llama3.1:8b"
+        assert llm.base_url == "http://custom:11434"
+        assert llm.context_window == 8192

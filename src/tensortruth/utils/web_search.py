@@ -838,7 +838,8 @@ async def fetch_pages_parallel(
                     if progress_callback:
                         progress_callback(f"Failed: {title} - {exception_msg}")
                 else:
-                    markdown, status, error_msg = result
+                    # Tuple unpacking from Union[Tuple, Exception] (mypy false positive)
+                    markdown, status, error_msg = result  # type: ignore[assignment]
 
                     if status == "success" and markdown:
                         successful.append((url, title, markdown))
@@ -1436,7 +1437,8 @@ async def web_search_stream(
                         }
                     )
                 else:
-                    markdown, status, _ = result
+                    # Tuple unpacking from Union[Tuple, Exception] (mypy false positive)
+                    markdown, status, error_msg = result  # type: ignore[assignment]
                     if status == "success" and markdown:
                         pages.append((url, title, markdown))
                         pages_fetched += 1

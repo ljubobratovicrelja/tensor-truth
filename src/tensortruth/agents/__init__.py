@@ -1,13 +1,23 @@
-"""MCP-based agents for TensorTruth."""
+"""Agent framework for TensorTruth.
 
-from .config import MCPServerConfig, MCPServerType
-from .mcp_agent import AgentResult, MCPBrowseAgent
-from .server_registry import MCPServerRegistry
+Provides a plugin-style agent registry system modeled after ToolService.
+Agents implement the Agent interface and are registered via factories.
+"""
+
+from .base import Agent
+from .config import AgentCallbacks, AgentConfig, AgentResult
+from .factory import (
+    AgentFactoryRegistry,
+    get_agent_factory_registry,
+    register_agent_factory,
+)
 
 __all__ = [
-    "MCPServerConfig",
-    "MCPServerType",
-    "MCPBrowseAgent",
+    "Agent",
+    "AgentCallbacks",
+    "AgentConfig",
     "AgentResult",
-    "MCPServerRegistry",
+    "AgentFactoryRegistry",
+    "get_agent_factory_registry",
+    "register_agent_factory",
 ]

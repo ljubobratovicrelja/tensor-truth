@@ -589,31 +589,22 @@ class BrowseAgentCommand(Command):
         goal = " ".join(args)
 
         # Import here to avoid circular deps
+        import asyncio
+
         from tensortruth import convert_latex_delimiters
-        from tensortruth.agents.mcp_agent import browse_agent
+        from tensortruth.agents.config import AgentCallbacks
         from tensortruth.app_utils.rendering_agent import render_agent_progress
-        from tensortruth.core.ollama import get_ollama_url
 
         try:
-            # Two-model strategy: fast for reasoning, quality for synthesis
-            main_model = session["params"]["model"]  # User's main model (for synthesis)
-            # NOTE: Agent requires 7b+ model for reliable reasoning
-            # 3b models struggle with structured output and logical action selection
-            reasoning_model = session["params"].get("agent_reasoning_model")
-            if reasoning_model is None:
-                try:
-                    config = st.session_state.config
-                    reasoning_model = config.models.default_agent_reasoning_model
-                except Exception:
-                    from tensortruth.core.constants import DEFAULT_AGENT_REASONING_MODEL
+            # Get AgentService from session state
+            if not hasattr(st.session_state, "agent_service"):
+                return (
+                    True,
+                    "❌ Agent service not initialized. Please reload the app.",
+                    None,
+                )
 
-                    reasoning_model = DEFAULT_AGENT_REASONING_MODEL  # Fallback default
-            ollama_url = get_ollama_url()
-
-            # Get config (or use defaults)
-            max_iterations = session["params"].get("agent_max_iterations", 10)
-            # Cap agent context window at 8k for efficiency (prevents waste on large models)
-            context_window = min(session["params"].get("context_window", 16384), 8192)
+            agent_service = st.session_state.agent_service
 
             # Create progress placeholder (no thinking box)
             progress_placeholder = st.empty()
@@ -638,30 +629,30 @@ class BrowseAgentCommand(Command):
                     convert_latex_delimiters(accumulated_response["text"])
                 )
 
-            # Get min_pages from session params, falling back to config default
-            try:
-                config = st.session_state.config
-                default_min_pages = config.agent.min_pages_required
-            except (AttributeError, KeyError):
-                default_min_pages = 3  # Fallback if config unavailable
+            def on_tool_call(tool_name: str, tool_input: dict):
+                """Callback for tool calls."""
+                if tool_name == "search_web":
+                    queries = tool_input.get("queries", [])
+                    update_progress(f"🔍 Searching: {', '.join(queries[:2])}")
+                elif tool_name == "fetch_pages_batch":
+                    urls = tool_input.get("urls", [])
+                    update_progress(f"📥 Fetching {len(urls)} pages...")
 
-            # Execute agent with two-model strategy
-            # Fast model for reasoning/decisions, main model for final synthesis
-            # Note: For /browse command, goal is used as-is without query enhancement
-            # since it's an explicit command, not natural language that needs interpretation
-            result = browse_agent(
-                goal=goal,
-                original_request=goal,  # For /browse, the command args ARE the full request
-                model_name=reasoning_model,  # Fast model for iterations
-                synthesis_model=main_model,  # Quality model for final answer
-                ollama_url=ollama_url,
-                max_iterations=max_iterations,
-                min_pages_required=session["params"].get(
-                    "agent_min_pages", default_min_pages
-                ),
-                progress_callback=update_progress,
-                stream_callback=stream_token,  # Stream final answer tokens
-                context_window=context_window,
+            # Create callbacks
+            callbacks = AgentCallbacks(
+                on_progress=update_progress,
+                on_token=stream_token,
+                on_tool_call=on_tool_call,
+            )
+
+            # Execute agent via AgentService (uses router-based BrowseAgent with reranking)
+            result = asyncio.run(
+                agent_service.run(
+                    agent_name="browse",
+                    goal=goal,
+                    callbacks=callbacks,
+                    session_params=session["params"],
+                )
             )
 
             # Clear the streaming placeholder since we'll return the full response
@@ -676,8 +667,7 @@ class BrowseAgentCommand(Command):
             if not response or not response.strip():
                 response = (
                     "⚠️ **Agent completed but generated no response**\n\n"
-                    f"Error: {result.error or 'Unknown error'}\n"
-                    f"Iterations: {result.iterations}"
+                    f"Error: {result.error or 'Unknown error'}"
                 )
 
             # Return is_cmd=False so it appears as assistant message

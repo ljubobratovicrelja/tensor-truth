@@ -108,6 +108,9 @@ class ModelManager:
 
         Returns:
             HuggingFaceEmbedding instance
+
+        Raises:
+            RuntimeError: If model fails to load
         """
         model_name = model_name or DEFAULT_EMBEDDING_MODEL
         device = device or self._default_device
@@ -124,7 +127,12 @@ class ModelManager:
                 self._unload_embedder()
                 self._load_embedder(model_name, device)
 
-            return self._embedder  # type: ignore[return-value]
+            # Post-condition: if we reach here, _embedder must be set
+            assert self._embedder is not None, (
+                f"Failed to load embedder {model_name}. "
+                "This indicates a bug in _load_embedder."
+            )
+            return self._embedder
 
     def get_reranker(
         self,
@@ -141,6 +149,9 @@ class ModelManager:
 
         Returns:
             SentenceTransformerRerank instance
+
+        Raises:
+            RuntimeError: If model fails to load
         """
         model_name = model_name or DEFAULT_RERANKER_MODEL
         device = device or self._default_device
@@ -161,7 +172,12 @@ class ModelManager:
                 self._unload_reranker()
                 self._load_reranker(model_name, top_n, device)
 
-            return self._reranker  # type: ignore[return-value]
+            # Post-condition: if we reach here, _reranker must be set
+            assert self._reranker is not None, (
+                f"Failed to load reranker {model_name}. "
+                "This indicates a bug in _load_reranker."
+            )
+            return self._reranker
 
     def _load_embedder(self, model_name: str, device: str) -> None:
         """Load embedder model with config-driven settings.
@@ -172,68 +188,82 @@ class ModelManager:
         Args:
             model_name: HuggingFace model path
             device: Device to load on
+
+        Raises:
+            RuntimeError: If model fails to load
         """
         logger.info(f"Loading embedder: {model_name} on {device.upper()}")
         print(f"Loading Embedder: {model_name} on {device.upper()}")
 
-        # Get model-specific config
-        model_config = self._get_embedding_model_config(model_name)
+        try:
+            # Get model-specific config
+            model_config = self._get_embedding_model_config(model_name)
 
-        # Determine batch size based on device
-        batch_size = (
-            model_config.batch_size_cuda
-            if device == "cuda"
-            else model_config.batch_size_cpu
-        )
+            # Determine batch size based on device
+            batch_size = (
+                model_config.batch_size_cuda
+                if device == "cuda"
+                else model_config.batch_size_cpu
+            )
 
-        # Build model_kwargs
-        model_kwargs: Dict[str, Any] = {
-            "trust_remote_code": model_config.trust_remote_code
-        }
-
-        # Add torch_dtype if specified
-        if model_config.torch_dtype:
-            import torch
-
-            dtype_map = {
-                "float16": torch.float16,
-                "bfloat16": torch.bfloat16,
-                "float32": torch.float32,
+            # Build model_kwargs
+            model_kwargs: Dict[str, Any] = {
+                "trust_remote_code": model_config.trust_remote_code
             }
-            if model_config.torch_dtype in dtype_map:
-                model_kwargs["torch_dtype"] = dtype_map[model_config.torch_dtype]
 
-        # Try to enable flash attention if configured
-        if model_config.flash_attention:
-            try:
-                import flash_attn  # noqa: F401
+            # Add torch_dtype if specified
+            if model_config.torch_dtype:
+                import torch
 
-                model_kwargs["attn_implementation"] = "flash_attention_2"
-                logger.info("Flash Attention 2 enabled for embedding model")
-            except ImportError:
-                logger.debug("Flash Attention not available, using default attention")
+                dtype_map = {
+                    "float16": torch.float16,
+                    "bfloat16": torch.bfloat16,
+                    "float32": torch.float32,
+                }
+                if model_config.torch_dtype in dtype_map:
+                    model_kwargs["torch_dtype"] = dtype_map[model_config.torch_dtype]
 
-        # Build tokenizer_kwargs
-        tokenizer_kwargs = None
-        if model_config.padding_side:
-            tokenizer_kwargs = {"padding_side": model_config.padding_side}
+            # Try to enable flash attention if configured
+            if model_config.flash_attention:
+                try:
+                    import flash_attn  # noqa: F401
 
-        logger.info(
-            f"Creating embedding model: {model_name} "
-            f"(batch_size={batch_size}, dtype={model_config.torch_dtype or 'default'})"
-        )
+                    model_kwargs["attn_implementation"] = "flash_attention_2"
+                    logger.info("Flash Attention 2 enabled for embedding model")
+                except ImportError:
+                    logger.debug(
+                        "Flash Attention not available, using default attention"
+                    )
 
-        self._embedder = HuggingFaceEmbedding(
-            model_name=model_name,
-            device=device,
-            model_kwargs=model_kwargs,
-            tokenizer_kwargs=tokenizer_kwargs,
-            embed_batch_size=batch_size,
-        )
-        self._embedder_model_name = model_name
-        self._embedder_device = device
+            # Build tokenizer_kwargs
+            tokenizer_kwargs = None
+            if model_config.padding_side:
+                tokenizer_kwargs = {"padding_side": model_config.padding_side}
 
-        logger.info(f"Embedder loaded: {model_name}")
+            logger.info(
+                f"Creating embedding model: {model_name} "
+                f"(batch_size={batch_size}, dtype={model_config.torch_dtype or 'default'})"
+            )
+
+            self._embedder = HuggingFaceEmbedding(
+                model_name=model_name,
+                device=device,
+                model_kwargs=model_kwargs,
+                tokenizer_kwargs=tokenizer_kwargs,
+                embed_batch_size=batch_size,
+            )
+            self._embedder_model_name = model_name
+            self._embedder_device = device
+
+            logger.info(f"Embedder loaded: {model_name}")
+        except Exception as e:
+            # Ensure invariant: on failure, _embedder must remain None
+            self._embedder = None
+            self._embedder_model_name = None
+            self._embedder_device = None
+            raise RuntimeError(
+                f"Failed to load embedding model '{model_name}' on {device}: {e}"
+            ) from e
 
     def _get_embedding_model_config(self, model_name: str) -> EmbeddingModelConfig:
         """Get configuration for a specific embedding model.
@@ -286,20 +316,33 @@ class ModelManager:
             model_name: HuggingFace model path
             top_n: Number of top results to return
             device: Device to load on
+
+        Raises:
+            RuntimeError: If model fails to load
         """
         logger.info(f"Loading reranker: {model_name} on {device.upper()}")
         print(f"Loading Reranker: {model_name} on {device.upper()}")
 
-        self._reranker = SentenceTransformerRerank(
-            model=model_name,
-            top_n=top_n,
-            device=device,
-        )
-        self._reranker_model_name = model_name
-        self._reranker_top_n = top_n
-        self._reranker_device = device
+        try:
+            self._reranker = SentenceTransformerRerank(
+                model=model_name,
+                top_n=top_n,
+                device=device,
+            )
+            self._reranker_model_name = model_name
+            self._reranker_top_n = top_n
+            self._reranker_device = device
 
-        logger.info(f"Reranker loaded: {model_name}")
+            logger.info(f"Reranker loaded: {model_name}")
+        except Exception as e:
+            # Ensure invariant: on failure, _reranker must remain None
+            self._reranker = None
+            self._reranker_model_name = None
+            self._reranker_top_n = None
+            self._reranker_device = None
+            raise RuntimeError(
+                f"Failed to load reranker model '{model_name}' on {device}: {e}"
+            ) from e
 
     def _unload_reranker(self) -> None:
         """Release reranker memory."""

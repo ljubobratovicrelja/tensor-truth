@@ -12,16 +12,22 @@ Key features:
 - Backend-first design with frontend UX layer
 """
 
+import asyncio
+import logging
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, WebSocket
 
+from tensortruth.api.deps import get_agent_service
+from tensortruth.services.agent_service import AgentCallbacks
 from tensortruth.services.config_service import ConfigService
 from tensortruth.utils.web_search import (
     web_search_stream,
     web_source_to_source_node,
 )
+
+logger = logging.getLogger(__name__)
 
 # REST endpoints (mounted under /api)
 router = APIRouter()
@@ -281,9 +287,319 @@ class WebSearchCommand(ToolCommand):
             )
 
 
+class BrowseCommand(ToolCommand):
+    """Execute the browse agent for autonomous web research."""
+
+    name = "browse"
+    aliases = ["research"]
+    description = "Autonomous web research agent for complex queries"
+    usage = "/browse <query>"
+
+    async def execute(self, args: str, session: dict, websocket: WebSocket) -> None:
+        """Execute browse agent and stream response.
+
+        Args:
+            args: Research query/goal
+            session: Current session data
+            websocket: WebSocket connection for streaming
+        """
+        # 1. Validate input
+        if not args or not args.strip():
+            logger.warning("Browse command called with empty query")
+            await websocket.send_json(
+                {"type": "error", "detail": "Usage: /browse <query>"}
+            )
+            return
+
+        query = args.strip()
+        logger.info(f"Browse command started with query: {query}")
+
+        # 2. Extract session parameters
+        params = session.get("params", {})
+        session_params = {
+            "model": params.get("model", "llama3.1:8b"),
+            "ollama_url": params.get("ollama_url", "http://localhost:11434"),
+            "context_window": params.get("context_window", 16384),
+        }
+
+        logger.info(
+            f"Session params extracted: model={session_params['model']}, "
+            f"context_window={session_params['context_window']}, "
+            f"ollama_url={session_params['ollama_url']}"
+        )
+        logger.info(f"Raw params from session: {params}")
+
+        # 3. Create WebSocket streaming callbacks with enhanced progress
+        full_response = ""
+        pages_fetched = []
+
+        def sync_on_progress(msg: str):
+            """Send progress messages to UI."""
+            logger.info(f"Agent progress: {msg}")
+            asyncio.create_task(
+                websocket.send_json(
+                    {
+                        "type": "agent_progress",
+                        "agent": "browse",
+                        "phase": _parse_phase(msg),
+                        "message": msg,
+                    }
+                )
+            )
+
+        def sync_on_tool_call(tool_name: str, tool_params: dict):
+            """Translate tool calls into user-friendly progress messages."""
+            # Log tool call
+            logger.info(f"Tool call: {tool_name} with params: {tool_params}")
+
+            # Create user-friendly message based on tool
+            if tool_name == "search_web":
+                # Extract queries (could be str or list)
+                queries = tool_params.get("queries", [])
+                if isinstance(queries, str):
+                    queries = [queries]
+
+                # Show each query being searched
+                queries_str = ", ".join(f'"{q}"' for q in queries)
+                message = f"Searching DDG with {len(queries)} queries: {queries_str}"
+                phase = "searching"
+
+                # Send detailed agent_progress for search
+                asyncio.create_task(
+                    websocket.send_json(
+                        {
+                            "type": "agent_progress",
+                            "agent": "browse",
+                            "phase": phase,
+                            "message": message,
+                            "details": {
+                                "queries": queries,
+                                "query_count": len(queries),
+                            },
+                        }
+                    )
+                )
+
+            elif tool_name == "fetch_page":
+                url = tool_params.get("url", "")
+                pages_fetched.append(url)
+                count = len(pages_fetched)
+
+                # Extract domain for cleaner display
+                from urllib.parse import urlparse
+
+                domain = urlparse(url).netloc
+
+                message = f"Fetching page {count}: {domain}"
+                phase = "fetching"
+
+                # Send detailed agent_progress for fetch
+                asyncio.create_task(
+                    websocket.send_json(
+                        {
+                            "type": "agent_progress",
+                            "agent": "browse",
+                            "phase": phase,
+                            "message": message,
+                            "details": {
+                                "url": url,
+                                "page_number": count,
+                                "domain": domain,
+                            },
+                        }
+                    )
+                )
+
+            elif tool_name == "fetch_pages_batch":
+                urls = tool_params.get("urls", [])
+                pages_fetched.extend(urls)
+
+                # Extract domains for cleaner display
+                from urllib.parse import urlparse
+
+                domains = [urlparse(url).netloc for url in urls]
+                domains_str = ", ".join(domains[:3])  # Show first 3
+                if len(domains) > 3:
+                    domains_str += f" (+{len(domains) - 3} more)"
+
+                message = f"Fetching {len(urls)} pages in parallel: {domains_str}"
+                phase = "fetching"
+
+                # Send detailed agent_progress for batch fetch
+                asyncio.create_task(
+                    websocket.send_json(
+                        {
+                            "type": "agent_progress",
+                            "agent": "browse",
+                            "phase": phase,
+                            "message": message,
+                            "details": {
+                                "urls": urls,
+                                "page_count": len(urls),
+                                "domains": domains,
+                            },
+                        }
+                    )
+                )
+
+            elif tool_name == "search_focused":
+                search_query = tool_params.get("query", "")
+                domain = tool_params.get("domain", "")
+                message = f"Searching {domain}: {search_query}"
+                phase = "searching"
+
+                # Send detailed agent_progress for focused search
+                asyncio.create_task(
+                    websocket.send_json(
+                        {
+                            "type": "agent_progress",
+                            "agent": "browse",
+                            "phase": phase,
+                            "message": message,
+                        }
+                    )
+                )
+
+            # Also send raw tool_progress for debugging
+            asyncio.create_task(
+                websocket.send_json(
+                    {
+                        "type": "tool_progress",
+                        "tool": tool_name,
+                        "action": "calling",
+                        "params": tool_params,
+                    }
+                )
+            )
+
+        def sync_on_token(token: str):
+            """Stream synthesis tokens."""
+            nonlocal full_response
+            full_response += token
+            asyncio.create_task(
+                websocket.send_json(
+                    {
+                        "type": "token",
+                        "content": token,
+                    }
+                )
+            )
+
+        callbacks = AgentCallbacks(
+            on_progress=sync_on_progress,
+            on_tool_call=sync_on_tool_call,
+            on_token=sync_on_token,
+        )
+
+        try:
+            # 4. Execute agent
+            logger.info("Retrieving AgentService instance")
+            agent_service = get_agent_service()
+
+            if agent_service is None:
+                raise RuntimeError("AgentService is not initialized")
+
+            logger.info(
+                f"Calling AgentService.run() with agent_name='browse', goal='{query}'"
+            )
+
+            result = await agent_service.run(
+                agent_name="browse",
+                goal=query,
+                callbacks=callbacks,
+                session_params=session_params,
+            )
+
+            logger.info(
+                f"Agent completed: iterations={result.iterations}, "
+                f"tools_called={result.tools_called}, "
+                f"urls_browsed={len(result.urls_browsed)}, "
+                f"error={result.error}"
+            )
+
+            # 5. Handle errors
+            if result.error:
+                logger.error(f"Browse agent failed: {result.error}")
+                await websocket.send_json(
+                    {"type": "error", "detail": f"Browse agent failed: {result.error}"}
+                )
+                return
+
+            # Check if agent didn't find any sources
+            if not result.urls_browsed:
+                logger.warning("Browse agent completed but found no sources")
+
+            # 6. Convert URLs to SourceNode format
+            source_nodes = [
+                {
+                    "text": url,
+                    "score": 1.0,
+                    "metadata": {
+                        "url": url,
+                        "source_type": "browse_agent",
+                    },
+                }
+                for url in result.urls_browsed
+            ]
+
+            # 7. Send sources
+            if source_nodes:
+                logger.info(f"Sending {len(source_nodes)} sources to client")
+                await websocket.send_json(
+                    {
+                        "type": "sources",
+                        "data": source_nodes,
+                    }
+                )
+
+            # 8. Send done message
+            messages = session.get("messages", [])
+            is_first = len(messages) <= 1
+
+            logger.info(
+                f"Sending done message (response length: {len(result.final_answer)})"
+            )
+            await websocket.send_json(
+                {
+                    "type": "done",
+                    "content": result.final_answer,
+                    "confidence_level": "browse_agent",
+                    "title_pending": is_first,
+                    "sources": source_nodes if source_nodes else None,
+                }
+            )
+
+            logger.info("Browse command completed successfully")
+
+        except Exception as e:
+            logger.error(f"Browse command failed with exception: {e}", exc_info=True)
+            await websocket.send_json(
+                {"type": "error", "detail": f"Browse command failed: {str(e)}"}
+            )
+
+
+def _parse_phase(status_msg: str) -> str:
+    """Parse phase from AgentService progress message.
+
+    Maps status messages to phase names for frontend display.
+    """
+    msg_lower = status_msg.lower()
+    if "starting" in msg_lower:
+        return "starting"
+    elif "searching" in msg_lower or "search" in msg_lower:
+        return "searching"
+    elif "fetching" in msg_lower or "fetch" in msg_lower:
+        return "fetching"
+    elif "synthesizing" in msg_lower or "synthesis" in msg_lower:
+        return "summarizing"
+    else:
+        return "processing"
+
+
 # Register built-in commands
 registry.register(HelpCommand())
 registry.register(WebSearchCommand())
+registry.register(BrowseCommand())
 
 
 # API Endpoints

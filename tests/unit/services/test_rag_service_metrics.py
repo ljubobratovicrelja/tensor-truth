@@ -45,9 +45,11 @@ class TestRAGServiceMetrics:
         mock_engine._retriever = mock_retriever
         mock_engine._node_postprocessors = []
 
-        # Create service and set engine
+        # Create service and set engine with cached components
         service = RAGService()
         service._engine = mock_engine
+        service._llm = mock_llm
+        service._retriever = mock_retriever
 
         # Execute query and collect chunks
         chunks = list(service.query("test query"))
@@ -118,6 +120,8 @@ class TestRAGServiceMetrics:
 
         service = RAGService()
         service._engine = mock_engine
+        service._llm = mock_llm
+        service._retriever = mock_retriever
 
         # Execute query
         chunks = list(service.query("test"))

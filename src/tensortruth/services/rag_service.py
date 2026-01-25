@@ -7,11 +7,24 @@ and a cleaner interface for the UI layer.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
 from llama_index.core.chat_engine import CondensePlusContextChatEngine
 from llama_index.llms.ollama import Ollama
+
+if TYPE_CHECKING:
+    from llama_index.core.retrievers import BaseRetriever
 
 from tensortruth.app_utils.config_schema import TensorTruthConfig
 from tensortruth.rag_engine import (
@@ -23,6 +36,10 @@ from tensortruth.rag_engine import (
     get_base_index_dir,
     get_llm,
     load_engine_for_modules,
+)
+from tensortruth.utils.history_condenser import (
+    condense_query,
+    create_condenser_llm,
 )
 
 from .chat_history import ChatHistoryService
@@ -67,10 +84,14 @@ class RAGService:
         )
 
         self._engine: Optional[CondensePlusContextChatEngine] = None
-        self._current_config_hash: Optional[Tuple] = None
+        self._current_config_hash: Optional[Tuple[Any, ...]] = None
         self._current_modules: Optional[List[str]] = None
         self._current_params: Optional[Dict[str, Any]] = None
         self._chat_history_service = chat_history_service
+
+        # Cache frequently accessed components to avoid repeated private access
+        self._llm: Optional[Ollama] = None
+        self._retriever: Optional[BaseRetriever] = None
 
     @property
     def chat_history_service(self) -> ChatHistoryService:
@@ -84,7 +105,7 @@ class RAGService:
         modules: Optional[List[str]],
         params: Dict[str, Any],
         session_index_path: Optional[str] = None,
-    ) -> Optional[Tuple]:
+    ) -> Optional[Tuple[Any, ...]]:
         """Compute configuration hash for cache invalidation.
 
         Args:
@@ -132,6 +153,12 @@ class RAGService:
             engine_params=params,
             session_index_path=session_index_path,
         )
+
+        # Cache components - single point of private access (acceptable during init)
+        # LlamaIndex CondensePlusContextChatEngine uses private attrs
+        # Cast to expected types since we know the engine configuration
+        self._llm = cast(Ollama, self._engine._llm)
+        self._retriever = self._engine._retriever
 
         self._current_modules = modules
         self._current_params = params
@@ -199,6 +226,10 @@ class RAGService:
         if self._engine is None:
             raise RuntimeError("RAG engine not loaded. Call load_engine() first.")
 
+        # Verify cache is populated
+        assert self._llm is not None, "LLM not cached during load_engine"
+        assert self._retriever is not None, "Retriever not cached during load_engine"
+
         logger.info(f"=== RAG Query Start: '{prompt}' ===")
         logger.info(
             f"Session has {len(session_messages) if session_messages else 0} messages"
@@ -208,7 +239,7 @@ class RAGService:
         yield RAGChunk(status="retrieving")
 
         # Get retriever and condenser
-        retriever = self._engine._retriever
+        retriever = self._retriever
         condenser = getattr(self._engine, "_condense_prompt_template", None)
         logger.info(f"Condenser value: {condenser}")
         logger.info(f"Condenser type: {type(condenser)}")
@@ -230,42 +261,26 @@ class RAGService:
         # Condense the question with chat history if we have a condenser
         condensed_question = prompt
         if condenser and not history.is_empty:
-            try:
-                from tensortruth.core.constants import DEFAULT_AGENT_REASONING_MODEL
+            # Build condensed question using LLM
+            logger.info(f"Original query: {prompt}")
+            logger.info(f"History length: {len(history.messages)} messages")
 
-                # Build condensed question using LLM
-                logger.info(f"Original query: {prompt}")
-                logger.info(f"History length: {len(history.messages)} messages")
+            # Extract template string from condenser (PromptTemplate object)
+            # PromptTemplate has a .template attribute or can be converted to string
+            template_str = getattr(condenser, "template", str(condenser))
 
-                # Create a non-thinking version of the LLM for fast condensation
-                # This reuses the same Ollama model server-side (no extra VRAM)
-                # but disables thinking to speed up the condensation step
-                main_llm = self._engine._llm
-                # Access Ollama-specific attributes via getattr for type safety
-                condenser_llm = Ollama(
-                    model=getattr(main_llm, "model", DEFAULT_AGENT_REASONING_MODEL),
-                    base_url=getattr(main_llm, "base_url", "http://localhost:11434"),
-                    temperature=0.0,  # Deterministic for condensation
-                    thinking=False,  # Disable thinking for speed
-                    request_timeout=30.0,
-                )
+            # Create condenser LLM (reuses same model, optimized for condensation)
+            condenser_llm = create_condenser_llm(self._llm)
 
-                condenser_prompt = condenser.format(
-                    chat_history=chat_history_str,
-                    question=prompt,
-                )
-                condensed_response = condenser_llm.complete(condenser_prompt)
-                condensed_question = str(condensed_response).strip()
-                logger.info(f"Condensed query: {condensed_question}")
-
-                # Validate: If condensation produces empty/whitespace, use original
-                if not condensed_question:
-                    logger.warning("Condensation produced empty result, using original")
-                    condensed_question = prompt
-            except Exception as e:
-                # Fall back to original prompt if condensation fails
-                logger.error(f"Condensation failed: {e}", exc_info=True)
-                condensed_question = prompt
+            # Condense the query using the utility function
+            condensed_question = condense_query(
+                llm=condenser_llm,
+                chat_history=chat_history_str,
+                question=prompt,
+                prompt_template=template_str,
+                fallback_on_error=True,
+            )
+            logger.info(f"Condensed query: {condensed_question}")
         else:
             if not condenser:
                 logger.debug("No condenser configured, using original query")
@@ -357,7 +372,7 @@ class RAGService:
             )
 
         # Phase 4: Check if model supports thinking and start generation
-        llm = self._engine._llm
+        llm = self._llm
         thinking_enabled = getattr(llm, "thinking", False)
 
         if thinking_enabled:
@@ -403,7 +418,7 @@ class RAGService:
     def query_simple(
         self,
         prompt: str,
-        chat_history: Optional[List] = None,
+        chat_history: Optional[List[Any]] = None,
     ) -> Generator[str, None, str]:
         """Execute a streaming query without source tracking.
 
@@ -523,10 +538,7 @@ class RAGService:
         Returns:
             Ollama LLM instance or None if engine not loaded.
         """
-        if self._engine is None:
-            return None
-        # Cast to Ollama since we know it's the LLM type used in this project
-        return self._engine._llm  # type: ignore[return-value]
+        return self._llm
 
     def get_llm_from_params(self, params: Dict[str, Any]) -> Ollama:
         """Create an LLM instance from parameters without loading full engine.
@@ -548,25 +560,25 @@ class RAGService:
         """
         if self._engine is not None:
             # Clear retriever cache to release GPU tensor references
-            if hasattr(self._engine, "_retriever"):
-                retriever = self._engine._retriever
-                if isinstance(retriever, MultiIndexRetriever):
-                    retriever.clear_cache()
+            if self._retriever is not None:
+                if isinstance(self._retriever, MultiIndexRetriever):
+                    self._retriever.clear_cache()
 
             # Clear chat memory
             if hasattr(self._engine, "memory"):
                 self._engine.memory.reset()
 
             self._engine = None
+            self._llm = None
+            self._retriever = None
             self._current_config_hash = None
             self._current_modules = None
             self._current_params = None
 
-    def __enter__(self):
+    def __enter__(self) -> "RAGService":
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Context manager exit - ensures cleanup."""
         self.clear()
-        return False

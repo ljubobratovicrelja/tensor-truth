@@ -357,6 +357,7 @@ def _build_metadata_filters(
     if not filters:
         return None
 
+    # LlamaIndex stubs incomplete: List[MetadataFilter] valid but not recognized
     return MetadataFilters(
         filters=filters,  # type: ignore[arg-type]
         condition=FilterCondition.AND,
@@ -393,8 +394,8 @@ class MultiIndexRetriever(BaseRetriever):
         super().__init__()
 
         # Create LRU cache for retrieve operations if enabled
+        # Known mypy limitation: cannot track lru_cache wrapper types
         if self.enable_cache:
-            # lru_cache wrapper compatibility
             self._retrieve_cached = lru_cache(maxsize=cache_size)(
                 self._retrieve_impl
             )  # type: ignore[assignment]
@@ -632,6 +633,7 @@ def load_engine_for_modules(
         index = load_index_from_storage(storage_context, embed_model=embed_model)
 
         base = index.as_retriever(similarity_top_k=similarity_top_k)
+        # storage_context type matches, may be stubs issue
         am_retriever = AutoMergingRetriever(
             base, index.storage_context, verbose=False  # type: ignore[arg-type]
         )
@@ -664,6 +666,7 @@ def load_engine_for_modules(
             index = load_index_from_storage(storage_context, embed_model=embed_model)
 
             base = index.as_retriever(similarity_top_k=similarity_top_k)
+            # storage_context type matches, may be stubs issue
             am_retriever = AutoMergingRetriever(
                 base, index.storage_context, verbose=False  # type: ignore[arg-type]
             )

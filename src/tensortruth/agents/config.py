@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 
 class MCPServerType(str, Enum):
@@ -45,6 +45,21 @@ class MCPServerConfig:
 
 
 @dataclass
+class AgentCallbacks:
+    """Streaming callbacks for WebSocket progress.
+
+    Attributes:
+        on_progress: Called with status messages during execution.
+        on_tool_call: Called when a tool is invoked with tool name and params.
+        on_token: Called with streaming tokens during generation.
+    """
+
+    on_progress: Optional[Callable[[str], None]] = None
+    on_tool_call: Optional[Callable[[str, Dict], None]] = None
+    on_token: Optional[Callable[[str], None]] = None
+
+
+@dataclass
 class AgentResult:
     """Result from agent execution.
 
@@ -75,15 +90,17 @@ class AgentConfig:
         description: Human-readable description shown in agent listings
         tools: List of tool names required by this agent
         system_prompt: System prompt that defines the agent's behavior
-        agent_type: Type of LlamaIndex agent to create ("function" or "react")
+        agent_type: Type of agent to create (extensible, e.g., "function", "react", "router")
         model: Optional model override (uses session model if not specified)
         max_iterations: Maximum reasoning iterations before stopping
+        factory_params: Additional parameters passed to agent factory
     """
 
     name: str
     description: str
     tools: List[str]
-    system_prompt: str
-    agent_type: Literal["function", "react"] = "function"
+    system_prompt: str = ""
+    agent_type: str = "router"
     model: Optional[str] = None
     max_iterations: int = 10
+    factory_params: Dict[str, Any] = field(default_factory=dict)
