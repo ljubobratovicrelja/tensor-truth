@@ -167,7 +167,21 @@ class RouterAgent(Agent):
         # Synthesize final answer
         final_answer = await self._synthesize(state, callbacks)
 
-        # Build result
+        # Build result (subclasses can override to add more fields)
+        return self._build_result(state, final_answer)
+
+    def _build_result(self, state: RouterState, final_answer: str) -> AgentResult:
+        """Build AgentResult from final state and answer.
+
+        Subclasses can override to add additional fields like sources.
+
+        Args:
+            state: Final workflow state
+            final_answer: Synthesized answer
+
+        Returns:
+            AgentResult
+        """
         return AgentResult(
             final_answer=final_answer,
             iterations=state.iteration_count,

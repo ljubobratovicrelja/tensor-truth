@@ -203,14 +203,14 @@ class WebSearchCommand(ToolCommand):
         config = config_service.load()
         ws_config = config.web_search
 
-        # Extract params from session
+        # Extract params from session with config defaults
         params = session.get("params", {})
-        model_name = params.get("model", "llama3.1:8b")
-        ollama_url = params.get("ollama_url", "http://localhost:11434")
-        context_window = params.get("context_window", 16384)
+        model_name = params.get("model", config.models.default_agent_reasoning_model)
+        ollama_url = params.get("ollama_url", config.ollama.base_url)
+        context_window = params.get("context_window", config.ui.default_context_window)
         # Reranking params - uses session's reranker model if configured
         reranker_model = params.get("reranker_model")
-        reranker_device = params.get("rag_device", "cuda")
+        reranker_device = params.get("rag_device")
 
         try:
             full_response = ""
@@ -314,18 +314,30 @@ class BrowseCommand(ToolCommand):
         query = args.strip()
         logger.info(f"Browse command started with query: {query}")
 
-        # 2. Extract session parameters
+        # 2. Load config and extract session parameters
+        config_service = ConfigService()
+        config = config_service.load()
         params = session.get("params", {})
+
+        # Build session_params with config defaults
         session_params = {
-            "model": params.get("model", "llama3.1:8b"),
-            "ollama_url": params.get("ollama_url", "http://localhost:11434"),
-            "context_window": params.get("context_window", 16384),
+            "model": params.get("model", config.models.default_agent_reasoning_model),
+            "ollama_url": params.get("ollama_url", config.ollama.base_url),
+            "context_window": params.get(
+                "context_window", config.ui.default_context_window
+            ),
+            "reranker_model": params.get("reranker_model"),  # Already in session params
+            "rag_device": params.get("rag_device"),  # Already in session params
+            "router_model": params.get("router_model"),  # Already in session params
         }
 
         logger.info(
-            f"Session params extracted: model={session_params['model']}, "
+            f"Session params: model={session_params['model']}, "
             f"context_window={session_params['context_window']}, "
-            f"ollama_url={session_params['ollama_url']}"
+            f"ollama_url={session_params['ollama_url']}, "
+            f"reranker_model={session_params['reranker_model']}, "
+            f"rag_device={session_params['rag_device']}, "
+            f"router_model={session_params['router_model']}"
         )
         logger.info(f"Raw params from session: {params}")
 
@@ -529,18 +541,52 @@ class BrowseCommand(ToolCommand):
             if not result.urls_browsed:
                 logger.warning("Browse agent completed but found no sources")
 
-            # 6. Convert URLs to SourceNode format
-            source_nodes = [
-                {
-                    "text": url,
-                    "score": 1.0,
-                    "metadata": {
-                        "url": url,
-                        "source_type": "browse_agent",
-                    },
-                }
-                for url in result.urls_browsed
-            ]
+            # 6. Convert SourceNode objects to frontend format
+            from tensortruth.core.sources import SourceNode
+
+            source_nodes = []
+            for source in result.sources:
+                if isinstance(source, SourceNode):
+                    # Use rich metadata from SourceNode
+                    # Map to frontend-expected field names
+                    source_nodes.append(
+                        {
+                            "text": source.content
+                            or source.title,  # Show content, fallback to title
+                            "score": (
+                                source.relevance_score
+                                if source.relevance_score is not None
+                                else 1.0
+                            ),
+                            "metadata": {
+                                "source_url": source.url,  # Frontend expects source_url
+                                "display_name": source.title,  # Frontend expects display_name
+                                "doc_type": "web",  # Mark as web source
+                                "fetch_status": source.status,  # Frontend expects fetch_status
+                                "fetch_error": source.error,  # Frontend expects fetch_error
+                                "content_chars": source.content_chars,
+                                "source_type": "browse_agent",  # Keep for backward compat
+                            },
+                        }
+                    )
+                else:
+                    # Fallback for backward compatibility (shouldn't happen)
+                    logger.warning(f"Unexpected source type: {type(source)}")
+                    url = (
+                        str(source)
+                        if not isinstance(source, dict)
+                        else source.get("url", str(source))
+                    )
+                    source_nodes.append(
+                        {
+                            "text": url,
+                            "score": 1.0,
+                            "metadata": {
+                                "url": url,
+                                "source_type": "browse_agent",
+                            },
+                        }
+                    )
 
             # 7. Send sources
             if source_nodes:

@@ -24,6 +24,11 @@ from llama_index.llms.ollama import Ollama
 from markdownify import markdownify as md
 
 from tensortruth.core.ollama import check_thinking_support
+from tensortruth.core.synthesis import (
+    CitationStyle,
+    SynthesisConfig,
+)
+from tensortruth.core.synthesis import synthesize_with_llm_stream as core_synthesize
 
 # Import handlers to register them (must be after this module is defined)
 # These are imported at module load time to register handlers via decorators
@@ -1101,150 +1106,6 @@ Begin your response:"""
         return f"**Summarization failed:** {str(e)}\n\nPlease try again."
 
 
-async def summarize_with_llm_stream(
-    query: str,
-    pages: List[Tuple[str, str, str]],
-    model_name: str,
-    ollama_url: str,
-    context_window: Optional[int] = None,
-    custom_instructions: Optional[str] = None,
-    source_scores: Optional[Dict[str, float]] = None,
-) -> AsyncGenerator[str, None]:
-    """
-    Stream tokens from LLM summarization instead of blocking.
-
-    Args:
-        query: Original search query
-        pages: List of (url, title, markdown_content) tuples
-        model_name: Ollama model name
-        ollama_url: Ollama API URL
-        context_window: Optional context window size
-        custom_instructions: Optional custom instructions for LLM
-        source_scores: Optional dict of url -> relevance score for display
-
-    Yields:
-        str: Individual tokens from the LLM response
-    """
-    logger.info(f"Streaming summary of {len(pages)} pages with {model_name}...")
-
-    if not pages:
-        yield "**No pages could be fetched.** Please try a different query."
-        return
-
-    # Get model's actual context window (use provided or fetch from model)
-    if context_window is None:
-        context_window = await get_model_context_window(
-            model_name, ollama_url, default=16384
-        )
-
-    # Calculate max chars based on context window
-    max_input_tokens = int(context_window * 0.6)
-    max_total_chars = max_input_tokens * 4
-    max_per_page = min(max_total_chars // len(pages), 4000)
-
-    # Build source list with numbered markdown links (and relevance scores if available)
-    sources_list = []
-    combined = []
-
-    for idx, (url, title, content) in enumerate(pages, 1):
-        # Add relevance score to source list if available
-        if source_scores and url in source_scores:
-            score = source_scores[url]
-            sources_list.append(
-                f"{idx}. [{title}]({url}) — Relevance: {score*100:.0f}%"
-            )
-        else:
-            sources_list.append(f"{idx}. [{title}]({url})")
-        truncated = content[:max_per_page]
-        if len(content) > max_per_page:
-            truncated += "\n\n[Content truncated...]"
-        combined.append(f"### Source {idx}: [{title}]({url})\n\n{truncated}\n\n---\n")
-
-    sources_text = "\n".join(sources_list)
-    combined_text = "\n".join(combined)
-
-    if len(combined_text) > max_total_chars:
-        combined_text = combined_text[:max_total_chars]
-        combined_text += "\n\n[Additional content truncated for length...]"
-
-    max_output_tokens = int(context_window * 0.4)
-    target_words = max_output_tokens
-
-    custom_instruction_text = ""
-    if custom_instructions:
-        custom_instruction_text = (
-            f"\n\n**Additional Instructions:** {custom_instructions}"
-        )
-
-    # Add relevance guidance when scores are available
-    relevance_guidance = ""
-    if source_scores:
-        relevance_guidance = (
-            "\n\n**Note:** Sources are ordered by relevance. "
-            "Prioritize information from higher-scored sources when synthesizing your answer."
-        )
-
-    prompt = f"""You are a research assistant. User asked: "{query}"
-
-## Available Sources
-{sources_text}{relevance_guidance}
-
-## Content from Sources
-{combined_text}
-
-CRITICAL CITATION RULES - READ CAREFULLY:
-1. **ALWAYS cite using markdown hyperlinks**, NEVER use plain [1] or [2] style
-2. **Correct citation format**: "According to [Source Title](url), the key point is..."
-3. **Example**: "The [YOLO algorithm](https://pjreddie.com/darknet/yolo/) \
-detects objects..."
-4. **WRONG**: "According to [1], the algorithm..." (incorrect)
-5. **RIGHT**: "According to [YOLO Documentation]\
-(https://pjreddie.com/darknet/yolo/), the algorithm..." (correct)
-6. **Preserve ALL existing hyperlinks** from the source content
-7. **Link technical terms** to their definitions when sources provide them
-
-Provide a comprehensive summary ({target_words} words approx.) \
-answering the question.{custom_instruction_text}
-
-### Summary
-[Thorough overview with inline hyperlinked citations. Example: \
-"[Source 1]({pages[0][0]}) explains that..." or \
-"The main approach involves [technique name]({pages[0][0]})..."]
-
-### Detailed Findings
-[Organize by topic. ALWAYS use hyperlinked citations like "[title](url)" - never bare [1] numbers. \
-Include relevant details and preserve all markdown links from sources.]
-
-### Key Takeaways
-[Important points with inline hyperlinked sources where appropriate]
-
-Begin your response:"""
-
-    try:
-        thinking_enabled = check_thinking_support(model_name)
-
-        llm = Ollama(
-            model=model_name,
-            base_url=ollama_url,
-            request_timeout=120.0,
-            temperature=0.3,
-            context_window=context_window,
-            num_ctx=context_window,
-            thinking=thinking_enabled,
-        )
-
-        # Use astream_complete for streaming
-        async for chunk in await llm.astream_complete(prompt):
-            if chunk.delta:
-                yield chunk.delta
-
-        logger.info("Streaming summary completed successfully")
-
-    except Exception as e:
-        logger.error(f"LLM streaming summarization failed: {e}")
-        yield f"**Summarization failed:** {str(e)}\n\nPlease try again."
-
-
 async def web_search_stream(
     query: str,
     model_name: str,
@@ -1387,213 +1248,91 @@ async def web_search_stream(
     else:
         search_results_ordered = search_results
 
-    # Phase 3: Fetch pages - yield agent_progress per attempt (in ranked order)
-    snippet_map = {r["url"]: r.get("snippet", "") for r in search_results}
-    pages: List[Tuple[str, str, str]] = []
-    sources: List[WebSearchSource] = []
-    current_idx = 0
-    pages_fetched = 0
-    pages_failed = 0
-
-    async with aiohttp.ClientSession() as session:
-        while len(pages) < max_pages and current_idx < len(search_results_ordered):
-            needed = max_pages - len(pages)
-            batch_size = min(needed + 2, len(search_results_ordered) - current_idx)
-            batch = search_results_ordered[current_idx : current_idx + batch_size]
-
-            # Fetch batch
-            tasks = [fetch_page_as_markdown(r["url"], session) for r in batch]
-            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            for search_result, result in zip(batch, batch_results):
-                url = search_result["url"]
-                title = search_result["title"]
-
-                if isinstance(result, BaseException):
-                    pages_failed += 1
-                    sources.append(
-                        WebSearchSource(
-                            url=url,
-                            title=title,
-                            status="failed",
-                            error=str(result),
-                            snippet=snippet_map.get(url),
-                        )
-                    )
-                    yield WebSearchChunk(
-                        agent_progress={
-                            "agent": "web_search",
-                            "phase": "fetching",
-                            "message": f"Failed: {title}",
-                            "pages_target": max_pages,
-                            "pages_fetched": pages_fetched,
-                            "pages_failed": pages_failed,
-                            "current_page": {
-                                "url": url,
-                                "title": title,
-                                "status": "failed",
-                                "error": str(result),
-                            },
-                        }
-                    )
-                else:
-                    # Tuple unpacking from Union[Tuple, Exception] (mypy false positive)
-                    markdown, status, error_msg = result  # type: ignore[assignment]
-                    if status == "success" and markdown:
-                        pages.append((url, title, markdown))
-                        pages_fetched += 1
-                        sources.append(
-                            WebSearchSource(
-                                url=url,
-                                title=title,
-                                status="success",
-                                error=None,
-                                snippet=snippet_map.get(url),
-                                content=markdown,
-                                content_chars=len(markdown),
-                            )
-                        )
-                        yield WebSearchChunk(
-                            agent_progress={
-                                "agent": "web_search",
-                                "phase": "fetching",
-                                "message": f"Fetched: {title}",
-                                "pages_target": max_pages,
-                                "pages_fetched": pages_fetched,
-                                "pages_failed": pages_failed,
-                                "current_page": {
-                                    "url": url,
-                                    "title": title,
-                                    "status": "success",
-                                    "error": None,
-                                },
-                            }
-                        )
-                    else:
-                        source_status: Literal["success", "failed", "skipped"] = (
-                            "skipped"
-                            if status in ("too_short", "parse_error")
-                            else "failed"
-                        )
-                        pages_failed += 1
-                        sources.append(
-                            WebSearchSource(
-                                url=url,
-                                title=title,
-                                status=source_status,
-                                error=error_msg,
-                                snippet=snippet_map.get(url),
-                            )
-                        )
-                        yield WebSearchChunk(
-                            agent_progress={
-                                "agent": "web_search",
-                                "phase": "fetching",
-                                "message": f"{source_status.title()}: {title}",
-                                "pages_target": max_pages,
-                                "pages_fetched": pages_fetched,
-                                "pages_failed": pages_failed,
-                                "current_page": {
-                                    "url": url,
-                                    "title": title,
-                                    "status": source_status,
-                                    "error": error_msg,
-                                },
-                            }
-                        )
-
-                if len(pages) >= max_pages:
-                    break
-
-            current_idx += batch_size
-
-    # Handle no pages fetched
-    if not pages:
-        snippets = "\n\n".join(
-            [
-                f"**{i+1}. [{r['title']}]({r['url']})**\n{r['snippet']}"
-                for i, r in enumerate(search_results[:max_pages])
-            ]
+    # Get context window for pipeline
+    if context_window is None:
+        context_window = await get_model_context_window(
+            model_name, ollama_url, default=16384
         )
-        fallback_msg = (
-            f'## Web Search: "{query}"\n\n'
-            f"**Found results but couldn't fetch full pages.**\n\n"
-            f"Here are the search snippets:\n\n{snippets}\n\n"
-            f"---\n*Page fetching failed. Try visiting the links directly.*"
-        )
-        yield WebSearchChunk(status="generating")
-        yield WebSearchChunk(token=fallback_msg)
-        yield WebSearchChunk(sources=sources, is_complete=True)
-        return
 
-    # Phase 4: Rerank fetched content (if reranker enabled)
-    source_scores: Dict[str, float] = {}
-    rejected_at_content: List[Tuple[str, float]] = []  # (title, score)
-    if reranker_model and reranker and pages:
+    # Phase 3-6: Fetch, rerank, and fit pages using unified pipeline
+    from tensortruth.core.source_pipeline import SourceFetchPipeline
+
+    # Create pipeline instance
+    pipeline = SourceFetchPipeline(
+        query=query,
+        max_pages=max_pages,
+        context_window=context_window,
+        reranker_model=reranker_model,
+        reranker_device=reranker_device,
+        rerank_content_threshold=rerank_content_threshold,
+        max_source_context_pct=max_source_context_pct,
+        input_context_pct=input_context_pct,
+        custom_instructions=custom_instructions,
+        progress_callback=None,  # No progress reporting for web command
+    )
+
+    # Execute pipeline
+    try:
+        fitted_pages, source_nodes, allocations = await pipeline.execute(
+            search_results_ordered
+        )
+    except Exception as e:
+        logger.error(f"Pipeline execution failed: {e}")
         yield WebSearchChunk(
             agent_progress={
                 "agent": "web_search",
-                "phase": "ranking",
-                "message": "Ranking fetched content...",
+                "phase": "error",
+                "message": f"Pipeline failed: {str(e)}",
             }
         )
-        ranked_pages = rerank_fetched_pages(query, custom_instructions, pages, reranker)
+        yield WebSearchChunk(sources=[], is_complete=True)
+        return
 
-        # Apply content threshold filtering
-        passing_pages, rejected_pages = filter_by_threshold(
-            ranked_pages, rerank_content_threshold
+    # Convert SourceNode to WebSearchSource for compatibility
+    sources: List[WebSearchSource] = []
+    for node in source_nodes:
+        sources.append(
+            WebSearchSource(
+                url=node.url,
+                title=node.title,
+                status=node.status,
+                error=node.error,
+                snippet=node.snippet,
+                content=node.content,
+                content_chars=node.content_chars,
+                relevance_score=node.relevance_score,
+            )
         )
 
-        # Track rejected for potential no-source explanation
+    # Handle no pages case
+    if not fitted_pages:
+        # Check if we had any fetches that failed
         rejected_at_content = [
-            (title, score) for (url, title, content), score in rejected_pages
+            (s.title, s.relevance_score or 0.0)
+            for s in sources
+            if s.status == "skipped" and s.relevance_score is not None
         ]
 
-        # Update sources with relevance scores for ALL pages (passing and rejected)
-        for (url, title, content), score in ranked_pages:
-            source_scores[url] = score
-            # Find and update the matching source
-            for source in sources:
-                if source.url == url and source.status == "success":
-                    source.relevance_score = score
-                    break
-
-        # Mark rejected sources as skipped with reason
-        rejected_urls = {url for (url, title, content), score in rejected_pages}
-        for source in sources:
-            if source.url in rejected_urls and source.status == "success":
-                score_pct = int((source.relevance_score or 0) * 100)
-                threshold_pct = int(rerank_content_threshold * 100)
-                source.status = "skipped"
-                source.error = f"Low relevance ({score_pct}% < {threshold_pct}%)"
-
-        # Only keep passing pages for summarization
-        if passing_pages:
-            pages = [
-                (url, title, content) for (url, title, content), _ in passing_pages
-            ]
-            yield WebSearchChunk(
-                agent_progress={
-                    "agent": "web_search",
-                    "phase": "ranking",
-                    "message": (
-                        f"{len(passing_pages)} pages passed threshold "
-                        f"({len(rejected_pages)} rejected)"
-                    ),
-                }
+        if not sources:
+            # No pages fetched at all - show snippets
+            snippets = "\n\n".join(
+                [
+                    f"**{i+1}. [{r['title']}]({r['url']})**\n{r.get('snippet', '')}"
+                    for i, r in enumerate(search_results[:max_pages])
+                ]
             )
-        else:
-            pages = []
-            yield WebSearchChunk(
-                agent_progress={
-                    "agent": "web_search",
-                    "phase": "ranking",
-                    "message": f"All {len(rejected_pages)} pages below relevance threshold",
-                }
+            fallback_msg = (
+                f'## Web Search: "{query}"\n\n'
+                f"**Found results but couldn't fetch full pages.**\n\n"
+                f"Here are the search snippets:\n\n{snippets}\n\n"
+                f"---\n*Page fetching failed. Try visiting the links directly.*"
             )
+            yield WebSearchChunk(status="generating")
+            yield WebSearchChunk(token=fallback_msg)
+            yield WebSearchChunk(sources=sources, is_complete=True)
+            return
 
-    # Phase 5: Handle zero sources - generate explanation
-    if not pages:
+        # Pages rejected after reranking - explain why
         yield WebSearchChunk(
             agent_progress={
                 "agent": "web_search",
@@ -1618,29 +1357,16 @@ async def web_search_stream(
         yield WebSearchChunk(sources=sources, is_complete=True)
         return
 
-    # Phase 6: Context fitting - trim sources to fit context window
-    if context_window is None:
-        context_window = await get_model_context_window(
-            model_name, ollama_url, default=16384
-        )
-
-    fitted_pages, allocations = fit_sources_to_context(
-        pages=pages,
-        source_scores=source_scores,
-        context_window=context_window,
-        input_context_pct=input_context_pct,
-        max_source_context_pct=max_source_context_pct,
-    )
-
-    # Update sources with content_chars based on allocations
-    for source in sources:
-        if source.url in allocations:
-            source.content_chars = allocations[source.url]
-
     # Use fitted pages for summarization
     pages = fitted_pages
 
-    # Phase 8: Summarize - yield status then tokens
+    # Build source_scores dict from SourceNode results for synthesis config
+    source_scores: Dict[str, float] = {}
+    for node in source_nodes:
+        if node.url and node.relevance_score is not None:
+            source_scores[node.url] = node.relevance_score
+
+    # Phase 7: Summarize - yield status then tokens
     yield WebSearchChunk(
         agent_progress={
             "agent": "web_search",
@@ -1651,15 +1377,42 @@ async def web_search_stream(
     )
     yield WebSearchChunk(status="generating")
 
-    async for token in summarize_with_llm_stream(
-        query,
-        pages,
-        model_name,
-        ollama_url,
-        context_window,
-        custom_instructions,
+    # Convert tuple format to dict format for synthesis engine
+    pages_dict = [
+        {"url": url, "title": title, "content": content, "status": "success"}
+        for url, title, content in pages
+    ]
+
+    # Debug: Log titles being passed to synthesis
+    logger.info(f"Passing {len(pages_dict)} pages to synthesis:")
+    for i, p in enumerate(pages_dict, 1):
+        logger.info(f"  {i}. title='{p['title']}' url={p['url'][:50]}...")
+
+    # Build synthesis config
+    synthesis_config = SynthesisConfig(
+        query=query,
+        context_window=context_window,
+        citation_style=CitationStyle.HYPERLINK,
+        custom_instructions=custom_instructions,
         source_scores=source_scores if source_scores else None,
-    ):
+        input_context_pct=input_context_pct,
+        max_source_context_pct=max_source_context_pct,
+    )
+
+    # Initialize LLM for synthesis
+    thinking_enabled = check_thinking_support(model_name)
+    llm = Ollama(
+        model=model_name,
+        base_url=ollama_url,
+        request_timeout=120.0,
+        temperature=0.3,
+        context_window=context_window,
+        num_ctx=context_window,
+        thinking=thinking_enabled,
+    )
+
+    # Use core synthesis engine
+    async for token in core_synthesize(llm, synthesis_config, pages_dict):
         yield WebSearchChunk(token=token)
 
     # Final: yield sources and complete

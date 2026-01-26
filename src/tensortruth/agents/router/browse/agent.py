@@ -6,9 +6,15 @@ from typing import Dict, List, Optional, cast
 from llama_index.core.tools import FunctionTool
 from llama_index.llms.ollama import Ollama
 
-from tensortruth.agents.config import AgentCallbacks
+from tensortruth.agents.config import AgentCallbacks, AgentResult
 from tensortruth.agents.router.base import RouterAgent
 from tensortruth.agents.router.state import RouterState
+from tensortruth.core.sources import SourceNode
+from tensortruth.core.synthesis import (
+    CitationStyle,
+    SynthesisConfig,
+    synthesize_with_llm_stream,
+)
 
 from .executor import BrowseExecutor
 from .router import BrowseRouter
@@ -129,11 +135,21 @@ class BrowseAgent(RouterAgent):
             if callbacks and callbacks.on_tool_call:
                 callbacks.on_tool_call("search_web", {"queries": queries})
             return await self.executor.execute_search(browse_state)
-        elif action == "fetch_pages_batch":
-            # Build params for callback
-            urls = self.executor._select_urls(browse_state)
+        elif action == "fetch_sources":
+            # Build params for callback - show all search results
             if callbacks and callbacks.on_tool_call:
-                callbacks.on_tool_call("fetch_pages_batch", {"urls": urls})
+                url_count = (
+                    len(browse_state.search_results)
+                    if browse_state.search_results
+                    else 0
+                )
+                callbacks.on_tool_call(
+                    "fetch_sources",
+                    {
+                        "search_result_count": url_count,
+                        "target_pages": browse_state.min_pages_required,
+                    },
+                )
             return await self.executor.execute_fetch(browse_state)
         elif action == "done":
             browse_state.phase = WorkflowPhase.COMPLETE
@@ -141,8 +157,28 @@ class BrowseAgent(RouterAgent):
         else:
             raise ValueError(f"Unknown action: {action}")
 
+    def _build_result(self, state: RouterState, final_answer: str) -> AgentResult:
+        """Build AgentResult with rich source metadata.
+
+        Overrides base class to add SourceNode objects with titles, scores, etc.
+
+        Args:
+            state: Final browse state
+            final_answer: Synthesized answer
+
+        Returns:
+            AgentResult with sources populated
+        """
+        return AgentResult(
+            final_answer=final_answer,
+            iterations=state.iteration_count,
+            tools_called=state.actions_taken,
+            urls_browsed=self._extract_urls(state),
+            sources=self._extract_sources(state),
+        )
+
     async def _synthesize(self, state: RouterState, callbacks: AgentCallbacks) -> str:
-        """Synthesize answer from browse state with content trimming.
+        """Synthesize answer using core synthesis engine.
 
         Args:
             state: Final browse state
@@ -153,78 +189,39 @@ class BrowseAgent(RouterAgent):
         """
         browse_state = cast(BrowseState, state)
 
-        # Format pages for synthesis
-        pages_content = self._format_pages_for_synthesis(browse_state.pages)
-
-        # Check if content needs trimming
-        content_size = len(pages_content)
-        if content_size > browse_state.max_content_chars:
-            logger.warning(
-                f"Content size ({content_size} chars) exceeds limit "
-                f"({browse_state.max_content_chars} chars). Trimming to fit context window."
-            )
-            pages_content = pages_content[: browse_state.max_content_chars]
-            pages_content += "\n\n[...Content trimmed to fit context window...]"
-
-        # Build synthesis prompt
-        prompt_template = """Synthesize a comprehensive answer from the research results below.
-
-Query: {query}
-
-Research Results ({page_count} pages fetched):
-{pages_content}
-
-Instructions:
-- Provide a clear, comprehensive answer to the query
-- Use inline citations with [Source N] format
-- Synthesize information from multiple sources
-- Include relevant details and examples
-- If information is conflicting, note the differences
-
-Answer:"""
-
-        prompt = prompt_template.format(
+        # Build synthesis config
+        synthesis_config = SynthesisConfig(
             query=browse_state.query,
-            page_count=len(browse_state.pages) if browse_state.pages else 0,
-            pages_content=pages_content,
+            context_window=self.synthesis_llm.context_window,
+            citation_style=CitationStyle.HYPERLINK,  # Match web command format
         )
-
-        # Verify final prompt fits in context window
-        prompt_size = len(prompt)
-        expected_output_size = 2000 * 4  # ~8000 chars
-        total_size = prompt_size + expected_output_size
-
-        if total_size > (self.synthesis_llm.context_window * 4):
-            logger.error(
-                f"Prompt too large: {prompt_size} chars + {expected_output_size} output "
-                f"> {self.synthesis_llm.context_window * 4} context limit"
-            )
-            # Further trim if needed
-            allowed_content = browse_state.max_content_chars - (
-                prompt_size - content_size
-            )
-            if allowed_content > 0:
-                pages_content = pages_content[:allowed_content]
-                pages_content += "\n\n[...Content trimmed to fit context window...]"
-                prompt = prompt_template.format(
-                    query=browse_state.query,
-                    page_count=len(browse_state.pages) if browse_state.pages else 0,
-                    pages_content=pages_content,
-                )
-
-        # Stream synthesis
-        logger.info("Starting answer synthesis...")
 
         # Send progress update before synthesis
         if callbacks.on_progress:
             callbacks.on_progress("Synthesizing answer from fetched pages...")
 
+        # Use core synthesis engine
+        logger.info("Starting answer synthesis with core synthesis engine...")
+
+        # Ensure pages is not None (it should be populated by this point)
+        pages = browse_state.pages if browse_state.pages else []
+
+        # Debug: Log titles being passed to synthesis
+        logger.info(f"Browse agent passing {len(pages)} pages to synthesis:")
+        for i, p in enumerate(pages, 1):
+            logger.info(
+                f"  {i}. title='{p.get('title', 'NO TITLE')}' url={p.get('url', 'NO URL')[:50]}..."
+            )
+
         full_answer = ""
-        async for chunk in await self.synthesis_llm.astream_complete(prompt):
-            if chunk.delta:
-                full_answer += chunk.delta
-                if callbacks.on_token:
-                    callbacks.on_token(chunk.delta)
+        async for token in synthesize_with_llm_stream(
+            self.synthesis_llm,
+            synthesis_config,
+            pages,  # type: ignore[arg-type]
+        ):
+            full_answer += token
+            if callbacks.on_token:
+                callbacks.on_token(token)
 
         logger.info(f"Synthesis complete: {len(full_answer)} chars")
         return full_answer
@@ -244,30 +241,33 @@ Answer:"""
         # Return all pages regardless of status for transparency
         return [p["url"] for p in browse_state.pages]
 
-    def _format_pages_for_synthesis(self, pages: Optional[List[Dict]]) -> str:
-        """Format pages for synthesis prompt.
+    def _extract_sources(self, state: RouterState) -> List[SourceNode]:
+        """Extract rich source metadata from browse state.
+
+        The pipeline (SourceFetchPipeline) already built SourceNode objects
+        with all metadata (titles, scores, status, errors). We just return them.
 
         Args:
-            pages: List of page dictionaries
+            state: Browse state
 
         Returns:
-            Formatted string for prompt
+            List of SourceNode objects with titles, scores, content, etc.
         """
-        if not pages:
-            return "No pages fetched."
+        browse_state = cast(BrowseState, state)
 
-        formatted = []
-        for i, page in enumerate(pages, 1):
-            if page["status"] == "success" and page.get("content"):
-                formatted.append(
-                    f"## Source {i}: {page['title']}\n"
-                    f"URL: {page['url']}\n\n{page['content']}\n"
-                )
+        # Pipeline already built source_nodes with all metadata
+        if browse_state.source_nodes:
+            logger.info(
+                f"_extract_sources: Returning {len(browse_state.source_nodes)} "
+                f"sources from pipeline"
+            )
+            return browse_state.source_nodes
 
-        if not formatted:
-            return "No successful pages to synthesize."
-
-        return "\n---\n\n".join(formatted)
+        # Fallback if no source_nodes (shouldn't happen with pipeline)
+        logger.warning(
+            "_extract_sources: No source_nodes from pipeline, returning empty"
+        )
+        return []
 
     def get_metadata(self) -> Dict:
         """Get BrowseAgent metadata.

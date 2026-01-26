@@ -10,12 +10,12 @@ Based on the current state, decide the next action.
 
 **Available Actions:**
 1. search_web - Search the web for information
-2. fetch_pages_batch - Fetch and download web pages
+2. fetch_sources - Fetch and download web pages
 3. done - Complete research and synthesize answer
 
 **Decision Rules:**
 - If search results = 0: MUST use "search_web"
-- If search results > 0 AND pages fetched = 0: MUST use "fetch_pages_batch"
+- If search results > 0 AND pages fetched = 0: MUST use "fetch_sources"
 - If pages fetched >= min pages: MUST use "done"
 - NEVER repeat the last action
 
@@ -27,10 +27,10 @@ Decision: {{"action": "search_web"}}
 
 Example 2:
 State: Results=10, Pages=0/3, Last=search_web
-Decision: {{"action": "fetch_pages_batch"}}
+Decision: {{"action": "fetch_sources"}}
 
 Example 3:
-State: Results=10, Pages=3/3, Last=fetch_pages_batch
+State: Results=10, Pages=3/3, Last=fetch_sources
 Decision: {{"action": "done"}}
 
 **Your Turn:**

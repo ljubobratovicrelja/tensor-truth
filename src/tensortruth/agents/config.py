@@ -68,6 +68,7 @@ class AgentResult:
         iterations: Number of reasoning iterations performed
         tools_called: List of tool names that were invoked
         urls_browsed: List of URLs that were fetched during execution
+        sources: Rich source metadata (titles, scores, content) for frontend display
         error: Error message if execution failed
     """
 
@@ -75,6 +76,9 @@ class AgentResult:
     iterations: int = 0
     tools_called: list[str] = field(default_factory=list)
     urls_browsed: list[str] = field(default_factory=list)
+    sources: list[Any] = field(
+        default_factory=list
+    )  # List[SourceNode] but avoid circular import
     error: Optional[str] = None
 
 

@@ -24,7 +24,7 @@ def create_browse_agent(
 
     Args:
         config: Agent configuration
-        tools: Tools (must include search_web, fetch_pages_batch)
+        tools: Tools (must include search_web)
         synthesis_llm: Session model for synthesis
         session_params: router_model, min_pages_required, context_window,
                        ollama_url, reranker_model, rag_device
@@ -37,7 +37,7 @@ def create_browse_agent(
     """
     # Validate tools
     tool_names = {t.metadata.name for t in tools}
-    required = {"search_web", "fetch_pages_batch"}
+    required = {"search_web"}
     missing = required - tool_names
     if missing:
         raise ValueError(f"BrowseAgent requires tools: {required}. Missing: {missing}")

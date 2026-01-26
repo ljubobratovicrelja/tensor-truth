@@ -33,7 +33,7 @@ class BrowseRouter:
             state: Current browse state
 
         Returns:
-            Action name: "search_web", "fetch_pages_batch", or "done"
+            Action name: "search_web", "fetch_sources", or "done"
         """
         prompt = self._build_prompt(state)
 
@@ -101,7 +101,7 @@ class BrowseRouter:
         Returns:
             True if valid, False otherwise
         """
-        valid_actions = ["search_web", "fetch_pages_batch", "done"]
+        valid_actions = ["search_web", "fetch_sources", "done"]
         return action in valid_actions
 
     def _deterministic_route(self, state: BrowseState) -> str:
@@ -129,12 +129,12 @@ class BrowseRouter:
 
         # Have results but no pages → fetch
         if not state.pages or len(state.pages) == 0:
-            return "fetch_pages_batch"
+            return "fetch_sources"
 
         # Need more pages and can retry
         if state.fetch_iterations < state.max_fetch_iterations:
             if state.next_url_index < len(state.search_results):
-                return "fetch_pages_batch"
+                return "fetch_sources"
 
         # Fallback to done if we've exhausted options
         return "done"

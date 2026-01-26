@@ -142,9 +142,21 @@ class BrowseExecutor:
                 reranker=reranker,
             )
 
-            # Extract results (discard scores)
-            reranked = [result for result, score in ranked_results]
-            logger.info(f"Reranking complete: top = {reranked[0]['title']}")
+            # Attach scores to results for later use
+            reranked: List[Dict] = []
+            for result, score in ranked_results:
+                # Add relevance_score to result dict
+                result_with_score: Dict = dict(result)  # type: ignore[assignment]
+                result_with_score["relevance_score"] = float(score)
+                reranked.append(result_with_score)
+                logger.debug(
+                    f"Reranked: {result.get('url')} -> score={float(score):.2f}"
+                )
+            top_title = reranked[0]["title"]
+            top_score = reranked[0].get("relevance_score", 0.0)
+            logger.info(
+                f"Reranking complete: top = {top_title} (score: {top_score:.2f})"
+            )
 
             return reranked
 
@@ -186,48 +198,83 @@ class BrowseExecutor:
         return state
 
     async def execute_fetch(self, state: BrowseState) -> BrowseState:
-        """Execute fetch_pages_batch with overflow protection.
+        """Execute unified fetch+rerank+fit pipeline.
 
         Args:
             state: Current browse state
 
         Returns:
-            Updated browse state with fetched pages
+            Updated browse state with fitted pages and sources
         """
-        # Select URLs to fetch
-        urls = self._select_urls(state)
-
-        if not urls:
-            logger.warning("No URLs to fetch")
+        if not state.search_results:
+            logger.warning("No search results to fetch")
             state.phase = WorkflowPhase.COMPLETE
             return state
 
-        logger.info(f"Executing fetch with {len(urls)} URLs")
-
-        # Call fetch_pages_batch with overflow protection
-        fetch_tool = self.tools["fetch_pages_batch"]
-        result = await fetch_tool.acall(
-            urls=urls,
-            max_content_chars=state.max_content_chars,
-            min_pages=state.min_pages_required,
-        )
-
-        logger.info(f"Fetch returned {len(str(result))} chars")
-
-        # Parse result (handles all three cases)
-        result_data = self._parse_tool_result(result)
-        state.pages = result_data["pages"]
-        state.content_overflow = result_data["overflow"]
-        state.total_content_chars = result_data["total_chars"]
-        state.phase = WorkflowPhase.FETCHED
-        state.fetch_iterations += 1
-        state.actions_taken.append("fetch_pages_batch")
-
         logger.info(
-            f"Fetch completed: {len(state.pages)} pages, "
-            f"{state.total_content_chars} chars, "
-            f"overflow={state.content_overflow}"
+            f"Executing unified pipeline: {len(state.search_results)} search results"
         )
+
+        # Import and create pipeline
+        from tensortruth.core.source_pipeline import SourceFetchPipeline
+
+        # Create pipeline instance
+        pipeline = SourceFetchPipeline(
+            query=state.query,
+            max_pages=state.min_pages_required,
+            context_window=state.max_content_chars // 4,  # Convert chars to tokens
+            reranker_model=state.reranker_model,
+            reranker_device=state.rag_device or "cpu",
+            rerank_content_threshold=0.1,  # Can be made configurable
+            max_source_context_pct=0.15,
+            input_context_pct=0.6,
+            custom_instructions=None,
+            progress_callback=None,
+        )
+
+        try:
+            # Execute pipeline: fetch + rerank + fit
+            fitted_pages, source_nodes, allocations = await pipeline.execute(
+                state.search_results
+            )
+
+            logger.info(
+                f"Pipeline complete: {len(fitted_pages)} fitted pages, "
+                f"{len(source_nodes)} total sources"
+            )
+
+            # Convert fitted tuples to dict format for state.pages
+            state.pages = [
+                {
+                    "url": url,
+                    "title": title,
+                    "content": content,
+                    "status": "success",
+                }
+                for url, title, content in fitted_pages
+            ]
+
+            # Store source nodes for later extraction
+            state.source_nodes = source_nodes  # type: ignore[attr-defined]
+
+            # Calculate total content chars from allocations
+            state.total_content_chars = sum(allocations.values())
+            state.content_overflow = False  # Pipeline handles fitting
+
+            state.phase = WorkflowPhase.FETCHED
+            state.fetch_iterations += 1
+            state.actions_taken.append("fetch_sources")
+
+            logger.info(
+                f"Fetch completed: {len(state.pages)} pages, "
+                f"{state.total_content_chars} chars fitted to context"
+            )
+
+        except Exception as e:
+            logger.error(f"Pipeline execution failed: {e}")
+            state.pages = []
+            state.source_nodes = []  # type: ignore[attr-defined]
+            state.phase = WorkflowPhase.COMPLETE
 
         return state
 
@@ -245,21 +292,3 @@ class BrowseExecutor:
             f"{query} technical details",
             f"{query} recent 2026",
         ]
-
-    def _select_urls(self, state: BrowseState) -> List[str]:
-        """Select URLs to fetch from search results.
-
-        Args:
-            state: Current browse state
-
-        Returns:
-            List of URLs to fetch
-        """
-        if not state.search_results:
-            return []
-
-        # Return next batch of URLs
-        start_idx = state.next_url_index
-        end_idx = start_idx + state.min_pages_required
-
-        return [r["url"] for r in state.search_results[start_idx:end_idx]]
