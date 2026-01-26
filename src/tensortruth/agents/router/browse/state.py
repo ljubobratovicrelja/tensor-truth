@@ -44,7 +44,7 @@ class BrowseState(RouterState):
     # Browse-specific fields
     search_results: Optional[List[Dict]] = None
     pages: Optional[List[Dict]] = None
-    source_nodes: Optional[List[Any]] = None  # List[SourceNode] from pipeline
+    source_nodes: Optional[List[Any]] = None  # List[UnifiedSource] from pipeline
     min_pages_required: int = 5
     max_content_chars: int = field(default=0)  # Calculated from context window
     total_content_chars: int = 0

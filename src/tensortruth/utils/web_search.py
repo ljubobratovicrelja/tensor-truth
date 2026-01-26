@@ -23,7 +23,6 @@ from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
 from llama_index.llms.ollama import Ollama
 from markdownify import markdownify as md
 
-from tensortruth.core.deprecation import deprecated
 from tensortruth.core.ollama import check_thinking_support
 from tensortruth.core.synthesis import (
     CitationStyle,
@@ -453,43 +452,6 @@ class WebSearchChunk:
     token: Optional[str] = None
     sources: Optional[List["WebSearchSource"]] = None
     is_complete: bool = False
-
-
-@deprecated("Use SourceConverter.to_api_schema() with UnifiedSource instead.")
-def web_source_to_source_node(source: WebSearchSource) -> Dict[str, Any]:
-    """Convert WebSearchSource to SourceNode format for unified UI.
-
-    This enables web search sources to be displayed using the same SourcesList
-    component used for RAG sources, providing a consistent user experience.
-
-    Args:
-        source: WebSearchSource from web search pipeline
-
-    Returns:
-        Dict matching SourceNode schema with web-specific metadata
-    """
-    # Use full content if available (for successful fetches), else snippet
-    text = source.content if source.content else (source.snippet or "")
-
-    # Use relevance_score for display if available, else fallback to status-based score
-    score = (
-        source.relevance_score
-        if source.relevance_score is not None
-        else (1.0 if source.status == "success" else 0.0)
-    )
-
-    return {
-        "text": text,
-        "score": score,
-        "metadata": {
-            "source_url": source.url,
-            "display_name": source.title,
-            "doc_type": "web",
-            "fetch_status": source.status,
-            "fetch_error": source.error,
-            "content_chars": source.content_chars,
-        },
-    }
 
 
 # Type alias for progress callbacks
@@ -1339,19 +1301,27 @@ async def web_search_stream(
         yield WebSearchChunk(sources=[], is_complete=True)
         return
 
-    # Convert SourceNode to WebSearchSource for compatibility
+    # Convert UnifiedSource to WebSearchSource for compatibility
     sources: List[WebSearchSource] = []
     for node in source_nodes:
+        # Map SourceStatus to string literal
+        status_str: Literal["success", "failed", "skipped"] = (
+            "success"
+            if node.status.value == "success"
+            else (
+                "skipped" if node.status.value in ("skipped", "filtered") else "failed"
+            )
+        )
         sources.append(
             WebSearchSource(
-                url=node.url,
+                url=node.url or "",
                 title=node.title,
-                status=node.status,
+                status=status_str,
                 error=node.error,
                 snippet=node.snippet,
                 content=node.content,
                 content_chars=node.content_chars,
-                relevance_score=node.relevance_score,
+                relevance_score=node.score,
             )
         )
 
@@ -1411,11 +1381,11 @@ async def web_search_stream(
     # Use fitted pages for summarization
     pages = fitted_pages
 
-    # Build source_scores dict from SourceNode results for synthesis config
+    # Build source_scores dict from UnifiedSource results for synthesis config
     source_scores: Dict[str, float] = {}
     for node in source_nodes:
-        if node.url and node.relevance_score is not None:
-            source_scores[node.url] = node.relevance_score
+        if node.url and node.score is not None:
+            source_scores[node.url] = node.score
 
     # Phase 7: Summarize - yield status then tokens
     yield WebSearchChunk(

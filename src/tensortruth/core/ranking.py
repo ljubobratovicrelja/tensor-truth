@@ -1,13 +1,13 @@
 """Unified reranking interface for both web search and RAG pipelines.
 
-This module provides a single reranking interface that works with UnifiedSource,
+This module provides a single reranking interface that works with SourceNode,
 replacing the separate reranking logic in web_search.py and rag_engine.py.
 """
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Protocol
 
-from tensortruth.core.unified_sources import SourceStatus, UnifiedSource
+from tensortruth.core.source import SourceNode, SourceStatus
 
 if TYPE_CHECKING:
     pass
@@ -36,12 +36,12 @@ class Reranker(Protocol):
 class RankingResult:
     """Result of a ranking operation."""
 
-    passed: List[UnifiedSource] = field(default_factory=list)
-    filtered: List[UnifiedSource] = field(default_factory=list)
+    passed: List[SourceNode] = field(default_factory=list)
+    filtered: List[SourceNode] = field(default_factory=list)
     scores: Dict[str, float] = field(default_factory=dict)
 
     @property
-    def all_sources(self) -> List[UnifiedSource]:
+    def all_sources(self) -> List[SourceNode]:
         """Get all sources (passed + filtered), sorted by score descending."""
         all_items = self.passed + self.filtered
         return sorted(
@@ -62,7 +62,7 @@ class RankingStage:
         self,
         reranker: Optional[Reranker] = None,
         threshold: float = 0.0,
-        text_extractor: Optional[Callable[[UnifiedSource], str]] = None,
+        text_extractor: Optional[Callable[[SourceNode], str]] = None,
     ):
         """Initialize ranking stage.
 
@@ -77,7 +77,7 @@ class RankingStage:
 
     def rank(
         self,
-        items: List[UnifiedSource],
+        items: List[SourceNode],
         query: str,
         custom_instructions: Optional[str] = None,
         top_n: Optional[int] = None,
@@ -129,8 +129,8 @@ class RankingStage:
                 source.score = score
 
         # Separate passed and filtered based on threshold
-        passed: List[UnifiedSource] = []
-        filtered: List[UnifiedSource] = []
+        passed: List[SourceNode] = []
+        filtered: List[SourceNode] = []
 
         for source in items:
             if source.id in scores:
@@ -154,7 +154,7 @@ class RankingStage:
 
         return RankingResult(passed=passed, filtered=filtered, scores=scores)
 
-    def _passthrough_result(self, items: List[UnifiedSource]) -> RankingResult:
+    def _passthrough_result(self, items: List[SourceNode]) -> RankingResult:
         """Return items without reranking."""
         scores = {item.id: item.score or 0.0 for item in items}
 

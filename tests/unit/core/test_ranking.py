@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from tensortruth.core.ranking import RankingResult, RankingStage
-from tensortruth.core.unified_sources import SourceStatus, SourceType, UnifiedSource
+from tensortruth.core.source import SourceNode, SourceStatus, SourceType
 
 
 def make_source(
@@ -14,9 +14,9 @@ def make_source(
     content: str = "test content",
     score: float = None,
     status: SourceStatus = SourceStatus.SUCCESS,
-) -> UnifiedSource:
+) -> SourceNode:
     """Helper to create test sources."""
-    return UnifiedSource(
+    return SourceNode(
         id=id,
         title=f"Source {id}",
         source_type=SourceType.WEB,
@@ -172,7 +172,7 @@ class TestRankingStage:
     def test_rank_uses_text_extractor(self):
         """Test that custom text extractor is used."""
 
-        def custom_extractor(s: UnifiedSource) -> str:
+        def custom_extractor(s: SourceNode) -> str:
             return f"EXTRACTED: {s.title}"
 
         reranker = MockReranker({0: 0.8})

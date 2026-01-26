@@ -20,12 +20,11 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, WebSocket
 
 from tensortruth.api.deps import get_agent_service
+from tensortruth.core.source import SourceNode
+from tensortruth.core.source_converter import SourceConverter
 from tensortruth.services.agent_service import AgentCallbacks
 from tensortruth.services.config_service import ConfigService
-from tensortruth.utils.web_search import (
-    web_search_stream,
-    web_source_to_source_node,
-)
+from tensortruth.utils.web_search import web_search_stream
 
 logger = logging.getLogger(__name__)
 
@@ -252,10 +251,13 @@ class WebSearchCommand(ToolCommand):
                 elif chunk.sources is not None:
                     # Store sources for session saving
                     sources_for_session = chunk.sources
-                    # Convert to SourceNode format for unified UI
+                    # Convert to API format via SourceNode
                     if chunk.sources:
                         source_nodes = [
-                            web_source_to_source_node(s) for s in chunk.sources
+                            SourceConverter.to_api_schema(
+                                SourceConverter.from_web_search_source(s)
+                            )
+                            for s in chunk.sources
                         ]
                         await websocket.send_json(
                             {"type": "sources", "data": source_nodes}
@@ -274,7 +276,12 @@ class WebSearchCommand(ToolCommand):
                     "title_pending": is_first,
                     # Include sources in done for session saving
                     "sources": (
-                        [web_source_to_source_node(s) for s in sources_for_session]
+                        [
+                            SourceConverter.to_api_schema(
+                                SourceConverter.from_web_search_source(s)
+                            )
+                            for s in sources_for_session
+                        ]
                         if sources_for_session
                         else None
                     ),
@@ -545,33 +552,14 @@ class BrowseCommand(ToolCommand):
                 logger.warning("Browse agent completed but found no sources")
 
             # 6. Convert SourceNode objects to frontend format
-            from tensortruth.core.sources import SourceNode
-
             source_nodes = []
             for source in result.sources:
                 if isinstance(source, SourceNode):
-                    # Use rich metadata from SourceNode
-                    # Map to frontend-expected field names
-                    source_nodes.append(
-                        {
-                            "text": source.content
-                            or source.title,  # Show content, fallback to title
-                            "score": (
-                                source.relevance_score
-                                if source.relevance_score is not None
-                                else 1.0
-                            ),
-                            "metadata": {
-                                "source_url": source.url,  # Frontend expects source_url
-                                "display_name": source.title,  # Frontend expects display_name
-                                "doc_type": "web",  # Mark as web source
-                                "fetch_status": source.status,  # Frontend expects fetch_status
-                                "fetch_error": source.error,  # Frontend expects fetch_error
-                                "content_chars": source.content_chars,
-                                "source_type": "browse_agent",  # Keep for backward compat
-                            },
-                        }
-                    )
+                    # Use SourceConverter for consistent API format
+                    api_source = SourceConverter.to_api_schema(source)
+                    # Add browse_agent marker for backward compat
+                    api_source["metadata"]["source_type"] = "browse_agent"
+                    source_nodes.append(api_source)
                 else:
                     # Fallback for backward compatibility (shouldn't happen)
                     logger.warning(f"Unexpected source type: {type(source)}")

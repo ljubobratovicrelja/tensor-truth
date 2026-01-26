@@ -1,33 +1,33 @@
 """Converters between different source representations.
 
 This module provides conversion utilities between:
-- Web search sources (SourceNode from core/sources.py)
+- Web search sources (WebSearchSource from utils/web_search.py)
 - RAG nodes (NodeWithScore from llama_index)
-- Unified sources (UnifiedSource)
+- Unified sources (SourceNode)
 - API schemas (SourceNode from api/schemas/chat.py)
 """
 
 import hashlib
 from typing import TYPE_CHECKING, Any, Dict, List
 
-from tensortruth.core.unified_sources import SourceStatus, SourceType, UnifiedSource
+from tensortruth.core.source import SourceNode, SourceStatus, SourceType
 
 if TYPE_CHECKING:
-    from tensortruth.core.sources import SourceNode as WebSourceNode
+    from tensortruth.utils.web_search import WebSearchSource
 
 
 class SourceConverter:
     """Convert between different source representations."""
 
     @staticmethod
-    def from_web_source(source: "WebSourceNode") -> UnifiedSource:
-        """Convert web search SourceNode to UnifiedSource.
+    def from_web_search_source(source: "WebSearchSource") -> SourceNode:
+        """Convert WebSearchSource to SourceNode.
 
         Args:
-            source: SourceNode from core/sources.py (web search result)
+            source: WebSearchSource from utils/web_search.py
 
         Returns:
-            UnifiedSource with mapped fields
+            SourceNode with mapped fields
         """
         # Map status string to enum
         status_map = {
@@ -40,7 +40,7 @@ class SourceConverter:
         # Generate stable ID from URL
         source_id = SourceConverter._generate_id(source.url)
 
-        return UnifiedSource(
+        return SourceNode(
             id=source_id,
             url=source.url,
             title=source.title,
@@ -57,15 +57,15 @@ class SourceConverter:
         )
 
     @staticmethod
-    def from_rag_node(node: Any, node_index: int = 0) -> UnifiedSource:
-        """Convert LlamaIndex NodeWithScore to UnifiedSource.
+    def from_rag_node(node: Any, node_index: int = 0) -> SourceNode:
+        """Convert LlamaIndex NodeWithScore to SourceNode.
 
         Args:
             node: NodeWithScore or TextNode from llama_index
             node_index: Index for ID generation if no unique identifier
 
         Returns:
-            UnifiedSource with mapped fields
+            SourceNode with mapped fields
         """
         # Handle NodeWithScore wrapper
         inner_node = getattr(node, "node", node)
@@ -111,7 +111,7 @@ class SourceConverter:
             or "Untitled"
         )
 
-        return UnifiedSource(
+        return SourceNode(
             id=source_id,
             url=url,
             title=title,
@@ -125,14 +125,14 @@ class SourceConverter:
         )
 
     @staticmethod
-    def to_api_schema(source: UnifiedSource) -> Dict[str, Any]:
-        """Convert UnifiedSource to API response schema.
+    def to_api_schema(source: SourceNode) -> Dict[str, Any]:
+        """Convert SourceNode to API response schema.
 
         Returns a dict matching the SourceNode Pydantic model structure
         in api/schemas/chat.py.
 
         Args:
-            source: UnifiedSource to convert
+            source: SourceNode to convert
 
         Returns:
             Dict with 'text', 'score', and 'metadata' keys
@@ -155,19 +155,19 @@ class SourceConverter:
 
         return {
             "text": text,
-            "score": source.score,
+            "score": source.effective_score,
             "metadata": metadata,
         }
 
     @staticmethod
-    def to_web_search_schema(source: UnifiedSource) -> Dict[str, Any]:
-        """Convert UnifiedSource to WebSearchSource API schema.
+    def to_web_search_schema(source: SourceNode) -> Dict[str, Any]:
+        """Convert SourceNode to WebSearchSource API schema.
 
         Returns a dict matching the WebSearchSource Pydantic model structure
         in api/schemas/chat.py (used for streaming web search updates).
 
         Args:
-            source: UnifiedSource to convert
+            source: SourceNode to convert
 
         Returns:
             Dict with url, title, status, error, snippet keys
@@ -185,25 +185,25 @@ class SourceConverter:
         }
 
     @staticmethod
-    def batch_from_rag_nodes(nodes: List[Any]) -> List[UnifiedSource]:
-        """Convert a list of RAG nodes to UnifiedSources.
+    def batch_from_rag_nodes(nodes: List[Any]) -> List[SourceNode]:
+        """Convert a list of RAG nodes to SourceNodes.
 
         Args:
             nodes: List of NodeWithScore or TextNode objects
 
         Returns:
-            List of UnifiedSource objects
+            List of SourceNode objects
         """
         return [
             SourceConverter.from_rag_node(node, idx) for idx, node in enumerate(nodes)
         ]
 
     @staticmethod
-    def batch_to_api_schema(sources: List[UnifiedSource]) -> List[Dict[str, Any]]:
-        """Convert multiple UnifiedSources to API schema dicts.
+    def batch_to_api_schema(sources: List[SourceNode]) -> List[Dict[str, Any]]:
+        """Convert multiple SourceNodes to API schema dicts.
 
         Args:
-            sources: List of UnifiedSource objects
+            sources: List of SourceNode objects
 
         Returns:
             List of dicts matching SourceNode API schema

@@ -9,7 +9,7 @@ from llama_index.llms.ollama import Ollama
 from tensortruth.agents.config import AgentCallbacks, AgentResult
 from tensortruth.agents.router.base import RouterAgent
 from tensortruth.agents.router.state import RouterState
-from tensortruth.core.sources import SourceNode
+from tensortruth.core.source import SourceNode
 from tensortruth.core.synthesis import (
     CitationStyle,
     SynthesisConfig,

@@ -7,15 +7,16 @@ from .ollama import (
     get_running_models_detailed,
     stop_model,
 )
+from .source import SourceNode, SourceStatus, SourceType
 from .source_pipeline import SourceFetchPipeline
-from .sources import SourceNode
 from .synthesis import (
     CitationStyle,
     SynthesisConfig,
     synthesize_with_llm_stream,
 )
 from .system import get_max_memory_gb
-from .types import DocType, DocumentType, SourceType
+from .types import DocType, DocumentType
+from .types import SourceType as ConfigSourceType
 
 __all__ = [
     "get_available_models",
@@ -26,8 +27,10 @@ __all__ = [
     "get_max_memory_gb",
     "DocType",
     "DocumentType",
-    "SourceType",
+    "ConfigSourceType",
     "SourceNode",
+    "SourceStatus",
+    "SourceType",
     "SourceFetchPipeline",
     "CitationStyle",
     "SynthesisConfig",

@@ -6,16 +6,15 @@ context window fitting. Used by both /web command and browse agent.
 """
 
 import asyncio
+import hashlib
 import logging
-from typing import Callable, Dict, List, Literal, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import aiohttp
 from llama_index.core.postprocessor import SentenceTransformerRerank
 
-from tensortruth.core.source_converter import SourceConverter
+from tensortruth.core.source import SourceNode, SourceStatus, SourceType
 from tensortruth.core.source_metrics import compute_metrics
-from tensortruth.core.sources import SourceNode
-from tensortruth.core.unified_sources import SourceStatus, SourceType, UnifiedSource
 from tensortruth.utils.web_search import (
     fetch_page_as_markdown,
     filter_by_threshold,
@@ -25,6 +24,11 @@ from tensortruth.utils.web_search import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _generate_id(content: str) -> str:
+    """Generate a stable ID from content."""
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
 class SourceFetchPipeline:
@@ -92,9 +96,6 @@ class SourceFetchPipeline:
         self.snippet_map: Dict[str, str] = {}
         self.reranker: Optional[SentenceTransformerRerank] = None
 
-        # Unified source tracking (internal use)
-        self._unified_sources: List[UnifiedSource] = []
-
     async def execute(
         self,
         search_results: List[Dict],
@@ -107,10 +108,10 @@ class SourceFetchPipeline:
         Returns:
             Tuple of:
             - fitted_pages: List[(url, title, content)] ready for synthesis
-            - sources: Rich SourceNode metadata with scores/status
+            - sources: List[SourceNode] with scores/status
             - allocations: Dict[url -> chars] context allocations
         """
-        # Build snippet map for SourceNode metadata
+        # Build snippet map for source metadata
         self.snippet_map = {r["url"]: r.get("snippet", "") for r in search_results}
 
         # Step 1: Fetch pages with adaptive retry
@@ -130,14 +131,14 @@ class SourceFetchPipeline:
         # Step 3: Fit to context window
         fitted_pages, allocations = self._fit_to_context()
 
-        # Update unified sources with content_chars from allocations
-        for unified in self._unified_sources:
-            if unified.url and unified.url in allocations:
-                unified.content_chars = allocations[unified.url]
+        # Update sources with content_chars from allocations
+        for source in self.sources:
+            if source.url and source.url in allocations:
+                source.content_chars = allocations[source.url]
 
         # Compute and log metrics
-        if self._unified_sources:
-            metrics = compute_metrics(self._unified_sources)
+        if self.sources:
+            metrics = compute_metrics(self.sources)
             logger.info(
                 f"Source metrics: {metrics.total_sources} total, "
                 f"mean score: {metrics.score_mean:.2f}"
@@ -211,17 +212,7 @@ class SourceFetchPipeline:
                         error_str = str(result)
                         self.sources.append(
                             SourceNode(
-                                url=url,
-                                title=title,
-                                status="failed",
-                                error=error_str,
-                                snippet=self.snippet_map.get(url),
-                            )
-                        )
-                        # Create unified source
-                        self._unified_sources.append(
-                            UnifiedSource(
-                                id=SourceConverter._generate_id(url),
+                                id=_generate_id(url),
                                 url=url,
                                 title=title,
                                 source_type=SourceType.WEB,
@@ -253,19 +244,7 @@ class SourceFetchPipeline:
                             pages_fetched += 1
                             self.sources.append(
                                 SourceNode(
-                                    url=url,
-                                    title=title,
-                                    status="success",
-                                    error=None,
-                                    snippet=self.snippet_map.get(url),
-                                    content=markdown,
-                                    content_chars=len(markdown),
-                                )
-                            )
-                            # Create unified source
-                            self._unified_sources.append(
-                                UnifiedSource(
-                                    id=SourceConverter._generate_id(url),
+                                    id=_generate_id(url),
                                     url=url,
                                     title=title,
                                     source_type=SourceType.WEB,
@@ -292,30 +271,15 @@ class SourceFetchPipeline:
 
                         else:
                             # Failed or skipped (too short, parse error, etc)
-                            source_status: Literal["success", "failed", "skipped"] = (
-                                "skipped"
-                                if status in ("too_short", "parse_error")
-                                else "failed"
-                            )
                             unified_status = (
                                 SourceStatus.SKIPPED
-                                if source_status == "skipped"
+                                if status in ("too_short", "parse_error")
                                 else SourceStatus.FAILED
                             )
                             pages_failed += 1
                             self.sources.append(
                                 SourceNode(
-                                    url=url,
-                                    title=title,
-                                    status=source_status,
-                                    error=error_msg,
-                                    snippet=self.snippet_map.get(url),
-                                )
-                            )
-                            # Create unified source
-                            self._unified_sources.append(
-                                UnifiedSource(
-                                    id=SourceConverter._generate_id(url),
+                                    id=_generate_id(url),
                                     url=url,
                                     title=title,
                                     source_type=SourceType.WEB,
@@ -325,16 +289,16 @@ class SourceFetchPipeline:
                                 )
                             )
                             logger.debug(
-                                f"Fetch {source_status}: {title} - {error_msg}"
+                                f"Fetch {unified_status.value}: {title} - {error_msg}"
                             )
 
                             if self.progress_callback:
                                 self.progress_callback(
                                     "fetching",
-                                    f"{source_status.title()}: {title}",
+                                    f"{unified_status.value.title()}: {title}",
                                     {
                                         "url": url,
-                                        "status": source_status,
+                                        "status": unified_status.value,
                                         "error": error_msg,
                                     },
                                 )
@@ -354,8 +318,8 @@ class SourceFetchPipeline:
         """Rerank fetched pages by actual content.
 
         Uses reranker model to score pages based on full content.
-        Updates SourceNode.relevance_score for all pages.
-        Marks low-scoring pages as skipped.
+        Updates SourceNode.score for all pages.
+        Marks low-scoring pages as filtered.
 
         Updates self.pages (filters out low-scoring) and self.sources (adds scores).
         """
@@ -411,34 +375,21 @@ class SourceFetchPipeline:
 
         # Update sources with relevance scores for ALL pages
         for (url, title, content), score in ranked_pages:
-            # Find and update the matching legacy source
             for source in self.sources:
-                if source.url == url and source.status == "success":
-                    source.relevance_score = score
+                if source.url == url and source.status == SourceStatus.SUCCESS:
+                    source.score = score
                     logger.debug(f"Score: {title} -> {score:.2f}")
                     break
-            # Also update unified source
-            for unified in self._unified_sources:
-                if unified.url == url and unified.status == SourceStatus.SUCCESS:
-                    unified.score = score
-                    break
 
-        # Mark rejected sources as skipped/filtered with reason
+        # Mark rejected sources as filtered with reason
         rejected_urls = {url for (url, title, content), score in rejected_pages}
         for source in self.sources:
-            if source.url in rejected_urls and source.status == "success":
-                score_pct = int((source.relevance_score or 0) * 100)
+            if source.url in rejected_urls and source.status == SourceStatus.SUCCESS:
+                score_pct = int((source.score or 0) * 100)
                 threshold_pct = int(self.rerank_content_threshold * 100)
-                source.status = "skipped"
+                source.status = SourceStatus.FILTERED
                 source.error = f"Low relevance ({score_pct}% < {threshold_pct}%)"
                 logger.debug(f"Rejected: {source.title} (score={score_pct}%)")
-        # Also mark unified sources as filtered
-        for unified in self._unified_sources:
-            if unified.url in rejected_urls and unified.status == SourceStatus.SUCCESS:
-                score_pct = int((unified.score or 0) * 100)
-                threshold_pct = int(self.rerank_content_threshold * 100)
-                unified.status = SourceStatus.FILTERED
-                unified.error = f"Low relevance ({score_pct}% < {threshold_pct}%)"
 
         # Update pages to only include passing pages
         if passing_pages:
@@ -488,8 +439,8 @@ class SourceFetchPipeline:
         # Build source_scores dict for fit_sources_to_context
         source_scores: Dict[str, float] = {}
         for source in self.sources:
-            if source.url and source.relevance_score is not None:
-                source_scores[source.url] = source.relevance_score
+            if source.url and source.score is not None:
+                source_scores[source.url] = source.score
 
         # Fit sources to context window
         fitted_pages, allocations = fit_sources_to_context(
@@ -521,10 +472,10 @@ class SourceFetchPipeline:
 
         return fitted_pages, allocations
 
-    def get_unified_sources(self) -> List[UnifiedSource]:
-        """Get sources as UnifiedSource objects.
+    def get_unified_sources(self) -> List[SourceNode]:
+        """Get sources as SourceNode objects.
 
-        Returns a copy of the internal unified sources list for external use.
+        Returns a copy of the sources list for external use.
         Useful for metrics computation and API conversion.
         """
-        return self._unified_sources.copy()
+        return self.sources.copy()

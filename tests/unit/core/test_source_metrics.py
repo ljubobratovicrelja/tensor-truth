@@ -2,13 +2,13 @@
 
 import pytest
 
+from tensortruth.core.source import SourceNode, SourceStatus, SourceType
 from tensortruth.core.source_metrics import (
     CHARS_PER_TOKEN,
     SourceMetrics,
     compute_coverage_score,
     compute_metrics,
 )
-from tensortruth.core.unified_sources import SourceStatus, SourceType, UnifiedSource
 
 
 def make_source(
@@ -16,9 +16,9 @@ def make_source(
     status: SourceStatus = SourceStatus.SUCCESS,
     score: float = None,
     content_chars: int = 0,
-) -> UnifiedSource:
+) -> SourceNode:
     """Helper to create test sources."""
-    return UnifiedSource(
+    return SourceNode(
         id=id,
         title=f"Source {id}",
         source_type=SourceType.WEB,

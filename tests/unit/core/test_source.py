@@ -2,10 +2,10 @@
 
 import pytest
 
-from tensortruth.core.unified_sources import (
+from tensortruth.core.source import (
+    SourceNode,
     SourceStatus,
     SourceType,
-    UnifiedSource,
 )
 
 
@@ -48,12 +48,12 @@ class TestSourceType:
 
 
 @pytest.mark.unit
-class TestUnifiedSource:
-    """Tests for UnifiedSource dataclass."""
+class TestSourceNode:
+    """Tests for SourceNode dataclass."""
 
     def test_creation_with_all_fields(self):
-        """Test creating UnifiedSource with all fields populated."""
-        source = UnifiedSource(
+        """Test creating SourceNode with all fields populated."""
+        source = SourceNode(
             id="test-123",
             url="https://example.com/doc",
             title="Test Document",
@@ -80,8 +80,8 @@ class TestUnifiedSource:
         assert source.content_chars == 100
 
     def test_creation_with_defaults(self):
-        """Test creating UnifiedSource with default values."""
-        source = UnifiedSource(
+        """Test creating SourceNode with default values."""
+        source = SourceNode(
             id="test-456",
             title="Minimal Source",
             source_type=SourceType.PAPER,
@@ -101,7 +101,7 @@ class TestUnifiedSource:
 
     def test_to_dict(self):
         """Test conversion to dictionary."""
-        source = UnifiedSource(
+        source = SourceNode(
             id="dict-test",
             url="https://example.com",
             title="Dict Test",
@@ -145,7 +145,7 @@ class TestUnifiedSource:
             "content_chars": 25,
         }
 
-        source = UnifiedSource.from_dict(data)
+        source = SourceNode.from_dict(data)
 
         assert source.id == "from-dict"
         assert source.url == "https://test.com"
@@ -163,7 +163,7 @@ class TestUnifiedSource:
             "title": "Minimal",
         }
 
-        source = UnifiedSource.from_dict(data)
+        source = SourceNode.from_dict(data)
 
         assert source.id == "minimal"
         assert source.title == "Minimal"
@@ -174,7 +174,7 @@ class TestUnifiedSource:
 
     def test_roundtrip_conversion(self):
         """Test that to_dict -> from_dict preserves data."""
-        original = UnifiedSource(
+        original = SourceNode(
             id="roundtrip",
             url="https://roundtrip.test",
             title="Roundtrip Test",
@@ -189,7 +189,7 @@ class TestUnifiedSource:
         )
 
         data = original.to_dict()
-        restored = UnifiedSource.from_dict(data)
+        restored = SourceNode.from_dict(data)
 
         assert restored.id == original.id
         assert restored.url == original.url
@@ -205,7 +205,7 @@ class TestUnifiedSource:
 
     def test_get_display_text_with_content(self):
         """Test get_display_text returns content when available."""
-        source = UnifiedSource(
+        source = SourceNode(
             id="display-1",
             title="Test",
             source_type=SourceType.WEB,
@@ -217,7 +217,7 @@ class TestUnifiedSource:
 
     def test_get_display_text_with_snippet_only(self):
         """Test get_display_text falls back to snippet."""
-        source = UnifiedSource(
+        source = SourceNode(
             id="display-2",
             title="Test",
             source_type=SourceType.WEB,
@@ -229,7 +229,7 @@ class TestUnifiedSource:
 
     def test_get_display_text_empty(self):
         """Test get_display_text returns empty string when no content."""
-        source = UnifiedSource(
+        source = SourceNode(
             id="display-3",
             title="Test",
             source_type=SourceType.WEB,
@@ -239,13 +239,13 @@ class TestUnifiedSource:
 
     def test_is_successful(self):
         """Test is_successful method."""
-        success = UnifiedSource(
+        success = SourceNode(
             id="s1", title="T", source_type=SourceType.WEB, status=SourceStatus.SUCCESS
         )
-        failed = UnifiedSource(
+        failed = SourceNode(
             id="s2", title="T", source_type=SourceType.WEB, status=SourceStatus.FAILED
         )
-        filtered = UnifiedSource(
+        filtered = SourceNode(
             id="s3", title="T", source_type=SourceType.WEB, status=SourceStatus.FILTERED
         )
 
@@ -255,16 +255,16 @@ class TestUnifiedSource:
 
     def test_is_usable(self):
         """Test is_usable method."""
-        success = UnifiedSource(
+        success = SourceNode(
             id="u1", title="T", source_type=SourceType.WEB, status=SourceStatus.SUCCESS
         )
-        filtered = UnifiedSource(
+        filtered = SourceNode(
             id="u2", title="T", source_type=SourceType.WEB, status=SourceStatus.FILTERED
         )
-        failed = UnifiedSource(
+        failed = SourceNode(
             id="u3", title="T", source_type=SourceType.WEB, status=SourceStatus.FAILED
         )
-        skipped = UnifiedSource(
+        skipped = SourceNode(
             id="u4", title="T", source_type=SourceType.WEB, status=SourceStatus.SKIPPED
         )
 
@@ -275,8 +275,8 @@ class TestUnifiedSource:
 
     def test_metadata_default_is_empty_dict(self):
         """Test that metadata defaults to empty dict, not shared instance."""
-        source1 = UnifiedSource(id="m1", title="T", source_type=SourceType.WEB)
-        source2 = UnifiedSource(id="m2", title="T", source_type=SourceType.WEB)
+        source1 = SourceNode(id="m1", title="T", source_type=SourceType.WEB)
+        source2 = SourceNode(id="m2", title="T", source_type=SourceType.WEB)
 
         source1.metadata["key"] = "value"
 

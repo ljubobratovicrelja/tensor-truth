@@ -76,7 +76,7 @@ async def test_execute_search_updates_state(executor, initial_state, mock_tools)
 @pytest.mark.asyncio
 async def test_execute_fetch_with_pipeline(executor, mock_tools):
     """Test that execute_fetch uses SourceFetchPipeline correctly."""
-    from tensortruth.core.sources import SourceNode
+    from tensortruth.core.source import SourceNode, SourceStatus, SourceType
 
     # Create state with search results
     state = BrowseState(
@@ -98,16 +98,20 @@ async def test_execute_fetch_with_pipeline(executor, mock_tools):
     ]
     mock_source_nodes = [
         SourceNode(
+            id="1",
             url="https://example.com/1",
             title="Result 1",
-            status="success",
+            source_type=SourceType.WEB,
+            status=SourceStatus.SUCCESS,
             content="Content 1",
             content_chars=1000,
         ),
         SourceNode(
+            id="2",
             url="https://example.com/2",
             title="Result 2",
-            status="success",
+            source_type=SourceType.WEB,
+            status=SourceStatus.SUCCESS,
             content="Content 2",
             content_chars=1000,
         ),
@@ -173,7 +177,7 @@ async def test_execute_fetch_empty_results(executor, mock_tools):
 @pytest.mark.asyncio
 async def test_executor_tracks_iterations(executor, mock_tools):
     """Test that executor tracks fetch iterations correctly."""
-    from tensortruth.core.sources import SourceNode
+    from tensortruth.core.source import SourceNode, SourceStatus, SourceType
 
     state = BrowseState(
         query="test query",
@@ -194,9 +198,11 @@ async def test_executor_tracks_iterations(executor, mock_tools):
     mock_fitted_pages = [("https://example.com/1", "Result 1", "Content")]
     mock_source_nodes = [
         SourceNode(
+            id="1",
             url="https://example.com/1",
             title="Result 1",
-            status="success",
+            source_type=SourceType.WEB,
+            status=SourceStatus.SUCCESS,
             content="Content",
             content_chars=500,
         )

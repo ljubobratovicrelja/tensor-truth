@@ -5,13 +5,13 @@ from typing import Any, Dict, Optional
 
 import pytest
 
+from tensortruth.core.source import SourceNode, SourceStatus, SourceType
 from tensortruth.core.source_converter import SourceConverter
-from tensortruth.core.unified_sources import SourceStatus, SourceType, UnifiedSource
 
 
 @dataclass
-class MockWebSourceNode:
-    """Mock of core/sources.py SourceNode for testing."""
+class MockWebSearchSource:
+    """Mock of utils/web_search.py WebSearchSource for testing."""
 
     url: str
     title: str
@@ -53,12 +53,12 @@ class MockNodeWithScore:
 
 
 @pytest.mark.unit
-class TestFromWebSource:
-    """Tests for from_web_source converter."""
+class TestFromWebSearchSource:
+    """Tests for from_web_search_source converter."""
 
     def test_basic_conversion(self):
         """Test basic conversion with all fields populated."""
-        web_source = MockWebSourceNode(
+        web_source = MockWebSearchSource(
             url="https://example.com/page",
             title="Example Page",
             status="success",
@@ -69,7 +69,7 @@ class TestFromWebSource:
             relevance_score=0.85,
         )
 
-        result = SourceConverter.from_web_source(web_source)
+        result = SourceConverter.from_web_search_source(web_source)
 
         assert result.url == "https://example.com/page"
         assert result.title == "Example Page"
@@ -83,33 +83,33 @@ class TestFromWebSource:
 
     def test_failed_status_mapping(self):
         """Test that failed status is mapped correctly."""
-        web_source = MockWebSourceNode(
+        web_source = MockWebSearchSource(
             url="https://example.com",
             title="Failed Page",
             status="failed",
             error="Connection timeout",
         )
 
-        result = SourceConverter.from_web_source(web_source)
+        result = SourceConverter.from_web_search_source(web_source)
 
         assert result.status == SourceStatus.FAILED
         assert result.error == "Connection timeout"
 
     def test_skipped_status_mapping(self):
         """Test that skipped status is mapped correctly."""
-        web_source = MockWebSourceNode(
+        web_source = MockWebSearchSource(
             url="https://example.com",
             title="Skipped Page",
             status="skipped",
         )
 
-        result = SourceConverter.from_web_source(web_source)
+        result = SourceConverter.from_web_search_source(web_source)
 
         assert result.status == SourceStatus.SKIPPED
 
     def test_missing_optional_fields(self):
         """Test conversion with missing optional fields."""
-        web_source = MockWebSourceNode(
+        web_source = MockWebSearchSource(
             url="https://example.com",
             title="Minimal Page",
             status="success",
@@ -118,7 +118,7 @@ class TestFromWebSource:
             relevance_score=None,
         )
 
-        result = SourceConverter.from_web_source(web_source)
+        result = SourceConverter.from_web_search_source(web_source)
 
         assert result.snippet is None
         assert result.content is None
@@ -126,32 +126,32 @@ class TestFromWebSource:
 
     def test_id_generated_from_url(self):
         """Test that stable ID is generated from URL."""
-        web_source = MockWebSourceNode(
+        web_source = MockWebSearchSource(
             url="https://example.com/specific-page",
             title="Test",
             status="success",
         )
 
-        result = SourceConverter.from_web_source(web_source)
+        result = SourceConverter.from_web_search_source(web_source)
 
         assert result.id is not None
         assert len(result.id) == 16  # SHA256 hash truncated to 16 chars
 
     def test_same_url_produces_same_id(self):
         """Test that same URL produces same ID."""
-        web_source1 = MockWebSourceNode(
+        web_source1 = MockWebSearchSource(
             url="https://example.com/page",
             title="Page 1",
             status="success",
         )
-        web_source2 = MockWebSourceNode(
+        web_source2 = MockWebSearchSource(
             url="https://example.com/page",
             title="Page 2",
             status="failed",
         )
 
-        result1 = SourceConverter.from_web_source(web_source1)
-        result2 = SourceConverter.from_web_source(web_source2)
+        result1 = SourceConverter.from_web_search_source(web_source1)
+        result2 = SourceConverter.from_web_search_source(web_source2)
 
         assert result1.id == result2.id
 
@@ -264,7 +264,7 @@ class TestToAPISchema:
 
     def test_basic_conversion(self):
         """Test conversion to API schema dict."""
-        source = UnifiedSource(
+        source = SourceNode(
             id="api-test",
             url="https://example.com",
             title="Test Source",
@@ -290,7 +290,7 @@ class TestToAPISchema:
 
     def test_text_fallback_to_snippet(self):
         """Test that text falls back to snippet when no content."""
-        source = UnifiedSource(
+        source = SourceNode(
             id="fallback",
             title="Test",
             source_type=SourceType.WEB,
@@ -304,7 +304,7 @@ class TestToAPISchema:
 
     def test_text_empty_when_no_content(self):
         """Test that text is empty when no content or snippet."""
-        source = UnifiedSource(
+        source = SourceNode(
             id="empty",
             title="Test",
             source_type=SourceType.WEB,
@@ -316,7 +316,7 @@ class TestToAPISchema:
 
     def test_error_included_in_metadata(self):
         """Test that error is included in metadata when present."""
-        source = UnifiedSource(
+        source = SourceNode(
             id="error-test",
             title="Failed",
             source_type=SourceType.WEB,
@@ -335,7 +335,7 @@ class TestToWebSearchSchema:
 
     def test_basic_conversion(self):
         """Test conversion to WebSearchSource schema."""
-        source = UnifiedSource(
+        source = SourceNode(
             id="web-schema",
             url="https://example.com",
             title="Web Page",
@@ -355,7 +355,7 @@ class TestToWebSearchSchema:
 
     def test_filtered_status_becomes_skipped(self):
         """Test that FILTERED status is mapped to 'skipped' for API."""
-        source = UnifiedSource(
+        source = SourceNode(
             id="filtered",
             title="Low Score",
             source_type=SourceType.WEB,
@@ -368,7 +368,7 @@ class TestToWebSearchSchema:
 
     def test_empty_url_becomes_empty_string(self):
         """Test that None URL becomes empty string."""
-        source = UnifiedSource(
+        source = SourceNode(
             id="no-url",
             title="No URL",
             source_type=SourceType.WEB,
@@ -402,10 +402,10 @@ class TestBatchOperations:
     def test_batch_to_api_schema(self):
         """Test batch conversion to API schema."""
         sources = [
-            UnifiedSource(
+            SourceNode(
                 id="1", title="A", source_type=SourceType.WEB, content="Content A"
             ),
-            UnifiedSource(
+            SourceNode(
                 id="2", title="B", source_type=SourceType.PAPER, content="Content B"
             ),
         ]
@@ -423,7 +423,7 @@ class TestRoundtripConversion:
 
     def test_web_source_roundtrip(self):
         """Test that web source -> unified -> api preserves key data."""
-        web_source = MockWebSourceNode(
+        web_source = MockWebSearchSource(
             url="https://example.com/test",
             title="Test Page",
             status="success",
@@ -432,7 +432,7 @@ class TestRoundtripConversion:
             relevance_score=0.9,
         )
 
-        unified = SourceConverter.from_web_source(web_source)
+        unified = SourceConverter.from_web_search_source(web_source)
         api_dict = SourceConverter.to_api_schema(unified)
 
         assert api_dict["text"] == "Page content"

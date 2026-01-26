@@ -196,6 +196,7 @@ def build_synthesis_prompt(
     sources_text: str,
     combined_text: str,
     first_page_url: Optional[str] = None,
+    first_page_title: Optional[str] = None,
 ) -> str:
     """Build synthesis prompt based on citation style.
 
@@ -204,6 +205,7 @@ def build_synthesis_prompt(
         sources_text: Formatted source list
         combined_text: Combined page content
         first_page_url: URL of first page (for example citations)
+        first_page_title: Title of first page (for example citations)
 
     Returns:
         Complete prompt for LLM
@@ -227,11 +229,10 @@ def build_synthesis_prompt(
 
     if config.citation_style == CitationStyle.HYPERLINK:
         # Web command style - comprehensive with markdown hyperlinks
-        example_citation = (
-            f"[Source Title]({first_page_url})"
-            if first_page_url
-            else "[Source Title](url)"
-        )
+        # Use actual first page title/url for a realistic example
+        example_title = first_page_title or "Source Title"
+        example_url = first_page_url or "url"
+        example_citation = f"[{example_title}]({example_url})"
 
         prompt = f"""You are a research assistant. User asked: "{config.query}"
 
@@ -370,7 +371,10 @@ async def synthesize_with_llm_stream(
 
     # Build prompt
     first_url = fitted_pages[0]["url"] if fitted_pages else None
-    prompt = build_synthesis_prompt(config, sources_text, combined_text, first_url)
+    first_title = fitted_pages[0]["title"] if fitted_pages else None
+    prompt = build_synthesis_prompt(
+        config, sources_text, combined_text, first_url, first_title
+    )
 
     # Log prompt size for debugging
     prompt_chars = len(prompt)

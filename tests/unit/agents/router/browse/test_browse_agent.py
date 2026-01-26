@@ -73,7 +73,7 @@ async def test_browse_agent_complete_workflow(browse_agent, mock_tools, mock_llm
     """Test complete browse workflow: search -> fetch -> synthesize."""
     from unittest.mock import patch
 
-    from tensortruth.core.sources import SourceNode
+    from tensortruth.core.source import SourceNode, SourceStatus, SourceType
 
     # Mock search results
     search_results = [
@@ -91,23 +91,29 @@ async def test_browse_agent_complete_workflow(browse_agent, mock_tools, mock_llm
     ]
     mock_source_nodes = [
         SourceNode(
+            id="1",
             url="https://example.com/1",
             title="Page 1",
-            status="success",
+            source_type=SourceType.WEB,
+            status=SourceStatus.SUCCESS,
             content="Content from page 1",
             content_chars=100,
         ),
         SourceNode(
+            id="2",
             url="https://example.com/2",
             title="Page 2",
-            status="success",
+            source_type=SourceType.WEB,
+            status=SourceStatus.SUCCESS,
             content="Content from page 2",
             content_chars=100,
         ),
         SourceNode(
+            id="3",
             url="https://example.com/3",
             title="Page 3",
-            status="success",
+            source_type=SourceType.WEB,
+            status=SourceStatus.SUCCESS,
             content="Content from page 3",
             content_chars=100,
         ),
@@ -159,7 +165,7 @@ async def test_browse_agent_handles_overflow(browse_agent, mock_tools, mock_llm)
     """Test that agent handles content overflow correctly."""
     from unittest.mock import patch
 
-    from tensortruth.core.sources import SourceNode
+    from tensortruth.core.source import SourceNode, SourceStatus, SourceType
 
     # Set a very small max_content to trigger overflow
     browse_agent.max_content_chars = 100
@@ -176,9 +182,11 @@ async def test_browse_agent_handles_overflow(browse_agent, mock_tools, mock_llm)
     ]
     mock_source_nodes = [
         SourceNode(
+            id="1",
             url="https://example.com/1",
             title="Page 1",
-            status="success",
+            source_type=SourceType.WEB,
+            status=SourceStatus.SUCCESS,
             content="Content that is very long" * 100,
             content_chars=5000,
         )
@@ -295,7 +303,7 @@ async def test_browse_agent_execute_fetch(browse_agent, mock_tools):
     from unittest.mock import patch
 
     from tensortruth.agents.router.browse.state import BrowseState
-    from tensortruth.core.sources import SourceNode
+    from tensortruth.core.source import SourceNode, SourceStatus, SourceType
 
     state = BrowseState(
         query="test",
@@ -311,9 +319,11 @@ async def test_browse_agent_execute_fetch(browse_agent, mock_tools):
     mock_fitted_pages = [("https://example.com", "Page", "content")]
     mock_source_nodes = [
         SourceNode(
+            id="1",
             url="https://example.com",
             title="Page",
-            status="success",
+            source_type=SourceType.WEB,
+            status=SourceStatus.SUCCESS,
             content="content",
             content_chars=100,
         )

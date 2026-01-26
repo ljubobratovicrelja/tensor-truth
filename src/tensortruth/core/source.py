@@ -1,4 +1,4 @@
-"""Unified source model for both web search and RAG pipelines.
+"""Source model for both web search and RAG pipelines.
 
 This module provides a single source of truth for source data representation,
 eliminating duplication between web_search.py and rag_engine.py.
@@ -29,10 +29,10 @@ class SourceType(str, Enum):
 
 
 @dataclass
-class UnifiedSource:
-    """Single source model for both web search and RAG.
+class SourceNode:
+    """Source model for both web search and RAG.
 
-    This unified structure ensures consistent source metadata across all
+    This structure ensures consistent source metadata across all
     pipelines, enabling:
     - Proper frontend display of sources
     - Unified reranking interface
@@ -81,7 +81,7 @@ class UnifiedSource:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "UnifiedSource":
+    def from_dict(cls, data: Dict[str, Any]) -> "SourceNode":
         """Create from dictionary representation."""
         return cls(
             id=data["id"],
@@ -112,3 +112,15 @@ class UnifiedSource:
     def is_usable(self) -> bool:
         """Check if source can be used for synthesis."""
         return self.status in (SourceStatus.SUCCESS, SourceStatus.FILTERED)
+
+    @property
+    def effective_score(self) -> float:
+        """Get score with status-based fallback for display purposes.
+
+        Returns the explicit score if set, otherwise defaults based on status:
+        - SUCCESS: 1.0
+        - All other statuses: 0.0
+        """
+        if self.score is not None:
+            return self.score
+        return 1.0 if self.status == SourceStatus.SUCCESS else 0.0

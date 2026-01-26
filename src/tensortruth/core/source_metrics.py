@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from statistics import mean, median
 from typing import List, Optional
 
-from tensortruth.core.unified_sources import SourceStatus, UnifiedSource
+from tensortruth.core.source import SourceNode, SourceStatus
 
 # Rough estimate: 1 token ≈ 4 characters for English text
 CHARS_PER_TOKEN = 4
@@ -60,11 +60,11 @@ class SourceMetrics:
         }
 
 
-def compute_metrics(sources: List[UnifiedSource]) -> SourceMetrics:
+def compute_metrics(sources: List[SourceNode]) -> SourceMetrics:
     """Compute quality metrics for a list of sources.
 
     Args:
-        sources: List of UnifiedSource objects to analyze
+        sources: List of SourceNode objects to analyze
 
     Returns:
         SourceMetrics with computed values

@@ -79,7 +79,12 @@ class TestExtractSources:
         assert result[0].score == 0.7654
 
     def test_missing_score_attribute(self):
-        """Test handling of nodes without score attribute."""
+        """Test handling of nodes without score attribute.
+
+        When a node has no score, effective_score returns a status-based default:
+        - SUCCESS (default status): 1.0
+        - Other statuses: 0.0
+        """
         inner_node = MagicMock()
         inner_node.get_content.return_value = "Text"
 
@@ -90,7 +95,8 @@ class TestExtractSources:
 
         result = _extract_sources([node])
 
-        assert result[0].score is None
+        # No explicit score + SUCCESS status = effective_score of 1.0
+        assert result[0].score == 1.0
 
     def test_missing_metadata_attribute(self):
         """Test handling of nodes without metadata attribute.
