@@ -58,6 +58,27 @@ def get_session_dir(session_id: str) -> Path:
     return session_dir
 
 
+def get_sessions_index_file() -> Path:
+    """Get the path to the sessions index file.
+
+    The index file contains lightweight metadata for fast session listing:
+    {current_id, sessions: {id -> {title, created_at}}}
+    """
+    return get_sessions_data_dir() / "sessions_index.json"
+
+
+def get_session_data_file(session_id: str) -> Path:
+    """Get the path to a session's data file.
+
+    The session data file contains full session data:
+    {title, created_at, messages, modules, params, title_needs_update}
+
+    Note: Does not create the session directory - call get_session_dir() first
+    if directory creation is needed.
+    """
+    return get_sessions_data_dir() / session_id / "session.json"
+
+
 def get_session_pdfs_dir(session_id: str) -> Path:
     """Get the path to a session's PDF storage directory."""
     pdfs_dir = get_session_dir(session_id) / "pdfs"

@@ -368,11 +368,34 @@ class TestWebSocketCommandDetection:
         assert match.group(2) == '"quoted search" & special'
 
 
+@pytest.fixture
+def mock_session_paths(tmp_path, monkeypatch):
+    """Patch session paths to use temp directory."""
+    sessions_file = tmp_path / "chat_sessions.json"
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+
+    monkeypatch.setattr("tensortruth.api.deps.get_sessions_file", lambda: sessions_file)
+    monkeypatch.setattr(
+        "tensortruth.api.deps.get_sessions_data_dir", lambda: sessions_dir
+    )
+    monkeypatch.setattr(
+        "tensortruth.api.deps.get_session_dir",
+        lambda sid: sessions_dir / sid,
+    )
+
+    from tensortruth.api.deps import get_session_service
+
+    get_session_service.cache_clear()
+
+    return sessions_file, sessions_dir
+
+
 class TestCommandIntegration:
     """Integration tests for command execution via WebSocket."""
 
     @pytest.mark.asyncio
-    async def test_help_command_via_websocket(self, client):
+    async def test_help_command_via_websocket(self, client, mock_session_paths):
         """Test executing help command via WebSocket."""
         # Create a test session first
         session_response = client.post(
@@ -401,7 +424,7 @@ class TestCommandIntegration:
             assert len(done_msg["content"]) > 0
 
     @pytest.mark.asyncio
-    async def test_unknown_command_via_websocket(self, client):
+    async def test_unknown_command_via_websocket(self, client, mock_session_paths):
         """Test that unknown commands return helpful error."""
         # Create test session
         session_response = client.post(
@@ -422,7 +445,7 @@ class TestCommandIntegration:
             assert "/help" in msg.get("detail", "")
 
     @pytest.mark.asyncio
-    async def test_command_in_middle_of_message(self, client):
+    async def test_command_in_middle_of_message(self, client, mock_session_paths):
         """Test that commands anywhere in message are detected."""
         session_response = client.post(
             "/api/sessions",

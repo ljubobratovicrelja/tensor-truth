@@ -6,16 +6,21 @@ syncing the returned state back to Streamlit session_state.
 """
 
 import json
+import logging
 import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
+from tensortruth.app_utils.file_utils import atomic_write_json
+
 from .models import SessionData
 
 if TYPE_CHECKING:
     from .config_service import ConfigService
+
+logger = logging.getLogger(__name__)
 
 
 class SessionService:
@@ -23,15 +28,27 @@ class SessionService:
 
     All methods are pure - they accept state as input and return new state
     as output, without accessing Streamlit session_state directly.
+
+    Storage model:
+    - Per-session files: ~/.tensortruth/sessions/{session_id}/session.json
+    - Index file: ~/.tensortruth/sessions/sessions_index.json (cache for fast listing)
+    - Per-session files are authoritative; index is a cache
     """
 
-    def __init__(self, sessions_file: Union[str, Path]):
+    def __init__(
+        self,
+        sessions_file: Union[str, Path],
+        sessions_dir: Path,
+    ):
         """Initialize session service.
 
         Args:
-            sessions_file: Path to the JSON file storing session data.
+            sessions_file: Path to the legacy JSON file (for migration).
+            sessions_dir: Path to the sessions directory.
         """
-        self.sessions_file = Path(sessions_file)
+        self.legacy_sessions_file = Path(sessions_file)
+        self.sessions_dir = Path(sessions_dir)
+        self.index_file = self.sessions_dir / "sessions_index.json"
 
     def _apply_config_defaults(
         self, params: Dict[str, Any], config_service: "ConfigService"
@@ -69,69 +86,235 @@ class SessionService:
 
         except Exception as e:
             # If config loading fails, return params as-is
-            import logging
-
-            logger = logging.getLogger(__name__)
             logger.warning(f"Failed to apply config defaults: {e}")
             return params
 
+    # -------------------------------------------------------------------------
+    # Internal file operations
+    # -------------------------------------------------------------------------
+
+    def _load_index(self) -> Dict[str, Any]:
+        """Load the sessions index file.
+
+        Returns:
+            Index dict with current_id and sessions metadata.
+        """
+        if not self.index_file.exists():
+            return {"current_id": None, "sessions": {}}
+
+        try:
+            with open(self.index_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning(f"Failed to load sessions index: {e}")
+            return {"current_id": None, "sessions": {}}
+
+    def _save_index(self, index: Dict[str, Any]) -> None:
+        """Save the sessions index file atomically.
+
+        Args:
+            index: Index dict with current_id and sessions metadata.
+        """
+        atomic_write_json(self.index_file, index)
+
+    def _load_session_file(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Load a single session's data file.
+
+        Args:
+            session_id: Session ID.
+
+        Returns:
+            Session data dict or None if file doesn't exist or is corrupted.
+        """
+        session_file = self.sessions_dir / session_id / "session.json"
+        if not session_file.exists():
+            return None
+
+        try:
+            with open(session_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning(f"Failed to load session {session_id}: {e}")
+            return None
+
+    def _save_session_file(self, session_id: str, data: Dict[str, Any]) -> None:
+        """Save a single session's data file atomically.
+
+        Args:
+            session_id: Session ID.
+            data: Session data dict.
+        """
+        session_dir = self.sessions_dir / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+        session_file = session_dir / "session.json"
+        atomic_write_json(session_file, data)
+
+    def _delete_session_file(self, session_id: str) -> None:
+        """Delete a session's data file and directory.
+
+        Args:
+            session_id: Session ID.
+        """
+        session_dir = self.sessions_dir / session_id
+        if session_dir.exists():
+            shutil.rmtree(session_dir)
+
+    def _migrate_from_legacy(self) -> None:
+        """Migrate from legacy single-file storage to per-session files.
+
+        Called on load() when legacy file exists. Migration is idempotent:
+        - If index already has sessions, does nothing
+        - Migrates each session to its own file
+        - Deletes legacy file after successful migration
+        """
+        if not self.legacy_sessions_file.exists():
+            return
+
+        # Check if already migrated (index has sessions)
+        index = self._load_index()
+        if index.get("sessions"):
+            # Already migrated, just remove legacy file
+            logger.info("Sessions already migrated, removing legacy file")
+            try:
+                self.legacy_sessions_file.unlink()
+            except OSError as e:
+                logger.warning(f"Failed to delete legacy sessions file: {e}")
+            return
+
+        # Load legacy data
+        try:
+            with open(self.legacy_sessions_file, "r", encoding="utf-8") as f:
+                legacy_data = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning(f"Failed to load legacy sessions file: {e}")
+            return
+
+        # Migrate each session
+        legacy_sessions = legacy_data.get("sessions", {})
+        new_index = {
+            "current_id": legacy_data.get("current_id"),
+            "sessions": {},
+        }
+
+        for session_id, session_data in legacy_sessions.items():
+            # Apply title_needs_update migration if missing
+            if "title_needs_update" not in session_data:
+                session_data["title_needs_update"] = (
+                    session_data.get("title") == "New Session"
+                )
+
+            # Save session to individual file
+            self._save_session_file(session_id, session_data)
+
+            # Add to index (lightweight metadata only)
+            new_index["sessions"][session_id] = {
+                "title": session_data.get("title", "New Session"),
+                "created_at": session_data.get("created_at", str(datetime.now())),
+            }
+
+        # Save new index
+        self._save_index(new_index)
+
+        # Delete legacy file
+        try:
+            self.legacy_sessions_file.unlink()
+            logger.info(
+                f"Successfully migrated {len(legacy_sessions)} sessions "
+                "from legacy file"
+            )
+        except OSError as e:
+            logger.warning(f"Failed to delete legacy sessions file: {e}")
+
+    # -------------------------------------------------------------------------
+    # Public API
+    # -------------------------------------------------------------------------
+
     def load(self) -> SessionData:
-        """Load chat sessions from JSON file.
+        """Load chat sessions from per-session files.
+
+        Migration: If legacy file exists, migrates to per-session format.
 
         Returns:
             SessionData with current_id and sessions dict.
-            Returns empty data if file doesn't exist or is corrupted.
+            Returns empty data if no sessions exist.
         """
-        if not self.sessions_file.exists():
-            return SessionData(current_id=None, sessions={})
+        # Run migration if legacy file exists
+        self._migrate_from_legacy()
 
-        try:
-            with open(self.sessions_file, "r", encoding="utf-8") as f:
-                raw_data = json.load(f)
+        # Load index
+        index = self._load_index()
+        current_id = index.get("current_id")
+        index_sessions = index.get("sessions", {})
 
-            # Backward compatibility: Add title_needs_update flag to existing sessions
-            migrated = False
-            for session in raw_data.get("sessions", {}).values():
-                if "title_needs_update" not in session:
-                    session["title_needs_update"] = (
-                        session.get("title") == "New Session"
-                    )
-                    migrated = True
+        # Load each session file
+        sessions: Dict[str, Dict[str, Any]] = {}
+        stale_ids: List[str] = []
 
-            # Save migrated data back to file
-            if migrated:
-                with open(self.sessions_file, "w", encoding="utf-8") as f:
-                    json.dump(raw_data, f, indent=2)
+        for session_id in index_sessions:
+            session_data = self._load_session_file(session_id)
+            if session_data is not None:
+                sessions[session_id] = session_data
+            else:
+                # Session file missing - stale index entry
+                logger.warning(
+                    f"Removing stale index entry for missing session: {session_id}"
+                )
+                stale_ids.append(session_id)
 
-            return SessionData.from_dict(raw_data)
+        # Clean up stale entries from index
+        if stale_ids:
+            for session_id in stale_ids:
+                del index_sessions[session_id]
+            # Fix current_id if it's stale
+            if current_id in stale_ids:
+                current_id = None
+                index["current_id"] = None
+            self._save_index(index)
 
-        except (json.JSONDecodeError, IOError, KeyError):
-            return SessionData(current_id=None, sessions={})
+        return SessionData(current_id=current_id, sessions=sessions)
 
     def save(self, data: SessionData) -> None:
-        """Save chat sessions to JSON file.
+        """Save chat sessions to per-session files.
 
         Filters out empty sessions (no messages) except for the current session.
 
         Args:
             data: SessionData to save.
         """
+        # Load existing index to find removed sessions
+        old_index = self._load_index()
+        old_session_ids = set(old_index.get("sessions", {}).keys())
+
         # Filter out empty sessions (sessions with no messages)
-        filtered_sessions = {}
+        filtered_sessions: Dict[str, Dict[str, Any]] = {}
         for session_id, session in data.sessions.items():
             messages = session.get("messages", [])
             # Always keep the current session or sessions with messages
             if session_id == data.current_id or messages:
                 filtered_sessions[session_id] = session
 
-        # Create data to save
-        save_data = SessionData(current_id=data.current_id, sessions=filtered_sessions)
+        # Build new index
+        new_index: Dict[str, Any] = {
+            "current_id": data.current_id,
+            "sessions": {},
+        }
 
-        # Ensure parent directory exists
-        self.sessions_file.parent.mkdir(parents=True, exist_ok=True)
+        # Save each session file and update index
+        for session_id, session_data in filtered_sessions.items():
+            self._save_session_file(session_id, session_data)
+            new_index["sessions"][session_id] = {
+                "title": session_data.get("title", "New Session"),
+                "created_at": session_data.get("created_at", str(datetime.now())),
+            }
 
-        with open(self.sessions_file, "w", encoding="utf-8") as f:
-            json.dump(save_data.to_dict(), f, indent=2)
+        # Save index
+        self._save_index(new_index)
+
+        # Delete removed session files
+        new_session_ids = set(filtered_sessions.keys())
+        removed_ids = old_session_ids - new_session_ids
+        for session_id in removed_ids:
+            self._delete_session_file(session_id)
 
     def create(
         self,
@@ -228,6 +411,7 @@ class SessionService:
             session_id: Session ID to delete.
             data: Current session data.
             session_dir: Optional path to session directory (PDFs, index, etc).
+                         Note: session.json is automatically deleted via save().
 
         Returns:
             Updated SessionData without the deleted session.

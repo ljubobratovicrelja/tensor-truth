@@ -9,6 +9,7 @@ from llama_index.llms.ollama import Ollama
 from tensortruth.agents.config import AgentCallbacks, AgentResult
 from tensortruth.agents.router.base import RouterAgent
 from tensortruth.agents.router.state import RouterState
+from tensortruth.core.ollama import check_thinking_support
 from tensortruth.core.source import SourceNode
 from tensortruth.core.synthesis import (
     CitationStyle,
@@ -190,11 +191,25 @@ class BrowseAgent(RouterAgent):
         """
         browse_state = cast(BrowseState, state)
 
-        # Build synthesis config
+        # Build source_scores dict from pipeline results (like web search does)
+        source_scores: Optional[Dict[str, float]] = None
+        if browse_state.source_nodes:
+            source_scores = {}
+            for node in browse_state.source_nodes:
+                if node.url and node.score is not None:
+                    source_scores[node.url] = node.score
+            if not source_scores:
+                source_scores = None
+
+        # Get context window from session LLM
+        context_window = self.synthesis_llm.context_window
+
+        # Build synthesis config (matching web search configuration)
         synthesis_config = SynthesisConfig(
             query=browse_state.query,
-            context_window=self.synthesis_llm.context_window,
-            citation_style=CitationStyle.HYPERLINK,  # Match web command format
+            context_window=context_window,
+            citation_style=CitationStyle.HYPERLINK,
+            source_scores=source_scores,
         )
 
         # Send progress update before synthesis
@@ -214,9 +229,22 @@ class BrowseAgent(RouterAgent):
                 f"  {i}. title='{p.get('title', 'NO TITLE')}' url={p.get('url', 'NO URL')[:50]}..."
             )
 
+        # Create fresh LLM for synthesis with consistent settings (matching web search)
+        model_name = self.synthesis_llm.model
+        thinking_enabled = check_thinking_support(model_name)
+        synthesis_llm = Ollama(
+            model=model_name,
+            base_url=self.synthesis_llm.base_url,
+            request_timeout=120.0,
+            temperature=0.5,
+            context_window=context_window,
+            num_ctx=context_window,
+            thinking=thinking_enabled,
+        )
+
         full_answer = ""
         async for token in synthesize_with_llm_stream(
-            self.synthesis_llm,
+            synthesis_llm,
             synthesis_config,
             pages,  # type: ignore[arg-type]
         ):

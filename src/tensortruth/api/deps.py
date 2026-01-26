@@ -11,6 +11,7 @@ from fastapi import Depends
 from tensortruth.app_utils.paths import (
     get_indexes_dir,
     get_session_dir,
+    get_sessions_data_dir,
     get_sessions_file,
 )
 from tensortruth.services import (
@@ -29,7 +30,10 @@ from tensortruth.services.startup_service import StartupService
 @lru_cache
 def get_session_service() -> SessionService:
     """Get the singleton SessionService instance."""
-    return SessionService(sessions_file=get_sessions_file())
+    return SessionService(
+        sessions_file=get_sessions_file(),  # Legacy path for migration
+        sessions_dir=get_sessions_data_dir(),  # New per-session storage
+    )
 
 
 @lru_cache

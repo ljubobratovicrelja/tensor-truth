@@ -34,6 +34,8 @@ def mock_llm():
     """Create mock LLM for testing."""
     llm = MagicMock()
     llm.context_window = 16384
+    llm.model = "llama3.1:8b"
+    llm.base_url = "http://localhost:11434"
     llm.acomplete = AsyncMock()
     llm.astream_complete = AsyncMock()
     return llm
@@ -142,8 +144,11 @@ async def test_browse_agent_complete_workflow(browse_agent, mock_tools, mock_llm
     # Create callbacks
     callbacks = AgentCallbacks()
 
-    # Run agent with mocked pipeline
-    with patch("tensortruth.core.source_pipeline.SourceFetchPipeline") as MockPipeline:
+    # Run agent with mocked pipeline and Ollama (for synthesis LLM creation)
+    with (
+        patch("tensortruth.core.source_pipeline.SourceFetchPipeline") as MockPipeline,
+        patch("tensortruth.agents.router.browse.agent.Ollama", return_value=mock_llm),
+    ):
         mock_pipeline_instance = MagicMock()
         mock_pipeline_instance.execute = AsyncMock(
             return_value=(mock_fitted_pages, mock_source_nodes, mock_allocations)
@@ -206,9 +211,12 @@ async def test_browse_agent_handles_overflow(browse_agent, mock_tools, mock_llm)
 
     mock_llm.astream_complete.return_value = mock_stream()
 
-    # Run agent with mocked pipeline
+    # Run agent with mocked pipeline and Ollama (for synthesis LLM creation)
     callbacks = AgentCallbacks()
-    with patch("tensortruth.core.source_pipeline.SourceFetchPipeline") as MockPipeline:
+    with (
+        patch("tensortruth.core.source_pipeline.SourceFetchPipeline") as MockPipeline,
+        patch("tensortruth.agents.router.browse.agent.Ollama", return_value=mock_llm),
+    ):
         mock_pipeline_instance = MagicMock()
         mock_pipeline_instance.execute = AsyncMock(
             return_value=(mock_fitted_pages, mock_source_nodes, mock_allocations)
@@ -392,6 +400,8 @@ async def test_browse_agent_trims_content_when_exceeds_limit(
     browse_agent, mock_tools, mock_llm
 ):
     """Test that synthesis trims content when it exceeds max_content_chars."""
+    from unittest.mock import patch
+
     # Set a small limit
     browse_agent.max_content_chars = 500
 
@@ -421,7 +431,10 @@ async def test_browse_agent_trims_content_when_exceeds_limit(
     mock_llm.astream_complete.return_value = mock_stream()
 
     callbacks = AgentCallbacks()
-    answer = await browse_agent._synthesize(state, callbacks)
+
+    # Patch Ollama creation to return the mock LLM
+    with patch("tensortruth.agents.router.browse.agent.Ollama", return_value=mock_llm):
+        answer = await browse_agent._synthesize(state, callbacks)
 
     # Verify synthesis was called (content was trimmed but synthesis proceeded)
     assert answer == "Answer"

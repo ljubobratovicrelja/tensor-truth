@@ -21,20 +21,35 @@ async def client(app):
         yield ac
 
 
+@pytest.fixture
+def mock_session_paths(tmp_path, monkeypatch):
+    """Patch session paths to use temp directory."""
+    sessions_file = tmp_path / "chat_sessions.json"
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+
+    monkeypatch.setattr("tensortruth.api.deps.get_sessions_file", lambda: sessions_file)
+    monkeypatch.setattr(
+        "tensortruth.api.deps.get_sessions_data_dir", lambda: sessions_dir
+    )
+    monkeypatch.setattr(
+        "tensortruth.api.deps.get_session_dir",
+        lambda sid: sessions_dir / sid,
+    )
+
+    from tensortruth.api.deps import get_session_service
+
+    get_session_service.cache_clear()
+
+    return sessions_file, sessions_dir
+
+
 class TestChatAPI:
     """Test chat endpoints."""
 
     @pytest.mark.asyncio
-    async def test_chat_session_not_found(self, client, tmp_path, monkeypatch):
+    async def test_chat_session_not_found(self, client, mock_session_paths):
         """Test chat with non-existent session."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         response = await client.post(
             "/api/sessions/nonexistent/chat",
             json={"prompt": "Hello"},
@@ -43,26 +58,13 @@ class TestChatAPI:
 
     @pytest.mark.asyncio
     @pytest.mark.requires_ollama
-    async def test_chat_no_modules(self, client, tmp_path, monkeypatch):
+    async def test_chat_no_modules(self, client, mock_session_paths):
         """Test chat with session that has no modules or PDFs.
 
         Should use LLM-only mode without RAG retrieval.
         Requires Ollama to be running.
         """
-        sessions_file = tmp_path / "chat_sessions.json"
-        sessions_dir = tmp_path / "sessions"
-        sessions_dir.mkdir()
-
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_session_dir",
-            lambda sid: sessions_dir / sid,
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
+        sessions_file, sessions_dir = mock_session_paths
 
         # Create a session without modules
         create_response = await client.post(
@@ -87,16 +89,8 @@ class TestChatAPI:
         assert data.get("metrics") is None
 
     @pytest.mark.asyncio
-    async def test_intent_classification(self, client, tmp_path, monkeypatch):
+    async def test_intent_classification(self, client, mock_session_paths):
         """Test intent classification endpoint."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         # Create a session
         create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
@@ -113,17 +107,9 @@ class TestChatAPI:
 
     @pytest.mark.asyncio
     async def test_intent_classification_session_not_found(
-        self, client, tmp_path, monkeypatch
+        self, client, mock_session_paths
     ):
         """Test intent classification with non-existent session."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         response = await client.post(
             "/api/sessions/nonexistent/intent",
             json={"message": "Hello", "recent_messages": []},
@@ -139,27 +125,14 @@ class TestChatAPIWithMockedRAG:
 
     @pytest.mark.asyncio
     async def test_chat_response_includes_metrics_field(
-        self, client, tmp_path, monkeypatch
+        self, client, mock_session_paths
     ):
         """Test that chat response schema includes metrics field.
 
         This test verifies the response structure, ensuring the API
         returns the metrics field (even if None for LLM-only mode).
         """
-        sessions_file = tmp_path / "chat_sessions.json"
-        sessions_dir = tmp_path / "sessions"
-        sessions_dir.mkdir()
-
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_session_dir",
-            lambda sid: sessions_dir / sid,
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
+        sessions_file, sessions_dir = mock_session_paths
 
         # Create a session
         create_response = await client.post(
@@ -185,7 +158,7 @@ class TestChatAPIWithMockedRAG:
 
     @pytest.mark.asyncio
     @pytest.mark.requires_ollama
-    async def test_chat_with_modules(self, client, tmp_path, monkeypatch):
+    async def test_chat_with_modules(self, client, mock_session_paths):
         """Test chat with modules (requires Ollama).
 
         This test requires Ollama to be running and is skipped by default.

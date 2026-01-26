@@ -72,8 +72,9 @@ class TestMetricsPersistence:
     def session_service(self, tmp_path: Path):
         """Create session service with temporary storage."""
         sessions_file = tmp_path / "sessions.json"
-        sessions_file.write_text(json.dumps({"current_id": None, "sessions": {}}))
-        return SessionService(sessions_file)
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        return SessionService(sessions_file, sessions_dir)
 
     def test_metrics_saved_to_session(
         self, session_service: SessionService, mock_rag_service, tmp_path: Path

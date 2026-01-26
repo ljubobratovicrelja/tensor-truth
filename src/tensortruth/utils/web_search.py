@@ -362,7 +362,7 @@ Keep it concise and actionable. Don't apologize excessively."""
             model=model_name,
             base_url=ollama_url,
             request_timeout=60.0,
-            temperature=0.3,
+            temperature=0.5,
             thinking=thinking_enabled,
         )
 
@@ -1052,7 +1052,7 @@ Begin your response:"""
             model=model_name,
             base_url=ollama_url,
             request_timeout=120.0,
-            temperature=0.3,  # Low temperature for factual summarization
+            temperature=0.5,  # Moderate temperature for balanced summarization
             context_window=context_window,
             num_ctx=context_window,  # Ollama-specific parameter
             thinking=thinking_enabled,

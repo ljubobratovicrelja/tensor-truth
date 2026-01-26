@@ -30,9 +30,19 @@ def temp_sessions_file(tmp_path):
 
 
 @pytest.fixture
-def session_service_with_data(temp_sessions_file):
+def temp_sessions_dir(tmp_path):
+    """Create a temporary sessions directory."""
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+    return sessions_dir
+
+
+@pytest.fixture
+def session_service_with_data(temp_sessions_file, temp_sessions_dir):
     """Create a session service with test data."""
-    service = SessionService(sessions_file=temp_sessions_file)
+    service = SessionService(
+        sessions_file=temp_sessions_file, sessions_dir=temp_sessions_dir
+    )
     data = service.load()
 
     # Create a test session
@@ -44,6 +54,25 @@ def session_service_with_data(temp_sessions_file):
     service.save(data)
 
     return service, session_id
+
+
+@pytest.fixture
+def mock_session_paths(tmp_path, monkeypatch):
+    """Patch session paths to use temp directory."""
+    sessions_file = tmp_path / "chat_sessions.json"
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+
+    monkeypatch.setattr("tensortruth.api.deps.get_sessions_file", lambda: sessions_file)
+    monkeypatch.setattr(
+        "tensortruth.api.deps.get_sessions_data_dir", lambda: sessions_dir
+    )
+
+    from tensortruth.api.deps import get_session_service
+
+    get_session_service.cache_clear()
+
+    return sessions_file, sessions_dir
 
 
 class TestSessionsAPI:
@@ -59,18 +88,8 @@ class TestSessionsAPI:
         assert "version" in data
 
     @pytest.mark.asyncio
-    async def test_list_sessions_empty(self, client, tmp_path, monkeypatch):
+    async def test_list_sessions_empty(self, client, mock_session_paths):
         """Test listing sessions when none exist."""
-        # Use temp directory for sessions
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        # Clear LRU cache
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         response = await client.get("/api/sessions")
         assert response.status_code == 200
         data = response.json()
@@ -78,16 +97,8 @@ class TestSessionsAPI:
         assert data["current_id"] is None
 
     @pytest.mark.asyncio
-    async def test_create_session(self, client, tmp_path, monkeypatch):
+    async def test_create_session(self, client, mock_session_paths):
         """Test creating a new session."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         response = await client.post(
             "/api/sessions",
             json={"modules": ["pytorch"], "params": {"model": "test-model"}},
@@ -100,16 +111,8 @@ class TestSessionsAPI:
         assert data["params"]["model"] == "test-model"
 
     @pytest.mark.asyncio
-    async def test_get_session(self, client, tmp_path, monkeypatch):
+    async def test_get_session(self, client, mock_session_paths):
         """Test getting a session by ID."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         # Create a session first
         create_response = await client.post("/api/sessions", json={"modules": ["test"]})
         session_id = create_response.json()["session_id"]
@@ -120,30 +123,14 @@ class TestSessionsAPI:
         assert response.json()["session_id"] == session_id
 
     @pytest.mark.asyncio
-    async def test_get_session_not_found(self, client, tmp_path, monkeypatch):
+    async def test_get_session_not_found(self, client, mock_session_paths):
         """Test getting a non-existent session."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         response = await client.get("/api/sessions/nonexistent-id")
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_update_session_title(self, client, tmp_path, monkeypatch):
+    async def test_update_session_title(self, client, mock_session_paths):
         """Test updating a session title."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         # Create a session
         create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
@@ -156,16 +143,8 @@ class TestSessionsAPI:
         assert response.json()["title"] == "Updated Title"
 
     @pytest.mark.asyncio
-    async def test_delete_session(self, client, tmp_path, monkeypatch):
+    async def test_delete_session(self, client, mock_session_paths):
         """Test deleting a session."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         # Create a session
         create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
@@ -179,16 +158,8 @@ class TestSessionsAPI:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_add_message(self, client, tmp_path, monkeypatch):
+    async def test_add_message(self, client, mock_session_paths):
         """Test adding a message to a session."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         # Create a session
         create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
@@ -203,16 +174,8 @@ class TestSessionsAPI:
         assert response.json()["content"] == "Hello, world!"
 
     @pytest.mark.asyncio
-    async def test_get_messages(self, client, tmp_path, monkeypatch):
+    async def test_get_messages(self, client, mock_session_paths):
         """Test getting messages from a session."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         # Create a session and add messages
         create_response = await client.post("/api/sessions", json={})
         session_id = create_response.json()["session_id"]
@@ -239,16 +202,8 @@ class TestSessionStatsEndpoint:
     """Tests for GET /api/sessions/{session_id}/stats endpoint."""
 
     @pytest.fixture
-    async def session_with_messages(self, client, tmp_path, monkeypatch):
+    async def session_with_messages(self, client, mock_session_paths):
         """Create session with sample messages for stats testing."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         # Create a session with a specific model
         create_response = await client.post(
             "/api/sessions",
@@ -273,16 +228,8 @@ class TestSessionStatsEndpoint:
         return session_id
 
     @pytest.fixture
-    async def empty_session(self, client, tmp_path, monkeypatch):
+    async def empty_session(self, client, mock_session_paths):
         """Create session with no messages."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         create_response = await client.post(
             "/api/sessions",
             json={"params": {"model": "test-model:7b"}},
@@ -296,16 +243,8 @@ class TestSessionStatsEndpoint:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_get_session_stats_not_found(self, client, tmp_path, monkeypatch):
+    async def test_get_session_stats_not_found(self, client, mock_session_paths):
         """Stats endpoint returns 404 for non-existent session."""
-        sessions_file = tmp_path / "chat_sessions.json"
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
-        )
-        from tensortruth.api.deps import get_session_service
-
-        get_session_service.cache_clear()
-
         response = await client.get("/api/sessions/nonexistent-id/stats")
         assert response.status_code == 404
 

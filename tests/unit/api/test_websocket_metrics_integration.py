@@ -21,8 +21,9 @@ class TestWebSocketMetricsIntegration:
     def session_service(self, tmp_path: Path):
         """Create session service with temporary storage."""
         sessions_file = tmp_path / "chat_sessions.json"
-        sessions_file.write_text(json.dumps({"current_id": None, "sessions": {}}))
-        return SessionService(sessions_file)
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        return SessionService(sessions_file, sessions_dir)
 
     def test_websocket_saves_metrics_from_rag_chunk(
         self, session_service: SessionService

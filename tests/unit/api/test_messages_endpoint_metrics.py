@@ -95,9 +95,16 @@ class TestMessagesEndpointMetrics:
         }
         sessions_file.write_text(json.dumps(session_data))
 
-        # Mock the session service to use our test file
+        # Setup sessions directory for per-session storage
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+
+        # Mock both the legacy file and new sessions directory
         monkeypatch.setattr(
             "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
+        )
+        monkeypatch.setattr(
+            "tensortruth.api.deps.get_sessions_data_dir", lambda: sessions_dir
         )
         from tensortruth.api.deps import get_session_service
 
@@ -174,8 +181,15 @@ class TestMessagesEndpointMetrics:
         }
         sessions_file.write_text(json.dumps(session_data))
 
+        # Setup sessions directory for per-session storage
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+
         monkeypatch.setattr(
             "tensortruth.api.deps.get_sessions_file", lambda: sessions_file
+        )
+        monkeypatch.setattr(
+            "tensortruth.api.deps.get_sessions_data_dir", lambda: sessions_dir
         )
         from tensortruth.api.deps import get_session_service
 
