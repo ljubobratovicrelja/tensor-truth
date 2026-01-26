@@ -23,6 +23,7 @@ from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
 from llama_index.llms.ollama import Ollama
 from markdownify import markdownify as md
 
+from tensortruth.core.deprecation import deprecated
 from tensortruth.core.ollama import check_thinking_support
 from tensortruth.core.synthesis import (
     CitationStyle,
@@ -454,6 +455,7 @@ class WebSearchChunk:
     is_complete: bool = False
 
 
+@deprecated("Use SourceConverter.to_api_schema() with UnifiedSource instead.")
 def web_source_to_source_node(source: WebSearchSource) -> Dict[str, Any]:
     """Convert WebSearchSource to SourceNode format for unified UI.
 

@@ -26,6 +26,7 @@ from tensortruth.api.schemas import (
     SourceNode,
 )
 from tensortruth.app_utils.title_generation import generate_smart_title_async
+from tensortruth.core.source_converter import SourceConverter
 
 # REST endpoints (mounted under /api)
 rest_router = APIRouter()
@@ -38,27 +39,15 @@ router = rest_router
 def _extract_sources(source_nodes: List) -> List[SourceNode]:
     """Extract source information from RAG source nodes.
 
-    Uses get_content() to get the full merged content from AutoMergingRetriever,
-    which may be larger than the leaf node text if nodes were merged to parent.
+    Uses SourceConverter.from_rag_node() for unified conversion,
+    then to_api_schema() for API-compatible output.
     """
     sources = []
-    for node in source_nodes:
+    for idx, node in enumerate(source_nodes):
         try:
-            # For NodeWithScore, access the inner node for get_content()
-            inner_node = getattr(node, "node", node)
-
-            # Prefer get_content() which returns merged parent content
-            # when AutoMergingRetriever has merged leaf nodes
-            if hasattr(inner_node, "get_content"):
-                text = inner_node.get_content()
-            elif hasattr(node, "text"):
-                text = node.text
-            else:
-                text = str(node)
-
-            score = node.score if hasattr(node, "score") else None
-            metadata = node.metadata if hasattr(node, "metadata") else {}
-            sources.append(SourceNode(text=text, score=score, metadata=metadata))
+            unified = SourceConverter.from_rag_node(node, idx)
+            api_dict = SourceConverter.to_api_schema(unified)
+            sources.append(SourceNode(**api_dict))
         except Exception:
             continue
     return sources

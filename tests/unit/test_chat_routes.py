@@ -93,7 +93,11 @@ class TestExtractSources:
         assert result[0].score is None
 
     def test_missing_metadata_attribute(self):
-        """Test handling of nodes without metadata attribute."""
+        """Test handling of nodes without metadata attribute.
+
+        With SourceConverter, unified source fields are added to metadata
+        even when the original node has no metadata.
+        """
         inner_node = MagicMock()
         inner_node.get_content.return_value = "Text"
 
@@ -103,7 +107,9 @@ class TestExtractSources:
 
         result = _extract_sources([node])
 
-        assert result[0].metadata == {}
+        # SourceConverter adds unified source fields to metadata
+        assert "doc_type" in result[0].metadata
+        assert result[0].metadata["fetch_status"] == "success"
 
     def test_fallback_to_text_attribute(self):
         """Test fallback to .text when get_content() not available."""
@@ -200,22 +206,28 @@ class TestExtractSources:
         assert len(result) == 1
         assert result[0].text == "Good content"
 
-    def test_none_metadata_causes_extraction_skip(self):
-        """Test that None metadata causes node to be skipped (Pydantic validation)."""
+    def test_none_metadata_handled_gracefully(self):
+        """Test that None metadata is handled gracefully by SourceConverter.
+
+        With SourceConverter, None metadata is treated as empty dict
+        and unified source fields are added.
+        """
         inner_node = MagicMock()
         inner_node.get_content.return_value = "Content"
 
         node = MagicMock()
         node.node = inner_node
         node.score = 0.7
-        node.metadata = None  # Explicitly None - Pydantic will reject this
+        node.metadata = None  # Explicitly None - now handled gracefully
 
-        # When metadata is None, SourceNode validation fails
-        # and the node is skipped due to exception handling
         result = _extract_sources([node])
 
-        # Node should be skipped (empty result)
-        assert len(result) == 0
+        # Node should be extracted with unified metadata fields
+        assert len(result) == 1
+        assert result[0].text == "Content"
+        assert result[0].score == 0.7
+        assert "doc_type" in result[0].metadata
+        assert result[0].metadata["fetch_status"] == "success"
 
     def test_get_content_preferred_over_text(self):
         """Test that get_content() is preferred when both available."""
