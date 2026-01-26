@@ -2,9 +2,11 @@
 
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from llama_index.core.tools import FunctionTool
+
+from tensortruth.agents.config import AgentCallbacks
 
 from .state import BrowseState, WorkflowPhase
 
@@ -197,11 +199,16 @@ class BrowseExecutor:
 
         return state
 
-    async def execute_fetch(self, state: BrowseState) -> BrowseState:
+    async def execute_fetch(
+        self,
+        state: BrowseState,
+        callbacks: Optional[AgentCallbacks] = None,
+    ) -> BrowseState:
         """Execute unified fetch+rerank+fit pipeline.
 
         Args:
             state: Current browse state
+            callbacks: Optional callbacks for progress reporting
 
         Returns:
             Updated browse state with fitted pages and sources
@@ -218,7 +225,14 @@ class BrowseExecutor:
         # Import and create pipeline
         from tensortruth.core.source_pipeline import SourceFetchPipeline
 
-        # Create pipeline instance
+        # Create progress callback that forwards to AgentCallbacks
+        def pipeline_progress(phase: str, message: str, details: dict):
+            """Forward pipeline progress to agent callbacks."""
+            if callbacks and callbacks.on_progress:
+                # Format message for UI: include phase prefix
+                callbacks.on_progress(f"{phase}:{message}")
+
+        # Create pipeline instance with progress callback
         pipeline = SourceFetchPipeline(
             query=state.query,
             max_pages=state.min_pages_required,
@@ -229,7 +243,7 @@ class BrowseExecutor:
             max_source_context_pct=0.15,
             input_context_pct=0.6,
             custom_instructions=None,
-            progress_callback=None,
+            progress_callback=pipeline_progress if callbacks else None,
         )
 
         try:

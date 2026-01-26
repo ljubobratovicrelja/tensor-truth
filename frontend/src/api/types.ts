@@ -136,9 +136,13 @@ export interface StreamToolProgress {
 }
 
 export type AgentPhase =
+  | "loading_model" // Model loading on first use
   | "searching"
-  | "ranking"
+  | "ranking" // Deprecated: use ranking_titles or ranking_content
+  | "ranking_titles" // Title-based reranking
   | "fetching"
+  | "ranking_content" // Content-based reranking
+  | "fitting" // Context window fitting
   | "summarizing"
   | "complete";
 

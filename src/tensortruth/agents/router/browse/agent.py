@@ -150,7 +150,8 @@ class BrowseAgent(RouterAgent):
                         "target_pages": browse_state.min_pages_required,
                     },
                 )
-            return await self.executor.execute_fetch(browse_state)
+            # Pass callbacks to enable pipeline progress reporting
+            return await self.executor.execute_fetch(browse_state, callbacks)
         elif action == "done":
             browse_state.phase = WorkflowPhase.COMPLETE
             return browse_state

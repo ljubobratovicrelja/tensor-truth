@@ -71,48 +71,57 @@ def test_browse_agent_calculates_max_content(browse_agent):
 @pytest.mark.asyncio
 async def test_browse_agent_complete_workflow(browse_agent, mock_tools, mock_llm):
     """Test complete browse workflow: search -> fetch -> synthesize."""
+    from unittest.mock import patch
+
+    from tensortruth.core.sources import SourceNode
+
     # Mock search results
     search_results = [
-        {"url": "https://example.com/1", "title": "Result 1"},
-        {"url": "https://example.com/2", "title": "Result 2"},
-        {"url": "https://example.com/3", "title": "Result 3"},
+        {"url": "https://example.com/1", "title": "Result 1", "snippet": "..."},
+        {"url": "https://example.com/2", "title": "Result 2", "snippet": "..."},
+        {"url": "https://example.com/3", "title": "Result 3", "snippet": "..."},
     ]
     mock_tools["search_web"].acall.return_value = json.dumps(search_results)
 
-    # Mock fetch results
-    fetch_result = {
-        "pages": [
-            {
-                "url": "https://example.com/1",
-                "title": "Page 1",
-                "status": "success",
-                "content": "# Page 1\n\nContent from page 1",
-                "error": None,
-            },
-            {
-                "url": "https://example.com/2",
-                "title": "Page 2",
-                "status": "success",
-                "content": "# Page 2\n\nContent from page 2",
-                "error": None,
-            },
-            {
-                "url": "https://example.com/3",
-                "title": "Page 3",
-                "status": "success",
-                "content": "# Page 3\n\nContent from page 3",
-                "error": None,
-            },
-        ],
-        "overflow": False,
-        "total_chars": 200,
+    # Mock pipeline results for fetch
+    mock_fitted_pages = [
+        ("https://example.com/1", "Page 1", "Content from page 1"),
+        ("https://example.com/2", "Page 2", "Content from page 2"),
+        ("https://example.com/3", "Page 3", "Content from page 3"),
+    ]
+    mock_source_nodes = [
+        SourceNode(
+            url="https://example.com/1",
+            title="Page 1",
+            status="success",
+            content="Content from page 1",
+            content_chars=100,
+        ),
+        SourceNode(
+            url="https://example.com/2",
+            title="Page 2",
+            status="success",
+            content="Content from page 2",
+            content_chars=100,
+        ),
+        SourceNode(
+            url="https://example.com/3",
+            title="Page 3",
+            status="success",
+            content="Content from page 3",
+            content_chars=100,
+        ),
+    ]
+    mock_allocations = {
+        "https://example.com/1": 100,
+        "https://example.com/2": 100,
+        "https://example.com/3": 100,
     }
-    mock_tools["fetch_pages_batch"].acall.return_value = json.dumps(fetch_result)
 
-    # Mock LLM routing responses
+    # Mock LLM routing responses - use "fetch_sources" not "fetch_pages_batch"
     mock_llm.acomplete.side_effect = [
         MagicMock(text='{"action": "search_web"}'),
-        MagicMock(text='{"action": "fetch_pages_batch"}'),
+        MagicMock(text='{"action": "fetch_sources"}'),
         MagicMock(text='{"action": "done"}'),
     ]
 
@@ -127,47 +136,59 @@ async def test_browse_agent_complete_workflow(browse_agent, mock_tools, mock_llm
     # Create callbacks
     callbacks = AgentCallbacks()
 
-    # Run agent
-    result = await browse_agent.run("test query", callbacks)
+    # Run agent with mocked pipeline
+    with patch("tensortruth.core.source_pipeline.SourceFetchPipeline") as MockPipeline:
+        mock_pipeline_instance = MagicMock()
+        mock_pipeline_instance.execute = AsyncMock(
+            return_value=(mock_fitted_pages, mock_source_nodes, mock_allocations)
+        )
+        MockPipeline.return_value = mock_pipeline_instance
+
+        result = await browse_agent.run("test query", callbacks)
 
     # Verify result
     assert result.final_answer == "This is the answer."
     assert result.iterations <= 3
     assert "search_web" in result.tools_called
-    assert "fetch_pages_batch" in result.tools_called
+    assert "fetch_sources" in result.tools_called
     assert len(result.urls_browsed) == 3
 
 
 @pytest.mark.asyncio
 async def test_browse_agent_handles_overflow(browse_agent, mock_tools, mock_llm):
     """Test that agent handles content overflow correctly."""
+    from unittest.mock import patch
+
+    from tensortruth.core.sources import SourceNode
+
     # Set a very small max_content to trigger overflow
     browse_agent.max_content_chars = 100
 
     # Mock search results
-    search_results = [{"url": "https://example.com/1", "title": "Result 1"}]
+    search_results = [
+        {"url": "https://example.com/1", "title": "Result 1", "snippet": "..."}
+    ]
     mock_tools["search_web"].acall.return_value = json.dumps(search_results)
 
-    # Mock fetch with overflow
-    fetch_result = {
-        "pages": [
-            {
-                "url": "https://example.com/1",
-                "title": "Page 1",
-                "status": "success",
-                "content": "# Page 1\n\nContent that is very long" * 100,
-                "error": None,
-            }
-        ],
-        "overflow": True,
-        "total_chars": 5000,
-    }
-    mock_tools["fetch_pages_batch"].acall.return_value = json.dumps(fetch_result)
+    # Mock pipeline results
+    mock_fitted_pages = [
+        ("https://example.com/1", "Page 1", "Content that is very long" * 100)
+    ]
+    mock_source_nodes = [
+        SourceNode(
+            url="https://example.com/1",
+            title="Page 1",
+            status="success",
+            content="Content that is very long" * 100,
+            content_chars=5000,
+        )
+    ]
+    mock_allocations = {"https://example.com/1": 5000}
 
-    # Mock LLM routing
+    # Mock LLM routing - use "fetch_sources" not "fetch_pages_batch"
     mock_llm.acomplete.side_effect = [
         MagicMock(text='{"action": "search_web"}'),
-        MagicMock(text='{"action": "fetch_pages_batch"}'),
+        MagicMock(text='{"action": "fetch_sources"}'),
         MagicMock(text='{"action": "done"}'),
     ]
 
@@ -177,9 +198,16 @@ async def test_browse_agent_handles_overflow(browse_agent, mock_tools, mock_llm)
 
     mock_llm.astream_complete.return_value = mock_stream()
 
-    # Run agent
+    # Run agent with mocked pipeline
     callbacks = AgentCallbacks()
-    result = await browse_agent.run("test query", callbacks)
+    with patch("tensortruth.core.source_pipeline.SourceFetchPipeline") as MockPipeline:
+        mock_pipeline_instance = MagicMock()
+        mock_pipeline_instance.execute = AsyncMock(
+            return_value=(mock_fitted_pages, mock_source_nodes, mock_allocations)
+        )
+        MockPipeline.return_value = mock_pipeline_instance
+
+        result = await browse_agent.run("test query", callbacks)
 
     # Should complete despite overflow
     assert result.final_answer == "Answer"
@@ -263,34 +291,44 @@ async def test_browse_agent_execute_search(browse_agent, mock_tools):
 
 @pytest.mark.asyncio
 async def test_browse_agent_execute_fetch(browse_agent, mock_tools):
-    """Test that execute() handles fetch_pages_batch action."""
+    """Test that execute() handles fetch_sources action."""
+    from unittest.mock import patch
+
     from tensortruth.agents.router.browse.state import BrowseState
+    from tensortruth.core.sources import SourceNode
 
     state = BrowseState(
         query="test",
         phase=WorkflowPhase.SEARCHED,
         min_pages_required=3,
         max_content_chars=10000,
-        search_results=[{"url": "https://example.com", "title": "Result"}],
+        search_results=[
+            {"url": "https://example.com", "title": "Result", "snippet": "..."}
+        ],
     )
 
-    # Mock fetch results
-    fetch_result = {
-        "pages": [
-            {
-                "url": "https://example.com",
-                "title": "Page",
-                "status": "success",
-                "content": "content",
-                "error": None,
-            }
-        ],
-        "overflow": False,
-        "total_chars": 100,
-    }
-    mock_tools["fetch_pages_batch"].acall.return_value = json.dumps(fetch_result)
+    # Mock pipeline results
+    mock_fitted_pages = [("https://example.com", "Page", "content")]
+    mock_source_nodes = [
+        SourceNode(
+            url="https://example.com",
+            title="Page",
+            status="success",
+            content="content",
+            content_chars=100,
+        )
+    ]
+    mock_allocations = {"https://example.com": 100}
 
-    updated_state = await browse_agent.execute("fetch_pages_batch", state)
+    with patch("tensortruth.core.source_pipeline.SourceFetchPipeline") as MockPipeline:
+        mock_pipeline_instance = MagicMock()
+        mock_pipeline_instance.execute = AsyncMock(
+            return_value=(mock_fitted_pages, mock_source_nodes, mock_allocations)
+        )
+        MockPipeline.return_value = mock_pipeline_instance
+
+        # Use "fetch_sources" action, not "fetch_pages_batch"
+        updated_state = await browse_agent.execute("fetch_sources", state)
 
     assert updated_state.phase == WorkflowPhase.FETCHED
     assert len(updated_state.pages) == 1

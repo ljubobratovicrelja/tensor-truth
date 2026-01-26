@@ -23,7 +23,7 @@ class TestBrowseRouter:
         assert action == "search_web"
 
     async def test_router_deterministic_fallback_has_results_no_pages(self):
-        """Should route to fetch_pages_batch when has results but no pages."""
+        """Should route to fetch_sources when has results but no pages."""
         mock_llm = MagicMock()
         router = BrowseRouter(mock_llm)
 
@@ -32,7 +32,7 @@ class TestBrowseRouter:
 
         action = router._deterministic_route(state)
 
-        assert action == "fetch_pages_batch"
+        assert action == "fetch_sources"
 
     async def test_router_deterministic_fallback_min_pages_met(self):
         """Should route to done when min pages requirement met."""
@@ -95,7 +95,7 @@ class TestBrowseRouter:
         """Should parse JSON response from LLM."""
         mock_llm = MagicMock()
         mock_response = MagicMock()
-        mock_response.text = '{"action": "fetch_pages_batch"}'
+        mock_response.text = '{"action": "fetch_sources"}'
         mock_llm.complete = MagicMock(return_value=mock_response)
 
         router = BrowseRouter(mock_llm)
@@ -103,7 +103,7 @@ class TestBrowseRouter:
 
         action = await router.route(state)
 
-        assert action == "fetch_pages_batch"
+        assert action == "fetch_sources"
 
     async def test_router_handles_invalid_json(self):
         """Should fallback if JSON is invalid."""
@@ -133,7 +133,7 @@ class TestBrowseRouter:
         action = await router.route(state)
 
         # Should fallback due to invalid action
-        assert action in ["search_web", "fetch_pages_batch", "done"]
+        assert action in ["search_web", "fetch_sources", "done"]
 
 
 class TestRouterPromptBuilding:

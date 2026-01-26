@@ -1,7 +1,7 @@
 """Tests for BrowseExecutor."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -74,8 +74,10 @@ async def test_execute_search_updates_state(executor, initial_state, mock_tools)
 
 
 @pytest.mark.asyncio
-async def test_execute_fetch_with_overflow(executor, mock_tools):
-    """Test that execute_fetch handles overflow correctly."""
+async def test_execute_fetch_with_pipeline(executor, mock_tools):
+    """Test that execute_fetch uses SourceFetchPipeline correctly."""
+    from tensortruth.core.sources import SourceNode
+
     # Create state with search results
     state = BrowseState(
         query="test query",
@@ -83,44 +85,65 @@ async def test_execute_fetch_with_overflow(executor, mock_tools):
         min_pages_required=3,
         max_content_chars=10000,
         search_results=[
-            {"url": "https://example.com/1", "title": "Result 1"},
-            {"url": "https://example.com/2", "title": "Result 2"},
-            {"url": "https://example.com/3", "title": "Result 3"},
+            {"url": "https://example.com/1", "title": "Result 1", "snippet": "..."},
+            {"url": "https://example.com/2", "title": "Result 2", "snippet": "..."},
+            {"url": "https://example.com/3", "title": "Result 3", "snippet": "..."},
         ],
     )
 
-    # Mock fetch result with overflow
-    fetch_result = {
-        "pages": [
-            {"url": "https://example.com/1", "status": "success", "content": "..."},
-            {"url": "https://example.com/2", "status": "success", "content": "..."},
-        ],
-        "overflow": True,
-        "total_chars": 12000,
+    # Mock pipeline results
+    mock_fitted_pages = [
+        ("https://example.com/1", "Result 1", "Content 1"),
+        ("https://example.com/2", "Result 2", "Content 2"),
+    ]
+    mock_source_nodes = [
+        SourceNode(
+            url="https://example.com/1",
+            title="Result 1",
+            status="success",
+            content="Content 1",
+            content_chars=1000,
+        ),
+        SourceNode(
+            url="https://example.com/2",
+            title="Result 2",
+            status="success",
+            content="Content 2",
+            content_chars=1000,
+        ),
+    ]
+    mock_allocations = {
+        "https://example.com/1": 1000,
+        "https://example.com/2": 1000,
     }
-    mock_tools["fetch_pages_batch"].acall.return_value = json.dumps(fetch_result)
 
-    # Execute fetch
-    updated_state = await executor.execute_fetch(state)
+    with patch("tensortruth.core.source_pipeline.SourceFetchPipeline") as MockPipeline:
+        mock_pipeline_instance = MagicMock()
+        mock_pipeline_instance.execute = AsyncMock(
+            return_value=(mock_fitted_pages, mock_source_nodes, mock_allocations)
+        )
+        MockPipeline.return_value = mock_pipeline_instance
 
-    # Verify tool was called with overflow protection
-    mock_tools["fetch_pages_batch"].acall.assert_called_once()
-    call_args = mock_tools["fetch_pages_batch"].acall.call_args
-    assert call_args.kwargs["max_content_chars"] == 10000
-    assert call_args.kwargs["min_pages"] == 3
+        # Execute fetch
+        updated_state = await executor.execute_fetch(state)
 
-    # Verify state updates
-    assert updated_state.pages == fetch_result["pages"]
-    assert updated_state.content_overflow is True
-    assert updated_state.total_content_chars == 12000
-    assert updated_state.phase == WorkflowPhase.FETCHED
-    assert updated_state.fetch_iterations == 1
-    assert "fetch_pages_batch" in updated_state.actions_taken
+        # Verify pipeline was created with correct params
+        MockPipeline.assert_called_once()
+        call_kwargs = MockPipeline.call_args.kwargs
+        assert call_kwargs["query"] == "test query"
+        assert call_kwargs["max_pages"] == 3
+
+        # Verify state updates
+        assert len(updated_state.pages) == 2
+        assert updated_state.total_content_chars == 2000
+        assert updated_state.phase == WorkflowPhase.FETCHED
+        assert updated_state.fetch_iterations == 1
+        assert "fetch_sources" in updated_state.actions_taken
 
 
 @pytest.mark.asyncio
-async def test_execute_fetch_without_overflow(executor, mock_tools):
-    """Test that execute_fetch works without overflow."""
+async def test_execute_fetch_empty_results(executor, mock_tools):
+    """Test that execute_fetch handles empty pipeline results."""
     # Create state with search results
     state = BrowseState(
         query="test query",
@@ -128,99 +151,109 @@ async def test_execute_fetch_without_overflow(executor, mock_tools):
         min_pages_required=3,
         max_content_chars=50000,
         search_results=[
-            {"url": "https://example.com/1", "title": "Result 1"},
-            {"url": "https://example.com/2", "title": "Result 2"},
-            {"url": "https://example.com/3", "title": "Result 3"},
+            {"url": "https://example.com/1", "title": "Result 1", "snippet": "..."},
         ],
     )
 
-    # Mock fetch result without overflow
-    fetch_result = {
-        "pages": [
-            {"url": "https://example.com/1", "status": "success", "content": "..."},
-            {"url": "https://example.com/2", "status": "success", "content": "..."},
-            {"url": "https://example.com/3", "status": "success", "content": "..."},
-        ],
-        "overflow": False,
-        "total_chars": 8000,
-    }
-    mock_tools["fetch_pages_batch"].acall.return_value = json.dumps(fetch_result)
+    with patch("tensortruth.core.source_pipeline.SourceFetchPipeline") as MockPipeline:
+        mock_pipeline_instance = MagicMock()
+        # Return empty results (all pages failed)
+        mock_pipeline_instance.execute = AsyncMock(return_value=([], [], {}))
+        MockPipeline.return_value = mock_pipeline_instance
 
-    # Execute fetch
-    updated_state = await executor.execute_fetch(state)
+        # Execute fetch
+        updated_state = await executor.execute_fetch(state)
 
-    # Verify state updates
-    assert updated_state.content_overflow is False
-    assert updated_state.total_content_chars == 8000
-    assert len(updated_state.pages) == 3
+        # Verify state updates
+        assert len(updated_state.pages) == 0
+        assert updated_state.total_content_chars == 0
+        assert updated_state.phase == WorkflowPhase.FETCHED
 
 
 @pytest.mark.asyncio
 async def test_executor_tracks_iterations(executor, mock_tools):
     """Test that executor tracks fetch iterations correctly."""
+    from tensortruth.core.sources import SourceNode
+
     state = BrowseState(
         query="test query",
         phase=WorkflowPhase.SEARCHED,
         min_pages_required=3,
         max_content_chars=50000,
         search_results=[
-            {"url": f"https://example.com/{i}", "title": f"Result {i}"}
+            {
+                "url": f"https://example.com/{i}",
+                "title": f"Result {i}",
+                "snippet": "...",
+            }
             for i in range(10)
         ],
         fetch_iterations=0,
     )
 
-    fetch_result = {
-        "pages": [
-            {"url": "https://example.com/1", "status": "success", "content": "..."}
-        ],
-        "overflow": False,
-        "total_chars": 1000,
-    }
-    mock_tools["fetch_pages_batch"].acall.return_value = json.dumps(fetch_result)
+    mock_fitted_pages = [("https://example.com/1", "Result 1", "Content")]
+    mock_source_nodes = [
+        SourceNode(
+            url="https://example.com/1",
+            title="Result 1",
+            status="success",
+            content="Content",
+            content_chars=500,
+        )
+    ]
+    mock_allocations = {"https://example.com/1": 500}
 
-    # Execute fetch multiple times
-    state = await executor.execute_fetch(state)
-    assert state.fetch_iterations == 1
+    with patch("tensortruth.core.source_pipeline.SourceFetchPipeline") as MockPipeline:
+        mock_pipeline_instance = MagicMock()
+        mock_pipeline_instance.execute = AsyncMock(
+            return_value=(mock_fitted_pages, mock_source_nodes, mock_allocations)
+        )
+        MockPipeline.return_value = mock_pipeline_instance
 
-    state = await executor.execute_fetch(state)
-    assert state.fetch_iterations == 2
+        # Execute fetch multiple times
+        state = await executor.execute_fetch(state)
+        assert state.fetch_iterations == 1
 
-    state = await executor.execute_fetch(state)
-    assert state.fetch_iterations == 3
+        state = await executor.execute_fetch(state)
+        assert state.fetch_iterations == 2
+
+        state = await executor.execute_fetch(state)
+        assert state.fetch_iterations == 3
 
 
 @pytest.mark.asyncio
-async def test_execute_fetch_selects_correct_urls(executor, mock_tools):
-    """Test that executor selects the right URLs based on next_url_index."""
+async def test_execute_fetch_with_callbacks(executor, mock_tools):
+    """Test that execute_fetch passes callbacks to pipeline."""
+    from tensortruth.agents.config import AgentCallbacks
+
+    # Create state with search results
     state = BrowseState(
         query="test query",
         phase=WorkflowPhase.SEARCHED,
         min_pages_required=3,
         max_content_chars=50000,
         search_results=[
-            {"url": f"https://example.com/{i}", "title": f"Result {i}"}
-            for i in range(10)
+            {"url": "https://example.com/1", "title": "Result 1", "snippet": "..."},
         ],
-        next_url_index=0,
     )
 
-    fetch_result = {
-        "pages": [],
-        "overflow": False,
-        "total_chars": 0,
-    }
-    mock_tools["fetch_pages_batch"].acall.return_value = json.dumps(fetch_result)
+    # Create callbacks
+    progress_messages = []
+    callbacks = AgentCallbacks(
+        on_progress=lambda msg: progress_messages.append(msg),
+    )
 
-    # First fetch should get URLs 0-2
-    await executor.execute_fetch(state)
-    call_args = mock_tools["fetch_pages_batch"].acall.call_args
-    urls = call_args.kwargs["urls"]
-    assert urls == [
-        "https://example.com/0",
-        "https://example.com/1",
-        "https://example.com/2",
-    ]
+    with patch("tensortruth.core.source_pipeline.SourceFetchPipeline") as MockPipeline:
+        mock_pipeline_instance = MagicMock()
+        mock_pipeline_instance.execute = AsyncMock(return_value=([], [], {}))
+        MockPipeline.return_value = mock_pipeline_instance
+
+        # Execute fetch with callbacks
+        await executor.execute_fetch(state, callbacks)
+
+        # Verify pipeline was created with progress_callback
+        call_kwargs = MockPipeline.call_args.kwargs
+        assert call_kwargs["progress_callback"] is not None
 
 
 def test_generate_queries(executor):

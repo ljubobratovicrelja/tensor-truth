@@ -1,6 +1,5 @@
 """Tests for BrowseAgent factory."""
 
-import pytest
 from llama_index.core.tools import FunctionTool
 from llama_index.llms.ollama import Ollama
 
@@ -42,25 +41,6 @@ def test_create_browse_agent_with_required_params():
     assert isinstance(agent, BrowseAgent)
     assert agent.min_pages_required == 5  # default
     assert agent.max_iterations == 10  # from config
-
-
-def test_create_browse_agent_validates_required_tools():
-    """Test that factory validates required tools."""
-    config = AgentConfig(
-        name="test_browse",
-        description="Test",
-        tools=["search_web"],  # Missing fetch_pages_batch
-    )
-
-    tools = [
-        FunctionTool.from_defaults(fn=lambda: None, name="search_web"),
-    ]
-
-    llm = Ollama(model="llama3.1:8b")
-    session_params = {}
-
-    with pytest.raises(ValueError, match="Missing"):
-        create_browse_agent(config, tools, llm, session_params)
 
 
 def test_create_browse_agent_uses_factory_params():

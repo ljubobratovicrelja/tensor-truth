@@ -303,9 +303,24 @@ class SourceFetchPipeline:
             f"Content reranking: {len(self.pages)} pages with {self.reranker_model}"
         )
 
+        # Check if model needs loading (first use detection)
+        from tensortruth.services.model_manager import ModelManager
+
+        manager = ModelManager.get_instance()
+        model_needs_loading = not manager.is_reranker_loaded(self.reranker_model)
+
+        if model_needs_loading and self.progress_callback:
+            self.progress_callback(
+                "loading_model",
+                "Loading reranker model...",
+                {"model": self.reranker_model},
+            )
+
         if self.progress_callback:
             self.progress_callback(
-                "ranking", "Ranking fetched content...", {"page_count": len(self.pages)}
+                "ranking_content",
+                "Ranking content by relevance...",
+                {"page_count": len(self.pages)},
             )
 
         # Get reranker
@@ -357,7 +372,7 @@ class SourceFetchPipeline:
 
             if self.progress_callback:
                 self.progress_callback(
-                    "ranking",
+                    "ranking_content",
                     f"{len(passing_pages)} pages passed threshold",
                     {
                         "passed": len(passing_pages),
@@ -368,7 +383,7 @@ class SourceFetchPipeline:
             self.pages = []
             if self.progress_callback:
                 self.progress_callback(
-                    "ranking",
+                    "ranking_content",
                     f"All {len(rejected_pages)} pages below relevance threshold",
                     {"rejected": len(rejected_pages)},
                 )

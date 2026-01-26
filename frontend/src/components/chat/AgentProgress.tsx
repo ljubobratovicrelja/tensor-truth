@@ -1,4 +1,12 @@
-import { Search, Download, Brain, CheckCircle, BarChart2 } from "lucide-react";
+import {
+  Search,
+  Download,
+  Brain,
+  CheckCircle,
+  BarChart2,
+  Loader2,
+  Scissors,
+} from "lucide-react";
 import type { StreamAgentProgress, AgentPhase } from "@/api/types";
 
 interface AgentProgressProps {
@@ -12,16 +20,33 @@ const PHASE_CONFIG: Record<
     animation: string;
   }
 > = {
+  loading_model: {
+    icon: Loader2,
+    animation: "animate-spin",
+  },
   searching: {
     icon: Search,
     animation: "animate-bounce",
   },
   ranking: {
+    // Deprecated: kept for backwards compatibility
+    icon: BarChart2,
+    animation: "animate-pulse",
+  },
+  ranking_titles: {
     icon: BarChart2,
     animation: "animate-pulse",
   },
   fetching: {
     icon: Download,
+    animation: "animate-pulse",
+  },
+  ranking_content: {
+    icon: BarChart2,
+    animation: "animate-pulse",
+  },
+  fitting: {
+    icon: Scissors,
     animation: "animate-pulse",
   },
   summarizing: {

@@ -1200,11 +1200,27 @@ async def web_search_stream(
         []
     )  # (title, score) for no-source explanation
     if reranker_model:
+        # Check if model needs loading (first use detection)
+        from tensortruth.services.model_manager import ModelManager
+
+        manager = ModelManager.get_instance()
+        model_needs_loading = not manager.is_reranker_loaded(reranker_model)
+
+        if model_needs_loading:
+            yield WebSearchChunk(
+                agent_progress={
+                    "agent": "web_search",
+                    "phase": "loading_model",
+                    "message": "Loading reranker model (first use may take 30-60s)...",
+                    "model_name": reranker_model,
+                }
+            )
+
         yield WebSearchChunk(
             agent_progress={
                 "agent": "web_search",
-                "phase": "ranking",
-                "message": "Ranking search results...",
+                "phase": "ranking_titles",
+                "message": "Ranking search results by title...",
             }
         )
         reranker = get_reranker_for_web(reranker_model, reranker_device)
@@ -1228,7 +1244,7 @@ async def web_search_stream(
             yield WebSearchChunk(
                 agent_progress={
                     "agent": "web_search",
-                    "phase": "ranking",
+                    "phase": "ranking_titles",
                     "message": f"All {len(rejected_results)} results below relevance threshold",
                 }
             )
@@ -1238,7 +1254,7 @@ async def web_search_stream(
             yield WebSearchChunk(
                 agent_progress={
                     "agent": "web_search",
-                    "phase": "ranking",
+                    "phase": "ranking_titles",
                     "message": (
                         f"{len(passing_results)} results passed threshold "
                         f"({len(rejected_results)} rejected)"
@@ -1257,7 +1273,36 @@ async def web_search_stream(
     # Phase 3-6: Fetch, rerank, and fit pages using unified pipeline
     from tensortruth.core.source_pipeline import SourceFetchPipeline
 
-    # Create pipeline instance
+    # Collect progress chunks to yield after pipeline execution
+    progress_chunks: List[WebSearchChunk] = []
+
+    # Define allowed detail keys for progress data
+    ALLOWED_DETAIL_KEYS = {
+        "pages_target",
+        "pages_fetched",
+        "pages_failed",
+        "page_count",
+        "passed",
+        "rejected",
+        "fitted",
+        "total",
+        "model",
+    }
+
+    def collect_progress(phase: str, message: str, details: dict):
+        """Collect pipeline progress as WebSearchChunk."""
+        progress_data: Dict[str, Any] = {
+            "agent": "web_search",
+            "phase": phase,
+            "message": message,
+        }
+        # Add relevant details
+        for key, value in details.items():
+            if key in ALLOWED_DETAIL_KEYS:
+                progress_data[key] = value
+        progress_chunks.append(WebSearchChunk(agent_progress=progress_data))
+
+    # Create pipeline instance with progress callback
     pipeline = SourceFetchPipeline(
         query=query,
         max_pages=max_pages,
@@ -1268,7 +1313,7 @@ async def web_search_stream(
         max_source_context_pct=max_source_context_pct,
         input_context_pct=input_context_pct,
         custom_instructions=custom_instructions,
-        progress_callback=None,  # No progress reporting for web command
+        progress_callback=collect_progress,
     )
 
     # Execute pipeline
@@ -1276,6 +1321,10 @@ async def web_search_stream(
         fitted_pages, source_nodes, allocations = await pipeline.execute(
             search_results_ordered
         )
+
+        # Yield all collected progress chunks
+        for chunk in progress_chunks:
+            yield chunk
     except Exception as e:
         logger.error(f"Pipeline execution failed: {e}")
         yield WebSearchChunk(

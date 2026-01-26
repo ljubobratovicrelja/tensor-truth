@@ -348,13 +348,16 @@ class BrowseCommand(ToolCommand):
         def sync_on_progress(msg: str):
             """Send progress messages to UI."""
             logger.info(f"Agent progress: {msg}")
+            # Parse phase and clean message content (handles "phase:message" format)
+            phase = _parse_phase(msg)
+            clean_message = _parse_message_content(msg)
             asyncio.create_task(
                 websocket.send_json(
                     {
                         "type": "agent_progress",
                         "agent": "browse",
-                        "phase": _parse_phase(msg),
-                        "message": msg,
+                        "phase": phase,
+                        "message": clean_message,
                     }
                 )
             )
@@ -624,22 +627,66 @@ class BrowseCommand(ToolCommand):
             )
 
 
+# Pipeline phases from SourceFetchPipeline
+PIPELINE_PHASES = {
+    "loading_model",
+    "fetching",
+    "ranking_titles",
+    "ranking_content",
+    "fitting",
+}
+
+
 def _parse_phase(status_msg: str) -> str:
     """Parse phase from AgentService progress message.
 
     Maps status messages to phase names for frontend display.
+    Handles both plain messages and phase-prefixed messages (e.g., "fetching:Fetching batch 1...")
     """
+    # Check for phase prefix (e.g., "fetching:Fetching batch 1...")
+    if ":" in status_msg:
+        potential_phase = status_msg.split(":", 1)[0].lower()
+        if potential_phase in PIPELINE_PHASES:
+            return potential_phase
+
+    # Fallback to keyword matching
     msg_lower = status_msg.lower()
     if "starting" in msg_lower:
         return "starting"
+    elif "loading" in msg_lower and "model" in msg_lower:
+        return "loading_model"
+    elif "ranking" in msg_lower and "title" in msg_lower:
+        return "ranking_titles"
+    elif "ranking" in msg_lower and "content" in msg_lower:
+        return "ranking_content"
+    elif "ranking" in msg_lower:
+        return "ranking_content"  # Default ranking to content
     elif "searching" in msg_lower or "search" in msg_lower:
         return "searching"
     elif "fetching" in msg_lower or "fetch" in msg_lower:
         return "fetching"
+    elif "fitting" in msg_lower or "fitted" in msg_lower:
+        return "fitting"
     elif "synthesizing" in msg_lower or "synthesis" in msg_lower:
         return "summarizing"
     else:
         return "processing"
+
+
+def _parse_message_content(status_msg: str) -> str:
+    """Extract message content, stripping phase prefix if present.
+
+    Args:
+        status_msg: Raw status message, possibly with phase prefix
+
+    Returns:
+        Clean message for display
+    """
+    if ":" in status_msg:
+        potential_phase = status_msg.split(":", 1)[0].lower()
+        if potential_phase in PIPELINE_PHASES:
+            return status_msg.split(":", 1)[1].strip()
+    return status_msg
 
 
 # Register built-in commands

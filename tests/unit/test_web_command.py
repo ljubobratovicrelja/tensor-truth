@@ -276,7 +276,7 @@ async def test_web_command_uses_defaults():
         # Check defaults are applied
         assert call_kwargs["max_results"] == 10
         assert call_kwargs["max_pages"] == 5
-        assert call_kwargs["context_window"] == 16384
+        assert call_kwargs["context_window"] == 8192
 
 
 @pytest.mark.asyncio

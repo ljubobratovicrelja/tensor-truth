@@ -1014,7 +1014,8 @@ class TestWebSearchStreamWithReranking:
                                             chunk.agent_progress["phase"]
                                         )
 
-                                assert "ranking" in phases_seen
+                                # Check for new granular ranking phases
+                                assert "ranking_titles" in phases_seen
 
     async def test_skips_ranking_when_reranker_disabled(self):
         """No ranking phase when reranker_model is None."""
@@ -1051,8 +1052,9 @@ class TestWebSearchStreamWithReranking:
                         if chunk.agent_progress and chunk.agent_progress.get("phase"):
                             phases_seen.append(chunk.agent_progress["phase"])
 
-                    # Should have searching, fetching, summarizing but NOT ranking
-                    assert "ranking" not in phases_seen
+                    # Should have searching, fetching, summarizing but NOT ranking phases
+                    assert "ranking_titles" not in phases_seen
+                    assert "ranking_content" not in phases_seen
                     assert "searching" in phases_seen
 
     @pytest.mark.skip(
