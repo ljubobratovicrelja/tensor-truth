@@ -7,6 +7,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from tensortruth.utils.web_search import (
+    WebSearchSource,
     clean_html_for_content,
     fetch_page_as_markdown,
     fetch_pages_parallel,
@@ -14,6 +15,7 @@ from tensortruth.utils.web_search import (
     summarize_with_llm,
     web_search,
     web_search_async,
+    web_source_to_source_node,
 )
 
 # ============================================================================
@@ -1672,3 +1674,202 @@ class TestWebSearchStreamWithThresholds:
 
                                     # fit_sources_to_context should be called
                                     assert mock_fit.called
+
+
+# ============================================================================
+# Tests for web_source_to_source_node
+# ============================================================================
+
+
+@pytest.mark.unit
+class TestWebSourceToSourceNode:
+    """Tests for web_source_to_source_node conversion function."""
+
+    def test_basic_conversion_all_fields(self):
+        """Test conversion with all fields populated."""
+        source = WebSearchSource(
+            url="https://example.com/page",
+            title="Example Page",
+            status="success",
+            error=None,
+            snippet="This is a snippet preview",
+            content="This is the full content of the page",
+            content_chars=36,
+            relevance_score=0.85,
+        )
+
+        result = web_source_to_source_node(source)
+
+        assert result["text"] == "This is the full content of the page"
+        assert result["score"] == 0.85
+        assert result["metadata"]["source_url"] == "https://example.com/page"
+        assert result["metadata"]["display_name"] == "Example Page"
+        assert result["metadata"]["doc_type"] == "web"
+        assert result["metadata"]["fetch_status"] == "success"
+        assert result["metadata"]["fetch_error"] is None
+        assert result["metadata"]["content_chars"] == 36
+
+    def test_missing_content_uses_snippet(self):
+        """Test that snippet is used when content is None."""
+        source = WebSearchSource(
+            url="https://example.com/page",
+            title="Example Page",
+            status="failed",
+            error="Connection timeout",
+            snippet="This is just a snippet",
+            content=None,
+            content_chars=0,
+            relevance_score=None,
+        )
+
+        result = web_source_to_source_node(source)
+
+        assert result["text"] == "This is just a snippet"
+        # Failed status with no relevance_score should give 0.0
+        assert result["score"] == 0.0
+
+    def test_missing_snippet_and_content(self):
+        """Test empty text when both snippet and content are None."""
+        source = WebSearchSource(
+            url="https://example.com/page",
+            title="Example Page",
+            status="failed",
+            error="Parse error",
+            snippet=None,
+            content=None,
+        )
+
+        result = web_source_to_source_node(source)
+
+        assert result["text"] == ""
+        assert result["score"] == 0.0
+
+    def test_score_preservation_with_relevance_score(self):
+        """Test that relevance_score is preserved exactly."""
+        source = WebSearchSource(
+            url="https://example.com",
+            title="Test",
+            status="success",
+            relevance_score=0.7654321,
+        )
+
+        result = web_source_to_source_node(source)
+
+        assert result["score"] == 0.7654321
+
+    def test_score_fallback_success_status(self):
+        """Test score fallback to 1.0 for success without relevance_score."""
+        source = WebSearchSource(
+            url="https://example.com",
+            title="Test",
+            status="success",
+            relevance_score=None,
+        )
+
+        result = web_source_to_source_node(source)
+
+        assert result["score"] == 1.0
+
+    def test_score_fallback_failed_status(self):
+        """Test score fallback to 0.0 for failed without relevance_score."""
+        source = WebSearchSource(
+            url="https://example.com",
+            title="Test",
+            status="failed",
+            relevance_score=None,
+        )
+
+        result = web_source_to_source_node(source)
+
+        assert result["score"] == 0.0
+
+    def test_score_fallback_skipped_status(self):
+        """Test score fallback to 0.0 for skipped without relevance_score."""
+        source = WebSearchSource(
+            url="https://example.com",
+            title="Test",
+            status="skipped",
+            relevance_score=None,
+        )
+
+        result = web_source_to_source_node(source)
+
+        assert result["score"] == 0.0
+
+    def test_status_mapping_success(self):
+        """Test fetch_status is correctly mapped for success."""
+        source = WebSearchSource(
+            url="https://example.com",
+            title="Test",
+            status="success",
+        )
+
+        result = web_source_to_source_node(source)
+
+        assert result["metadata"]["fetch_status"] == "success"
+
+    def test_status_mapping_failed(self):
+        """Test fetch_status is correctly mapped for failed."""
+        source = WebSearchSource(
+            url="https://example.com",
+            title="Test",
+            status="failed",
+            error="HTTP 404",
+        )
+
+        result = web_source_to_source_node(source)
+
+        assert result["metadata"]["fetch_status"] == "failed"
+        assert result["metadata"]["fetch_error"] == "HTTP 404"
+
+    def test_status_mapping_skipped(self):
+        """Test fetch_status is correctly mapped for skipped."""
+        source = WebSearchSource(
+            url="https://example.com",
+            title="Test",
+            status="skipped",
+            error="Content too short",
+        )
+
+        result = web_source_to_source_node(source)
+
+        assert result["metadata"]["fetch_status"] == "skipped"
+        assert result["metadata"]["fetch_error"] == "Content too short"
+
+    def test_metadata_structure_matches_api_schema(self):
+        """Test that metadata has all expected keys for API schema."""
+        source = WebSearchSource(
+            url="https://example.com/test",
+            title="Test Page Title",
+            status="success",
+            content="Content here",
+            content_chars=12,
+        )
+
+        result = web_source_to_source_node(source)
+
+        # Required metadata keys for unified UI
+        expected_keys = {
+            "source_url",
+            "display_name",
+            "doc_type",
+            "fetch_status",
+            "fetch_error",
+            "content_chars",
+        }
+        assert set(result["metadata"].keys()) == expected_keys
+
+    def test_empty_content_handling(self):
+        """Test handling of empty string content."""
+        source = WebSearchSource(
+            url="https://example.com",
+            title="Test",
+            status="success",
+            content="",
+            snippet="Snippet here",
+        )
+
+        result = web_source_to_source_node(source)
+
+        # Empty string is falsy, should fall back to snippet
+        assert result["text"] == "Snippet here"
