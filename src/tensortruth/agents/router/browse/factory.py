@@ -52,6 +52,7 @@ def create_browse_agent(
     ollama_url = session_params.get("ollama_url", "http://localhost:11434")
     reranker_model = session_params.get("reranker_model")
     rag_device = session_params.get("rag_device", "cpu")
+    conversation_history = session_params.get("conversation_history")
 
     # Merge factory_params from config
     min_pages_required = config.factory_params.get(
@@ -83,6 +84,7 @@ def create_browse_agent(
         reranker_model=reranker_model,
         rag_device=rag_device,
         context_window=context_window,
+        conversation_history=conversation_history,
     )
 
 

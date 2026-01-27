@@ -326,6 +326,17 @@ class BrowseCommand(ToolCommand):
         config = config_service.load()
         params = session.get("params", {})
 
+        # 3. Build conversation history using ChatHistoryService
+        from tensortruth.services.chat_history import ChatHistoryService
+
+        chat_history_service = ChatHistoryService(config)
+        session_messages = session.get("messages", [])
+        conversation_history = chat_history_service.build_history(
+            session_messages,
+            max_turns=5,  # Last 5 turns for context
+            apply_cleaning=True,
+        )
+
         # Build session_params with config defaults
         session_params = {
             "model": params.get("model", config.models.default_agent_reasoning_model),
@@ -336,6 +347,7 @@ class BrowseCommand(ToolCommand):
             "reranker_model": params.get("reranker_model"),  # Already in session params
             "rag_device": params.get("rag_device"),  # Already in session params
             "router_model": params.get("router_model"),  # Already in session params
+            "conversation_history": conversation_history,  # NEW: For context-aware queries
         }
 
         logger.info(

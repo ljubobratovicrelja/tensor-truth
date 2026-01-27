@@ -2,13 +2,16 @@
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from llama_index.core.tools import FunctionTool
 
 from tensortruth.agents.config import AgentCallbacks
 
 from .state import BrowseState, WorkflowPhase
+
+if TYPE_CHECKING:
+    from .router import BrowseRouter
 
 logger = logging.getLogger(__name__)
 
@@ -166,17 +169,34 @@ class BrowseExecutor:
             logger.error(f"Reranking failed: {e}")
             return search_results  # Fallback to DDG order
 
-    async def execute_search(self, state: BrowseState) -> BrowseState:
+    async def execute_search(
+        self,
+        state: BrowseState,
+        router: Optional["BrowseRouter"] = None,
+    ) -> BrowseState:
         """Execute search_web and update state.
 
         Args:
             state: Current browse state
+            router: Optional router for on-demand query generation
 
         Returns:
             Updated browse state with search results
         """
-        # Generate 3 diverse queries
-        queries = self._generate_queries(state.query)
+        # Use generated queries if available
+        if state.generated_queries and len(state.generated_queries) > 0:
+            queries = state.generated_queries
+            logger.info(f"Using router-generated queries: {queries}")
+        elif router:
+            # Generate on-demand if router provided
+            queries = await router.generate_queries(state)
+            state.generated_queries = queries
+            logger.info(f"Generated queries on-demand: {queries}")
+        else:
+            # Fallback
+            queries = self._generate_queries(state.query)
+            logger.info(f"Using deterministic fallback: {queries}")
+
         logger.info(f"Executing search with {len(queries)} queries: {queries}")
 
         # Call search_web tool

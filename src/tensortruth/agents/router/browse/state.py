@@ -2,9 +2,12 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from tensortruth.agents.router.state import RouterState
+
+if TYPE_CHECKING:
+    from tensortruth.services.chat_history import ChatHistory
 
 
 class WorkflowPhase(Enum):
@@ -54,6 +57,11 @@ class BrowseState(RouterState):
     next_url_index: int = 0
     reranker_model: Optional[str] = None
     rag_device: Optional[str] = None
+
+    # NEW: History and query generation fields
+    conversation_history: Optional["ChatHistory"] = None
+    generated_queries: Optional[List[str]] = None
+    custom_instructions: Optional[str] = None
 
     def is_complete(self) -> bool:
         """Check if workflow is complete.

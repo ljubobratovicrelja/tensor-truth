@@ -1,7 +1,10 @@
 """BrowseAgent - Router-based web research agent."""
 
 import logging
-from typing import Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Dict, List, Optional, cast
+
+if TYPE_CHECKING:
+    from tensortruth.services.chat_history import ChatHistory
 
 from llama_index.core.tools import FunctionTool
 from llama_index.llms.ollama import Ollama
@@ -47,6 +50,7 @@ class BrowseAgent(RouterAgent):
         reranker_model: Optional[str] = None,
         rag_device: str = "cpu",
         context_window: int = 16384,
+        conversation_history: Optional["ChatHistory"] = None,
     ):
         """Initialize BrowseAgent.
 
@@ -59,6 +63,7 @@ class BrowseAgent(RouterAgent):
             reranker_model: Optional reranker model for search results
             rag_device: Device for reranker model (cpu, cuda, mps)
             context_window: Context window of synthesis model
+            conversation_history: Optional conversation history for context-aware queries
         """
         super().__init__(router_llm, synthesis_llm, tools, max_iterations)
 
@@ -67,6 +72,7 @@ class BrowseAgent(RouterAgent):
         self.min_pages_required = min_pages_required
         self.reranker_model = reranker_model
         self.rag_device = rag_device
+        self.conversation_history = conversation_history
 
         # Calculate max content from synthesis model's context window
         # Reserve space for: prompt template (~2000 tokens), output (~2000 tokens)
@@ -97,6 +103,7 @@ class BrowseAgent(RouterAgent):
             max_content_chars=self.max_content_chars,
             reranker_model=self.reranker_model,
             rag_device=self.rag_device,
+            conversation_history=self.conversation_history,
         )
 
     async def route(self, state: RouterState) -> str:
@@ -130,12 +137,30 @@ class BrowseAgent(RouterAgent):
             ValueError: If action is unknown
         """
         browse_state = cast(BrowseState, state)
-        if action == "search_web":
-            # Build params for callback
-            queries = self.executor._generate_queries(browse_state.query)
+
+        # NEW: Handle generate_queries
+        if action == "generate_queries":
+            if callbacks and callbacks.on_progress:
+                callbacks.on_progress("Generating contextual search queries...")
+
+            queries = await self.router.generate_queries(browse_state)
+            browse_state.generated_queries = queries
+            browse_state.actions_taken.append("generate_queries")
+
+            logger.info(f"Generated queries: {queries}")
+
+            return browse_state
+
+        elif action == "search_web":
+            # Build params for callback - use generated queries if available
+            queries = browse_state.generated_queries or self.executor._generate_queries(
+                browse_state.query
+            )
             if callbacks and callbacks.on_tool_call:
                 callbacks.on_tool_call("search_web", {"queries": queries})
-            return await self.executor.execute_search(browse_state)
+            # Pass router for fallback
+            return await self.executor.execute_search(browse_state, router=self.router)
+
         elif action == "fetch_sources":
             # Build params for callback - show all search results
             if callbacks and callbacks.on_tool_call:
@@ -153,9 +178,11 @@ class BrowseAgent(RouterAgent):
                 )
             # Pass callbacks to enable pipeline progress reporting
             return await self.executor.execute_fetch(browse_state, callbacks)
+
         elif action == "done":
             browse_state.phase = WorkflowPhase.COMPLETE
             return browse_state
+
         else:
             raise ValueError(f"Unknown action: {action}")
 
@@ -204,9 +231,19 @@ class BrowseAgent(RouterAgent):
         # Get context window from session LLM
         context_window = self.synthesis_llm.context_window
 
+        # NEW: Include custom instructions if extracted
+        synthesis_query = browse_state.query
+        if browse_state.custom_instructions:
+            synthesis_query = (
+                f"{browse_state.query} ({browse_state.custom_instructions})"
+            )
+            logger.info(
+                f"Applying custom instructions to synthesis: {browse_state.custom_instructions}"
+            )
+
         # Build synthesis config (matching web search configuration)
         synthesis_config = SynthesisConfig(
-            query=browse_state.query,
+            query=synthesis_query,
             context_window=context_window,
             citation_style=CitationStyle.HYPERLINK,
             source_scores=source_scores,

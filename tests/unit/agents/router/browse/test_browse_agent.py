@@ -273,10 +273,11 @@ async def test_browse_agent_route_delegates_to_router(browse_agent, mock_llm):
         phase=WorkflowPhase.INITIAL,
         min_pages_required=3,
         max_content_chars=10000,
+        generated_queries=["test 1", "test 2", "test 3"],  # Add generated queries
     )
 
     # Mock LLM response - router_llm might fail, so fallback to deterministic
-    # For INITIAL state with no results, deterministic routing returns "search_web"
+    # For INITIAL state with generated queries, deterministic routing returns "search_web"
     action = await browse_agent.route(state)
 
     # Should return search_web (either from LLM or deterministic fallback)

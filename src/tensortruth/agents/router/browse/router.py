@@ -2,11 +2,14 @@
 
 import json
 import logging
-from typing import Optional
+from typing import Dict, List, Optional
 
 from llama_index.llms.ollama import Ollama
 
-from tensortruth.agents.router.browse.prompts import ROUTER_PROMPT_TEMPLATE
+from tensortruth.agents.router.browse.prompts import (
+    QUERY_GENERATION_PROMPT_TEMPLATE,
+    ROUTER_PROMPT_TEMPLATE,
+)
 from tensortruth.agents.router.browse.state import BrowseState
 
 logger = logging.getLogger(__name__)
@@ -22,6 +25,92 @@ class BrowseRouter:
             llm: Small, fast model for routing decisions
         """
         self.llm = llm
+
+    async def generate_queries(self, state: BrowseState) -> List[str]:
+        """Generate context-aware search queries using router LLM.
+
+        Falls back to deterministic queries on failure.
+
+        Args:
+            state: Current browse state with query and optional conversation history
+
+        Returns:
+            List of 3 search queries
+        """
+        history_context = "(No conversation history)"
+        if state.conversation_history and not state.conversation_history.is_empty:
+            history_context = state.conversation_history.to_prompt_string()
+
+        prompt = QUERY_GENERATION_PROMPT_TEMPLATE.format(
+            query=state.query,
+            history_context=history_context,
+        )
+
+        try:
+            response = self.llm.complete(prompt)
+            result = self._parse_query_generation(response.text)
+
+            if result and "queries" in result and len(result["queries"]) > 0:
+                queries = result["queries"][:3]
+                state.custom_instructions = result.get("custom_instructions")
+
+                logger.info(f"Generated {len(queries)} queries: {queries}")
+                if state.custom_instructions:
+                    logger.info(f"Custom instructions: {state.custom_instructions}")
+
+                return queries
+            else:
+                logger.warning("Invalid query format, using fallback")
+                return self._fallback_queries(state.query)
+
+        except Exception as e:
+            logger.warning(f"Query generation failed: {e}, using fallback")
+            return self._fallback_queries(state.query)
+
+    def _parse_query_generation(self, response_text: str) -> Optional[Dict]:
+        """Parse JSON from query generation response.
+
+        Args:
+            response_text: Raw LLM response
+
+        Returns:
+            Parsed dict with 'queries' and optional 'custom_instructions', or None
+        """
+        try:
+            # Clean markdown code blocks (like intent_classifier does)
+            text = response_text.strip()
+            if text.startswith("```"):
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+            text = text.strip()
+
+            data = json.loads(text)
+
+            # Validate
+            if "queries" not in data or not isinstance(data["queries"], list):
+                return None
+
+            return data
+
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            logger.debug(f"Failed to parse query generation: {e}")
+            return None
+
+    def _fallback_queries(self, query: str) -> List[str]:
+        """Deterministic fallback queries.
+
+        Args:
+            query: User's original query
+
+        Returns:
+            List of 3 fallback queries
+        """
+        return [
+            f"{query} overview",
+            f"{query} information details",
+            f"{query} recent 2026",
+        ]
 
     async def route(self, state: BrowseState) -> str:
         """Route to next action based on state.
@@ -101,7 +190,7 @@ class BrowseRouter:
         Returns:
             True if valid, False otherwise
         """
-        valid_actions = ["search_web", "fetch_sources", "done"]
+        valid_actions = ["generate_queries", "search_web", "fetch_sources", "done"]
         return action in valid_actions
 
     def _deterministic_route(self, state: BrowseState) -> str:
@@ -116,6 +205,13 @@ class BrowseRouter:
         Returns:
             Action name guaranteed to be valid
         """
+        # NEW: If initial and no queries generated yet
+        from tensortruth.agents.router.browse.state import WorkflowPhase
+
+        if state.phase == WorkflowPhase.INITIAL:
+            if not state.generated_queries:
+                return "generate_queries"
+
         # Check completion conditions first (overflow or min pages met)
         if state.content_overflow:
             return "done"
