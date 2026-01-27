@@ -210,6 +210,7 @@ class BrowseAgent(RouterAgent):
             context_window=context_window,
             citation_style=CitationStyle.HYPERLINK,
             source_scores=source_scores,
+            model_name=self.synthesis_llm.model,
         )
 
         # Send progress update before synthesis

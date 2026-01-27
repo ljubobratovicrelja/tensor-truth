@@ -9,6 +9,7 @@ source of truth for context management, prompt building, and streaming.
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import AsyncGenerator, Dict, List, Optional, Tuple
@@ -28,6 +29,26 @@ class CitationStyle(str, Enum):
     BRACKET = "bracket"  # [Source N] - used by /browse
 
 
+class QueryType(str, Enum):
+    """Query type for adaptive prompt structure."""
+
+    PERSON = "person"
+    COMPARISON = "comparison"
+    NEWS_EVENT = "news_event"
+    TECHNICAL = "technical"
+    GENERAL = "general"
+
+
+@dataclass
+class ModelPromptConfig:
+    """Model-specific prompt configuration."""
+
+    use_system_prompt: bool = True
+    temperature_override: Optional[float] = None
+    include_reasoning_directives: bool = False
+    model_family: Optional[str] = None
+
+
 @dataclass
 class SynthesisConfig:
     """Configuration for synthesis engine.
@@ -41,6 +62,7 @@ class SynthesisConfig:
         output_context_pct: Percentage of context for output
         source_scores: Optional dict of url -> relevance score for prioritization
         max_source_context_pct: Max percentage of context per individual source
+        model_name: Optional model name for model-specific prompt adaptation
     """
 
     query: str
@@ -51,6 +73,74 @@ class SynthesisConfig:
     output_context_pct: float = 0.4
     source_scores: Optional[Dict[str, float]] = None
     max_source_context_pct: float = 0.15
+    model_name: Optional[str] = None
+
+
+# Query type detection patterns
+_PERSON_PATTERNS = re.compile(
+    r"\b(who is|biography|life of|about .+ person|background of)\b", re.I
+)
+_COMPARISON_PATTERNS = re.compile(
+    r"\b(compare|versus|vs\.?|difference between|pros and cons)\b", re.I
+)
+_NEWS_PATTERNS = re.compile(
+    r"\b(news|latest|recent|what happened|timeline|developments)\b", re.I
+)
+_TECHNICAL_PATTERNS = re.compile(
+    r"\b(how to|implementation|algorithm|API|documentation|tutorial)\b", re.I
+)
+
+
+def detect_query_type(query: str) -> QueryType:
+    """Detect query type using rule-based keyword matching.
+
+    Args:
+        query: User's query string
+
+    Returns:
+        QueryType enum value
+    """
+    if _PERSON_PATTERNS.search(query):
+        return QueryType.PERSON
+    if _COMPARISON_PATTERNS.search(query):
+        return QueryType.COMPARISON
+    if _NEWS_PATTERNS.search(query):
+        return QueryType.NEWS_EVENT
+    if _TECHNICAL_PATTERNS.search(query):
+        return QueryType.TECHNICAL
+    return QueryType.GENERAL
+
+
+def get_model_prompt_config(model_name: Optional[str]) -> ModelPromptConfig:
+    """Get model-specific prompt configuration.
+
+    Args:
+        model_name: Name of the model (e.g., "deepseek-r1:8b", "qwen3:8b-q8_0")
+
+    Returns:
+        ModelPromptConfig with model-specific settings
+    """
+    if not model_name:
+        return ModelPromptConfig()
+
+    model_lower = model_name.lower()
+
+    # DeepSeek R1: no system prompt, add reasoning directives
+    if "deepseek-r1" in model_lower:
+        return ModelPromptConfig(
+            use_system_prompt=False,
+            temperature_override=0.6,
+            include_reasoning_directives=True,
+            model_family="deepseek-r1",
+        )
+
+    if "qwen3" in model_lower:
+        return ModelPromptConfig(model_family="qwen3")
+
+    if "llama" in model_lower:
+        return ModelPromptConfig(model_family="llama")
+
+    return ModelPromptConfig()
 
 
 def fit_sources_to_context(
@@ -121,6 +211,159 @@ def fit_sources_to_context(
             remaining_budget = 0
 
     return fitted, allocations
+
+
+def build_citation_instructions(
+    citation_style: CitationStyle,
+    example_title: str,
+    example_url: str,
+    include_reasoning: bool = False,
+) -> str:
+    """Build citation instructions with explicit examples.
+
+    Args:
+        citation_style: Citation format to use
+        example_title: Title of first page for realistic example
+        example_url: URL of first page for realistic example
+        include_reasoning: Whether to include chain-of-thought guidance
+
+    Returns:
+        Formatted citation instructions
+    """
+    if citation_style == CitationStyle.HYPERLINK:
+        reasoning_guidance = ""
+        if include_reasoning:
+            reasoning_guidance = """
+
+**REASONING PROCESS (Optional):**
+Before writing, think step by step:
+1. What specific fact or claim am I making?
+2. Which source(s) support this?
+3. How should I cite them inline?
+"""
+
+        return f"""CRITICAL CITATION RULES - READ CAREFULLY:
+
+1. **ALWAYS cite using markdown hyperlinks**: `[Title](url)`
+   - NEVER use plain [1] or [2] style
+   - NEVER write bare numbers or brackets
+
+2. **Four correct citation examples:**
+   - Example 1: "According to [{example_title}]({example_url}), the key finding is..."
+   - Example 2: "The [YOLO algorithm](https://pjreddie.com/darknet/yolo/) detects objects..."
+   - Example 3: "Research shows that [Machine Learning Basics](https://example.com/ml) involves..."
+   - Example 4: "As explained in [{example_title}]({example_url}), neural networks..."
+
+3. **WRONG examples (DO NOT use):**
+   - "According to [1], the algorithm..." (incorrect)
+   - "The study [2] shows..." (incorrect)
+   - "Source 3 indicates..." (incorrect)
+
+4. **RIGHT examples (ALWAYS use):**
+   - "According to [{example_title}]({example_url}), the algorithm..." (correct)
+   - "The [Study Name](url) shows..." (correct)
+   - "[Source Title](url) indicates..." (correct)
+
+5. **Additional rules:**
+   - Preserve ALL existing hyperlinks from source content
+   - Link technical terms to their definitions when sources provide them
+   - Cite multiple sources together: [Source A](url1), [Source B](url2){reasoning_guidance}"""
+
+    else:  # BRACKET style
+        return """**Citation Instructions:**
+- Use [Source N] format where N is the source number
+- Place citations immediately after relevant claims
+- Example: "The algorithm achieves 95% accuracy [Source 1]."
+- Cite multiple sources when appropriate: [Source 1], [Source 2]"""
+
+
+def build_structure_template(
+    query_type: QueryType, citation_style: CitationStyle
+) -> str:
+    """Build query-adaptive structure template.
+
+    Uses hybrid approach: enforced Overview section + flexible subsections.
+
+    Args:
+        query_type: Type of query detected
+        citation_style: Citation format being used
+
+    Returns:
+        Structure template guidance
+    """
+    # Citation example placeholder for bracket style
+    cite_example = (
+        "[Source N]" if citation_style == CitationStyle.BRACKET else "[title](url)"
+    )
+
+    base_template = f"""**Response Structure:**
+
+Your response should include:
+
+### Overview
+[Required: Brief introduction to the topic with inline citations {cite_example}]
+"""
+
+    if query_type == QueryType.PERSON:
+        return base_template + """
+You may organize the rest using sections like:
+### Background & Early Life (if relevant)
+### Career & Achievements (if relevant)
+### Impact & Legacy (if relevant)
+
+Use sections that best fit the available information."""
+
+    elif query_type == QueryType.COMPARISON:
+        return base_template + """
+You may organize the rest using sections like:
+### Key Similarities (if relevant)
+### Key Differences (if relevant)
+### Comparative Analysis (if relevant)
+### Recommendations or Conclusion (if relevant)
+
+Focus on clear, side-by-side comparisons where appropriate."""
+
+    elif query_type == QueryType.NEWS_EVENT:
+        return base_template + """
+You may organize the rest using sections like:
+### Timeline of Events (if relevant)
+### Key Developments (if relevant)
+### Impact & Analysis (if relevant)
+
+Prioritize recent information and chronological clarity."""
+
+    elif query_type == QueryType.TECHNICAL:
+        return base_template + """
+You may organize the rest using sections like:
+### Technical Details (if relevant)
+### Implementation Steps (if relevant)
+### Examples & Use Cases (if relevant)
+### Key Considerations (if relevant)
+
+Focus on practical, actionable information."""
+
+    else:  # GENERAL
+        return base_template + """
+You may organize the rest using sections appropriate to the topic, such as:
+### Key Concepts (if relevant)
+### Detailed Analysis (if relevant)
+### Important Takeaways (if relevant)
+
+Structure your response based on the available information."""
+
+
+def build_fusion_instructions() -> str:
+    """Build source fusion guidance for synthesis.
+
+    Returns:
+        Fusion instructions for combining multiple sources
+    """
+    return """
+**SOURCE SYNTHESIS:**
+- Synthesize overlapping information into cohesive paragraphs
+- Cite multiple sources together when they agree: [Source A](url1), [Source B](url2)
+- Note conflicts explicitly: "Source A suggests X, while Source B indicates Y."
+- Integrate information naturally rather than reporting source-by-source"""
 
 
 def format_pages_for_synthesis(
@@ -198,7 +441,7 @@ def build_synthesis_prompt(
     first_page_url: Optional[str] = None,
     first_page_title: Optional[str] = None,
 ) -> str:
-    """Build synthesis prompt based on citation style.
+    """Build synthesis prompt based on citation style and query type.
 
     Args:
         config: Synthesis configuration
@@ -210,9 +453,32 @@ def build_synthesis_prompt(
     Returns:
         Complete prompt for LLM
     """
+    # Detect query type and get model config
+    query_type = detect_query_type(config.query)
+    model_config = get_model_prompt_config(config.model_name)
+
+    logger.debug(
+        f"Building synthesis prompt: query_type={query_type.value}, "
+        f"model_family={model_config.model_family}, "
+        f"citation_style={config.citation_style.value}"
+    )
+
     max_output_tokens = int(config.context_window * config.output_context_pct)
     target_words = max_output_tokens
 
+    # Build modular components
+    example_title = first_page_title or "Source Title"
+    example_url = first_page_url or "url"
+    citation_instructions = build_citation_instructions(
+        config.citation_style,
+        example_title,
+        example_url,
+        include_reasoning=model_config.include_reasoning_directives,
+    )
+    structure_template = build_structure_template(query_type, config.citation_style)
+    fusion_instructions = build_fusion_instructions()
+
+    # Add custom instructions if provided
     custom_instruction_text = ""
     if config.custom_instructions:
         custom_instruction_text = (
@@ -229,12 +495,12 @@ def build_synthesis_prompt(
 
     if config.citation_style == CitationStyle.HYPERLINK:
         # Web command style - comprehensive with markdown hyperlinks
-        # Use actual first page title/url for a realistic example
-        example_title = first_page_title or "Source Title"
-        example_url = first_page_url or "url"
-        example_citation = f"[{example_title}]({example_url})"
+        # Adapt system prompt based on model config
+        system_role = (
+            "You are a research assistant. " if model_config.use_system_prompt else ""
+        )
 
-        prompt = f"""You are a research assistant. User asked: "{config.query}"
+        prompt = f"""{system_role}User asked: "{config.query}"
 
 ## Available Sources
 {sources_text}{relevance_guidance}
@@ -242,32 +508,14 @@ def build_synthesis_prompt(
 ## Content from Sources
 {combined_text}
 
-CRITICAL CITATION RULES - READ CAREFULLY:
-1. **ALWAYS cite using markdown hyperlinks**, NEVER use plain [1] or [2] style
-2. **Correct citation format**: "According to [Source Title](url), the key point is..."
-3. **Example**: "The [YOLO algorithm](https://pjreddie.com/darknet/yolo/) \
-detects objects..."
-4. **WRONG**: "According to [1], the algorithm..." (incorrect)
-5. **RIGHT**: "According to [YOLO Documentation]\
-(https://pjreddie.com/darknet/yolo/), the algorithm..." (correct)
-6. **Preserve ALL existing hyperlinks** from the source content
-7. **Link technical terms** to their definitions when sources provide them
+{citation_instructions}
 
-Provide a comprehensive summary ({target_words} words approx.) \
-answering the question.{custom_instruction_text}
+{fusion_instructions}
 
-### Summary
-[Thorough overview with inline hyperlinked citations. Example: \
-"{example_citation} explains that..." or \
-"The main approach involves [technique name](url)..."]
+{structure_template}
 
-### Detailed Findings
-[Organize by topic. ALWAYS use hyperlinked citations like "[title](url)" - \
-never bare [1] numbers. Include relevant details and preserve all markdown \
-links from sources.]
-
-### Key Takeaways
-[Important points with inline hyperlinked sources where appropriate]
+Provide a comprehensive answer ({target_words} words approx.) using the structure \
+above.{custom_instruction_text}
 
 Begin your response:"""
 
@@ -280,12 +528,16 @@ Query: {config.query}
 Research Results ({len(sources_text.splitlines())} pages fetched):
 {combined_text}
 
+{citation_instructions}
+
+{fusion_instructions}
+
+{structure_template}
+
 Instructions:
 - Provide a clear, comprehensive answer to the query
-- Use inline citations with [Source N] format
-- Synthesize information from multiple sources
-- Include relevant details and examples
-- If information is conflicting, note the differences{custom_instruction_text}
+- Follow the citation and structure guidance above
+- Include relevant details and examples{custom_instruction_text}
 
 Answer:"""
 

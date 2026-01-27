@@ -1418,6 +1418,7 @@ async def web_search_stream(
         source_scores=source_scores if source_scores else None,
         input_context_pct=input_context_pct,
         max_source_context_pct=max_source_context_pct,
+        model_name=model_name,
     )
 
     # Initialize LLM for synthesis

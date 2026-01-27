@@ -11,7 +11,10 @@ from .source import SourceNode, SourceStatus, SourceType
 from .source_pipeline import SourceFetchPipeline
 from .synthesis import (
     CitationStyle,
+    QueryType,
     SynthesisConfig,
+    detect_query_type,
+    get_model_prompt_config,
     synthesize_with_llm_stream,
 )
 from .system import get_max_memory_gb
@@ -33,6 +36,9 @@ __all__ = [
     "SourceType",
     "SourceFetchPipeline",
     "CitationStyle",
+    "QueryType",
     "SynthesisConfig",
+    "detect_query_type",
+    "get_model_prompt_config",
     "synthesize_with_llm_stream",
 ]

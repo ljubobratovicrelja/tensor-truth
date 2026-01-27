@@ -4,7 +4,6 @@ This test verifies that metrics computed during RAG queries
 are properly saved to session storage via WebSocket handler.
 """
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock
 

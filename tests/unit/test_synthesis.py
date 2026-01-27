@@ -7,10 +7,13 @@ import pytest
 from tensortruth.core.synthesis import (
     CHARS_PER_TOKEN,
     CitationStyle,
+    QueryType,
     SynthesisConfig,
     build_synthesis_prompt,
+    detect_query_type,
     fit_sources_to_context,
     format_pages_for_synthesis,
+    get_model_prompt_config,
     synthesize_with_llm_stream,
 )
 
@@ -312,6 +315,7 @@ def test_prompt_template_hyperlink():
         sources_text,
         combined_text,
         first_page_url="https://example.com/ml",
+        first_page_title="ML Guide",
     )
 
     # Check prompt includes key elements
@@ -321,6 +325,9 @@ def test_prompt_template_hyperlink():
     assert "ALWAYS cite using markdown hyperlinks" in prompt
     assert sources_text in prompt
     assert combined_text in prompt
+    # Check for new modular components
+    assert "SOURCE SYNTHESIS" in prompt
+    assert "Response Structure" in prompt or "### Overview" in prompt
 
 
 def test_prompt_template_bracket():
@@ -344,14 +351,17 @@ def test_prompt_template_bracket():
 
     # Check prompt includes key elements
     assert "What is machine learning?" in prompt
-    assert "[Source N] format" in prompt
+    assert "[Source N] format" in prompt or "Citation Instructions" in prompt
     assert "Synthesize a comprehensive answer" in prompt
     # BRACKET style doesn't include sources_text separately, only in combined_text
     assert combined_text in prompt
+    # Check for new modular components
+    assert "SOURCE SYNTHESIS" in prompt
+    assert "Response Structure" in prompt or "### Overview" in prompt
 
     # Should NOT have hyperlink-specific instructions
     assert "CRITICAL CITATION RULES" not in prompt
-    assert "markdown hyperlinks" not in prompt
+    assert "ALWAYS cite using markdown hyperlinks" not in prompt
 
 
 def test_custom_instructions_integration():
@@ -456,6 +466,223 @@ async def test_streaming_filters_failed_pages(mock_llm, sample_pages_with_failur
 
     # Should still get results from successful pages
     assert len(result_tokens) > 0
+
+
+# =============================================================================
+# Query Type Detection Tests
+# =============================================================================
+
+
+def test_query_type_person():
+    """Test detection of person/biography queries."""
+    assert detect_query_type("Who is Geoffrey Hinton?") == QueryType.PERSON
+    assert (
+        detect_query_type("Tell me about the life of Marie Curie") == QueryType.PERSON
+    )
+    assert detect_query_type("biography of Alan Turing") == QueryType.PERSON
+    assert detect_query_type("background of Elon Musk") == QueryType.PERSON
+
+
+def test_query_type_comparison():
+    """Test detection of comparison queries."""
+    assert detect_query_type("Compare PyTorch vs TensorFlow") == QueryType.COMPARISON
+    assert (
+        detect_query_type("What's the difference between Python and Java?")
+        == QueryType.COMPARISON
+    )
+    assert detect_query_type("React versus Vue pros and cons") == QueryType.COMPARISON
+
+
+def test_query_type_news():
+    """Test detection of news/event queries."""
+    assert (
+        detect_query_type("Latest developments in AI regulation")
+        == QueryType.NEWS_EVENT
+    )
+    assert detect_query_type("What happened at COP28?") == QueryType.NEWS_EVENT
+    assert (
+        detect_query_type("Recent news about quantum computing") == QueryType.NEWS_EVENT
+    )
+    assert detect_query_type("Timeline of the Ukraine conflict") == QueryType.NEWS_EVENT
+
+
+def test_query_type_technical():
+    """Test detection of technical/how-to queries."""
+    assert (
+        detect_query_type("How to implement attention mechanism") == QueryType.TECHNICAL
+    )
+    assert detect_query_type("Python API documentation") == QueryType.TECHNICAL
+    assert detect_query_type("Tutorial on React hooks") == QueryType.TECHNICAL
+    assert detect_query_type("Sorting algorithm implementation") == QueryType.TECHNICAL
+
+
+def test_query_type_general():
+    """Test detection of general queries."""
+    assert detect_query_type("What is quantum computing?") == QueryType.GENERAL
+    assert detect_query_type("Explain neural networks") == QueryType.GENERAL
+    assert detect_query_type("Tell me about climate change") == QueryType.GENERAL
+
+
+# =============================================================================
+# Model Config Tests
+# =============================================================================
+
+
+def test_model_config_deepseek_r1():
+    """Test DeepSeek R1 model configuration."""
+    config = get_model_prompt_config("deepseek-r1:8b")
+    assert config.use_system_prompt is False
+    assert config.temperature_override == 0.6
+    assert config.include_reasoning_directives is True
+    assert config.model_family == "deepseek-r1"
+
+
+def test_model_config_qwen3():
+    """Test Qwen3 model configuration."""
+    config = get_model_prompt_config("qwen3:8b-q8_0")
+    assert config.use_system_prompt is True
+    assert config.model_family == "qwen3"
+    assert config.include_reasoning_directives is False
+
+
+def test_model_config_llama():
+    """Test Llama model configuration."""
+    config = get_model_prompt_config("llama3.2:3b")
+    assert config.use_system_prompt is True
+    assert config.model_family == "llama"
+
+
+def test_model_config_default():
+    """Test default model configuration."""
+    config = get_model_prompt_config(None)
+    assert config.use_system_prompt is True
+    assert config.model_family is None
+    assert config.include_reasoning_directives is False
+
+    # Also test with unknown model
+    config = get_model_prompt_config("unknown-model:latest")
+    assert config.use_system_prompt is True
+    assert config.model_family is None
+
+
+# =============================================================================
+# Prompt Feature Tests
+# =============================================================================
+
+
+def test_prompt_contains_citation_examples():
+    """Test that prompt includes multiple citation examples."""
+    config = SynthesisConfig(
+        query="What is machine learning?",
+        context_window=16384,
+        citation_style=CitationStyle.HYPERLINK,
+    )
+
+    prompt = build_synthesis_prompt(
+        config,
+        "sources",
+        "content",
+        first_page_url="https://example.com/ml",
+        first_page_title="ML Guide",
+    )
+
+    # Should have multiple examples (4 explicit examples in plan)
+    assert "Example 1:" in prompt
+    assert "Example 2:" in prompt
+    assert "Example 3:" in prompt
+    assert "Example 4:" in prompt
+    # Should show both correct and incorrect formats
+    assert "WRONG examples" in prompt
+    assert "RIGHT examples" in prompt
+
+
+def test_prompt_adapts_to_query_type():
+    """Test that prompt structure adapts to query type."""
+    # Test person query
+    person_config = SynthesisConfig(
+        query="Who is Geoffrey Hinton?",
+        context_window=16384,
+        citation_style=CitationStyle.HYPERLINK,
+    )
+    person_prompt = build_synthesis_prompt(person_config, "sources", "content")
+    assert "### Overview" in person_prompt
+    # Should suggest person-specific sections
+    assert (
+        "Background" in person_prompt
+        or "Career" in person_prompt
+        or "Legacy" in person_prompt
+    )
+
+    # Test comparison query
+    compare_config = SynthesisConfig(
+        query="Compare PyTorch vs TensorFlow",
+        context_window=16384,
+        citation_style=CitationStyle.HYPERLINK,
+    )
+    compare_prompt = build_synthesis_prompt(compare_config, "sources", "content")
+    assert "### Overview" in compare_prompt
+    # Should suggest comparison-specific sections
+    assert (
+        "Similarities" in compare_prompt
+        or "Differences" in compare_prompt
+        or "Comparative" in compare_prompt
+    )
+
+    # Test technical query
+    tech_config = SynthesisConfig(
+        query="How to implement attention mechanism",
+        context_window=16384,
+        citation_style=CitationStyle.HYPERLINK,
+    )
+    tech_prompt = build_synthesis_prompt(tech_config, "sources", "content")
+    assert "### Overview" in tech_prompt
+    # Should suggest technical sections
+    assert (
+        "Technical" in tech_prompt
+        or "Implementation" in tech_prompt
+        or "Examples" in tech_prompt
+    )
+
+
+def test_prompt_fusion_instructions():
+    """Test that fusion instructions are present in prompt."""
+    config = SynthesisConfig(
+        query="What is machine learning?",
+        context_window=16384,
+        citation_style=CitationStyle.HYPERLINK,
+    )
+
+    prompt = build_synthesis_prompt(config, "sources", "content")
+
+    # Check for fusion guidance
+    assert "SOURCE SYNTHESIS" in prompt
+    assert (
+        "Synthesize overlapping information" in prompt or "synthesize" in prompt.lower()
+    )
+    assert "Cite multiple sources" in prompt or "multiple sources" in prompt
+
+
+def test_model_specific_system_prompt():
+    """Test that DeepSeek R1 omits system prompt."""
+    # Regular model - should have system prompt
+    regular_config = SynthesisConfig(
+        query="What is machine learning?",
+        context_window=16384,
+        citation_style=CitationStyle.HYPERLINK,
+        model_name="llama3.2:3b",
+    )
+    regular_prompt = build_synthesis_prompt(regular_config, "sources", "content")
+    assert "You are a research assistant" in regular_prompt
+
+    # DeepSeek R1 - should NOT have system prompt
+    deepseek_config = SynthesisConfig(
+        query="What is machine learning?",
+        context_window=16384,
+        citation_style=CitationStyle.HYPERLINK,
+        model_name="deepseek-r1:8b",
+    )
+    deepseek_prompt = build_synthesis_prompt(deepseek_config, "sources", "content")
+    assert "You are a research assistant" not in deepseek_prompt
 
 
 # =============================================================================
