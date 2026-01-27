@@ -63,6 +63,13 @@ class BrowseState(RouterState):
     generated_queries: Optional[List[str]] = None
     custom_instructions: Optional[str] = None
 
+    # Search retry tracking (for handling all-pages-rejected case)
+    search_cycles: int = 0  # Number of complete search→fetch cycles
+    max_search_cycles: int = 2  # Maximum retry attempts with new queries
+    rejected_titles: List[str] = field(
+        default_factory=list
+    )  # Titles rejected by reranker
+
     def is_complete(self) -> bool:
         """Check if workflow is complete.
 

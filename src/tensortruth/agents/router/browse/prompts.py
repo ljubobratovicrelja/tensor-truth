@@ -7,7 +7,7 @@ User's query: "{query}"
 
 Recent conversation history:
 {history_context}
-
+{failure_context}
 **Your Task:**
 Generate 3 diverse, specific search queries to comprehensively research this topic.
 

@@ -259,9 +259,17 @@ class BrowseExecutor:
                 # Format message for UI: include phase prefix
                 callbacks.on_progress(f"{phase}:{message}")
 
+        # Use resolved query from generated queries for content reranking
+        # (generated_queries are context-aware and resolve pronouns like "this")
+        if state.generated_queries and len(state.generated_queries) > 0:
+            rerank_query = " ".join(state.generated_queries)
+            logger.info(f"Using resolved query for content reranking: {rerank_query}")
+        else:
+            rerank_query = state.query
+
         # Create pipeline instance with progress callback
         pipeline = SourceFetchPipeline(
-            query=state.query,
+            query=rerank_query,
             max_pages=state.min_pages_required,
             context_window=state.max_content_chars // 4,  # Convert chars to tokens
             reranker_model=state.reranker_model,
@@ -269,7 +277,7 @@ class BrowseExecutor:
             rerank_content_threshold=0.1,  # Can be made configurable
             max_source_context_pct=0.15,
             input_context_pct=0.6,
-            custom_instructions=None,
+            custom_instructions=state.custom_instructions,
             progress_callback=pipeline_progress if callbacks else None,
         )
 
@@ -297,6 +305,17 @@ class BrowseExecutor:
 
             # Store source nodes for later extraction
             state.source_nodes = source_nodes  # type: ignore[attr-defined]
+
+            # Track rejected pages for retry logic
+            if not state.pages or len(state.pages) == 0:
+                # All pages were rejected by reranker - capture titles for context
+                rejected_titles = [s.title for s in source_nodes if s.title]
+                state.rejected_titles = rejected_titles
+                state.search_cycles += 1
+                logger.warning(
+                    f"All {len(rejected_titles)} pages rejected by reranker, "
+                    f"cycle {state.search_cycles}/{state.max_search_cycles}"
+                )
 
             # Calculate total content chars from allocations
             state.total_content_chars = sum(allocations.values())

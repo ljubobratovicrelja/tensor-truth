@@ -41,9 +41,27 @@ class BrowseRouter:
         if state.conversation_history and not state.conversation_history.is_empty:
             history_context = state.conversation_history.to_prompt_string()
 
+        # Build failure context if this is a retry after all pages were rejected
+        failure_context = ""
+        if state.rejected_titles and len(state.rejected_titles) > 0:
+            titles_list = "\n- ".join(state.rejected_titles[:5])  # Limit to 5
+            failure_context = (
+                "\n**Previous Search Failed:**\n"
+                "The previous search queries found these pages, but they were "
+                "all rejected as irrelevant:\n"
+                f"- {titles_list}\n\n"
+                "Generate DIFFERENT queries that approach the topic from a new angle. "
+                "Avoid similar terms that led to these irrelevant results.\n"
+            )
+            logger.info(
+                f"Retry cycle {state.search_cycles}: adding failure context "
+                f"with {len(state.rejected_titles)} rejected titles"
+            )
+
         prompt = QUERY_GENERATION_PROMPT_TEMPLATE.format(
             query=state.query,
             history_context=history_context,
+            failure_context=failure_context,
         )
 
         try:
@@ -223,8 +241,23 @@ class BrowseRouter:
         if not state.search_results or len(state.search_results) == 0:
             return "search_web"
 
-        # Have results but no pages → fetch
+        # Have results but no pages (all rejected or not fetched yet)
         if not state.pages or len(state.pages) == 0:
+            # Already tried fetching this cycle? (fetch_iterations > 0 but no pages)
+            if state.fetch_iterations > 0:
+                # All pages were rejected - try new search cycle with different queries
+                if state.search_cycles < state.max_search_cycles:
+                    logger.info(
+                        f"All pages rejected, generating new queries "
+                        f"(cycle {state.search_cycles}/{state.max_search_cycles})"
+                    )
+                    return "generate_queries"
+                else:
+                    logger.warning(
+                        f"Exhausted {state.max_search_cycles} search cycles, giving up"
+                    )
+                    return "done"
+            # Haven't tried fetching yet - do it
             return "fetch_sources"
 
         # Need more pages and can retry

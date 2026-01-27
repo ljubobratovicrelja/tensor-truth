@@ -154,6 +154,7 @@ class RouterAgent(Agent):
 
             # Execute: Perform action and update state (callbacks passed through)
             state = await self.execute(action, state, callbacks)
+            state.iteration_count += 1
             logger.debug(
                 f"Iteration {state.iteration_count}: executed action='{action}', "
                 f"state={state.to_dict()}"

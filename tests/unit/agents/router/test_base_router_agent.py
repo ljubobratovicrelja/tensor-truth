@@ -79,7 +79,7 @@ class ConcreteRouterAgent(RouterAgent):
             callbacks.on_tool_call(action, {"state": state.query})
 
         state.actions_taken.append(action)
-        state.iteration_count += 1
+        # Note: iteration_count is incremented by base class after execute()
 
         if action == "done":
             state.phase = TestPhase.COMPLETE
@@ -201,7 +201,7 @@ class TestRouterAgentRunWorkflow:
 
             async def execute(self, action, state, callbacks=None):
                 state.actions_taken.append(action)
-                state.iteration_count += 1
+                # Note: iteration_count is incremented by base class after execute()
                 # Never mark as complete
                 return state
 

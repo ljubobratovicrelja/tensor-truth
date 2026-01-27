@@ -140,8 +140,24 @@ class BrowseAgent(RouterAgent):
 
         # NEW: Handle generate_queries
         if action == "generate_queries":
+            # If this is a retry (already have rejected content), reset for new cycle
+            if browse_state.search_cycles > 0:
+                logger.info(
+                    f"Retry cycle {browse_state.search_cycles}: "
+                    f"resetting search state for new queries"
+                )
+                browse_state.search_results = None
+                browse_state.fetch_iterations = 0
+                # Keep rejected_titles for context to query generator
+
             if callbacks and callbacks.on_progress:
-                callbacks.on_progress("Generating contextual search queries...")
+                if browse_state.search_cycles > 0:
+                    attempt = browse_state.search_cycles + 1
+                    callbacks.on_progress(
+                        f"Retrying with new search queries (attempt {attempt})..."
+                    )
+                else:
+                    callbacks.on_progress("Generating contextual search queries...")
 
             queries = await self.router.generate_queries(browse_state)
             browse_state.generated_queries = queries
