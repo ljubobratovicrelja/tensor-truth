@@ -1,7 +1,7 @@
 """BrowseAgent - Router-based web research agent."""
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from tensortruth.services.chat_history import ChatHistory
@@ -11,7 +11,6 @@ from llama_index.llms.ollama import Ollama
 
 from tensortruth.agents.config import AgentCallbacks, AgentResult
 from tensortruth.agents.router.base import RouterAgent
-from tensortruth.agents.router.state import RouterState
 from tensortruth.core.ollama import check_thinking_support
 from tensortruth.core.source import SourceNode
 from tensortruth.core.synthesis import (
@@ -33,6 +32,8 @@ class BrowseAgent(RouterAgent):
     Implements a two-phase architecture:
     1. Router (fast small model) - Routes workflow decisions
     2. Synthesis (session model) - Generates final answer
+
+    Workflow: iterative route → execute → synthesize loop
 
     Features:
     - Overflow protection based on context window
@@ -65,7 +66,10 @@ class BrowseAgent(RouterAgent):
             context_window: Context window of synthesis model
             conversation_history: Optional conversation history for context-aware queries
         """
-        super().__init__(router_llm, synthesis_llm, tools, max_iterations)
+        self.router_llm = router_llm
+        self.synthesis_llm = synthesis_llm
+        self.tools = tools
+        self.max_iterations = max_iterations
 
         self.router = BrowseRouter(router_llm)
         self.executor = BrowseExecutor(tools)
@@ -87,14 +91,71 @@ class BrowseAgent(RouterAgent):
             f"min_pages={min_pages_required}"
         )
 
-    def _create_initial_state(self, query: str) -> RouterState:
+    async def run(
+        self, query: str, callbacks: Optional[AgentCallbacks] = None, **kwargs: Any
+    ) -> AgentResult:
+        """Run complete browse agent workflow.
+
+        This is the main entry point. It:
+        1. Creates initial state
+        2. Loops: route → execute until complete or max_iterations
+        3. Synthesizes final answer
+        4. Returns AgentResult
+
+        Args:
+            query: User's query/request
+            callbacks: Optional callbacks for progress updates
+
+        Returns:
+            AgentResult with final answer and metadata
+        """
+        # Ensure callbacks is not None
+        if callbacks is None:
+            callbacks = AgentCallbacks()
+
+        # Initialize state
+        state = self._create_initial_state(query)
+
+        logger.info(
+            f"Starting browse agent workflow: query='{query}', "
+            f"max_iterations={self.max_iterations}"
+        )
+
+        # Router + executor loop
+        while not state.is_complete() and state.iteration_count < self.max_iterations:
+            # Route: Decide next action
+            action = await self.route(state)
+            logger.debug(
+                f"Iteration {state.iteration_count}: routed to action='{action}'"
+            )
+
+            # Execute: Perform action and update state (callbacks passed through)
+            state = await self.execute(action, state, callbacks)
+            state.iteration_count += 1
+            logger.debug(
+                f"Iteration {state.iteration_count}: executed action='{action}', "
+                f"state={state.to_dict()}"
+            )
+
+        logger.info(
+            f"Browse workflow complete: iterations={state.iteration_count}, "
+            f"is_complete={state.is_complete()}"
+        )
+
+        # Synthesize final answer
+        final_answer = await self._synthesize(state, callbacks)
+
+        # Build result
+        return self._build_result(state, final_answer)
+
+    def _create_initial_state(self, query: str) -> BrowseState:
         """Create initial BrowseState with calculated max_content.
 
         Args:
             query: User query
 
         Returns:
-            Initial browse state
+            Initial BrowseState instance
         """
         return BrowseState(
             query=query,
@@ -106,37 +167,37 @@ class BrowseAgent(RouterAgent):
             conversation_history=self.conversation_history,
         )
 
-    async def route(self, state: RouterState) -> str:
+    async def route(self, state: BrowseState) -> str:
         """Route using BrowseRouter.
 
         Args:
-            state: Current state
+            state: Current browse state
 
         Returns:
             Next action to execute
         """
-        return await self.router.route(cast(BrowseState, state))
+        return await self.router.route(state)
 
     async def execute(
         self,
         action: str,
-        state: RouterState,
+        state: BrowseState,
         callbacks: Optional[AgentCallbacks] = None,
-    ) -> RouterState:
+    ) -> BrowseState:
         """Execute action using BrowseExecutor.
 
         Args:
             action: Action to execute
-            state: Current state
+            state: Current browse state
             callbacks: Optional callbacks for tool calls
 
         Returns:
-            Updated state
+            Updated browse state
 
         Raises:
             ValueError: If action is unknown
         """
-        browse_state = cast(BrowseState, state)
+        browse_state = state
 
         # NEW: Handle generate_queries
         if action == "generate_queries":
@@ -202,10 +263,8 @@ class BrowseAgent(RouterAgent):
         else:
             raise ValueError(f"Unknown action: {action}")
 
-    def _build_result(self, state: RouterState, final_answer: str) -> AgentResult:
+    def _build_result(self, state: BrowseState, final_answer: str) -> AgentResult:
         """Build AgentResult with rich source metadata.
-
-        Overrides base class to add SourceNode objects with titles, scores, etc.
 
         Args:
             state: Final browse state
@@ -222,7 +281,7 @@ class BrowseAgent(RouterAgent):
             sources=self._extract_sources(state),
         )
 
-    async def _synthesize(self, state: RouterState, callbacks: AgentCallbacks) -> str:
+    async def _synthesize(self, state: BrowseState, callbacks: AgentCallbacks) -> str:
         """Synthesize answer using core synthesis engine.
 
         Args:
@@ -232,7 +291,7 @@ class BrowseAgent(RouterAgent):
         Returns:
             Final synthesized answer
         """
-        browse_state = cast(BrowseState, state)
+        browse_state = state
 
         # Build source_scores dict from pipeline results (like web search does)
         source_scores: Optional[Dict[str, float]] = None
@@ -309,7 +368,7 @@ class BrowseAgent(RouterAgent):
         logger.info(f"Synthesis complete: {len(full_answer)} chars")
         return full_answer
 
-    def _extract_urls(self, state: RouterState) -> List[str]:
+    def _extract_urls(self, state: BrowseState) -> List[str]:
         """Extract URLs from browse state.
 
         Args:
@@ -318,13 +377,12 @@ class BrowseAgent(RouterAgent):
         Returns:
             List of all fetched URLs (successful and failed)
         """
-        browse_state = cast(BrowseState, state)
-        if not browse_state.pages:
+        if not state.pages:
             return []
         # Return all pages regardless of status for transparency
-        return [p["url"] for p in browse_state.pages]
+        return [p["url"] for p in state.pages]
 
-    def _extract_sources(self, state: RouterState) -> List[SourceNode]:
+    def _extract_sources(self, state: BrowseState) -> List[SourceNode]:
         """Extract rich source metadata from browse state.
 
         The pipeline (SourceFetchPipeline) already built SourceNode objects
@@ -336,15 +394,13 @@ class BrowseAgent(RouterAgent):
         Returns:
             List of SourceNode objects with titles, scores, content, etc.
         """
-        browse_state = cast(BrowseState, state)
-
         # Pipeline already built source_nodes with all metadata
-        if browse_state.source_nodes:
+        if state.source_nodes:
             logger.info(
-                f"_extract_sources: Returning {len(browse_state.source_nodes)} "
+                f"_extract_sources: Returning {len(state.source_nodes)} "
                 f"sources from pipeline"
             )
-            return browse_state.source_nodes
+            return state.source_nodes
 
         # Fallback if no source_nodes (shouldn't happen with pipeline)
         logger.warning(

@@ -10,7 +10,12 @@ class RouterState(ABC):
     """Base class for router agent state.
 
     This abstract class defines the minimal state required for router-based
-    agents. Subclasses should add domain-specific fields for their workflows.
+    agents that use iterative workflows. Subclasses should add domain-specific
+    fields for their workflows.
+
+    Note: Not all RouterAgent subclasses need this - simple agents like
+    ChatAgent may use minimal state or none at all. This is designed for
+    agents with iterative route → execute loops like BrowseAgent.
 
     Attributes:
         query: The user's original query/request
