@@ -140,8 +140,15 @@ class BrowseExecutor:
             )
 
             # Rerank by title + snippet relevance
+            # Use generated queries for reranking if available (context-resolved)
+            rerank_query = state.query
+            if state.generated_queries and len(state.generated_queries) > 0:
+                # Use all generated queries for better relevance
+                rerank_query = " ".join(state.generated_queries)
+                logger.debug(f"Reranking with generated queries: {rerank_query}")
+
             ranked_results = rerank_search_results(
-                query=state.query,
+                query=rerank_query,
                 results=search_results,
                 top_n=len(search_results),
                 reranker=reranker,
