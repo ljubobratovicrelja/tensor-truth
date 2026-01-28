@@ -3,9 +3,13 @@
 import asyncio
 import json
 import re
-from typing import List
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+
+if TYPE_CHECKING:
+    from llama_index.core.schema import NodeWithScore
 
 from tensortruth.api.deps import (
     ConfigServiceDep,
@@ -27,6 +31,7 @@ from tensortruth.api.schemas import (
 )
 from tensortruth.app_utils.title_generation import generate_smart_title_async
 from tensortruth.core.source_converter import SourceConverter
+from tensortruth.services import RAGService, SessionService
 
 # REST endpoints (mounted under /api)
 rest_router = APIRouter()
@@ -36,21 +41,152 @@ ws_router = APIRouter()
 router = rest_router
 
 
-def _extract_sources(source_nodes: List) -> List[SourceNode]:
+@dataclass
+class ChatContext:
+    """Context for a chat request.
+
+    Encapsulates all the information needed to execute a chat query,
+    including session configuration and message history.
+    """
+
+    session_id: str
+    prompt: str
+    modules: List[str]
+    params: Dict[str, Any]
+    session_messages: List[Dict[str, Any]]
+    session_index_path: Optional[str]
+
+    @property
+    def is_llm_only_mode(self) -> bool:
+        """Determine if this is LLM-only mode (no RAG retrieval)."""
+        return not self.modules and not self.session_index_path
+
+    @classmethod
+    def from_session(
+        cls,
+        session_id: str,
+        prompt: str,
+        session: Dict[str, Any],
+        pdf_service: Any,
+    ) -> "ChatContext":
+        """Create ChatContext from session data and PDF service.
+
+        Args:
+            session_id: The session identifier.
+            prompt: The user's current prompt.
+            session: Session dict containing modules, params, messages.
+            pdf_service: PDFService instance to check for PDF index.
+
+        Returns:
+            ChatContext instance with all fields populated.
+        """
+        index_path = pdf_service.get_index_path()
+        return cls(
+            session_id=session_id,
+            prompt=prompt,
+            modules=session.get("modules") or [],
+            params=session.get("params", {}),
+            session_messages=session.get("messages", []),
+            session_index_path=str(index_path) if index_path else None,
+        )
+
+
+def _extract_sources(source_nodes: List["NodeWithScore"]) -> List[SourceNode]:
     """Extract source information from RAG source nodes.
 
     Uses SourceConverter.from_rag_node() for unified conversion,
     then to_api_schema() for API-compatible output.
+
+    Args:
+        source_nodes: LlamaIndex NodeWithScore objects from retriever.
+
+    Returns:
+        SourceNode objects for API response.
     """
     sources = []
     for idx, node in enumerate(source_nodes):
-        try:
-            unified = SourceConverter.from_rag_node(node, idx)
-            api_dict = SourceConverter.to_api_schema(unified)
-            sources.append(SourceNode(**api_dict))
-        except Exception:
-            continue
+        unified = SourceConverter.from_rag_node(node, idx)
+        api_dict = SourceConverter.to_api_schema(unified)
+        sources.append(SourceNode(**api_dict))
     return sources
+
+
+def _execute_chat_query(
+    rag_service: RAGService,
+    context: ChatContext,
+) -> Tuple[str, List[SourceNode], Optional[Dict[str, Any]]]:
+    """Execute chat query and return response with sources and metrics.
+
+    Handles both LLM-only mode and RAG mode, including engine reload when needed.
+
+    Args:
+        rag_service: The RAG service instance.
+        context: ChatContext with all query parameters.
+
+    Returns:
+        Tuple of (response_text, source_nodes, metrics).
+    """
+    full_response = ""
+    sources: List[SourceNode] = []
+    metrics: Optional[Dict[str, Any]] = None
+
+    if context.is_llm_only_mode:
+        # LLM-only mode: direct LLM query without RAG
+        for chunk in rag_service.query_llm_only(
+            context.prompt, context.params, session_messages=context.session_messages
+        ):
+            if chunk.is_complete:
+                metrics = chunk.metrics
+            elif chunk.text:
+                full_response += chunk.text
+    else:
+        # RAG mode: load engine if needed and query with retrieval
+        if rag_service.needs_reload(
+            context.modules, context.params, context.session_index_path
+        ):
+            rag_service.load_engine(
+                modules=context.modules,
+                params=context.params,
+                session_index_path=context.session_index_path,
+            )
+
+        for chunk in rag_service.query(
+            context.prompt, session_messages=context.session_messages
+        ):
+            if chunk.is_complete:
+                sources = _extract_sources(chunk.source_nodes)
+                metrics = chunk.metrics
+            elif chunk.text:
+                full_response += chunk.text
+
+    return full_response, sources, metrics
+
+
+def _save_assistant_message(
+    session_service: SessionService,
+    session_id: str,
+    content: str,
+    sources: List[SourceNode],
+    metrics: Optional[Dict[str, Any]],
+) -> None:
+    """Save assistant message with sources and metrics to session.
+
+    Args:
+        session_service: The session service instance.
+        session_id: The session identifier.
+        content: The assistant's response content.
+        sources: List of source nodes (may be empty).
+        metrics: Optional retrieval metrics.
+    """
+    assistant_message: Dict[str, Any] = {"role": "assistant", "content": content}
+    if sources:
+        assistant_message["sources"] = [s.model_dump() for s in sources]
+    if metrics:
+        assistant_message["metrics"] = metrics
+
+    data = session_service.load()  # Reload in case of concurrent updates
+    data = session_service.add_message(session_id, assistant_message, data)
+    session_service.save(data)
 
 
 @router.post("/sessions/{session_id}/chat", response_model=ChatResponse)
@@ -62,77 +198,37 @@ async def chat(
     rag_service: RAGServiceDep,
 ) -> ChatResponse:
     """Non-streaming chat endpoint."""
+    # 1. Validate session
     data = session_service.load()
     session = session_service.get_session(session_id, data)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    modules = session.get("modules") or []
-    params = session.get("params", {})
-
-    # Check for session PDF index
+    # 2. Build context
     with get_pdf_service(session_id) as pdf_service:
-        index_path = pdf_service.get_index_path()
-        session_index_path = str(index_path) if index_path else None
+        context = ChatContext.from_session(
+            session_id, body.prompt, session, pdf_service
+        )
 
-    # Determine if we're in LLM-only mode (no modules or PDFs)
-    llm_only_mode = not modules and not session_index_path
-
-    # Get session messages for history BEFORE adding the new user message
-    session_messages = session.get("messages", [])
-
-    # Add user message to session
+    # 3. Save user message
     data = session_service.add_message(
         session_id, {"role": "user", "content": body.prompt}, data
     )
     session_service.save(data)
 
-    # Query engine (collect full response)
-    full_response = ""
-    sources: List[SourceNode] = []
-    metrics_dict = None
+    # 4. Execute query
+    full_response, sources, metrics = _execute_chat_query(rag_service, context)
 
-    if llm_only_mode:
-        # LLM-only mode: direct LLM query without RAG
-        for chunk in rag_service.query_llm_only(
-            body.prompt, params, session_messages=session_messages
-        ):
-            if chunk.is_complete:
-                sources = []
-                metrics_dict = chunk.metrics
-            elif chunk.text:
-                full_response += chunk.text
-    else:
-        # RAG mode: load engine if needed and query with retrieval
-        if rag_service.needs_reload(modules, params, session_index_path):
-            rag_service.load_engine(
-                modules=modules,
-                params=params,
-                session_index_path=session_index_path,
-            )
-
-        for chunk in rag_service.query(body.prompt, session_messages=session_messages):
-            if chunk.is_complete:
-                sources = _extract_sources(chunk.source_nodes)
-                metrics_dict = chunk.metrics
-            elif chunk.text:
-                full_response += chunk.text
-
-    # Add assistant response to session
-    assistant_message: dict = {"role": "assistant", "content": full_response}
-    if sources:
-        assistant_message["sources"] = [s.model_dump() for s in sources]
-    if metrics_dict:
-        assistant_message["metrics"] = metrics_dict
-    data = session_service.load()  # Reload in case of concurrent updates
-    data = session_service.add_message(session_id, assistant_message, data)
-    session_service.save(data)
+    # 5. Save assistant message
+    _save_assistant_message(
+        session_service, session_id, full_response, sources, metrics
+    )
 
     return ChatResponse(
         content=full_response,
         sources=sources,
-        confidence_level="llm_only" if llm_only_mode else "normal",
-        metrics=metrics_dict,
+        confidence_level="llm_only" if context.is_llm_only_mode else "normal",
+        metrics=metrics,
     )
 
 
