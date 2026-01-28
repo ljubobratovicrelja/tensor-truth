@@ -121,9 +121,9 @@ class TestChatAPI:
 
 
 class TestChatAPIWithMockedRAG:
-    """Test chat endpoints with mocked RAG service.
+    """Test chat endpoints with mocked ChatService.
 
-    These tests mock the RAG service to avoid needing Ollama running.
+    These tests mock the ChatService to avoid needing Ollama running.
     """
 
     @pytest.mark.asyncio
@@ -173,15 +173,17 @@ class TestChatAPIWithMockedRAG:
 
     @pytest.fixture
     def mock_rag_service(self, app):
-        """Mock RAG service to avoid Ollama dependency.
+        """Mock ChatService to avoid Ollama dependency.
 
         Uses FastAPI's dependency override mechanism for proper mocking.
         """
-        from tensortruth.api.deps import get_rag_service
+        from tensortruth.api.deps import get_chat_service
 
         mock = MagicMock()
 
-        def query_gen(prompt, session_messages=None):
+        def query_gen(
+            prompt, modules, params, session_messages=None, session_index_path=None
+        ):
             yield RAGChunk(status="retrieving")
             yield RAGChunk(text="Mocked RAG response")
             mock_node = MagicMock()
@@ -196,15 +198,15 @@ class TestChatAPIWithMockedRAG:
             )
 
         mock.query.side_effect = query_gen
-        mock.needs_reload.return_value = False
+        mock.is_llm_only_mode.return_value = False
 
         # Use FastAPI's dependency override mechanism
-        app.dependency_overrides[get_rag_service] = lambda: mock
+        app.dependency_overrides[get_chat_service] = lambda: mock
 
         yield mock
 
         # Clean up override after test
-        app.dependency_overrides.pop(get_rag_service, None)
+        app.dependency_overrides.pop(get_chat_service, None)
 
     @pytest.mark.asyncio
     async def test_chat_rag_mode_returns_sources(
@@ -286,18 +288,16 @@ class TestChatAPIWithMockedRAG:
         assert data["confidence_level"] == "normal"
 
     @pytest.mark.asyncio
-    async def test_chat_rag_mode_triggers_engine_reload(
+    async def test_chat_rag_mode_passes_correct_params_to_service(
         self, client, mock_session_paths, mock_rag_service
     ):
-        """Verify load_engine() called when needed."""
+        """Verify ChatService.query() called with correct parameters."""
         sessions_file, sessions_dir = mock_session_paths
-
-        # Configure mock to indicate reload needed
-        mock_rag_service.needs_reload.return_value = True
 
         # Create a session WITH modules (RAG mode)
         create_response = await client.post(
-            "/api/sessions", json={"modules": ["pytorch"], "params": {}}
+            "/api/sessions",
+            json={"modules": ["pytorch"], "params": {"temperature": 0.7}},
         )
         session_id = create_response.json()["session_id"]
 
@@ -310,10 +310,12 @@ class TestChatAPIWithMockedRAG:
         )
 
         assert response.status_code == 200
-        mock_rag_service.load_engine.assert_called_once()
-        # Verify load_engine was called with correct modules
-        call_kwargs = mock_rag_service.load_engine.call_args.kwargs
+        mock_rag_service.query.assert_called_once()
+        # Verify query was called with correct parameters
+        call_kwargs = mock_rag_service.query.call_args.kwargs
+        assert call_kwargs["prompt"] == "What is a tensor?"
         assert call_kwargs["modules"] == ["pytorch"]
+        assert call_kwargs["params"]["temperature"] == 0.7
 
     @pytest.mark.asyncio
     async def test_chat_saves_sources_to_session(

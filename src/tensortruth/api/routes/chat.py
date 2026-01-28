@@ -12,13 +12,13 @@ if TYPE_CHECKING:
     from llama_index.core.schema import NodeWithScore
 
 from tensortruth.api.deps import (
+    ChatServiceDep,
     ConfigServiceDep,
     IntentServiceDep,
-    RAGServiceDep,
     SessionServiceDep,
+    get_chat_service,
     get_config_service,
     get_pdf_service,
-    get_rag_service,
     get_session_service,
 )
 from tensortruth.api.routes.commands import registry as command_registry
@@ -31,7 +31,7 @@ from tensortruth.api.schemas import (
 )
 from tensortruth.app_utils.title_generation import generate_smart_title_async
 from tensortruth.core.source_converter import SourceConverter
-from tensortruth.services import RAGService, SessionService
+from tensortruth.services import ChatService, SessionService
 
 # REST endpoints (mounted under /api)
 rest_router = APIRouter()
@@ -112,15 +112,13 @@ def _extract_sources(source_nodes: List["NodeWithScore"]) -> List[SourceNode]:
 
 
 def _execute_chat_query(
-    rag_service: RAGService,
+    chat_service: ChatService,
     context: ChatContext,
 ) -> Tuple[str, List[SourceNode], Optional[Dict[str, Any]]]:
     """Execute chat query and return response with sources and metrics.
 
-    Handles both LLM-only mode and RAG mode, including engine reload when needed.
-
     Args:
-        rag_service: The RAG service instance.
+        chat_service: The chat service instance.
         context: ChatContext with all query parameters.
 
     Returns:
@@ -130,34 +128,18 @@ def _execute_chat_query(
     sources: List[SourceNode] = []
     metrics: Optional[Dict[str, Any]] = None
 
-    if context.is_llm_only_mode:
-        # LLM-only mode: direct LLM query without RAG
-        for chunk in rag_service.query_llm_only(
-            context.prompt, context.params, session_messages=context.session_messages
-        ):
-            if chunk.is_complete:
-                metrics = chunk.metrics
-            elif chunk.text:
-                full_response += chunk.text
-    else:
-        # RAG mode: load engine if needed and query with retrieval
-        if rag_service.needs_reload(
-            context.modules, context.params, context.session_index_path
-        ):
-            rag_service.load_engine(
-                modules=context.modules,
-                params=context.params,
-                session_index_path=context.session_index_path,
-            )
-
-        for chunk in rag_service.query(
-            context.prompt, session_messages=context.session_messages
-        ):
-            if chunk.is_complete:
-                sources = _extract_sources(chunk.source_nodes)
-                metrics = chunk.metrics
-            elif chunk.text:
-                full_response += chunk.text
+    for chunk in chat_service.query(
+        prompt=context.prompt,
+        modules=context.modules,
+        params=context.params,
+        session_messages=context.session_messages,
+        session_index_path=context.session_index_path,
+    ):
+        if chunk.is_complete:
+            sources = _extract_sources(chunk.source_nodes)
+            metrics = chunk.metrics
+        elif chunk.text:
+            full_response += chunk.text
 
     return full_response, sources, metrics
 
@@ -195,7 +177,7 @@ async def chat(
     body: ChatRequest,
     session_service: SessionServiceDep,
     config_service: ConfigServiceDep,
-    rag_service: RAGServiceDep,
+    chat_service: ChatServiceDep,
 ) -> ChatResponse:
     """Non-streaming chat endpoint."""
     # 1. Validate session
@@ -217,7 +199,7 @@ async def chat(
     session_service.save(data)
 
     # 4. Execute query
-    full_response, sources, metrics = _execute_chat_query(rag_service, context)
+    full_response, sources, metrics = _execute_chat_query(chat_service, context)
 
     # 5. Save assistant message
     _save_assistant_message(
@@ -238,7 +220,7 @@ async def websocket_chat(
     session_id: str,
     session_service=Depends(get_session_service),
     config_service=Depends(get_config_service),
-    rag_service=Depends(get_rag_service),
+    chat_service=Depends(get_chat_service),
 ) -> None:
     """WebSocket endpoint for streaming chat.
 
@@ -394,32 +376,10 @@ async def websocket_chat(
                 session_index_path = str(index_path) if index_path else None
 
             # Determine if we're in LLM-only mode (no modules or PDFs)
-            llm_only_mode = not modules and not session_index_path
+            llm_only_mode = chat_service.is_llm_only_mode(modules, session_index_path)
 
             # Get session messages for history BEFORE adding the new user message
             session_messages = session.get("messages", [])
-
-            # Load RAG engine if needed (send status to keep connection alive)
-            if not llm_only_mode and rag_service.needs_reload(
-                modules, params, session_index_path
-            ):
-                # Send loading status to prevent WebSocket timeout
-                await websocket.send_json(
-                    {
-                        "type": "status",
-                        "status": "loading_models",
-                    }
-                )
-
-                # Run blocking load_engine in thread pool to keep event loop responsive
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(
-                    None,
-                    rag_service.load_engine,
-                    modules,
-                    params,
-                    session_index_path,
-                )
 
             # Add user message
             data = session_service.load()
@@ -437,16 +397,14 @@ async def websocket_chat(
             sources = []
             metrics_dict = None
 
-            # Choose query method based on mode
-            # Pass session_messages for history context
-            if llm_only_mode:
-                query_generator = rag_service.query_llm_only(
-                    prompt, params, session_messages=session_messages
-                )
-            else:
-                query_generator = rag_service.query(
-                    prompt, session_messages=session_messages
-                )
+            # Use ChatService for query routing (handles engine loading internally)
+            query_generator = chat_service.query(
+                prompt=prompt,
+                modules=modules,
+                params=params,
+                session_messages=session_messages,
+                session_index_path=session_index_path,
+            )
 
             # Iterate generator in thread pool to prevent blocking event loop
             loop = asyncio.get_event_loop()

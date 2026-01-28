@@ -17,6 +17,7 @@ from tensortruth.app_utils.paths import (
 from tensortruth.services import (
     AgentService,
     ChatHistoryService,
+    ChatService,
     ConfigService,
     IntentService,
     PDFService,
@@ -77,6 +78,15 @@ def get_rag_service() -> RAGService:
     )
 
 
+@lru_cache
+def get_chat_service() -> ChatService:
+    """Get the singleton ChatService instance.
+
+    ChatService routes queries to appropriate backend (LLM-only or RAG).
+    """
+    return ChatService(rag_service=get_rag_service())
+
+
 def get_intent_service() -> IntentService:
     """Get IntentService instance."""
     config_service = get_config_service()
@@ -127,6 +137,7 @@ SessionServiceDep = Annotated[SessionService, Depends(get_session_service)]
 ConfigServiceDep = Annotated[ConfigService, Depends(get_config_service)]
 StartupServiceDep = Annotated[StartupService, Depends(get_startup_service)]
 RAGServiceDep = Annotated[RAGService, Depends(get_rag_service)]
+ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
 IntentServiceDep = Annotated[IntentService, Depends(get_intent_service)]
 ChatHistoryServiceDep = Annotated[ChatHistoryService, Depends(get_chat_history_service)]
 ToolServiceDep = Annotated[ToolService, Depends(get_tool_service)]

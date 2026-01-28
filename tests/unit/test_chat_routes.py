@@ -367,16 +367,15 @@ class TestChatContext:
 
 @pytest.mark.unit
 class TestChatEngineReload:
-    """Tests for RAG engine reload logic via _execute_chat_query."""
+    """Tests for _execute_chat_query helper with ChatService."""
 
-    def test_calls_needs_reload_with_correct_args(self):
-        """Verify needs_reload() receives modules, params, session_index_path."""
+    def test_executes_query_via_chat_service(self):
+        """Verify _execute_chat_query uses ChatService.query()."""
         from tensortruth.api.routes.chat import _execute_chat_query
         from tensortruth.services.models import RAGChunk
 
-        mock_rag_service = MagicMock()
-        mock_rag_service.needs_reload.return_value = False
-        mock_rag_service.query.return_value = iter(
+        mock_chat_service = MagicMock()
+        mock_chat_service.query.return_value = iter(
             [RAGChunk(text="response", is_complete=True, source_nodes=[])]
         )
 
@@ -385,145 +384,27 @@ class TestChatEngineReload:
             prompt="Hello",
             modules=["pytorch", "numpy"],
             params={"temperature": 0.5},
-            session_messages=[],
+            session_messages=[{"role": "user", "content": "prev"}],
             session_index_path="/path/to/pdf/index",
         )
 
-        _execute_chat_query(mock_rag_service, context)
+        _execute_chat_query(mock_chat_service, context)
 
-        mock_rag_service.needs_reload.assert_called_once_with(
-            ["pytorch", "numpy"],
-            {"temperature": 0.5},
-            "/path/to/pdf/index",
-        )
-
-    def test_loads_engine_when_needs_reload_true(self):
-        """Verify load_engine() called when needs_reload() returns True."""
-        from tensortruth.api.routes.chat import _execute_chat_query
-        from tensortruth.services.models import RAGChunk
-
-        mock_rag_service = MagicMock()
-        mock_rag_service.needs_reload.return_value = True
-        mock_rag_service.query.return_value = iter(
-            [RAGChunk(text="response", is_complete=True, source_nodes=[])]
-        )
-
-        context = ChatContext(
-            session_id="test-session",
+        mock_chat_service.query.assert_called_once_with(
             prompt="Hello",
-            modules=["pytorch"],
-            params={"temperature": 0.7},
-            session_messages=[],
-            session_index_path="/path/to/index",
+            modules=["pytorch", "numpy"],
+            params={"temperature": 0.5},
+            session_messages=[{"role": "user", "content": "prev"}],
+            session_index_path="/path/to/pdf/index",
         )
-
-        _execute_chat_query(mock_rag_service, context)
-
-        mock_rag_service.load_engine.assert_called_once_with(
-            modules=["pytorch"],
-            params={"temperature": 0.7},
-            session_index_path="/path/to/index",
-        )
-
-    def test_skips_load_when_needs_reload_false(self):
-        """Verify load_engine() NOT called when needs_reload() returns False."""
-        from tensortruth.api.routes.chat import _execute_chat_query
-        from tensortruth.services.models import RAGChunk
-
-        mock_rag_service = MagicMock()
-        mock_rag_service.needs_reload.return_value = False
-        mock_rag_service.query.return_value = iter(
-            [RAGChunk(text="response", is_complete=True, source_nodes=[])]
-        )
-
-        context = ChatContext(
-            session_id="test-session",
-            prompt="Hello",
-            modules=["pytorch"],
-            params={},
-            session_messages=[],
-            session_index_path=None,
-        )
-
-        _execute_chat_query(mock_rag_service, context)
-
-        mock_rag_service.load_engine.assert_not_called()
-
-    def test_uses_query_llm_only_when_llm_only_mode(self):
-        """Verify query_llm_only() is used in LLM-only mode."""
-        from tensortruth.api.routes.chat import _execute_chat_query
-        from tensortruth.services.models import RAGChunk
-
-        mock_rag_service = MagicMock()
-        # Text and is_complete are sent in separate chunks (matching real behavior)
-        mock_rag_service.query_llm_only.return_value = iter(
-            [
-                RAGChunk(text="LLM response"),
-                RAGChunk(is_complete=True, source_nodes=[]),
-            ]
-        )
-
-        context = ChatContext(
-            session_id="test-session",
-            prompt="Hello",
-            modules=[],
-            params={"temperature": 0.8},
-            session_messages=[{"role": "user", "content": "previous"}],
-            session_index_path=None,
-        )
-
-        response, sources, metrics = _execute_chat_query(mock_rag_service, context)
-
-        mock_rag_service.query_llm_only.assert_called_once_with(
-            "Hello",
-            {"temperature": 0.8},
-            session_messages=[{"role": "user", "content": "previous"}],
-        )
-        mock_rag_service.query.assert_not_called()
-        mock_rag_service.needs_reload.assert_not_called()
-        assert response == "LLM response"
-
-    def test_uses_query_when_rag_mode(self):
-        """Verify query() is used in RAG mode."""
-        from tensortruth.api.routes.chat import _execute_chat_query
-        from tensortruth.services.models import RAGChunk
-
-        mock_rag_service = MagicMock()
-        mock_rag_service.needs_reload.return_value = False
-        # Text and is_complete are sent in separate chunks (matching real behavior)
-        mock_rag_service.query.return_value = iter(
-            [
-                RAGChunk(text="RAG response"),
-                RAGChunk(is_complete=True, source_nodes=[]),
-            ]
-        )
-
-        context = ChatContext(
-            session_id="test-session",
-            prompt="Hello",
-            modules=["pytorch"],
-            params={},
-            session_messages=[{"role": "user", "content": "previous"}],
-            session_index_path=None,
-        )
-
-        response, sources, metrics = _execute_chat_query(mock_rag_service, context)
-
-        mock_rag_service.query.assert_called_once_with(
-            "Hello",
-            session_messages=[{"role": "user", "content": "previous"}],
-        )
-        mock_rag_service.query_llm_only.assert_not_called()
-        assert response == "RAG response"
 
     def test_accumulates_response_from_multiple_chunks(self):
         """Test that response is accumulated from multiple text chunks."""
         from tensortruth.api.routes.chat import _execute_chat_query
         from tensortruth.services.models import RAGChunk
 
-        mock_rag_service = MagicMock()
-        mock_rag_service.needs_reload.return_value = False
-        mock_rag_service.query.return_value = iter(
+        mock_chat_service = MagicMock()
+        mock_chat_service.query.return_value = iter(
             [
                 RAGChunk(text="Hello "),
                 RAGChunk(text="world"),
@@ -540,7 +421,7 @@ class TestChatEngineReload:
             session_index_path=None,
         )
 
-        response, sources, metrics = _execute_chat_query(mock_rag_service, context)
+        response, sources, metrics = _execute_chat_query(mock_chat_service, context)
 
         assert response == "Hello world"
 
@@ -555,9 +436,8 @@ class TestChatEngineReload:
         mock_source_node.score = 0.88
         mock_source_node.metadata = {"source": "test.pdf"}
 
-        mock_rag_service = MagicMock()
-        mock_rag_service.needs_reload.return_value = False
-        mock_rag_service.query.return_value = iter(
+        mock_chat_service = MagicMock()
+        mock_chat_service.query.return_value = iter(
             [
                 RAGChunk(text="Response"),
                 RAGChunk(
@@ -577,10 +457,40 @@ class TestChatEngineReload:
             session_index_path=None,
         )
 
-        response, sources, metrics = _execute_chat_query(mock_rag_service, context)
+        response, sources, metrics = _execute_chat_query(mock_chat_service, context)
 
         assert response == "Response"
         assert len(sources) == 1
         assert sources[0].text == "Source content"
         assert sources[0].score == 0.88
         assert metrics == {"mean_score": 0.88}
+
+    def test_skips_status_chunks(self):
+        """Test that status chunks don't affect response accumulation."""
+        from tensortruth.api.routes.chat import _execute_chat_query
+        from tensortruth.services.models import RAGChunk
+
+        mock_chat_service = MagicMock()
+        mock_chat_service.query.return_value = iter(
+            [
+                RAGChunk(status="loading_models"),
+                RAGChunk(status="retrieving"),
+                RAGChunk(text="Hello"),
+                RAGChunk(status="generating"),
+                RAGChunk(text=" world"),
+                RAGChunk(is_complete=True, source_nodes=[]),
+            ]
+        )
+
+        context = ChatContext(
+            session_id="test-session",
+            prompt="Greet me",
+            modules=["pytorch"],
+            params={},
+            session_messages=[],
+            session_index_path=None,
+        )
+
+        response, sources, metrics = _execute_chat_query(mock_chat_service, context)
+
+        assert response == "Hello world"
