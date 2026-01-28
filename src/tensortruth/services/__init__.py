@@ -6,7 +6,7 @@ configuration, RAG queries, intent classification, and PDF handling.
 
 from .agent_service import AgentCallbacks, AgentService
 from .chat_history import ChatHistory, ChatHistoryMessage, ChatHistoryService
-from .chat_service import ChatService
+from .chat_service import ChatResult, ChatService
 from .config_service import ConfigService
 from .intent_service import IntentService
 from .model_manager import ModelManager
@@ -19,6 +19,7 @@ from .tool_service import ToolService
 __all__ = [
     "AgentCallbacks",
     "AgentService",
+    "ChatResult",
     "ChatService",
     "SessionService",
     "SessionData",

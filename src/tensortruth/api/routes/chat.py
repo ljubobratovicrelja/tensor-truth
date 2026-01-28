@@ -4,20 +4,15 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
-if TYPE_CHECKING:
-    from llama_index.core.schema import NodeWithScore
-
 from tensortruth.api.deps import (
     ChatServiceDep,
-    ConfigServiceDep,
     IntentServiceDep,
     SessionServiceDep,
     get_chat_service,
-    get_config_service,
     get_pdf_service,
     get_session_service,
 )
@@ -30,8 +25,7 @@ from tensortruth.api.schemas import (
     SourceNode,
 )
 from tensortruth.app_utils.title_generation import generate_smart_title_async
-from tensortruth.core.source_converter import SourceConverter
-from tensortruth.services import ChatService, SessionService
+from tensortruth.services import SessionService
 
 # REST endpoints (mounted under /api)
 rest_router = APIRouter()
@@ -91,64 +85,11 @@ class ChatContext:
         )
 
 
-def _extract_sources(source_nodes: List["NodeWithScore"]) -> List[SourceNode]:
-    """Extract source information from RAG source nodes.
-
-    Uses SourceConverter.from_rag_node() for unified conversion,
-    then to_api_schema() for API-compatible output.
-
-    Args:
-        source_nodes: LlamaIndex NodeWithScore objects from retriever.
-
-    Returns:
-        SourceNode objects for API response.
-    """
-    sources = []
-    for idx, node in enumerate(source_nodes):
-        unified = SourceConverter.from_rag_node(node, idx)
-        api_dict = SourceConverter.to_api_schema(unified)
-        sources.append(SourceNode(**api_dict))
-    return sources
-
-
-def _execute_chat_query(
-    chat_service: ChatService,
-    context: ChatContext,
-) -> Tuple[str, List[SourceNode], Optional[Dict[str, Any]]]:
-    """Execute chat query and return response with sources and metrics.
-
-    Args:
-        chat_service: The chat service instance.
-        context: ChatContext with all query parameters.
-
-    Returns:
-        Tuple of (response_text, source_nodes, metrics).
-    """
-    full_response = ""
-    sources: List[SourceNode] = []
-    metrics: Optional[Dict[str, Any]] = None
-
-    for chunk in chat_service.query(
-        prompt=context.prompt,
-        modules=context.modules,
-        params=context.params,
-        session_messages=context.session_messages,
-        session_index_path=context.session_index_path,
-    ):
-        if chunk.is_complete:
-            sources = _extract_sources(chunk.source_nodes)
-            metrics = chunk.metrics
-        elif chunk.text:
-            full_response += chunk.text
-
-    return full_response, sources, metrics
-
-
 def _save_assistant_message(
     session_service: SessionService,
     session_id: str,
     content: str,
-    sources: List[SourceNode],
+    sources: List[Dict[str, Any]],
     metrics: Optional[Dict[str, Any]],
 ) -> None:
     """Save assistant message with sources and metrics to session.
@@ -157,12 +98,12 @@ def _save_assistant_message(
         session_service: The session service instance.
         session_id: The session identifier.
         content: The assistant's response content.
-        sources: List of source nodes (may be empty).
+        sources: List of source dicts (may be empty).
         metrics: Optional retrieval metrics.
     """
     assistant_message: Dict[str, Any] = {"role": "assistant", "content": content}
     if sources:
-        assistant_message["sources"] = [s.model_dump() for s in sources]
+        assistant_message["sources"] = sources
     if metrics:
         assistant_message["metrics"] = metrics
 
@@ -176,7 +117,6 @@ async def chat(
     session_id: str,
     body: ChatRequest,
     session_service: SessionServiceDep,
-    config_service: ConfigServiceDep,
     chat_service: ChatServiceDep,
 ) -> ChatResponse:
     """Non-streaming chat endpoint."""
@@ -198,19 +138,28 @@ async def chat(
     )
     session_service.save(data)
 
-    # 4. Execute query
-    full_response, sources, metrics = _execute_chat_query(chat_service, context)
+    # 4. Execute query via ChatService
+    result = chat_service.execute(
+        prompt=context.prompt,
+        modules=context.modules,
+        params=context.params,
+        session_messages=context.session_messages,
+        session_index_path=context.session_index_path,
+    )
 
     # 5. Save assistant message
     _save_assistant_message(
-        session_service, session_id, full_response, sources, metrics
+        session_service, session_id, result.response, result.sources, result.metrics
     )
 
+    # Convert source dicts to SourceNode models for response
+    sources = [SourceNode(**s) for s in result.sources]
+
     return ChatResponse(
-        content=full_response,
+        content=result.response,
         sources=sources,
-        confidence_level="llm_only" if context.is_llm_only_mode else "normal",
-        metrics=metrics,
+        confidence_level="llm_only" if result.is_llm_only else "normal",
+        metrics=result.metrics,
     )
 
 
@@ -219,7 +168,6 @@ async def websocket_chat(
     websocket: WebSocket,
     session_id: str,
     session_service=Depends(get_session_service),
-    config_service=Depends(get_config_service),
     chat_service=Depends(get_chat_service),
 ) -> None:
     """WebSocket endpoint for streaming chat.
@@ -394,7 +342,7 @@ async def websocket_chat(
             # Stream response with status and thinking support
             full_response = ""
             full_thinking = ""
-            sources = []
+            sources: List[Dict[str, Any]] = []
             metrics_dict = None
 
             # Use ChatService for query routing (handles engine loading internally)
@@ -415,7 +363,8 @@ async def websocket_chat(
                     chunk = await loop.run_in_executor(None, next, query_generator)
 
                     if chunk.is_complete:
-                        sources = _extract_sources(chunk.source_nodes)
+                        # Use ChatService to extract sources (contains foreign type handling)
+                        sources = chat_service.extract_sources(chunk.source_nodes)
                         metrics_dict = chunk.metrics
                         break
                     elif chunk.status:
@@ -452,7 +401,7 @@ async def websocket_chat(
                 await websocket.send_json(
                     {
                         "type": "sources",
-                        "data": [s.model_dump() for s in sources],
+                        "data": sources,
                         "metrics": metrics_dict,
                     }
                 )
@@ -473,7 +422,7 @@ async def websocket_chat(
             if full_thinking:
                 assistant_message["thinking"] = full_thinking
             if sources:
-                assistant_message["sources"] = [s.model_dump() for s in sources]
+                assistant_message["sources"] = sources
             if metrics_dict:
                 assistant_message["metrics"] = metrics_dict
             data = session_service.load()

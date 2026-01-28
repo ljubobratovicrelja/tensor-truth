@@ -6,7 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from tensortruth.api.main import create_app
-from tensortruth.services.models import RAGChunk
+from tensortruth.services.chat_service import ChatResult
 
 
 @pytest.fixture
@@ -181,23 +181,23 @@ class TestChatAPIWithMockedRAG:
 
         mock = MagicMock()
 
-        def query_gen(
+        def execute_impl(
             prompt, modules, params, session_messages=None, session_index_path=None
         ):
-            yield RAGChunk(status="retrieving")
-            yield RAGChunk(text="Mocked RAG response")
-            mock_node = MagicMock()
-            mock_node.node = MagicMock()
-            mock_node.node.get_content.return_value = "Source content from mock"
-            mock_node.score = 0.88
-            mock_node.metadata = {"source": "mock.pdf", "page": 1}
-            yield RAGChunk(
-                source_nodes=[mock_node],
-                is_complete=True,
+            return ChatResult(
+                response="Mocked RAG response",
+                sources=[
+                    {
+                        "text": "Source content from mock",
+                        "score": 0.88,
+                        "metadata": {"source": "mock.pdf", "page": 1},
+                    }
+                ],
                 metrics={"mean_score": 0.88},
+                is_llm_only=False,
             )
 
-        mock.query.side_effect = query_gen
+        mock.execute.side_effect = execute_impl
         mock.is_llm_only_mode.return_value = False
 
         # Use FastAPI's dependency override mechanism
@@ -291,7 +291,7 @@ class TestChatAPIWithMockedRAG:
     async def test_chat_rag_mode_passes_correct_params_to_service(
         self, client, mock_session_paths, mock_rag_service
     ):
-        """Verify ChatService.query() called with correct parameters."""
+        """Verify ChatService.execute() called with correct parameters."""
         sessions_file, sessions_dir = mock_session_paths
 
         # Create a session WITH modules (RAG mode)
@@ -310,9 +310,9 @@ class TestChatAPIWithMockedRAG:
         )
 
         assert response.status_code == 200
-        mock_rag_service.query.assert_called_once()
-        # Verify query was called with correct parameters
-        call_kwargs = mock_rag_service.query.call_args.kwargs
+        mock_rag_service.execute.assert_called_once()
+        # Verify execute was called with correct parameters
+        call_kwargs = mock_rag_service.execute.call_args.kwargs
         assert call_kwargs["prompt"] == "What is a tensor?"
         assert call_kwargs["modules"] == ["pytorch"]
         assert call_kwargs["params"]["temperature"] == 0.7

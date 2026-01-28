@@ -1,10 +1,10 @@
 """Unit tests for ChatService routing logic."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tensortruth.services.chat_service import ChatService
+from tensortruth.services.chat_service import ChatResult, ChatService
 from tensortruth.services.models import RAGChunk
 
 
@@ -310,3 +310,146 @@ class TestChatService:
         # No loading_models status, starts directly with retrieving
         assert chunks[0].status == "retrieving"
         assert len(chunks) == 3
+
+
+@pytest.mark.unit
+class TestChatServiceExecute:
+    """Tests for ChatService.execute() non-streaming method."""
+
+    def test_execute_returns_chat_result(self):
+        """Verify execute() returns a ChatResult with clean types."""
+        mock_rag_service = MagicMock()
+        mock_rag_service.needs_reload.return_value = False
+        mock_rag_service.query.return_value = iter(
+            [
+                RAGChunk(text="Hello "),
+                RAGChunk(text="world"),
+                RAGChunk(
+                    is_complete=True,
+                    source_nodes=[],
+                    metrics={"mean_score": 0.88},
+                ),
+            ]
+        )
+
+        chat_service = ChatService(rag_service=mock_rag_service)
+
+        result = chat_service.execute(
+            prompt="Hello",
+            modules=["pytorch"],
+            params={},
+            session_messages=[],
+            session_index_path=None,
+        )
+
+        assert isinstance(result, ChatResult)
+        assert result.response == "Hello world"
+        assert result.metrics == {"mean_score": 0.88}
+        assert result.is_llm_only is False
+
+    def test_execute_llm_only_mode(self):
+        """Verify execute() sets is_llm_only correctly."""
+        mock_rag_service = MagicMock()
+        mock_rag_service.query_llm_only.return_value = iter(
+            [
+                RAGChunk(text="LLM response"),
+                RAGChunk(is_complete=True, source_nodes=[]),
+            ]
+        )
+
+        chat_service = ChatService(rag_service=mock_rag_service)
+
+        result = chat_service.execute(
+            prompt="Hello",
+            modules=[],
+            params={},
+            session_messages=[],
+            session_index_path=None,
+        )
+
+        assert result.is_llm_only is True
+        assert result.response == "LLM response"
+
+    @patch("tensortruth.services.chat_service.SourceConverter")
+    def test_execute_extracts_sources_to_api_format(self, mock_converter):
+        """Verify execute() converts source nodes to API dicts."""
+        # Setup mock source node
+        mock_source_node = MagicMock()
+        mock_source_node.score = 0.95
+
+        # Setup SourceConverter mocks
+        mock_unified = MagicMock()
+        mock_converter.from_rag_node.return_value = mock_unified
+        mock_converter.to_api_schema.return_value = {
+            "text": "Source content",
+            "score": 0.95,
+            "metadata": {"source": "test.pdf"},
+        }
+
+        mock_rag_service = MagicMock()
+        mock_rag_service.needs_reload.return_value = False
+        mock_rag_service.query.return_value = iter(
+            [
+                RAGChunk(text="Response"),
+                RAGChunk(
+                    is_complete=True,
+                    source_nodes=[mock_source_node],
+                    metrics={"mean_score": 0.95},
+                ),
+            ]
+        )
+
+        chat_service = ChatService(rag_service=mock_rag_service)
+
+        result = chat_service.execute(
+            prompt="Question",
+            modules=["pytorch"],
+            params={},
+            session_messages=[],
+            session_index_path=None,
+        )
+
+        # Verify source was converted
+        assert len(result.sources) == 1
+        assert result.sources[0]["text"] == "Source content"
+        assert result.sources[0]["score"] == 0.95
+        mock_converter.from_rag_node.assert_called_once()
+        mock_converter.to_api_schema.assert_called_once()
+
+
+@pytest.mark.unit
+class TestChatServiceExtractSources:
+    """Tests for ChatService.extract_sources() method."""
+
+    @patch("tensortruth.services.chat_service.SourceConverter")
+    def test_extract_sources_converts_nodes(self, mock_converter):
+        """Verify extract_sources() uses SourceConverter correctly."""
+        mock_node1 = MagicMock()
+        mock_node2 = MagicMock()
+
+        mock_unified1 = MagicMock()
+        mock_unified2 = MagicMock()
+
+        mock_converter.from_rag_node.side_effect = [mock_unified1, mock_unified2]
+        mock_converter.to_api_schema.side_effect = [
+            {"text": "Source 1", "score": 0.9, "metadata": {}},
+            {"text": "Source 2", "score": 0.8, "metadata": {}},
+        ]
+
+        mock_rag_service = MagicMock()
+        chat_service = ChatService(rag_service=mock_rag_service)
+
+        result = chat_service.extract_sources([mock_node1, mock_node2])
+
+        assert len(result) == 2
+        assert result[0]["text"] == "Source 1"
+        assert result[1]["text"] == "Source 2"
+
+    def test_extract_sources_empty_list(self):
+        """Verify extract_sources() handles empty list."""
+        mock_rag_service = MagicMock()
+        chat_service = ChatService(rag_service=mock_rag_service)
+
+        result = chat_service.extract_sources([])
+
+        assert result == []
