@@ -31,23 +31,23 @@ class PDFHandler:
         self.pdfs_dir.mkdir(parents=True, exist_ok=True)
         self.markdown_dir.mkdir(parents=True, exist_ok=True)
 
-    def upload_pdf(self, uploaded_file: Any) -> Dict[str, Any]:
+    def upload_pdf(self, content: bytes, filename: str) -> Dict[str, Any]:
         """
         Save uploaded PDF to session directory.
 
         Args:
-            uploaded_file: Streamlit UploadedFile object
+            content: Raw PDF file bytes.
+            filename: Original filename of the PDF.
 
         Returns:
             Dictionary with metadata: {id, path, filename, file_size, page_count}
         """
         pdf_id = f"pdf_{uuid.uuid4().hex[:8]}"
-        filename = uploaded_file.name
 
         # Save PDF to disk
         pdf_path = self.pdfs_dir / f"{pdf_id}_{filename}"
         with open(pdf_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
+            f.write(content)
 
         logger.info(f"Saved PDF: {pdf_path}")
 

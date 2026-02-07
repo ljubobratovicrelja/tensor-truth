@@ -65,12 +65,6 @@ def __getattr__(name: str):
 
         return toggle_favorite
 
-    # Title Generation
-    if name == "generate_smart_title":
-        from .title_generation import generate_smart_title
-
-        return generate_smart_title
-
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -101,6 +95,4 @@ __all__ = [
     "load_config",
     "save_config",
     "update_config",
-    # Title Generation
-    "generate_smart_title",
 ]

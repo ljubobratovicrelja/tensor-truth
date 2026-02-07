@@ -66,18 +66,7 @@ class PDFService:
         Returns:
             PDFMetadata with file info.
         """
-
-        # Create a mock file-like object for the PDF handler
-        class MockUploadedFile:
-            def __init__(self, content: bytes, name: str):
-                self._content = content
-                self.name = name
-
-            def getbuffer(self):
-                return self._content
-
-        mock_file = MockUploadedFile(file_content, filename)
-        result = self._pdf_handler.upload_pdf(mock_file)
+        result = self._pdf_handler.upload_pdf(file_content, filename)
 
         return PDFMetadata(
             pdf_id=result["id"],

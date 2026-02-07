@@ -55,15 +55,8 @@ startxref
 
 
 @pytest.fixture
-def mock_uploaded_pdf(tmp_path, sample_pdf_content):
-    """Create a mock uploaded PDF file."""
-    pdf_path = tmp_path / "test_upload.pdf"
-    pdf_path.write_bytes(sample_pdf_content)
-
-    mock_file = Mock()
-    mock_file.name = "test_paper.pdf"
-    mock_file.getbuffer.return_value = sample_pdf_content
-    return mock_file
+def upload_filename():
+    return "test_paper.pdf"
 
 
 @pytest.mark.integration
@@ -79,7 +72,7 @@ class TestPDFUploadToIndex:
         mock_embed,
         mock_marker,
         integration_session_dir,
-        mock_uploaded_pdf,
+        sample_pdf_content,
     ):
         """Test complete flow: upload → marker conversion → indexing."""
         # Setup mocks
@@ -90,7 +83,7 @@ class TestPDFUploadToIndex:
 
         # Step 1: Upload PDF
         handler = PDFHandler(integration_session_dir)
-        metadata = handler.upload_pdf(mock_uploaded_pdf)
+        metadata = handler.upload_pdf(sample_pdf_content, "test_paper.pdf")
 
         assert metadata["id"].startswith("pdf_")
         assert metadata["filename"] == "test_paper.pdf"
@@ -134,7 +127,7 @@ class TestPDFUploadToIndex:
         mock_marker,
         mock_pymupdf,
         integration_session_dir,
-        mock_uploaded_pdf,
+        sample_pdf_content,
     ):
         """Test fallback when marker-pdf fails."""
         # Marker fails
@@ -145,7 +138,7 @@ class TestPDFUploadToIndex:
         mock_embed.return_value = Mock()
 
         handler = PDFHandler(integration_session_dir)
-        metadata = handler.upload_pdf(mock_uploaded_pdf)
+        metadata = handler.upload_pdf(sample_pdf_content, "test_paper.pdf")
 
         # Should successfully convert using fallback
         md_path = handler.convert_pdf_to_markdown(metadata["path"])
@@ -179,11 +172,7 @@ class TestMultiplePDFHandling:
 
         # Upload 3 PDFs
         for i in range(3):
-            mock_file = Mock()
-            mock_file.name = f"paper_{i}.pdf"
-            mock_file.getbuffer.return_value = sample_pdf_content
-
-            metadata = handler.upload_pdf(mock_file)
+            metadata = handler.upload_pdf(sample_pdf_content, f"paper_{i}.pdf")
             md_path = handler.convert_pdf_to_markdown(metadata["path"])
             uploaded_pdfs.append((metadata, md_path))
 
@@ -223,7 +212,7 @@ class TestPDFDeletionAndRebuild:
         mock_embed,
         mock_marker,
         integration_session_dir,
-        mock_uploaded_pdf,
+        sample_pdf_content,
     ):
         """Test deleting a PDF and rebuilding index."""
         mock_marker.return_value = "# Content"
@@ -232,11 +221,10 @@ class TestPDFDeletionAndRebuild:
         handler = PDFHandler(integration_session_dir)
 
         # Upload 2 PDFs
-        metadata1 = handler.upload_pdf(mock_uploaded_pdf)
+        metadata1 = handler.upload_pdf(sample_pdf_content, "test_paper.pdf")
         md_path1 = handler.convert_pdf_to_markdown(metadata1["path"])
 
-        mock_uploaded_pdf.name = "another.pdf"
-        metadata2 = handler.upload_pdf(mock_uploaded_pdf)
+        metadata2 = handler.upload_pdf(sample_pdf_content, "another.pdf")
         md_path2 = handler.convert_pdf_to_markdown(metadata2["path"])
 
         assert handler.get_pdf_count() == 2
@@ -282,7 +270,7 @@ class TestSessionCleanup:
         mock_embed,
         mock_marker,
         integration_session_dir,
-        mock_uploaded_pdf,
+        sample_pdf_content,
     ):
         """Test that deleting session removes all artifacts."""
         mock_marker.return_value = "# Content"
@@ -292,7 +280,7 @@ class TestSessionCleanup:
         handler = PDFHandler(integration_session_dir)
 
         # Upload PDF and build index
-        metadata = handler.upload_pdf(mock_uploaded_pdf)
+        metadata = handler.upload_pdf(sample_pdf_content, "test_paper.pdf")
         md_path = handler.convert_pdf_to_markdown(metadata["path"])
 
         with (
@@ -368,14 +356,14 @@ class TestIndexPersistence:
         mock_embed,
         mock_marker,
         integration_session_dir,
-        mock_uploaded_pdf,
+        sample_pdf_content,
     ):
         """Test that index can be built, persisted, and checked for existence."""
         mock_marker.return_value = "# Content"
         mock_embed.return_value = Mock()
 
         handler = PDFHandler(integration_session_dir)
-        metadata = handler.upload_pdf(mock_uploaded_pdf)
+        metadata = handler.upload_pdf(sample_pdf_content, "test_paper.pdf")
         md_path = handler.convert_pdf_to_markdown(metadata["path"])
 
         # Build index
@@ -410,7 +398,7 @@ class TestIndexPersistence:
 class TestDuplicatePDFPrevention:
     """Test prevention of duplicate PDF processing."""
 
-    def test_duplicate_filename_rejected(self, mock_uploaded_pdf):
+    def test_duplicate_filename_rejected(self):
         """Should not process PDF with duplicate filename."""
         # Create a mock session with existing PDF
         session = {
@@ -429,4 +417,4 @@ class TestDuplicatePDFPrevention:
 
         # Attempting to add same filename should be blocked
         # This would be caught by the check in process_pdf_upload
-        assert mock_uploaded_pdf.name in existing_filenames
+        assert "test_paper.pdf" in existing_filenames

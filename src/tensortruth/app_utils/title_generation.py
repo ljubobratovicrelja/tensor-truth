@@ -42,11 +42,6 @@ async def ensure_title_model_available_async():
         return False
 
 
-def ensure_title_model_available():
-    """Ensures the title generation model is available, pulling it if necessary (sync wrapper)."""
-    return asyncio.run(ensure_title_model_available_async())
-
-
 async def generate_smart_title_async(text, model_name="qwen2.5:0.5b", keep_alive=0):
     """
     Uses a small, dedicated LLM to generate a concise title (async version).
@@ -130,16 +125,3 @@ async def generate_smart_title_async(text, model_name="qwen2.5:0.5b", keep_alive
     # Fallback
     logger.info(f"Using fallback title: '{text[:30]}...'")
     return (text[:30] + "..") if len(text) > 30 else text
-
-
-def generate_smart_title(text, model_name="qwen2.5:0.5b"):
-    """
-    Uses a small, dedicated LLM to generate a concise title (sync wrapper).
-    Loads a tiny model (qwen2.5:0.5b), generates title, then unloads it.
-    Returns the generated title or a truncated fallback.
-
-    Args:
-        text: The text to generate a title for
-        model_name: Optional model name (currently unused, kept for API compatibility)
-    """
-    return asyncio.run(generate_smart_title_async(text, model_name))

@@ -12,7 +12,6 @@ from tensortruth.utils.web_search import (
     fetch_pages_parallel,
     search_duckduckgo,
     summarize_with_llm,
-    web_search,
     web_search_async,
 )
 
@@ -696,32 +695,6 @@ class TestWebSearchAsync:
                 assert "Test snippet" in result  # Shows snippets as fallback
                 # Sources list is empty when all fetches fail
                 assert sources == []
-
-
-# ============================================================================
-# Tests for web_search (sync wrapper)
-# ============================================================================
-
-
-@pytest.mark.unit
-class TestWebSearch:
-    """Tests for synchronous web search wrapper."""
-
-    def test_sync_wrapper_calls_async(self):
-        """Test that sync wrapper properly calls async version."""
-        with patch("tensortruth.utils.web_search.asyncio.run") as mock_run:
-            mock_run.return_value = "Test result"
-
-            result = web_search(
-                "test query",
-                "deepseek-r1:8b",
-                "http://localhost:11434",
-                max_results=5,
-                max_pages=3,
-            )
-
-            assert result == "Test result"
-            mock_run.assert_called_once()
 
 
 # ============================================================================

@@ -1,6 +1,6 @@
 """Unit tests for PDF handler."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -22,12 +22,13 @@ def pdf_handler(temp_session_dir):
 
 
 @pytest.fixture
-def mock_uploaded_file():
-    """Create a mock Streamlit UploadedFile."""
-    mock_file = Mock()
-    mock_file.name = "test_paper.pdf"
-    mock_file.getbuffer.return_value = b"fake pdf content"
-    return mock_file
+def sample_content():
+    return b"fake pdf content"
+
+
+@pytest.fixture
+def sample_filename():
+    return "test_paper.pdf"
 
 
 @pytest.fixture
@@ -86,9 +87,11 @@ class TestPDFHandlerInit:
 class TestUploadPDF:
     """Test PDF upload functionality."""
 
-    def test_saves_pdf_with_unique_id(self, pdf_handler, mock_uploaded_file):
+    def test_saves_pdf_with_unique_id(
+        self, pdf_handler, sample_content, sample_filename
+    ):
         """Should save PDF with unique identifier prefix."""
-        metadata = pdf_handler.upload_pdf(mock_uploaded_file)
+        metadata = pdf_handler.upload_pdf(sample_content, sample_filename)
 
         assert "id" in metadata
         assert metadata["id"].startswith("pdf_")
@@ -96,9 +99,9 @@ class TestUploadPDF:
         assert "filename" in metadata
         assert metadata["filename"] == "test_paper.pdf"
 
-    def test_pdf_file_created(self, pdf_handler, mock_uploaded_file):
+    def test_pdf_file_created(self, pdf_handler, sample_content, sample_filename):
         """Should create PDF file on disk."""
-        metadata = pdf_handler.upload_pdf(mock_uploaded_file)
+        metadata = pdf_handler.upload_pdf(sample_content, sample_filename)
         pdf_path = metadata["path"]
 
         assert pdf_path.exists()
@@ -106,7 +109,7 @@ class TestUploadPDF:
 
     @patch.object(PDFHandler, "get_pdf_metadata")
     def test_extracts_file_size(
-        self, mock_get_metadata, pdf_handler, mock_uploaded_file
+        self, mock_get_metadata, pdf_handler, sample_content, sample_filename
     ):
         """Should extract file size metadata."""
         # Mock metadata extraction to return valid data
@@ -115,7 +118,7 @@ class TestUploadPDF:
             "page_count": 1,
         }
 
-        metadata = pdf_handler.upload_pdf(mock_uploaded_file)
+        metadata = pdf_handler.upload_pdf(sample_content, sample_filename)
 
         assert "file_size" in metadata
         assert metadata["file_size"] == len(b"fake pdf content")
@@ -220,9 +223,9 @@ class TestConvertPDFToMarkdown:
 class TestDeletePDF:
     """Test PDF deletion."""
 
-    def test_deletes_pdf_file(self, pdf_handler, mock_uploaded_file):
+    def test_deletes_pdf_file(self, pdf_handler, sample_content, sample_filename):
         """Should delete PDF file from disk."""
-        metadata = pdf_handler.upload_pdf(mock_uploaded_file)
+        metadata = pdf_handler.upload_pdf(sample_content, sample_filename)
         pdf_id = metadata["id"]
         pdf_path = metadata["path"]
 
@@ -233,14 +236,19 @@ class TestDeletePDF:
     @patch.object(PDFHandler, "get_pdf_metadata")
     @patch("tensortruth.pdf_handler.convert_with_marker")
     def test_deletes_markdown_file(
-        self, mock_marker, mock_get_metadata, pdf_handler, mock_uploaded_file
+        self,
+        mock_marker,
+        mock_get_metadata,
+        pdf_handler,
+        sample_content,
+        sample_filename,
     ):
         """Should delete corresponding markdown file."""
         mock_marker.return_value = "Content"
         mock_get_metadata.return_value = {"file_size": 100, "page_count": 1}
 
         # Upload and convert
-        metadata = pdf_handler.upload_pdf(mock_uploaded_file)
+        metadata = pdf_handler.upload_pdf(sample_content, sample_filename)
         pdf_id = metadata["id"]
         md_path = pdf_handler.convert_pdf_to_markdown(metadata["path"])
 
@@ -272,14 +280,13 @@ class TestHelperMethods:
         assert len(files) == 2
         assert all(f.suffix == ".md" for f in files)
 
-    def test_get_pdf_count(self, pdf_handler, mock_uploaded_file):
+    def test_get_pdf_count(self, pdf_handler, sample_content, sample_filename):
         """Should count PDFs in session."""
         assert pdf_handler.get_pdf_count() == 0
 
-        pdf_handler.upload_pdf(mock_uploaded_file)
+        pdf_handler.upload_pdf(sample_content, sample_filename)
         assert pdf_handler.get_pdf_count() == 1
 
         # Upload another
-        mock_uploaded_file.name = "another.pdf"
-        pdf_handler.upload_pdf(mock_uploaded_file)
+        pdf_handler.upload_pdf(sample_content, "another.pdf")
         assert pdf_handler.get_pdf_count() == 2
