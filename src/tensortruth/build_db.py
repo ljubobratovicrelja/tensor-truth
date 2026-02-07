@@ -40,7 +40,7 @@ Examples:
     --indexes-dir /data/indexes
 
   # Use a specific embedding model
-  tensor-truth-build --modules pytorch --embedding-model Qwen/Qwen3-Embedding-0.6B
+  tensor-truth-build --modules pytorch --embedding-model BAAI/bge-m3
 
   # Skip model validation (for offline/private models)
   tensor-truth-build --modules pytorch --embedding-model my-org/my-model --no-validate
@@ -158,7 +158,7 @@ Environment Variables:
         default=None,
         help=(
             f"HuggingFace embedding model to use (default: {DEFAULT_EMBEDDING_MODEL}). "
-            "Accepts any HuggingFace model path (e.g., Qwen/Qwen3-Embedding-0.6B)."
+            "Accepts any HuggingFace model path (e.g., BAAI/bge-m3)."
         ),
     )
 

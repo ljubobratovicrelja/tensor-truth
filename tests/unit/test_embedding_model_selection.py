@@ -27,11 +27,11 @@ class TestSanitizeModelId:
         from tensortruth.indexing.metadata import sanitize_model_id
 
         assert sanitize_model_id("BAAI/bge-m3") == "bge-m3"
-        assert sanitize_model_id("Qwen/Qwen3-Embedding-0.6B") == "qwen3-embedding-0.6b"
         assert (
             sanitize_model_id("sentence-transformers/all-MiniLM-L6-v2")
             == "all-minilm-l6-v2"
         )
+        assert sanitize_model_id("BAAI/bge-reranker-v2-m3") == "bge-reranker-v2-m3"
 
     def test_handles_simple_model_names(self):
         """Test simple model names without org prefix."""
@@ -113,15 +113,15 @@ class TestWriteAndReadIndexMetadata:
 
         write_index_metadata(
             index_dir=tmp_path,
-            embedding_model="Qwen/Qwen3-Embedding-0.6B",
+            embedding_model="sentence-transformers/all-MiniLM-L6-v2",
             chunk_sizes=[1024, 256],
         )
 
         metadata = read_index_metadata(tmp_path)
 
         assert metadata is not None
-        assert metadata["embedding_model"] == "Qwen/Qwen3-Embedding-0.6B"
-        assert metadata["embedding_model_id"] == "qwen3-embedding-0.6b"
+        assert metadata["embedding_model"] == "sentence-transformers/all-MiniLM-L6-v2"
+        assert metadata["embedding_model_id"] == "all-minilm-l6-v2"
         assert metadata["chunk_sizes"] == [1024, 256]
 
     def test_read_returns_none_for_missing_file(self, tmp_path):
@@ -351,7 +351,7 @@ class TestModelManagerEmbedder:
         manager = ModelManager.get_instance()
         embedder1 = manager.get_embedder(model_name="BAAI/bge-m3", device="cpu")
         embedder2 = manager.get_embedder(
-            model_name="Qwen/Qwen3-Embedding-0.6B", device="cpu"
+            model_name="sentence-transformers/all-MiniLM-L6-v2", device="cpu"
         )
 
         assert embedder1 is not embedder2
@@ -539,9 +539,9 @@ class TestGetIndexesDirForModel:
 
         from tensortruth.app_utils.paths import get_indexes_dir_for_model
 
-        result = get_indexes_dir_for_model("Qwen/Qwen3-Embedding-0.6B")
+        result = get_indexes_dir_for_model("sentence-transformers/all-MiniLM-L6-v2")
 
-        assert result.name == "qwen3-embedding-0.6b"
+        assert result.name == "all-minilm-l6-v2"
 
     def test_respects_base_dir_override(self, tmp_path):
         """Test that base_dir_override is respected."""
@@ -716,7 +716,7 @@ class TestGetMigrationStatus:
         from tensortruth.indexing.migration import get_migration_status
 
         # Create versioned indexes for two models
-        for model_id in ["bge-m3", "qwen3-embedding-0.6b"]:
+        for model_id in ["bge-m3", "all-minilm-l6-v2"]:
             model_dir = tmp_path / model_id
             for name in ["library_pytorch", "library_numpy"]:
                 idx = model_dir / name
@@ -727,7 +727,7 @@ class TestGetMigrationStatus:
         status = get_migration_status(tmp_path)
 
         assert status["versioned_by_model"]["bge-m3"] == 2
-        assert status["versioned_by_model"]["qwen3-embedding-0.6b"] == 2
+        assert status["versioned_by_model"]["all-minilm-l6-v2"] == 2
         assert status["total_versioned"] == 4
 
 
@@ -785,9 +785,9 @@ class TestModulesEndpointVersionedStructure:
         (bge_dir / "library_pytorch" / "chroma.sqlite3").touch()
 
         # Create indexes for different model (should be ignored)
-        qwen_dir = tmp_path / "qwen3-embedding-0.6b"
-        (qwen_dir / "library_numpy").mkdir(parents=True)
-        (qwen_dir / "library_numpy" / "chroma.sqlite3").touch()
+        other_dir = tmp_path / "all-minilm-l6-v2"
+        (other_dir / "library_numpy").mkdir(parents=True)
+        (other_dir / "library_numpy" / "chroma.sqlite3").touch()
 
         with patch(
             "tensortruth.api.routes.modules.get_indexes_dir", return_value=tmp_path
@@ -844,9 +844,9 @@ class TestModulesEndpointVersionedStructure:
         (bge_dir / "library_bge").mkdir(parents=True)
         (bge_dir / "library_bge" / "chroma.sqlite3").touch()
 
-        qwen_dir = tmp_path / "qwen3-embedding-0.6b"
-        (qwen_dir / "library_qwen").mkdir(parents=True)
-        (qwen_dir / "library_qwen" / "chroma.sqlite3").touch()
+        minilm_dir = tmp_path / "all-minilm-l6-v2"
+        (minilm_dir / "library_minilm").mkdir(parents=True)
+        (minilm_dir / "library_minilm" / "chroma.sqlite3").touch()
 
         # Test with bge-m3 config
         mock_service_bge = MagicMock()
@@ -863,18 +863,20 @@ class TestModulesEndpointVersionedStructure:
 
         assert [m.name for m in result_bge.modules] == ["library_bge"]
 
-        # Test with qwen config
-        mock_service_qwen = MagicMock()
-        mock_config_qwen = MagicMock()
-        mock_config_qwen.rag.default_embedding_model = "Qwen/Qwen3-Embedding-0.6B"
-        mock_service_qwen.load.return_value = mock_config_qwen
+        # Test with minilm config
+        mock_service_minilm = MagicMock()
+        mock_config_minilm = MagicMock()
+        mock_config_minilm.rag.default_embedding_model = (
+            "sentence-transformers/all-MiniLM-L6-v2"
+        )
+        mock_service_minilm.load.return_value = mock_config_minilm
 
         with patch(
             "tensortruth.api.routes.modules.get_indexes_dir", return_value=tmp_path
         ):
-            result_qwen = asyncio.run(list_modules(mock_service_qwen))
+            result_minilm = asyncio.run(list_modules(mock_service_minilm))
 
-        assert [m.name for m in result_qwen.modules] == ["library_qwen"]
+        assert [m.name for m in result_minilm.modules] == ["library_minilm"]
 
 
 # ============================================================================
@@ -928,41 +930,6 @@ class TestDefaultEmbeddingModelConfigs:
 
         assert "BAAI/bge-m3" in DEFAULT_EMBEDDING_MODEL_CONFIGS
 
-    def test_qwen3_configs_exist(self):
-        """Test that Qwen3 embedding configs are defined."""
-        from tensortruth.app_utils.config_schema import DEFAULT_EMBEDDING_MODEL_CONFIGS
-
-        assert "Qwen/Qwen3-Embedding-0.6B" in DEFAULT_EMBEDDING_MODEL_CONFIGS
-        assert "Qwen/Qwen3-Embedding-4B" in DEFAULT_EMBEDDING_MODEL_CONFIGS
-        assert "Qwen/Qwen3-Embedding-8B" in DEFAULT_EMBEDDING_MODEL_CONFIGS
-
-    def test_qwen3_has_optimized_settings(self):
-        """Test that Qwen3 models have memory-optimized settings."""
-        from tensortruth.app_utils.config_schema import DEFAULT_EMBEDDING_MODEL_CONFIGS
-
-        qwen_config = DEFAULT_EMBEDDING_MODEL_CONFIGS["Qwen/Qwen3-Embedding-0.6B"]
-
-        # Qwen3 should have smaller batch sizes due to memory spikes
-        assert qwen_config["batch_size_cuda"] < 128
-        assert qwen_config["batch_size_cpu"] < 16
-
-        # Qwen3 should use float16 and left padding
-        assert qwen_config["torch_dtype"] == "float16"
-        assert qwen_config["padding_side"] == "left"
-        assert qwen_config["flash_attention"] is True
-
-    def test_larger_qwen3_has_smaller_batch_sizes(self):
-        """Test that larger Qwen3 models have progressively smaller batch sizes."""
-        from tensortruth.app_utils.config_schema import DEFAULT_EMBEDDING_MODEL_CONFIGS
-
-        qwen_0_6b = DEFAULT_EMBEDDING_MODEL_CONFIGS["Qwen/Qwen3-Embedding-0.6B"]
-        qwen_4b = DEFAULT_EMBEDDING_MODEL_CONFIGS["Qwen/Qwen3-Embedding-4B"]
-        qwen_8b = DEFAULT_EMBEDDING_MODEL_CONFIGS["Qwen/Qwen3-Embedding-8B"]
-
-        # Larger models should have smaller batch sizes
-        assert qwen_0_6b["batch_size_cuda"] > qwen_4b["batch_size_cuda"]
-        assert qwen_4b["batch_size_cuda"] >= qwen_8b["batch_size_cuda"]
-
 
 @pytest.mark.unit
 class TestRAGConfigGetEmbeddingModelConfig:
@@ -1000,12 +967,12 @@ class TestRAGConfigGetEmbeddingModelConfig:
 
         rag_config = RAGConfig(embedding_model_configs={})
 
-        result = rag_config.get_embedding_model_config("Qwen/Qwen3-Embedding-0.6B")
+        result = rag_config.get_embedding_model_config("BAAI/bge-m3")
 
         # Should get values from DEFAULT_EMBEDDING_MODEL_CONFIGS
-        assert result.torch_dtype == "float16"
-        assert result.padding_side == "left"
-        assert result.flash_attention is True
+        assert result.batch_size_cuda == 128
+        assert result.batch_size_cpu == 16
+        assert result.trust_remote_code is True
 
     def test_returns_generic_defaults_for_unknown_model(self):
         """Test that generic defaults are returned for unknown models."""
@@ -1026,25 +993,23 @@ class TestRAGConfigGetEmbeddingModelConfig:
         """Test that user config takes precedence over built-in defaults."""
         from tensortruth.app_utils.config_schema import RAGConfig
 
-        # User wants different settings for Qwen3
+        # User wants different settings for BGE-M3
         user_config = {
-            "batch_size_cuda": 16,  # Different from built-in default of 8
-            "batch_size_cpu": 4,
-            "torch_dtype": "float32",  # Different from built-in float16
+            "batch_size_cuda": 64,  # Different from built-in default of 128
+            "batch_size_cpu": 8,
+            "torch_dtype": "float32",
             "padding_side": "left",
-            "flash_attention": False,  # Disabled by user
+            "flash_attention": True,
             "trust_remote_code": True,
         }
 
-        rag_config = RAGConfig(
-            embedding_model_configs={"Qwen/Qwen3-Embedding-0.6B": user_config}
-        )
+        rag_config = RAGConfig(embedding_model_configs={"BAAI/bge-m3": user_config})
 
-        result = rag_config.get_embedding_model_config("Qwen/Qwen3-Embedding-0.6B")
+        result = rag_config.get_embedding_model_config("BAAI/bge-m3")
 
-        assert result.batch_size_cuda == 16
+        assert result.batch_size_cuda == 64
         assert result.torch_dtype == "float32"
-        assert result.flash_attention is False
+        assert result.flash_attention is True
 
 
 @pytest.mark.unit
@@ -1062,11 +1027,12 @@ class TestModelManagerEmbeddingModelConfig:
         from tensortruth.services.model_manager import ModelManager
 
         manager = ModelManager.get_instance()
-        config = manager._get_embedding_model_config("Qwen/Qwen3-Embedding-0.6B")
+        config = manager._get_embedding_model_config("BAAI/bge-m3")
 
-        # Should get Qwen3-specific config
-        assert config.torch_dtype == "float16"
-        assert config.padding_side == "left"
+        # Should get BGE-M3 config
+        assert config.batch_size_cuda == 128
+        assert config.batch_size_cpu == 16
+        assert config.trust_remote_code is True
 
     def test_returns_default_config_for_unknown_model(self):
         """Test that default config is returned for unknown models."""
@@ -1088,16 +1054,16 @@ class TestModelManagerEmbeddingModelConfig:
         mock_hf_embedding.return_value = mock_instance
 
         manager = ModelManager.get_instance()
-        manager._load_embedder("Qwen/Qwen3-Embedding-0.6B", "cpu")
+        manager._load_embedder("BAAI/bge-m3", "cpu")
 
-        # Check that HuggingFaceEmbedding was called with Qwen3-specific settings
+        # Check that HuggingFaceEmbedding was called with BGE-M3 settings
         call_kwargs = mock_hf_embedding.call_args.kwargs
 
-        # Batch size should be small for Qwen3 on CPU
-        assert call_kwargs["embed_batch_size"] == 4
+        # Batch size should be 16 for BGE-M3 on CPU
+        assert call_kwargs["embed_batch_size"] == 16
 
-        # Should have left padding for Qwen3
-        assert call_kwargs["tokenizer_kwargs"] == {"padding_side": "left"}
+        # Should not have special tokenizer_kwargs for BGE-M3
+        assert call_kwargs.get("tokenizer_kwargs") is None
 
     @patch("tensortruth.services.model_manager.HuggingFaceEmbedding")
     def test_load_embedder_uses_default_for_bge(self, mock_hf_embedding):

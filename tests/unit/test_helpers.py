@@ -314,7 +314,7 @@ class TestEmbeddingModelMatching:
         """Test matching when effective_embedding_model equals model_id."""
         models = [
             {"model_id": "bge-m3", "model_name": "BAAI/bge-m3", "modules": ["a", "b"]},
-            {"model_id": "qwen3-embedding-0.6b", "model_name": None, "modules": ["c"]},
+            {"model_id": "all-minilm-l6-v2", "model_name": None, "modules": ["c"]},
         ]
 
         result = self._find_model_info(models, "bge-m3")
@@ -327,8 +327,8 @@ class TestEmbeddingModelMatching:
         models = [
             {"model_id": "bge-m3", "model_name": "BAAI/bge-m3", "modules": ["a", "b"]},
             {
-                "model_id": "qwen3-embedding-0.6b",
-                "model_name": "Qwen/Qwen3-Embedding-0.6B",
+                "model_id": "all-minilm-l6-v2",
+                "model_name": "sentence-transformers/all-MiniLM-L6-v2",
                 "modules": ["c"],
             },
         ]
@@ -352,16 +352,16 @@ class TestEmbeddingModelMatching:
         """Test that short ID matching is case insensitive."""
         models = [
             {
-                "model_id": "qwen3-embedding-0.6b",
-                "model_name": "Qwen/Qwen3-Embedding-0.6B",
+                "model_id": "all-minilm-l6-v2",
+                "model_name": "sentence-transformers/all-MiniLM-L6-v2",
                 "modules": ["c"],
             },
         ]
 
         # Frontend may store with different casing
-        result = self._find_model_info(models, "Qwen3-Embedding-0.6b")
+        result = self._find_model_info(models, "all-MiniLM-L6-v2")
         assert result is not None
-        assert result["model_id"] == "qwen3-embedding-0.6b"
+        assert result["model_id"] == "all-minilm-l6-v2"
 
     def test_no_match_returns_none(self):
         """Test that non-matching model returns None."""
@@ -384,13 +384,13 @@ class TestEmbeddingModelMatching:
     def test_model_name_null_still_matches_by_id(self):
         """Test that models with null model_name can still be matched."""
         models = [
-            {"model_id": "qwen3-embedding-0.6b", "model_name": None, "modules": ["c"]},
+            {"model_id": "all-minilm-l6-v2", "model_name": None, "modules": ["c"]},
         ]
 
         # Even without model_name, should match via short ID
-        result = self._find_model_info(models, "Qwen/Qwen3-Embedding-0.6B")
+        result = self._find_model_info(models, "sentence-transformers/all-MiniLM-L6-v2")
         assert result is not None
-        assert result["model_id"] == "qwen3-embedding-0.6b"
+        assert result["model_id"] == "all-minilm-l6-v2"
 
     def test_exact_match_preferred_over_short_match(self):
         """Test that exact matches take precedence over short ID matches."""

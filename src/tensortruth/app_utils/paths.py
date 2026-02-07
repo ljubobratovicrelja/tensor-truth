@@ -228,8 +228,8 @@ def get_indexes_dir_for_model(
         >>> get_indexes_dir_for_model("BAAI/bge-m3")
         Path('/home/user/.tensortruth/indexes/bge-m3')
 
-        >>> get_indexes_dir_for_model("Qwen/Qwen3-Embedding-0.6B")
-        Path('/home/user/.tensortruth/indexes/qwen3-embedding-0.6b')
+        >>> get_indexes_dir_for_model("sentence-transformers/all-MiniLM-L6-v2")
+        Path('/home/user/.tensortruth/indexes/all-minilm-l6-v2')
     """
     base_dir = Path(get_base_indexes_dir(base_dir_override))
     model_id = sanitize_model_id(embedding_model)

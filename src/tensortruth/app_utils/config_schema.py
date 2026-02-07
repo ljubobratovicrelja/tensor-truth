@@ -35,7 +35,6 @@ class EmbeddingModelConfig:
     """Per-embedding-model configuration for HuggingFace models.
 
     These settings optimize memory usage and performance for specific models.
-    See: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B for Qwen3 recommendations.
     """
 
     # Batch sizes for embedding (smaller = less VRAM, slower)
@@ -46,7 +45,6 @@ class EmbeddingModelConfig:
     torch_dtype: Optional[str] = None
 
     # Tokenizer padding side: null (default), "left", "right"
-    # Qwen3 models recommend "left" padding
     padding_side: Optional[str] = None
 
     # Enable Flash Attention 2 if available (requires flash-attn package)
@@ -68,32 +66,6 @@ DEFAULT_EMBEDDING_MODEL_CONFIGS: Dict[str, Dict] = {
         "flash_attention": False,
         "trust_remote_code": True,
     },
-    # Qwen3 Embedding models: Need special handling due to memory spikes
-    # See: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/discussions/38
-    "Qwen/Qwen3-Embedding-0.6B": {
-        "batch_size_cuda": 8,
-        "batch_size_cpu": 4,
-        "torch_dtype": "float16",
-        "padding_side": "left",
-        "flash_attention": True,
-        "trust_remote_code": True,
-    },
-    "Qwen/Qwen3-Embedding-4B": {
-        "batch_size_cuda": 4,
-        "batch_size_cpu": 2,
-        "torch_dtype": "float16",
-        "padding_side": "left",
-        "flash_attention": True,
-        "trust_remote_code": True,
-    },
-    "Qwen/Qwen3-Embedding-8B": {
-        "batch_size_cuda": 2,
-        "batch_size_cpu": 1,
-        "torch_dtype": "float16",
-        "padding_side": "left",
-        "flash_attention": True,
-        "trust_remote_code": True,
-    },
 }
 
 # Default config for unknown models
@@ -102,8 +74,6 @@ DEFAULT_EMBEDDING_MODEL_CONFIG = EmbeddingModelConfig()
 
 # Default reranker models available out of the box
 DEFAULT_RERANKER_MODELS = [
-    "Qwen/Qwen3-Reranker-0.6B",
-    "Qwen/Qwen3-Reranker-4B",
     "BAAI/bge-reranker-v2-m3",
     "BAAI/bge-reranker-base",
     "cross-encoder/ms-marco-MiniLM-L-6-v2",

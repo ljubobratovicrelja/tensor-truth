@@ -114,16 +114,6 @@ async def get_embedding_model_suggestions() -> EmbeddingModelSuggestionsResponse
             description="Multilingual, high quality, good balance of size/performance",
         ),
         EmbeddingModelSuggestion(
-            model_name="Qwen/Qwen3-Embedding-0.6B",
-            model_id="qwen3-embedding-0.6b",
-            description="Small, fast, efficient for English text",
-        ),
-        EmbeddingModelSuggestion(
-            model_name="Qwen/Qwen3-Embedding-4B",
-            model_id="qwen3-embedding-4b",
-            description="Large, high quality, best for complex documents",
-        ),
-        EmbeddingModelSuggestion(
             model_name="sentence-transformers/all-MiniLM-L6-v2",
             model_id="all-minilm-l6-v2",
             description="Very fast, lightweight, English only",

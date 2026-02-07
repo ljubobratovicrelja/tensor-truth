@@ -26,16 +26,14 @@ def sanitize_model_id(model_name: str) -> str:
     safe for use in directory names.
 
     Args:
-        model_name: Full model path (e.g., "BAAI/bge-m3", "Qwen/Qwen3-Embedding-0.6B")
+        model_name: Full model path (e.g., "BAAI/bge-m3", "sentence-transformers/all-MiniLM-L6-v2")
 
     Returns:
-        Sanitized model ID (e.g., "bge-m3", "qwen3-embedding-0.6b")
+        Sanitized model ID (e.g., "bge-m3", "all-minilm-l6-v2")
 
     Examples:
         >>> sanitize_model_id("BAAI/bge-m3")
         'bge-m3'
-        >>> sanitize_model_id("Qwen/Qwen3-Embedding-0.6B")
-        'qwen3-embedding-0.6b'
         >>> sanitize_model_id("sentence-transformers/all-MiniLM-L6-v2")
         'all-minilm-l6-v2'
     """

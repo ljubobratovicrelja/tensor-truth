@@ -194,12 +194,12 @@ class TestEmbeddingModelModulesIntegration:
         bge_module.mkdir()
         (bge_module / "chroma.sqlite3").touch()
 
-        # Qwen model has numpy module
-        qwen_dir = indexes_dir / "qwen3-embedding-0.6b"
-        qwen_dir.mkdir()
-        qwen_module = qwen_dir / "numpy"
-        qwen_module.mkdir()
-        (qwen_module / "chroma.sqlite3").touch()
+        # MiniLM model has numpy module
+        minilm_dir = indexes_dir / "all-minilm-l6-v2"
+        minilm_dir.mkdir()
+        minilm_module = minilm_dir / "numpy"
+        minilm_module.mkdir()
+        (minilm_module / "chroma.sqlite3").touch()
 
         monkeypatch.setattr(
             "tensortruth.api.routes.modules.get_indexes_dir", lambda: indexes_dir
@@ -223,12 +223,12 @@ class TestEmbeddingModelModulesIntegration:
                 assert "pytorch" in modules1
                 assert "numpy" not in modules1
 
-                # Change config to Qwen model
+                # Change config to MiniLM model
                 test_service.update(
-                    rag_default_embedding_model="Qwen/Qwen3-Embedding-0.6B"
+                    rag_default_embedding_model="sentence-transformers/all-MiniLM-L6-v2"
                 )
 
-                # Request should now return numpy (Qwen model)
+                # Request should now return numpy (MiniLM model)
                 response2 = await client.get("/api/modules")
                 assert response2.status_code == 200
                 modules2 = [m["name"] for m in response2.json()["modules"]]
@@ -296,10 +296,10 @@ class TestEmbeddingModelModulesIntegration:
         (bge_dir / "numpy").mkdir()
         (bge_dir / "numpy" / "chroma.sqlite3").touch()
 
-        qwen_dir = indexes_dir / "qwen3-embedding-0.6b"
-        qwen_dir.mkdir()
-        (qwen_dir / "tensorflow").mkdir()
-        (qwen_dir / "tensorflow" / "chroma.sqlite3").touch()
+        minilm_dir = indexes_dir / "all-minilm-l6-v2"
+        minilm_dir.mkdir()
+        (minilm_dir / "tensorflow").mkdir()
+        (minilm_dir / "tensorflow" / "chroma.sqlite3").touch()
 
         monkeypatch.setattr(
             "tensortruth.api.routes.modules.get_indexes_dir", lambda: indexes_dir
@@ -325,7 +325,7 @@ class TestEmbeddingModelModulesIntegration:
 
                 model_ids = [m["model_id"] for m in data["models"]]
                 assert "bge-m3" in model_ids
-                assert "qwen3-embedding-0.6b" in model_ids
+                assert "all-minilm-l6-v2" in model_ids
 
                 # Check module counts
                 bge_model = next(m for m in data["models"] if m["model_id"] == "bge-m3")
@@ -371,12 +371,12 @@ class TestEmbeddingModelModulesIntegration:
 
                 # Change config using the update method with prefixed key
                 test_service.update(
-                    rag_default_embedding_model="Qwen/Qwen3-Embedding-0.6B"
+                    rag_default_embedding_model="sentence-transformers/all-MiniLM-L6-v2"
                 )
 
                 # Should reflect new model
                 response2 = await client.get("/api/embedding-models")
-                assert response2.json()["current"] == "qwen3-embedding-0.6b"
+                assert response2.json()["current"] == "all-minilm-l6-v2"
         finally:
             app.dependency_overrides.clear()
 
@@ -404,11 +404,11 @@ class TestEmbeddingModelModulesIntegration:
             (bge_dir / name).mkdir()
             (bge_dir / name / "chroma.sqlite3").touch()
 
-        qwen_dir = indexes_dir / "qwen3-embedding-0.6b"
-        qwen_dir.mkdir()
+        minilm_dir = indexes_dir / "all-minilm-l6-v2"
+        minilm_dir.mkdir()
         for name in ["deep_learning"]:
-            (qwen_dir / name).mkdir()
-            (qwen_dir / name / "chroma.sqlite3").touch()
+            (minilm_dir / name).mkdir()
+            (minilm_dir / name / "chroma.sqlite3").touch()
 
         monkeypatch.setattr(
             "tensortruth.api.routes.modules.get_indexes_dir", lambda: indexes_dir
@@ -428,12 +428,12 @@ class TestEmbeddingModelModulesIntegration:
                 assert response.status_code == 200
                 data = response.json()
 
-                # Find qwen model
-                qwen_model = next(
-                    m for m in data["models"] if m["model_id"] == "qwen3-embedding-0.6b"
+                # Find minilm model
+                minilm_model = next(
+                    m for m in data["models"] if m["model_id"] == "all-minilm-l6-v2"
                 )
-                # Frontend can use qwen_model["modules"] to know available modules
-                assert qwen_model["modules"] == ["deep_learning"]
+                # Frontend can use minilm_model["modules"] to know available modules for this model
+                assert minilm_model["modules"] == ["deep_learning"]
 
                 bge_model = next(m for m in data["models"] if m["model_id"] == "bge-m3")
                 assert set(bge_model["modules"]) == {
@@ -456,8 +456,8 @@ class TestEmbeddingModelModulesIntegration:
 
         Scenario:
         - Config default: bge-m3
-        - Session settings: user selects qwen3-embedding-0.6b
-        - Frontend module selector should show qwen modules, not bge modules
+        - Session settings: user selects all-minilm-l6-v2
+        - Frontend module selector should show minilm modules, not bge modules
 
         The frontend must:
         1. Use session's embedding_model (not config's default)
@@ -477,12 +477,12 @@ class TestEmbeddingModelModulesIntegration:
             (bge_dir / name).mkdir()
             (bge_dir / name / "chroma.sqlite3").touch()
 
-        # Qwen has few modules (session selection)
-        qwen_dir = indexes_dir / "qwen3-embedding-0.6b"
-        qwen_dir.mkdir()
+        # MiniLM has few modules (session selection)
+        minilm_dir = indexes_dir / "all-minilm-l6-v2"
+        minilm_dir.mkdir()
         for name in ["book_deep_learning"]:
-            (qwen_dir / name).mkdir()
-            (qwen_dir / name / "chroma.sqlite3").touch()
+            (minilm_dir / name).mkdir()
+            (minilm_dir / name / "chroma.sqlite3").touch()
 
         monkeypatch.setattr(
             "tensortruth.api.routes.modules.get_indexes_dir", lambda: indexes_dir
@@ -508,21 +508,21 @@ class TestEmbeddingModelModulesIntegration:
                 # This has 3 modules (bge-m3's modules)
                 assert len(api_modules) == 3
 
-                # USER CHANGES SESSION EMBEDDING MODEL TO QWEN
-                # Frontend now needs qwen modules, but /modules still returns bge's
-                session_embedding_model = "qwen3-embedding-0.6b"
+                # USER CHANGES SESSION EMBEDDING MODEL TO MINILM
+                # Frontend now needs minilm modules, but /modules still returns bge's
+                session_embedding_model = "all-minilm-l6-v2"
 
                 # CORRECT APPROACH: Get modules from /embedding-models
-                qwen_model = next(
+                minilm_model = next(
                     m
                     for m in emb_data["models"]
                     if m["model_id"] == session_embedding_model
                 )
-                session_modules = qwen_model["modules"]
-                # Only 1 module for qwen
+                session_modules = minilm_model["modules"]
+                # Only 1 module for minilm
                 assert session_modules == ["book_deep_learning"]
 
-                # WRONG APPROACH: Filtering /modules by qwen
+                # WRONG APPROACH: Filtering /modules by minilm
                 # This would return empty because /modules has bge modules only
                 filtered = [m for m in api_modules if m in session_modules]
                 assert (

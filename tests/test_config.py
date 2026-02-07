@@ -524,7 +524,7 @@ class TestConfigHash:
     def test_compute_config_hash_with_pdf_index(self):
         """Test config hash with PDF index."""
         modules = ["pytorch"]
-        params = {"model": "qwen", "temperature": 0.5}
+        params = {"model": "llama", "temperature": 0.5}
         has_pdf_index = True
         session_id = "sess_abc"
 
@@ -536,7 +536,7 @@ class TestConfigHash:
     def test_compute_config_hash_different_sessions(self):
         """Test that different session IDs produce different hashes."""
         modules = []
-        params = {"model": "qwen"}
+        params = {"model": "llama"}
         has_pdf_index = True
 
         hash1 = compute_config_hash(modules, params, has_pdf_index, "sess_abc")
@@ -550,7 +550,7 @@ class TestConfigHash:
     def test_compute_config_hash_no_modules_no_pdf(self):
         """Test that hash is None when no modules and no PDF index."""
         modules = []
-        params = {"model": "qwen"}
+        params = {"model": "llama"}
         has_pdf_index = False
         session_id = "sess_123"
 
@@ -561,7 +561,7 @@ class TestConfigHash:
 
     def test_compute_config_hash_module_order_invariant(self):
         """Test that module order doesn't affect hash."""
-        params = {"model": "qwen"}
+        params = {"model": "llama"}
         session_id = "sess_123"
 
         hash1 = compute_config_hash(["pytorch", "numpy"], params, False, session_id)

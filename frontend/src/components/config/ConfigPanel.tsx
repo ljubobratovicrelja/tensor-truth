@@ -391,7 +391,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
                       <Input
                         value={newRerankerModel}
                         onChange={(e) => setNewRerankerModel(e.target.value)}
-                        placeholder="e.g., Qwen/Qwen3-Reranker-0.6B"
+                        placeholder="e.g., BAAI/bge-reranker-v2-m3"
                       />
                       <p className="text-muted-foreground text-xs">
                         Enter the full HuggingFace model path. The model will be validated
