@@ -622,9 +622,12 @@ class BrowseCommand(ToolCommand):
 
         except Exception as e:
             logger.error(f"Browse command failed with exception: {e}", exc_info=True)
-            await websocket.send_json(
-                {"type": "error", "detail": f"Browse command failed: {str(e)}"}
-            )
+            try:
+                await websocket.send_json(
+                    {"type": "error", "detail": f"Browse command failed: {str(e)}"}
+                )
+            except Exception:
+                logger.debug("Could not send error to client (WebSocket closed)")
 
 
 # Pipeline phases from SourceFetchPipeline
