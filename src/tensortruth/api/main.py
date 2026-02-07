@@ -162,6 +162,10 @@ def run() -> None:
     )
     args = parser.parse_args()
 
+    host = "localhost" if args.host in ("0.0.0.0", "::") else args.host
+    print(f"\n  TensorTruth v{__version__}")
+    print(f"  Open the app at: http://{host}:{args.port}\n")
+
     uvicorn.run(
         "tensortruth.api.main:app",
         host=args.host,
