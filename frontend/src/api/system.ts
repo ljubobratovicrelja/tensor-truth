@@ -2,7 +2,7 @@
  * System information API client
  */
 
-import { apiGet } from "./client";
+import { apiGet, apiPost } from "./client";
 
 export interface MemoryInfo {
   name: string;
@@ -84,19 +84,5 @@ export interface RestartEngineResponse {
  * Restart the RAG engine by clearing memory and caches
  */
 export async function restartEngine(): Promise<RestartEngineResponse> {
-  const response = await fetch(
-    `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}/api/system/restart-engine`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to restart engine: ${response.statusText}`);
-  }
-
-  return response.json();
+  return apiPost<RestartEngineResponse>("/system/restart-engine");
 }

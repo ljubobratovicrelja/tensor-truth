@@ -73,10 +73,9 @@ dependencies = [
 ]
 
 [project.scripts]
-tensor-truth = "tensortruth.cli:main"
+tensor-truth = "tensortruth.api.main:run"
 tensor-truth-docs = "tensortruth.cli:scrape_docs"
 tensor-truth-build = "tensortruth.cli:build_db"
-tensor-truth-api = "tensortruth.api.main:run"
 tensor-truth-ui = "tensortruth.cli:run_ui"
 
 [project.optional-dependencies]
@@ -107,7 +106,7 @@ dev = [
 where = ["src"] # Tells python that your code lives in 'src/'
 
 [tool.setuptools.package-data]
-tensortruth = ["media/*.css", "media/*.png"]
+tensortruth = ["media/*.css", "media/*.png", "static/**/*"]
 
 [tool.deptry.per_rule_ignores]
 # Ignore DEP002 for CLI tools and test framework (not imported in src/, used in tests/ or via CLI)

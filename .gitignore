@@ -231,3 +231,6 @@ frontend/.vite/
 
 # Don't ignore frontend lib folder (overrides lib/ rule above)
 !frontend/src/lib/
+
+# Bundled frontend in Python package (build artifact)
+src/tensortruth/static/

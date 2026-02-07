@@ -291,6 +291,28 @@ def compare_versions(local_ver, pypi_ver):
         return False
 
 
+def build_frontend():
+    """Build the React frontend for bundling into the Python package."""
+    logger.info("Building frontend...")
+
+    script_path = Path(__file__).parent / "build_frontend.sh"
+    if not script_path.exists():
+        logger.error(f"Frontend build script not found at {script_path}")
+        return False
+
+    try:
+        subprocess.run(
+            ["bash", str(script_path)],
+            check=True,
+            cwd=Path(__file__).parent.parent,
+        )
+        logger.info("Frontend built successfully")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Frontend build failed: {e}")
+        return False
+
+
 def clean_dist():
     """Clean the dist/ directory"""
     dist_path = Path(__file__).parent.parent / "dist"
@@ -405,14 +427,20 @@ def main():
     logger.info("Step 8: Cleaning dist/ directory...")
     clean_dist()
 
-    # Step 9: Build project
-    logger.info("Step 9: Building project...")
+    # Step 9: Build frontend
+    logger.info("Step 9: Building frontend...")
+    if not build_frontend():
+        logger.error("Frontend build failed. Aborting.")
+        sys.exit(1)
+
+    # Step 10: Build project
+    logger.info("Step 10: Building project...")
     if not build_project():
         logger.error("Build failed. Aborting.")
         sys.exit(1)
 
-    # Step 10: Upload to PyPI
-    logger.info("Step 10: Uploading to PyPI...")
+    # Step 11: Upload to PyPI
+    logger.info("Step 11: Uploading to PyPI...")
 
     # Ask for confirmation before uploading
     response = input("Ready to upload to PyPI. Continue? (yes/no): ")

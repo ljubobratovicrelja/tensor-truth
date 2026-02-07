@@ -31,20 +31,18 @@ def main():
 TensorTruth - Local RAG System
 
 Available Commands:
-  tensor-truth-api    Start the FastAPI backend server
-  tensor-truth-ui     Start the React frontend dev server
+  tensor-truth        Start the server (API + bundled frontend on one port)
+  tensor-truth-ui     Start the React frontend dev server (development only)
   tensor-truth-docs   Scrape and fetch documentation sources
   tensor-truth-build  Build the vector database from sources
 
-Quick Start:
-  1. Start the API server:
-     $ tensor-truth-api
+Production:
+  $ tensor-truth
+  Open http://localhost:8000
 
-  2. In a new terminal, start the frontend:
-     $ tensor-truth-ui
-
-  3. Open your browser to:
-     http://localhost:5173
+Development (two terminals):
+  $ tensor-truth --reload
+  $ tensor-truth-ui
 
 For more information, visit: https://github.com/ljubobratovicrelja/tensor-truth
 """
@@ -101,7 +99,9 @@ def run_ui():
     if not frontend_dir.exists():
         print(f"Error: Frontend directory not found at {frontend_dir}", file=sys.stderr)
         print(
-            "Make sure you're running from a development installation.", file=sys.stderr
+            "This command is for development only. For production, use"
+            " 'tensor-truth' which serves the bundled frontend.",
+            file=sys.stderr,
         )
         sys.exit(1)
 

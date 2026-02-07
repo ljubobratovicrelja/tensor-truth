@@ -5,6 +5,8 @@ A modular framework for building Retrieval-Augmented Generation (RAG) pipelines
 running entirely on local hardware.
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from tensortruth.core import get_max_memory_gb, get_running_models, stop_model
 from tensortruth.rag_engine import (
     CUSTOM_CONTEXT_PROMPT_NO_SOURCES,
@@ -22,7 +24,10 @@ from tensortruth.utils import (
     parse_thinking_response,
 )
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("tensor-truth")
+except PackageNotFoundError:
+    __version__ = "0.0.0-dev"
 
 __all__ = [
     # RAG Engine

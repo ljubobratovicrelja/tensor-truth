@@ -2,12 +2,15 @@
 
 import argparse
 import logging
+import mimetypes
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 
 from tensortruth import __version__
 from tensortruth.api.routes import (
@@ -104,6 +107,32 @@ def create_app() -> FastAPI:
     async def health_check() -> HealthResponse:
         """Health check endpoint."""
         return HealthResponse(status="ok", version=__version__)
+
+    # --- SPA catch-all (must be registered LAST) ---
+    static_dir = Path(__file__).resolve().parent.parent / "static"
+
+    @app.get("/{full_path:path}", response_model=None)
+    async def serve_spa(full_path: str) -> FileResponse | JSONResponse:
+        """Serve bundled React frontend in production mode."""
+        if not static_dir.is_dir():
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "Frontend not bundled. Use Vite dev server."},
+            )
+
+        file_path = (static_dir / full_path).resolve()
+        if file_path.is_file() and str(file_path).startswith(str(static_dir)):
+            media_type, _ = mimetypes.guess_type(str(file_path))
+            return FileResponse(file_path, media_type=media_type)
+
+        index_path = static_dir / "index.html"
+        if index_path.is_file():
+            return FileResponse(index_path, media_type="text/html")
+
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Frontend index.html not found."},
+        )
 
     return app
 
