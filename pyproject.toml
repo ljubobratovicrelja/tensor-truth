@@ -106,7 +106,7 @@ dev = [
 where = ["src"] # Tells python that your code lives in 'src/'
 
 [tool.setuptools.package-data]
-tensortruth = ["media/*.css", "media/*.png", "static/**/*"]
+tensortruth = ["static/**/*"]
 
 [tool.deptry.per_rule_ignores]
 # Ignore DEP002 for CLI tools and test framework (not imported in src/, used in tests/ or via CLI)
