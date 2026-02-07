@@ -181,6 +181,14 @@ class ToolService:
             f"({len(builtin)} built-in, {len(mcp_tools)} MCP)"
         )
 
+    def add_tool(self, tool: FunctionTool) -> None:
+        """Add a tool after initial load (for user extensions).
+
+        Args:
+            tool: A FunctionTool instance to register.
+        """
+        self._tools.append(tool)
+
     @property
     def tools(self) -> List[FunctionTool]:
         """Get all loaded FunctionTool instances.

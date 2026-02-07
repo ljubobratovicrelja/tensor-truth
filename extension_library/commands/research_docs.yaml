@@ -1,0 +1,7 @@
+name: research_docs
+description: "Research documentation using AI agent with Context7 + web search"
+usage: "/research_docs <query>"
+aliases: [rd]
+agent: doc_researcher
+
+requires_mcp: context7

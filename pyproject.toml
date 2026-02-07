@@ -64,6 +64,9 @@ dependencies = [
     "llama-index-tools-mcp>=0.1.0",  # MCP tools for LlamaIndex
     "mcp>=1.0.0",                 # Model Context Protocol server
 
+    # --- User Extensions (YAML parsing) ---
+    "pyyaml>=6.0",
+
     # --- API Server ---
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
@@ -154,6 +157,7 @@ markers = [
     "requires_gpu: Tests requiring CUDA/MPS",
     "requires_ollama: Tests requiring Ollama server (skipped by default, use --run-ollama to run)",
     "requires_network: Tests requiring internet connection (skipped by default, use --run-network to run)",
+    "requires_mcp: Tests requiring MCP server (skipped by default, use --run-mcp to run)",
 ]
 
 # Output options

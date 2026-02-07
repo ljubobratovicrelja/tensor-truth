@@ -1,0 +1,11 @@
+name: arxiv_paper
+description: "Get detailed info about a specific arXiv paper by ID"
+usage: "/arxiv_paper <paper_id>"
+aliases: [axp]
+
+steps:
+  - tool: get_paper_data
+    params:
+      paper_id: "{{args}}"
+
+requires_mcp: simple-arxiv

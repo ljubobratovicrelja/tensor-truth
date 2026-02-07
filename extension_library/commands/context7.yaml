@@ -1,0 +1,21 @@
+name: context7
+description: "Look up library docs from Context7"
+usage: "/context7 <library> <topic>"
+aliases: [c7]
+
+steps:
+  # Step 1: Resolve library name to Context7 ID
+  - tool: resolve-library-id
+    params:
+      libraryName: "{{args.0}}"
+      query: "{{args}}"
+    result_var: resolved
+    result_extract: "Context7-compatible library ID: (?P<libraryId>\\S+)"
+
+  # Step 2: Fetch docs using resolved ID
+  - tool: query-docs
+    params:
+      libraryId: "{{resolved.libraryId}}"
+      query: "{{args.rest}}"
+
+requires_mcp: context7

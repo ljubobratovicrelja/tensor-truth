@@ -57,6 +57,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.warning(f"Failed to load MCP tools: {e}")
 
+    # Load user extensions (~/.tensortruth/commands/ and ~/.tensortruth/agents/)
+    try:
+        from tensortruth.api.deps import get_agent_service
+        from tensortruth.api.routes.commands import registry as command_registry
+        from tensortruth.extensions import load_user_extensions
+
+        ext_result = await load_user_extensions(
+            command_registry=command_registry,
+            agent_service=get_agent_service(),
+            tool_service=get_tool_service(),
+        )
+        logger.info(f"✓ User extensions: {ext_result}")
+    except Exception as e:
+        logger.warning(f"Failed to load user extensions: {e}")
+
     logger.info("✓ TensorTruth API startup complete")
 
     yield

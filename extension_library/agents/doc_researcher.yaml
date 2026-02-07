@@ -1,0 +1,12 @@
+name: doc_researcher
+description: "Research using Context7 + web search"
+agent_type: function
+tools:
+  - query-docs
+  - search_web
+  - fetch_page
+system_prompt: |
+  You are a documentation researcher. Use library docs and web search
+  to find accurate, up-to-date information. Always cite your sources.
+max_iterations: 8
+model: null  # Uses whatever model the user has selected in session

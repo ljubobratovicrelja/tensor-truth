@@ -27,6 +27,12 @@ def pytest_addoption(parser):
         default=False,
         help="Run tests that require network connection",
     )
+    parser.addoption(
+        "--run-mcp",
+        action="store_true",
+        default=False,
+        help="Run tests that require MCP servers (e.g., Context7)",
+    )
 
 
 def pytest_configure(config):
@@ -38,6 +44,10 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "requires_network: mark test as requiring network (skipped by default)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "requires_mcp: mark test as requiring MCP servers (skipped by default)",
     )
 
 
@@ -473,6 +483,14 @@ def skip_if_network_required(request):
         # Skip by default unless --run-network flag is provided
         if not request.config.getoption("--run-network"):
             pytest.skip("Skipped: requires network (use --run-network to run)")
+
+
+@pytest.fixture(autouse=True)
+def skip_if_mcp_required(request):
+    """Auto-skip tests marked with requires_mcp unless --run-mcp is specified."""
+    if "requires_mcp" in request.keywords:
+        if not request.config.getoption("--run-mcp"):
+            pytest.skip("Skipped: requires MCP servers (use --run-mcp to run)")
 
 
 @pytest.fixture(autouse=True)

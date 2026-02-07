@@ -114,16 +114,38 @@ Or, the smaller qwen2.5-coder, holds up well with API docs on coding aid.
 ollama pull qwen2.5-coder:7b 
 ````
 
-## Autonomous Agents
+## Agents & Web Search
 
-Tensor-Truth supports autonomous agents via [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) integration. Agents can use external tools to complete tasks beyond the knowledge base.
+Beyond RAG, Tensor-Truth has built-in slash commands for web search and autonomous research:
 
-**Example - Web Research Agent:**
+- **`/web <query>`** — Search the web (via DuckDuckGo), fetch top results, and generate an AI summary with sources. Supports optional instructions: `/web python 3.13;focus on performance improvements`.
+- **`/browse <query>`** — Autonomous research agent that plans multi-step web research, searching and reading pages iteratively to answer complex questions. Uses [MCP](https://modelcontextprotocol.io/) tools under the hood.
+
 ```
-/browse What are the latest features in Python 3.13?
+/web What is flash attention?
+/browse Compare PyTorch 2.x compile modes and their tradeoffs
 ```
 
-Agents can also be triggered through natural language (e.g., "Research the latest transformer papers"). The agent system is extensible via custom MCP server configurations.
+## Custom Extensions
+
+Add your own slash commands and agents by dropping YAML files into `~/.tensortruth/commands/` and `~/.tensortruth/agents/`. No code changes needed — just define a tool pipeline or agent config and restart.
+
+```yaml
+# ~/.tensortruth/commands/arxiv.yaml
+name: arxiv
+description: "Search arXiv for academic papers"
+usage: "/arxiv <query>"
+aliases: [ax]
+steps:
+  - tool: search_papers
+    params:
+      query: "{{args}}"
+      max_results: 5
+      sort_by: relevance
+requires_mcp: simple-arxiv
+```
+
+The repository includes ready-to-use extensions for [arXiv](https://github.com/andybrandt/mcp-simple-arxiv) and [Context7](https://github.com/upstash/context7) in the [`extension_library/`](extension_library/) directory — copy what you need. For the full guide (YAML schema, template variables, Python extensions, MCP setup), see **[docs/EXTENSIONS.md](docs/EXTENSIONS.md)**.
 
 ## Development
 
