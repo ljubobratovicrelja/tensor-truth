@@ -28,11 +28,11 @@ ENV TENSOR_TRUTH_DOCS_DIR=/root/.tensortruth/library_docs
 ENV TENSOR_TRUTH_SOURCES_CONFIG=/root/.tensortruth/sources.json
 ENV TENSOR_TRUTH_INDEXES_DIR=/root/.tensortruth/indexes
 
-# Expose Streamlit default port
-EXPOSE 8501
+# Expose web server port
+EXPOSE 8000
 
 # Create volume mount point for persistent data
 VOLUME ["/root/.tensortruth"]
 
-# Launch Streamlit app
+# Launch TensorTruth server
 CMD ["tensor-truth"]
