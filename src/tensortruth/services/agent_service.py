@@ -229,15 +229,15 @@ class AgentService:
         # Create LLM
         llm = self._create_llm(model, context_window, ollama_url)
 
-        # Build factory params
+        # Build factory params: global defaults first, then session overrides
         factory_params = {
-            **session_params,
             "router_model": self._config.get("agent", {}).get(
                 "router_model", "llama3.2:3b"
             ),
             "min_pages_required": self._config.get("agent", {}).get(
                 "min_pages_required", 3
             ),
+            **session_params,
             **config.factory_params,
         }
 

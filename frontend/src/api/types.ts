@@ -238,6 +238,7 @@ export interface AgentConfig {
   max_iterations: number;
   min_pages_required: number;
   reasoning_model: string;
+  router_model: string;
   enable_natural_language_agents: boolean;
   intent_classifier_model: string;
 }

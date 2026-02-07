@@ -352,12 +352,10 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
                   <span className="font-medium">RAG Model:</span>{" "}
                   <span className="font-mono">{config.models.default_rag_model}</span>
                 </div>
-                {config.models.default_agent_reasoning_model && (
+                {config.agent.router_model && (
                   <div>
                     <span className="font-medium">Agent Reasoning:</span>{" "}
-                    <span className="font-mono">
-                      {config.models.default_agent_reasoning_model}
-                    </span>
+                    <span className="font-mono">{config.agent.router_model}</span>
                   </div>
                 )}
               </div>

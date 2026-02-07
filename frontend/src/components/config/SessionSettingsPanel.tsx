@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import {
   useConfig,
   useUpdateSession,
+  useModels,
   useEmbeddingModels,
   useRerankers,
   useAddReranker,
@@ -64,6 +65,7 @@ export function SessionSettingsPanel({
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { data: config } = useConfig();
+  const { data: modelsData } = useModels();
   const { data: embeddingModelsData } = useEmbeddingModels();
   const { data: rerankersData } = useRerankers();
   const addReranker = useAddReranker();
@@ -89,6 +91,7 @@ export function SessionSettingsPanel({
   const [availableDevices, setAvailableDevices] = useState<string[]>(DEVICE_OPTIONS);
   const [maxHistoryTurns, setMaxHistoryTurns] = useState<number>(3);
   const [memoryTokenLimit, setMemoryTokenLimit] = useState<number>(4000);
+  const [routerModel, setRouterModel] = useState<string>("");
 
   // Fetch available devices from backend
   useEffect(() => {
@@ -138,6 +141,7 @@ export function SessionSettingsPanel({
       setMemoryTokenLimit(
         (currentParams.memory_token_limit as number) ?? config.rag.memory_token_limit
       );
+      setRouterModel((currentParams.router_model as string) ?? config.agent.router_model);
     }
   }, [open, config, currentParams]);
 
@@ -156,6 +160,7 @@ export function SessionSettingsPanel({
       embedding_model: embeddingModel,
       max_history_turns: maxHistoryTurns,
       memory_token_limit: memoryTokenLimit,
+      router_model: routerModel,
     };
 
     // Only include system_prompt if non-empty
@@ -472,6 +477,31 @@ export function SessionSettingsPanel({
                   step={1000}
                 />
               </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Agent Section */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium">Agent</h3>
+            <div className="space-y-2">
+              <Label>
+                Agent Reasoning Model
+                <HelpTooltip text="Fast model used by the browse agent for routing decisions (search/fetch/summarize). Smaller models work well here." />
+              </Label>
+              <Select value={routerModel} onValueChange={setRouterModel}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelsData?.models.map((model) => (
+                    <SelectItem key={model.name} value={model.name}>
+                      {model.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

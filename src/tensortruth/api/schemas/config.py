@@ -48,6 +48,7 @@ class AgentConfigSchema(BaseModel):
     max_iterations: int = 10
     min_pages_required: int = 3
     reasoning_model: str = "llama3.1:8b"
+    router_model: str = "llama3.2:3b"
     enable_natural_language_agents: bool = True
     intent_classifier_model: str = "llama3.2:3b"
 

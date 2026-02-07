@@ -48,6 +48,7 @@ def _config_to_response(config) -> ConfigResponse:
             max_iterations=config.agent.max_iterations,
             min_pages_required=config.agent.min_pages_required,
             reasoning_model=config.agent.reasoning_model,
+            router_model=config.agent.router_model,
             enable_natural_language_agents=config.agent.enable_natural_language_agents,
             intent_classifier_model=config.agent.intent_classifier_model,
         ),
