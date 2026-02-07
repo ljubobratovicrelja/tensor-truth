@@ -2,6 +2,7 @@
 
 from typing import Any, Dict
 
+from llama_index.core.agent.workflow import AgentStream, ToolCall
 from llama_index.core.agent.workflow.function_agent import (
     FunctionAgent as LIFunctionAgent,
 )
@@ -32,27 +33,46 @@ class FunctionAgentWrapper(Agent):
     ) -> AgentResult:
         """Execute FunctionAgent and return AgentResult.
 
+        Streams events from the underlying workflow to fire callbacks
+        for tool calls and token generation as they happen.
+
         Args:
             query: User's query
-            callbacks: Callbacks (note: FunctionAgent doesn't support streaming)
+            callbacks: Callbacks for streaming progress
             **kwargs: Additional parameters
 
         Returns:
             AgentResult with final answer
         """
-        # Progress callback
         if callbacks.on_progress:
             callbacks.on_progress(f"Starting {self._agent_name} agent...")
 
-        # Execute FunctionAgent (uses LlamaIndex's run method)
-        response = await self._agent.run(user_msg=query)
+        tools_called: list[str] = []
+        full_response = ""
 
-        # Convert to AgentResult
+        # Get handler (starts workflow) — don't await directly
+        handler = self._agent.run(user_msg=query)
+
+        # Intercept events as they're emitted
+        async for event in handler.stream_events():
+            if isinstance(event, ToolCall):
+                tools_called.append(event.tool_name)
+                if callbacks.on_tool_call:
+                    callbacks.on_tool_call(event.tool_name, event.tool_kwargs)
+                if callbacks.on_progress:
+                    callbacks.on_progress(f"Calling {event.tool_name}...")
+            elif isinstance(event, AgentStream):
+                if event.delta and callbacks.on_token:
+                    full_response += event.delta
+                    callbacks.on_token(event.delta)
+
+        # Get final result
+        response = await handler
+        final = full_response or str(response)
+
         return AgentResult(
-            final_answer=str(response),
-            iterations=0,  # FunctionAgent doesn't expose iteration count
-            tools_called=[],  # Would need tracking
-            urls_browsed=[],  # Would need tracking
+            final_answer=final,
+            tools_called=tools_called,
         )
 
     def get_metadata(self) -> Dict[str, Any]:
