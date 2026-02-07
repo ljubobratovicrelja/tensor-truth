@@ -198,60 +198,6 @@ def get_favorites(presets_file: Union[str, Path]):
     return dict(sorted_favorites)
 
 
-def quick_launch_preset(
-    name,
-    available_mods,
-    presets_file: Union[str, Path],
-    sessions_file: Union[str, Path],
-):
-    """Quick launch a session directly from a preset.
-
-    Args:
-        name: Preset name to launch
-        available_mods: List of available module names
-        presets_file: Path to presets file
-        sessions_file: Path to sessions file
-
-    Returns:
-        tuple: (success: bool, error_message: str or None)
-    """
-    from tensortruth.app_utils.session import create_session
-
-    presets = load_presets(presets_file)
-    if name not in presets:
-        return False, f"Preset '{name}' not found"
-
-    preset = presets[name]
-
-    # Validate modules
-    modules = preset.get("modules", [])
-    valid_mods = [m for m in modules if m in available_mods]
-
-    if not valid_mods and modules:
-        return False, "None of the preset modules are available"
-
-    # Build params from preset
-    # Load config to get default_rag_model
-    config = load_config()
-    params = {
-        "model": preset.get("model", config.models.default_rag_model),
-        "temperature": preset.get("temperature", 0.3),
-        "context_window": preset.get("context_window", 16384),
-        "max_tokens": preset.get("max_tokens", 4096),
-        "system_prompt": preset.get("system_prompt", ""),
-        "reranker_model": preset.get("reranker_model", "BAAI/bge-reranker-v2-m3"),
-        "reranker_top_n": preset.get("reranker_top_n", 3),
-        "confidence_cutoff": preset.get("confidence_cutoff", 0.3),
-        "confidence_cutoff_hard": preset.get("confidence_cutoff_hard", 0.1),
-        "rag_device": preset.get("rag_device", "cpu"),
-        "llm_device": preset.get("llm_device", "gpu"),
-    }
-
-    # Create session
-    create_session(valid_mods, params, sessions_file)
-    return True, None
-
-
 def build_preset_config(
     name,
     available_mods,
