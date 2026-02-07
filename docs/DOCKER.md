@@ -52,7 +52,7 @@ This Docker image provides a complete, minimal environment for running Tensor-Tr
 
 Includes all dependencies for CLI tools (`tensor-truth-docs`, `tensor-truth-build`).
 
-Indexes are downloaded automatically on first run via HuggingFace Hub (fast download).
+Pre-built indexes are available on HuggingFace Hub and can be downloaded through the web UI on first launch.
 
 ## Prerequisites
 
@@ -214,9 +214,9 @@ docker restart tensor-truth
 
 **For comprehensive guides** on adding libraries, papers, and books, configuring chunk sizes, and troubleshooting, see [INDEXES.md](INDEXES.md).
 
-### Advanced: Skip Base Index Download
+### Advanced: Build Custom Indexes Only
 
-By default, the app downloads pre-built indexes on first run. If you prefer to build only your own custom indexes (skipping the base package):
+If you prefer to build only your own custom indexes instead of downloading the pre-built ones:
 
 1. **Before first launch**, enter the container shell and build your indexes:
 
@@ -240,7 +240,7 @@ docker run -d --name tensor-truth --gpus all -p 8000:8000 \
   ljubobratovicrelja/tensor-truth:latest
 ```
 
-The app detects existing indexes in `~/.tensortruth/indexes/` and skips downloading the base package, using only your custom-built indexes.
+The app detects existing indexes in `~/.tensortruth/indexes/` and will use your custom-built indexes directly.
 
 ## Data Persistence
 
@@ -280,11 +280,11 @@ This allows you to switch between Docker and pip-installed versions seamlessly. 
 On the first launch, the application will:
 
 1. **Create config** - Initialize default configuration file
-2. **Download indexes** - Fetch pre-built vector indexes from HuggingFace Hub (fast, reliable)
-3. **Pull Ollama model** - Request `qwen2.5:0.5b` from the Ollama host (runs on the machine specified by `OLLAMA_HOST`, not inside the container)
-4. **Setup directories** - Create session, preset, and index folders
+2. **Setup directories** - Create session, preset, and index folders
+3. **Prompt for indexes** - The web UI will prompt you to download pre-built vector indexes from HuggingFace Hub
+4. **Prompt for Ollama model** - The web UI will prompt you to pull `qwen2.5:0.5b` from the Ollama host for automatic chat titles
 
-This process takes 1-3 minutes depending on network speed. Subsequent runs are instant since data persists in the volume.
+Index download and model pulls happen through the web UI, not automatically on startup. Once downloaded, data persists in the volume across container restarts.
 
 **Note**: The Ollama model pull happens on your Ollama host machine (e.g., `host.docker.internal:11434`), not inside the Docker container. Make sure Ollama is running and accessible before starting tensor-truth.
 
@@ -439,7 +439,7 @@ If connection fails, verify firewall settings and OLLAMA_HOST configuration.
 
 ### Index Download Issues
 
-If HuggingFace Hub download fails on first run (rare):
+If HuggingFace Hub download fails:
 
 1. Check your internet connection and firewall settings
 2. Verify HuggingFace Hub is accessible: `curl https://huggingface.co`
@@ -473,6 +473,6 @@ docker run -d \
   tensor-truth:latest
 ```
 
-The image is ~5GB and includes all dependencies. Indexes download automatically on first run via HuggingFace Hub.
+The image is ~5GB and includes all dependencies. Pre-built indexes can be downloaded through the web UI from HuggingFace Hub.
 
 **Note**: Local builds use the simplified image name `tensor-truth:latest` (without the `ljubobratovicrelja/` prefix). The pre-built image from Docker Hub uses the full name `ljubobratovicrelja/tensor-truth:latest`.

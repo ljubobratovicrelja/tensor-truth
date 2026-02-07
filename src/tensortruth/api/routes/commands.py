@@ -35,11 +35,9 @@ router = APIRouter()
 class ToolCommand(ABC):
     """Base class for all tool/agent commands.
 
-    Tool commands are different from the old Streamlit config commands:
-    - They trigger external tools or agents
-    - They stream LLM responses via WebSocket
-    - They can appear anywhere in user input
-    - Results are saved to session history (not ephemeral)
+    Tool commands trigger external tools or agents, stream LLM responses
+    via WebSocket, can appear anywhere in user input, and results are
+    saved to session history.
     """
 
     name: str

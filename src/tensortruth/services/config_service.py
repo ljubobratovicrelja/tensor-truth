@@ -1,6 +1,5 @@
 """Configuration service - wraps existing config module with dependency injection.
 
-The existing config module is already clean (no Streamlit dependencies).
 This service provides a class-based interface with configurable paths.
 """
 

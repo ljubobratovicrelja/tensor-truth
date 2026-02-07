@@ -1,7 +1,7 @@
-"""Path utilities for CLI commands (no streamlit dependency).
+"""Path utilities for CLI commands.
 
 This module provides path resolution functions for CLI commands without
-importing streamlit or any app_utils dependencies.
+importing app_utils dependencies.
 """
 
 import os

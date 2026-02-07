@@ -1,8 +1,7 @@
-"""Session management service - pure business logic without Streamlit dependencies.
+"""Session management service - pure business logic.
 
 This service handles all session CRUD operations, returning new state objects
-instead of mutating global state. The UI adapter layer is responsible for
-syncing the returned state back to Streamlit session_state.
+instead of mutating global state.
 """
 
 import json
@@ -27,7 +26,7 @@ class SessionService:
     """Service for managing chat sessions.
 
     All methods are pure - they accept state as input and return new state
-    as output, without accessing Streamlit session_state directly.
+    as output.
 
     Storage model:
     - Per-session files: ~/.tensortruth/sessions/{session_id}/session.json

@@ -1,7 +1,6 @@
 """Dataclasses for service layer models.
 
-These models are used for data transfer between services and the UI layer,
-keeping business logic decoupled from Streamlit state management.
+These models are used for data transfer between services and the UI layer.
 """
 
 from dataclasses import dataclass, field

@@ -39,7 +39,7 @@ def parse_thinking_response(raw_text: Optional[str]) -> Tuple[Optional[str], str
 
 def convert_latex_delimiters(text: Optional[str]) -> Optional[str]:
     r"""
-    Converts LaTeX math delimiters from standard LaTeX format to Streamlit format.
+    Converts LaTeX math delimiters from standard LaTeX format to markdown/KaTeX format.
 
     Converts:
     - \(...\) to $...$ (inline math)
@@ -49,7 +49,7 @@ def convert_latex_delimiters(text: Optional[str]) -> Optional[str]:
         text: String containing LaTeX expressions with standard delimiters
 
     Returns:
-        String with Streamlit-compatible LaTeX delimiters
+        String with markdown/KaTeX-compatible LaTeX delimiters
     """
     if not text:
         return text

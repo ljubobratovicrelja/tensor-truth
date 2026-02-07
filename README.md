@@ -48,7 +48,7 @@ Run the app:
 tensor-truth
 ```
 
-On first launch, pre-built indexes will auto-download from Google Drive (takes a few minutes). Also a small qwen2.5:0.5b will be pulled automatically for assigning automatic titles to chats.
+On first launch, the app will prompt you to download pre-built indexes from HuggingFace Hub (takes a few minutes). A small qwen2.5:0.5b model will also be pulled for assigning automatic titles to chats.
 
 ## Docker Deployment
 
@@ -79,7 +79,7 @@ Access the app at **http://localhost:8000**
 
 All user data (chat history, presets, indexes) is stored in `~/.tensortruth` on macOS/Linux or `%USERPROFILE%\.tensortruth` on Windows. This keeps your working directory clean while maintaining persistent state across sessions.
 
-Pre-built indexes download automatically to this directory on startup. If Google Drive rate limits prevent auto-download, manually fetch [indexes.tar](https://drive.google.com/file/d/12wZsBwrywl9nXOCLr50lpWB2SiFdu1XB/view?usp=sharing) and extract to `~/.tensortruth/indexes`.
+Pre-built indexes are hosted on [HuggingFace Hub](https://huggingface.co/datasets/ljubobratovicrelja/tensor-truth-indexes) and can be downloaded through the web UI on first launch.
 
 For index contents, see [config/sources.json](config/sources.json). This is a curated list of useful libraries and research papers. Fork and customize as needed.
 
@@ -123,7 +123,21 @@ Tensor-Truth supports autonomous agents via [Model Context Protocol (MCP)](https
 /browse What are the latest features in Python 3.13?
 ```
 
-Agents can also be triggered through natural language (e.g., "Research the latest transformer papers"). For documentation on available agents, configuration, and extending with custom MCP servers, see [docs/AGENTS.md](docs/AGENTS.md).
+Agents can also be triggered through natural language (e.g., "Research the latest transformer papers"). The agent system is extensible via custom MCP server configurations.
+
+## Development
+
+For frontend development, the React UI runs as a separate Vite dev server with hot-reload, proxying API calls to the backend:
+
+```bash
+# Terminal 1: Start the API server with auto-reload
+tensor-truth --reload
+
+# Terminal 2: Start the React dev server (port 5173)
+tensor-truth-ui
+```
+
+The production `tensor-truth` command serves the bundled React frontend directly from port 8000 — no separate frontend process needed.
 
 ## Building Your Own Indexes
 

@@ -1560,7 +1560,7 @@ def web_search(
     custom_instructions: Optional[str] = None,
 ) -> Tuple[str, List[WebSearchSource]]:
     """
-    Sync wrapper for web search (Streamlit compatible).
+    Sync wrapper for web search.
 
     Args:
         query: Search query

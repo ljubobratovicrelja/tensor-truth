@@ -1,4 +1,4 @@
-"""General helper functions for the Streamlit app."""
+"""General helper functions for TensorTruth."""
 
 import gc
 import json

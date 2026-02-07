@@ -1,7 +1,7 @@
 """Service layer for TensorTruth business logic.
 
-This module provides clean, Streamlit-agnostic services for session management,
-configuration, RAG queries, intent classification, and PDF handling.
+This module provides services for session management, configuration,
+RAG queries, intent classification, and PDF handling.
 """
 
 from .agent_service import AgentCallbacks, AgentService
