@@ -6,7 +6,7 @@
 [![Tests](https://github.com/ljubobratovicrelja/tensor-truth/actions/workflows/tests.yml/badge.svg)](https://github.com/ljubobratovicrelja/tensor-truth/actions/workflows/tests.yml)
 
 
-A local RAG pipeline for reducing hallucinations in LLMs by indexing technical documentation and research papers. Built for personal use on local hardware, shared here in case others find it useful. Web UI is built with Streamlit, with high level of configurability for the pipeline.
+A local RAG pipeline for reducing hallucinations in LLMs by indexing technical documentation and research papers. Built for personal use on local hardware, shared here in case others find it useful. Web UI is built with React, with high level of configurability for the pipeline.
 
 > **Note:** For the moment, this is very much a hobby project. The app has no authentication or multi-user support and is designed to run locally on your own machine. If there's interest in production-ready deployment features, I can add them (feel free to make a request via issues).
 
@@ -64,13 +64,13 @@ docker pull ljubobratovicrelja/tensor-truth:latest
 docker run -d \
   --name tensor-truth \
   --gpus all \
-  -p 8501:8501 \
+  -p 8000:8000 \
   -v ~/.tensortruth:/root/.tensortruth \
   -e OLLAMA_HOST=http://host.docker.internal:11434 \
   ljubobratovicrelja/tensor-truth:latest
 ```
 
-Access the app at **http://localhost:8501**
+Access the app at **http://localhost:8000**
 
 **See [DOCKER.md](docs/DOCKER.md) for complete Docker documentation, troubleshooting, and advanced usage.**
 

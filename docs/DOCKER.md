@@ -20,13 +20,13 @@ docker pull ljubobratovicrelja/tensor-truth:latest
 docker run -d \
   --name tensor-truth \
   --gpus all \
-  -p 8501:8501 \
+  -p 8000:8000 \
   -v ~/.tensortruth:/root/.tensortruth \
   -e OLLAMA_HOST=http://host.docker.internal:11434 \
   ljubobratovicrelja/tensor-truth:latest
 ```
 
-Access the application at **http://localhost:8501**
+Access the application at **http://localhost:8000**
 
 ## What's Included
 
@@ -38,7 +38,7 @@ This Docker image provides a complete, minimal environment for running Tensor-Tr
 - Pre-configured for NVIDIA GPU acceleration
 
 ### Installed Components
-- **Streamlit** web interface
+- **React** web interface
 - **LlamaIndex** RAG orchestration framework
 - **ChromaDB** vector database
 - **HuggingFace embeddings** (BAAI/bge-m3)
@@ -77,7 +77,7 @@ Run with default settings (connects to Ollama on host machine):
 docker run -d \
   --name tensor-truth \
   --gpus all \
-  -p 8501:8501 \
+  -p 8000:8000 \
   -v ~/.tensortruth:/root/.tensortruth \
   ljubobratovicrelja/tensor-truth:latest
 ```
@@ -90,7 +90,7 @@ If Ollama runs on a different machine or port:
 docker run -d \
   --name tensor-truth \
   --gpus all \
-  -p 8501:8501 \
+  -p 8000:8000 \
   -v ~/.tensortruth:/root/.tensortruth \
   -e OLLAMA_HOST=http://192.168.1.100:11434 \
   ljubobratovicrelja/tensor-truth:latest
@@ -110,7 +110,7 @@ docker run -d \
   ljubobratovicrelja/tensor-truth:latest
 ```
 
-Access at **http://localhost:8501** (no port mapping needed with `--network host`)
+Access at **http://localhost:8000** (no port mapping needed with `--network host`)
 
 ### Custom Port
 
@@ -120,7 +120,7 @@ Serve on a different host port (e.g., 8080):
 docker run -d \
   --name tensor-truth \
   --gpus all \
-  -p 8080:8501 \
+  -p 8080:8000 \
   -v ~/.tensortruth:/root/.tensortruth \
   ljubobratovicrelja/tensor-truth:latest
 ```
@@ -140,7 +140,7 @@ These tools allow you to create custom indexes beyond the pre-built ones that do
 
 ### Running CLI Commands
 
-The default `CMD` starts the Streamlit web app. To run CLI tools, override the command:
+The default `CMD` starts the TensorTruth server. To run CLI tools, override the command:
 
 **Interactive shell (recommended for multiple commands):**
 
@@ -235,7 +235,7 @@ exit
 2. **Then start the app normally**:
 
 ```bash
-docker run -d --name tensor-truth --gpus all -p 8501:8501 \
+docker run -d --name tensor-truth --gpus all -p 8000:8000 \
   -v ~/.tensortruth:/root/.tensortruth \
   ljubobratovicrelja/tensor-truth:latest
 ```
@@ -323,7 +323,7 @@ Via environment file:
 echo "OLLAMA_HOST=http://192.168.1.100:11434" > .env
 
 # Run with env file
-docker run -d --name tensor-truth --gpus all -p 8501:8501 \
+docker run -d --name tensor-truth --gpus all -p 8000:8000 \
   -v ~/.tensortruth:/root/.tensortruth \
   --env-file .env \
   ljubobratovicrelja/tensor-truth:latest
@@ -368,7 +368,7 @@ While not recommended (significantly slower), you can run without GPU:
 ```bash
 docker run -d \
   --name tensor-truth \
-  -p 8501:8501 \
+  -p 8000:8000 \
   -v ~/.tensortruth:/root/.tensortruth \
   ljubobratovicrelja/tensor-truth:latest
 ```
@@ -405,7 +405,7 @@ docker exec -it ollama ollama pull deepseek-r1:8b
 docker run -d \
   --name tensor-truth \
   --gpus all \
-  -p 8501:8501 \
+  -p 8000:8000 \
   -v ~/.tensortruth:/root/.tensortruth \
   --link ollama:ollama \
   -e OLLAMA_HOST=http://ollama:11434 \
@@ -416,11 +416,11 @@ docker run -d \
 
 ### Port Already in Use
 
-If port 8501 is occupied:
+If port 8000 is occupied:
 
 ```bash
 # Use different host port
--p 8080:8501  # Access at localhost:8080
+-p 8080:8000  # Access at localhost:8080
 ```
 
 ### Ollama Connection Failed
@@ -467,7 +467,7 @@ Then run it:
 docker run -d \
   --name tensor-truth \
   --gpus all \
-  -p 8501:8501 \
+  -p 8000:8000 \
   -v ~/.tensortruth:/root/.tensortruth \
   -e OLLAMA_HOST=http://host.docker.internal:11434 \
   tensor-truth:latest
