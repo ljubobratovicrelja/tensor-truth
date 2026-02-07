@@ -16,6 +16,19 @@ if TYPE_CHECKING:
     from tensortruth.utils.web_search import WebSearchSource
 
 
+def _to_native(value: Any) -> Any:
+    """Convert a value to a native Python type for JSON serialization.
+
+    Handles numpy scalars (float32, int64, etc.) that are not
+    JSON-serializable by default.
+    """
+    if value is None:
+        return None
+    if hasattr(value, "item"):
+        return value.item()
+    return value
+
+
 class SourceConverter:
     """Convert between different source representations."""
 
@@ -150,12 +163,15 @@ class SourceConverter:
         if source.error:
             metadata["fetch_error"] = source.error
 
+        # Sanitize metadata values for JSON serialization (numpy float32 etc.)
+        metadata = {k: _to_native(v) for k, v in metadata.items()}
+
         # Text priority: content > snippet > empty
         text = source.content or source.snippet or ""
 
         return {
             "text": text,
-            "score": source.effective_score,
+            "score": _to_native(source.effective_score),
             "metadata": metadata,
         }
 
