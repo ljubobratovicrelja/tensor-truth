@@ -391,9 +391,12 @@ class TestBuildMainCLI:
             "indexes": str(indexes_dir),
         }
 
+    @patch("huggingface_hub.model_info")
     @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
-    def test_build_all_flag(self, mock_index, mock_embed, setup_build_env):
+    def test_build_all_flag(
+        self, mock_index, mock_embed, mock_model_info, setup_build_env
+    ):
         """Test --all flag builds all modules."""
 
         mock_embed.return_value = MagicMock()
@@ -416,9 +419,12 @@ class TestBuildMainCLI:
         # Should succeed
         assert result == 0
 
+    @patch("huggingface_hub.model_info")
     @patch("tensortruth.indexing.builder._create_embed_model")
     @patch("tensortruth.indexing.builder.VectorStoreIndex")
-    def test_build_specific_modules(self, mock_index, mock_embed, setup_build_env):
+    def test_build_specific_modules(
+        self, mock_index, mock_embed, mock_model_info, setup_build_env
+    ):
         """Test building specific modules."""
 
         mock_embed.return_value = MagicMock()
@@ -459,7 +465,8 @@ class TestBuildMainCLI:
         # Should return error
         assert result == 1
 
-    def test_libraries_flag(self, setup_build_env):
+    @patch("huggingface_hub.model_info")
+    def test_libraries_flag(self, mock_model_info, setup_build_env):
         """Test --libraries flag builds only library modules."""
 
         with patch(
@@ -481,7 +488,8 @@ class TestBuildMainCLI:
         # Should call build for library modules only
         mock_build.assert_called()
 
-    def test_papers_flag(self, setup_build_env):
+    @patch("huggingface_hub.model_info")
+    def test_papers_flag(self, mock_model_info, setup_build_env):
         """Test --papers flag builds only paper modules."""
 
         with patch(
