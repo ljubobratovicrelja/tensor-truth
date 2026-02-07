@@ -4,9 +4,6 @@ import json
 from pathlib import Path
 from typing import Union
 
-# Local imports (placed here to avoid circular imports)
-from tensortruth.app_utils.config import load_config
-
 # UI constraints - these define the valid values for preset parameters
 ALLOWED_CONTEXT_WINDOWS = [2048, 4096, 8192, 16384, 32768, 65536, 131072]
 ALLOWED_MAX_TOKENS = [1024, 2048, 4096, 8192, 16384]
