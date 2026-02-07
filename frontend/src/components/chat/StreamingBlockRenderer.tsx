@@ -84,7 +84,7 @@ export function StreamingBlockRenderer({
   }, [completedBlocks.length]);
 
   return (
-    <>
+    <div className="streaming-blocks">
       {completedBlocks.map((block, index) => {
         // Don't render blocks that haven't started yet
         if (index > highestStartedIndex) return null;
@@ -102,6 +102,6 @@ export function StreamingBlockRenderer({
           />
         );
       })}
-    </>
+    </div>
   );
 }

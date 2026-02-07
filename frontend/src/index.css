@@ -360,6 +360,26 @@
   .chat-markdown img {
     @apply my-4 max-w-full rounded-lg;
   }
+
+  /*
+   * Streaming blocks: restore margins stripped by first:/last: pseudo-selectors.
+   * Each streaming block is rendered in its own .chat-markdown wrapper, so every
+   * <p> or <h*> is both :first-child and :last-child, zeroing out all margins.
+   * We restore them for intermediate blocks, keeping first/last behavior at the
+   * stream boundaries so the message start/end stays flush.
+   */
+  .streaming-blocks > :not(:first-child) .chat-markdown > p:first-child {
+    margin-top: 0.75rem;
+  }
+  .streaming-blocks > :not(:last-child) .chat-markdown > p:last-child {
+    margin-bottom: 0.75rem;
+  }
+  .streaming-blocks
+    > :not(:first-child)
+    .chat-markdown
+    > :is(h1, h2, h3, h4):first-child {
+    margin-top: 1.5rem;
+  }
 }
 
 /* Streaming cursor animation */
