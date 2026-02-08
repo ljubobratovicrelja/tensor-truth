@@ -1,5 +1,6 @@
 """Tests for FunctionAgentWrapper."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
 import pytest
@@ -348,3 +349,38 @@ async def test_run_multiple_tool_results():
     assert len(result.tool_steps) == 2
     assert result.tool_steps[0]["tool"] == "search"
     assert result.tool_steps[1]["tool"] == "fetch"
+
+
+@pytest.mark.asyncio
+async def test_run_mcp_text_content_produces_clean_output():
+    """MCP-style TextContent objects should produce clean text, not repr."""
+    # Simulate MCP tool output: ToolOutput whose raw_output is a
+    # CallToolResult containing TextContent items.
+    text_content = [SimpleNamespace(type="text", text="The actual documentation text")]
+    call_tool_result = SimpleNamespace(content=text_content)
+    tool_output = ToolOutput(
+        content="meta=None content=[TextContent(type='text', text='The actual documentation text')]",
+        tool_name="get-library-docs",
+        raw_input={"topic": "react hooks"},
+        raw_output=call_tool_result,
+        is_error=False,
+    )
+    events = [
+        ToolCallResult(
+            tool_name="get-library-docs",
+            tool_kwargs={"topic": "react hooks"},
+            tool_id="t1",
+            tool_output=tool_output,
+            return_direct=False,
+        ),
+    ]
+    wrapper = _make_wrapper_with_mock(events)
+
+    result = await wrapper.run("hello", AgentCallbacks())
+
+    assert len(result.tool_steps) == 1
+    step = result.tool_steps[0]
+    # Should contain clean text, not the repr with TextContent(...)
+    assert step["output"] == "The actual documentation text"
+    assert "TextContent" not in step["output"]
+    assert "meta=None" not in step["output"]

@@ -8,6 +8,7 @@ from llama_index.core.tools import FunctionTool
 from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
 
 from .config import MCPServerConfig, MCPServerType
+from .tool_output import wrap_mcp_tool_fn
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,12 @@ class MCPServerRegistry:
                 # Create tool spec - BasicMCPClient manages connections per-operation
                 mcp_spec = McpToolSpec(client=client)
                 tools = await mcp_spec.to_tool_list_async()
+                # Wrap MCP tool functions so they return clean text
+                # instead of CallToolResult (which str() mangles into
+                # ugly repr that confuses the LLM).
+                for tool in tools:
+                    if tool._async_fn is not None:
+                        tool._async_fn = wrap_mcp_tool_fn(tool._async_fn)
                 all_tools.extend(tools)
                 self._clients[name] = client
                 logger.info(f"Loaded {len(tools)} tools from {name}")
