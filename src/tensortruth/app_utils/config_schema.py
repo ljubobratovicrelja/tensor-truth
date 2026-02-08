@@ -1,6 +1,6 @@
 """Configuration schema and default values for Tensor-Truth."""
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Dict, List, Optional
 
 from tensortruth.core.constants import (
@@ -161,10 +161,6 @@ class AgentConfig:
     # Higher values = more thorough research, but slower
     min_pages_required: int = 5
 
-    # Model to use for agent reasoning (fast model for decisions)
-    # Falls back to main chat model if not specified
-    reasoning_model: str = DEFAULT_AGENT_REASONING_MODEL
-
     # Router-based agent configuration
     router_model: str = DEFAULT_ROUTER_MODEL
     function_agent_model: str = DEFAULT_FUNCTION_AGENT_MODEL
@@ -186,10 +182,6 @@ class AgentConfig:
         if self.min_pages_required < 1:
             raise ValueError(
                 f"min_pages_required must be at least 1, got {self.min_pages_required}"
-            )
-        if not self.reasoning_model or not isinstance(self.reasoning_model, str):
-            raise ValueError(
-                f"reasoning_model must be a non-empty string, got {self.reasoning_model!r}"
             )
         if not self.router_model or not isinstance(self.router_model, str):
             raise ValueError(
@@ -297,14 +289,21 @@ class TensorTruthConfig:
         history_cleaning_data = data.get("history_cleaning", {})
         web_search_data = data.get("web_search", {})
 
+        def _filter(cls_, data_):
+            """Filter dict to only include known dataclass fields."""
+            known = {f.name for f in fields(cls_)}
+            return {k: v for k, v in data_.items() if k in known}
+
         return cls(
-            ollama=OllamaConfig(**ollama_data),
-            ui=UIConfig(**ui_data),
-            rag=RAGConfig(**rag_data),
-            models=ModelsConfig(**models_data),
-            agent=AgentConfig(**agent_data),
-            history_cleaning=HistoryCleaningConfig(**history_cleaning_data),
-            web_search=WebSearchConfig(**web_search_data),
+            ollama=OllamaConfig(**_filter(OllamaConfig, ollama_data)),
+            ui=UIConfig(**_filter(UIConfig, ui_data)),
+            rag=RAGConfig(**_filter(RAGConfig, rag_data)),
+            models=ModelsConfig(**_filter(ModelsConfig, models_data)),
+            agent=AgentConfig(**_filter(AgentConfig, agent_data)),
+            history_cleaning=HistoryCleaningConfig(
+                **_filter(HistoryCleaningConfig, history_cleaning_data)
+            ),
+            web_search=WebSearchConfig(**_filter(WebSearchConfig, web_search_data)),
         )
 
     @classmethod

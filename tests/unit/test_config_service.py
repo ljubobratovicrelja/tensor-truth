@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tensortruth.app_utils.config_schema import AgentConfig, TensorTruthConfig
 from tensortruth.services.config_service import ConfigService
 
 
@@ -306,3 +307,127 @@ class TestHistoryCleaningConfig:
         # Reload and verify
         saved_data = yaml.safe_load(temp_config_file.read_text())
         assert saved_data["history_cleaning"]["enabled"] is False
+
+
+class TestConfigUpdatePrefixStripping:
+    """Tests for prefix stripping in ConfigService.update().
+
+    Regression tests for the bug where .replace("agent_", "") would strip
+    ALL occurrences of "agent_", causing keys like "agent_function_agent_model"
+    to resolve to "function_model" instead of "function_agent_model".
+    """
+
+    def test_update_agent_function_agent_model(self, config_service: ConfigService):
+        """agent_function_agent_model strips only the first 'agent_' prefix."""
+        config = config_service.update(agent_function_agent_model="test-model:7b")
+        assert config.agent.function_agent_model == "test-model:7b"
+
+    def test_update_agent_function_agent_model_persists(
+        self, config_service: ConfigService, temp_config_file: Path
+    ):
+        """agent_function_agent_model update persists to disk."""
+        config_service.update(agent_function_agent_model="persisted-model:7b")
+
+        saved_data = yaml.safe_load(temp_config_file.read_text())
+        assert saved_data["agent"]["function_agent_model"] == "persisted-model:7b"
+
+    def test_update_agent_router_model(self, config_service: ConfigService):
+        """agent_router_model still works (no repeated prefix)."""
+        config = config_service.update(agent_router_model="router:3b")
+        assert config.agent.router_model == "router:3b"
+
+    def test_update_models_default_agent_reasoning_model(
+        self, config_service: ConfigService
+    ):
+        """models_default_agent_reasoning_model strips only 'models_' prefix."""
+        config = config_service.update(
+            models_default_agent_reasoning_model="reasoning:14b"
+        )
+        assert config.models.default_agent_reasoning_model == "reasoning:14b"
+
+    def test_update_unknown_key_is_ignored(self, config_service: ConfigService):
+        """Unknown keys are silently ignored (with logging)."""
+        config = config_service.update(nonexistent_key="value")
+        # Should not raise, config should be saved with defaults
+        assert config.ollama.base_url == "http://localhost:11434"
+
+    def test_update_unknown_attr_under_valid_prefix(
+        self, config_service: ConfigService
+    ):
+        """Valid prefix but unknown attribute is ignored (with logging)."""
+        config = config_service.update(agent_nonexistent_field="value")
+        # Should not raise
+        assert config.agent.max_iterations == 10
+
+    def test_update_all_prefix_patterns(self, config_service: ConfigService):
+        """All config prefix patterns resolve correctly."""
+        config = config_service.update(
+            ollama_timeout=600,
+            ui_default_temperature=0.5,
+            rag_default_device="cuda",
+            agent_max_iterations=20,
+            models_default_rag_model="custom:14b",
+            history_cleaning_enabled=False,
+            web_search_ddg_max_results=20,
+        )
+        assert config.ollama.timeout == 600
+        assert config.ui.default_temperature == 0.5
+        assert config.rag.default_device == "cuda"
+        assert config.agent.max_iterations == 20
+        assert config.models.default_rag_model == "custom:14b"
+        assert config.history_cleaning.enabled is False
+        assert config.web_search.ddg_max_results == 20
+
+
+class TestAgentReasoningModelRemoved:
+    """Verify that the dead agent.reasoning_model field was removed."""
+
+    def test_agent_config_no_reasoning_model_field(self):
+        """AgentConfig should not have reasoning_model field."""
+        config = AgentConfig()
+        assert not hasattr(config, "reasoning_model")
+
+    def test_default_config_no_agent_reasoning_model(
+        self, config_service: ConfigService
+    ):
+        """Default config should not have agent.reasoning_model."""
+        config = config_service.load()
+        assert not hasattr(config.agent, "reasoning_model")
+
+    def test_models_reasoning_model_still_exists(self, config_service: ConfigService):
+        """models.default_agent_reasoning_model should still exist."""
+        config = config_service.load()
+        assert hasattr(config.models, "default_agent_reasoning_model")
+
+
+class TestConfigBackwardCompatibility:
+    """Verify backward compatibility with old config files."""
+
+    def test_load_config_with_extra_agent_fields(
+        self, config_service: ConfigService, temp_config_file: Path
+    ):
+        """Loading config with old reasoning_model field should not crash."""
+        old_config = {
+            "agent": {
+                "max_iterations": 10,
+                "reasoning_model": "old-model:7b",  # removed field
+                "router_model": "llama3.2:3b",
+                "function_agent_model": "llama3.1:8b",
+            },
+        }
+        temp_config_file.write_text(yaml.safe_dump(old_config))
+
+        config = config_service.load()
+        assert config.agent.max_iterations == 10
+        assert config.agent.router_model == "llama3.2:3b"
+        assert not hasattr(config.agent, "reasoning_model")
+
+    def test_from_dict_ignores_unknown_fields_in_all_sections(self):
+        """from_dict ignores unknown fields in any config section."""
+        data = {
+            "ollama": {"base_url": "http://localhost:11434", "unknown_field": True},
+            "agent": {"max_iterations": 5, "deprecated_field": "value"},
+        }
+        config = TensorTruthConfig.from_dict(data)
+        assert config.ollama.base_url == "http://localhost:11434"
+        assert config.agent.max_iterations == 5

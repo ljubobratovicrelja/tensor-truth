@@ -47,7 +47,6 @@ def _config_to_response(config) -> ConfigResponse:
         agent=AgentConfigSchema(
             max_iterations=config.agent.max_iterations,
             min_pages_required=config.agent.min_pages_required,
-            reasoning_model=config.agent.reasoning_model,
             router_model=config.agent.router_model,
             function_agent_model=config.agent.function_agent_model,
             enable_natural_language_agents=config.agent.enable_natural_language_agents,

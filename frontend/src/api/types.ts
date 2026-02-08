@@ -247,7 +247,6 @@ export interface ModelsConfig {
 export interface AgentConfig {
   max_iterations: number;
   min_pages_required: number;
-  reasoning_model: string;
   router_model: string;
   function_agent_model: string;
   enable_natural_language_agents: boolean;

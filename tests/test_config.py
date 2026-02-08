@@ -66,7 +66,6 @@ class TestConfigSchema:
         """Test AgentConfig default values."""
         config = AgentConfig()
         assert config.max_iterations == 10
-        assert config.reasoning_model == "llama3.1:8b"
         assert config.enable_natural_language_agents is True
         assert config.intent_classifier_model == "llama3.2:3b"
 
@@ -80,27 +79,6 @@ class TestConfigSchema:
         with pytest.raises(ValueError, match="max_iterations must be positive"):
             AgentConfig(max_iterations=-5)
 
-    def test_agent_config_with_empty_reasoning_model(self):
-        """Test that empty reasoning_model is rejected."""
-        with pytest.raises(
-            ValueError, match="reasoning_model must be a non-empty string"
-        ):
-            AgentConfig(reasoning_model="")
-
-    def test_agent_config_with_none_reasoning_model(self):
-        """Test that None reasoning_model is rejected."""
-        with pytest.raises(
-            ValueError, match="reasoning_model must be a non-empty string"
-        ):
-            AgentConfig(reasoning_model=None)
-
-    def test_agent_config_with_non_string_reasoning_model(self):
-        """Test that non-string reasoning_model is rejected."""
-        with pytest.raises(
-            ValueError, match="reasoning_model must be a non-empty string"
-        ):
-            AgentConfig(reasoning_model=123)
-
     def test_models_config_defaults(self):
         """Test ModelsConfig has correct default values."""
         config = ModelsConfig()
@@ -109,7 +87,10 @@ class TestConfigSchema:
 
     def test_config_to_dict(self):
         """Test TensorTruthConfig serialization to dict."""
-        from tensortruth.app_utils.config_schema import HistoryCleaningConfig
+        from tensortruth.app_utils.config_schema import (
+            HistoryCleaningConfig,
+            WebSearchConfig,
+        )
 
         config = TensorTruthConfig(
             ollama=OllamaConfig(),
@@ -118,6 +99,7 @@ class TestConfigSchema:
             models=ModelsConfig(),
             agent=AgentConfig(),
             history_cleaning=HistoryCleaningConfig(),
+            web_search=WebSearchConfig(),
         )
         data = config.to_dict()
 
@@ -343,7 +325,10 @@ class TestConfigFileOperations:
 
     def test_save_and_load_config(self, temp_config_dir):
         """Test saving and loading config maintains data integrity."""
-        from tensortruth.app_utils.config_schema import HistoryCleaningConfig
+        from tensortruth.app_utils.config_schema import (
+            HistoryCleaningConfig,
+            WebSearchConfig,
+        )
 
         # Create custom config
         config = TensorTruthConfig(
@@ -353,6 +338,7 @@ class TestConfigFileOperations:
             models=ModelsConfig(),
             agent=AgentConfig(max_iterations=15),
             history_cleaning=HistoryCleaningConfig(),
+            web_search=WebSearchConfig(),
         )
 
         # Save it

@@ -3,6 +3,7 @@
 This service provides a class-based interface with configurable paths.
 """
 
+import logging
 from pathlib import Path
 from typing import Any, List, Optional, Tuple, Union
 
@@ -10,6 +11,8 @@ import yaml
 
 from tensortruth.app_utils.config_schema import TensorTruthConfig
 from tensortruth.app_utils.paths import get_user_data_dir
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigService:
@@ -88,35 +91,37 @@ class ConfigService:
         """
         config = self.load()
 
+        # Map of prefix -> config section for dispatching updates
+        sections = {
+            "ollama_": config.ollama,
+            "ui_": config.ui,
+            "rag_": config.rag,
+            "agent_": config.agent,
+            "models_": config.models,
+            "history_cleaning_": config.history_cleaning,
+            "web_search_": config.web_search,
+        }
+
         for key, value in kwargs.items():
-            if key.startswith("ollama_"):
-                attr_name = key.replace("ollama_", "")
-                if hasattr(config.ollama, attr_name):
-                    setattr(config.ollama, attr_name, value)
-            elif key.startswith("ui_"):
-                attr_name = key.replace("ui_", "")
-                if hasattr(config.ui, attr_name):
-                    setattr(config.ui, attr_name, value)
-            elif key.startswith("rag_"):
-                attr_name = key.replace("rag_", "")
-                if hasattr(config.rag, attr_name):
-                    setattr(config.rag, attr_name, value)
-            elif key.startswith("agent_"):
-                attr_name = key.replace("agent_", "")
-                if hasattr(config.agent, attr_name):
-                    setattr(config.agent, attr_name, value)
-            elif key.startswith("models_"):
-                attr_name = key.replace("models_", "")
-                if hasattr(config.models, attr_name):
-                    setattr(config.models, attr_name, value)
-            elif key.startswith("history_cleaning_"):
-                attr_name = key.replace("history_cleaning_", "")
-                if hasattr(config.history_cleaning, attr_name):
-                    setattr(config.history_cleaning, attr_name, value)
-            elif key.startswith("web_search_"):
-                attr_name = key.replace("web_search_", "")
-                if hasattr(config.web_search, attr_name):
-                    setattr(config.web_search, attr_name, value)
+            updated = False
+            for prefix, section in sections.items():
+                if key.startswith(prefix):
+                    attr_name = key.replace(prefix, "", 1)
+                    if hasattr(section, attr_name):
+                        setattr(section, attr_name, value)
+                        updated = True
+                    else:
+                        logger.warning(
+                            "Config key '%s' matched prefix '%s' but attribute "
+                            "'%s' not found on %s",
+                            key,
+                            prefix,
+                            attr_name,
+                            type(section).__name__,
+                        )
+                    break
+            if not updated:
+                logger.warning("Unknown config key ignored: '%s'", key)
 
         self.save(config)
         return config
