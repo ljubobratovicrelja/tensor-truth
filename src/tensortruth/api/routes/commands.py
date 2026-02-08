@@ -342,10 +342,12 @@ class BrowseCommand(ToolCommand):
             "context_window": params.get(
                 "context_window", config.ui.default_context_window
             ),
-            "reranker_model": params.get("reranker_model"),  # Already in session params
-            "rag_device": params.get("rag_device"),  # Already in session params
-            "router_model": params.get("router_model"),  # Already in session params
-            "function_agent_model": params.get("function_agent_model"),
+            "reranker_model": params.get("reranker_model"),
+            "rag_device": params.get("rag_device"),
+            "router_model": params.get("router_model", config.agent.router_model),
+            "function_agent_model": params.get(
+                "function_agent_model", config.agent.function_agent_model
+            ),
             "conversation_history": conversation_history,  # NEW: For context-aware queries
         }
 

@@ -5,7 +5,9 @@ Supports both built-in agents (router, function) and custom user agents.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+
+# TYPE_CHECKING avoids circular import with ConfigService
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from llama_index.llms.ollama import Ollama
 
@@ -13,6 +15,9 @@ from tensortruth.agents.config import AgentCallbacks, AgentConfig, AgentResult
 from tensortruth.agents.factory import get_agent_factory_registry
 from tensortruth.core.constants import DEFAULT_FUNCTION_AGENT_MODEL
 from tensortruth.services.tool_service import ToolService
+
+if TYPE_CHECKING:
+    from tensortruth.services.config_service import ConfigService
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +29,22 @@ class AgentService:
     Agents are registered via AgentConfig and created through registered factories.
     """
 
-    def __init__(self, tool_service: ToolService, config: Dict[str, Any]):
+    def __init__(
+        self,
+        tool_service: ToolService,
+        config: Dict[str, Any],
+        config_service: Optional["ConfigService"] = None,
+    ):
         """Initialize AgentService.
 
         Args:
             tool_service: ToolService for getting FunctionTools.
-            config: Application configuration dictionary.
+            config: Application configuration dictionary (used at init time).
+            config_service: Optional ConfigService for live config reads at runtime.
         """
         self._tool_service = tool_service
         self._config = config
+        self._config_service = config_service
         self._agent_configs: Dict[str, AgentConfig] = {}
         self._factory_registry = get_agent_factory_registry()
 
@@ -110,6 +122,12 @@ class AgentService:
         # Note: FunctionAgent is available via factory registry but not registered
         # as a built-in. Users can register custom agents with agent_type="function"
         # to use LlamaIndex's native tool-calling.
+
+    def _get_live_config(self) -> Dict[str, Any]:
+        """Get fresh config from ConfigService, falling back to init snapshot."""
+        if self._config_service:
+            return self._config_service.load().to_dict()
+        return self._config
 
     def register_agent(self, config: AgentConfig) -> None:
         """Register an agent configuration.
@@ -222,36 +240,34 @@ class AgentService:
                 final_answer="", error=f"Missing tools: {', '.join(missing)}"
             )
 
+        # Read live config (not stale startup snapshot)
+        live_config = self._get_live_config()
+        agent_cfg = live_config.get("agent", {})
+
         # Determine model (use `or` to skip None values from session params)
         if config.model:
             model = config.model
         elif config.agent_type == "function":
             model = (
                 session_params.get("function_agent_model")
-                or self._config.get("agent", {}).get("function_agent_model")
+                or agent_cfg.get("function_agent_model")
                 or DEFAULT_FUNCTION_AGENT_MODEL
             )
         else:
-            model = (
-                session_params.get("model") or DEFAULT_FUNCTION_AGENT_MODEL
-            )
+            model = session_params.get("model") or DEFAULT_FUNCTION_AGENT_MODEL
         context_window = session_params.get("context_window", 16384)
         ollama_url = session_params.get("ollama_url", "http://localhost:11434")
 
         # Create LLM
         llm = self._create_llm(model, context_window, ollama_url)
 
-        # Build factory params: global defaults first, then session overrides
+        # Build factory params: live config defaults, then session overrides
         factory_params = {
-            "router_model": self._config.get("agent", {}).get(
-                "router_model", "llama3.2:3b"
-            ),
-            "function_agent_model": self._config.get("agent", {}).get(
+            "router_model": agent_cfg.get("router_model", "llama3.2:3b"),
+            "function_agent_model": agent_cfg.get(
                 "function_agent_model", DEFAULT_FUNCTION_AGENT_MODEL
             ),
-            "min_pages_required": self._config.get("agent", {}).get(
-                "min_pages_required", 3
-            ),
+            "min_pages_required": agent_cfg.get("min_pages_required", 3),
             **session_params,
             **config.factory_params,
         }

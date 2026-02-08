@@ -127,8 +127,11 @@ def get_agent_service() -> AgentService:
     """Get the singleton AgentService instance."""
     global _agent_service
     if _agent_service is None:
-        config = get_config_service().load().to_dict()
-        _agent_service = AgentService(get_tool_service(), config)
+        config_service = get_config_service()
+        config = config_service.load().to_dict()
+        _agent_service = AgentService(
+            get_tool_service(), config, config_service=config_service
+        )
     return _agent_service
 
 

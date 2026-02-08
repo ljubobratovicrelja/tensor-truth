@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 
 from fastapi import WebSocket
 
+from tensortruth.agents.tool_output import extract_tool_text
 from tensortruth.api.routes.commands import ToolCommand
 from tensortruth.extensions.errors import TemplateResolutionError
 from tensortruth.extensions.schema import CommandSpec, StepSpec
@@ -111,54 +112,6 @@ def _build_args_context(args: str) -> Dict[str, Any]:
         ctx[f"args.{i}"] = part
     ctx["args.rest"] = " ".join(parts[1:]) if len(parts) > 1 else ""
     return ctx
-
-
-# ---------------------------------------------------------------------------
-# Result extraction helpers
-# ---------------------------------------------------------------------------
-
-
-def _extract_string(raw_data: Any) -> str:
-    """Get a clean string from a tool result.
-
-    Handles LlamaIndex ``ToolOutput`` objects whose ``.content`` may be
-    an MCP ``CallToolResult`` containing ``TextContent`` items, as well
-    as plain strings and other types.
-    """
-    text = _dig_for_text(raw_data)
-    if text is not None:
-        return text
-    return str(raw_data)
-
-
-def _dig_for_text(obj: Any, depth: int = 0) -> str | None:
-    """Recursively walk through ToolOutput / CallToolResult / TextContent."""
-    if depth > 5:
-        return None
-    if isinstance(obj, str):
-        return obj
-    # List of content blocks (e.g. [TextContent(...), ...])
-    if isinstance(obj, list):
-        texts = [
-            item.text
-            for item in obj
-            if hasattr(item, "text") and isinstance(item.text, str)
-        ]
-        if texts:
-            return "\n".join(texts)
-    # ToolOutput.raw_output often has the actual MCP result object
-    # (while .content may already be str(result) — a lossy conversion)
-    if hasattr(obj, "raw_output"):
-        result = _dig_for_text(obj.raw_output, depth + 1)
-        if result is not None:
-            return result
-    # Object with .content (ToolOutput, CallToolResult)
-    if hasattr(obj, "content"):
-        return _dig_for_text(obj.content, depth + 1)
-    # Single TextContent-like object with .text
-    if hasattr(obj, "text") and isinstance(obj.text, str):
-        return obj.text
-    return None
 
 
 def _flatten_json_into_context(
@@ -264,7 +217,7 @@ class YamlCommand(ToolCommand):
 
             # Store result — handle LlamaIndex ToolOutput and raw strings
             raw_data = result.get("data", "")
-            str_data = _extract_string(raw_data)
+            str_data = extract_tool_text(raw_data)
 
             logger.debug(
                 f"Step '{step.tool}' result type={type(raw_data).__name__}, "
@@ -333,8 +286,10 @@ class YamlAgentCommand(ToolCommand):
             "context_window": params.get(
                 "context_window", config.ui.default_context_window
             ),
-            "router_model": params.get("router_model"),
-            "function_agent_model": params.get("function_agent_model"),
+            "router_model": params.get("router_model", config.agent.router_model),
+            "function_agent_model": params.get(
+                "function_agent_model", config.agent.function_agent_model
+            ),
         }
 
         # Streaming callbacks
