@@ -328,41 +328,37 @@ function tryCompleteParagraph(buffer: string): {
   block: MarkdownBlock | null;
   remaining: string;
 } {
-  // Look for double newline (paragraph break)
-  const doubleNewline = buffer.indexOf("\n\n");
-  if (doubleNewline !== -1) {
-    // Include both newlines in the paragraph content (preserves all chars)
-    const content = buffer.slice(0, doubleNewline + 2);
-    const remaining = buffer.slice(doubleNewline + 2);
-
-    return {
-      block: { type: "paragraph", content, isComplete: true },
-      remaining,
-    };
-  }
-
-  // Look for single newline followed by block start
+  // Single pass: scan each \n and check both conditions, take first match.
+  // Block starts take priority over \n\n ONLY when afterNewline doesn't
+  // itself start with \n (which would be a double-newline paragraph break).
   let searchPos = 0;
   while (searchPos < buffer.length) {
     const newlinePos = buffer.indexOf("\n", searchPos);
-    if (newlinePos === -1) {
-      break;
-    }
+    if (newlinePos === -1) break;
 
     const afterNewline = buffer.slice(newlinePos + 1);
 
-    // Check if what follows is a new block type
+    // 1. Block start after newline (but NOT if it's actually a double newline)
     if (
-      afterNewline.startsWith("```") ||
-      afterNewline.startsWith("\\[") ||
-      afterNewline.match(/^#{1,6}\s/) ||
-      afterNewline.match(/^[\s]*[-*+]\s/) ||
-      afterNewline.match(/^[\s]*\d+\.\s/)
+      !afterNewline.startsWith("\n") &&
+      (afterNewline.startsWith("```") ||
+        afterNewline.startsWith("\\[") ||
+        afterNewline.match(/^#{1,6}\s/) ||
+        afterNewline.match(/^[\s]*[-*+]\s/) ||
+        afterNewline.match(/^[\s]*\d+\.\s/))
     ) {
-      // End paragraph before this block
       const content = buffer.slice(0, newlinePos + 1);
       const remaining = buffer.slice(newlinePos + 1);
+      return {
+        block: { type: "paragraph", content, isComplete: true },
+        remaining,
+      };
+    }
 
+    // 2. Double newline (paragraph break)
+    if (afterNewline.startsWith("\n")) {
+      const content = buffer.slice(0, newlinePos + 2);
+      const remaining = buffer.slice(newlinePos + 2);
       return {
         block: { type: "paragraph", content, isComplete: true },
         remaining,
@@ -372,7 +368,6 @@ function tryCompleteParagraph(buffer: string): {
     searchPos = newlinePos + 1;
   }
 
-  // No complete paragraph found
   return { block: null, remaining: buffer };
 }
 

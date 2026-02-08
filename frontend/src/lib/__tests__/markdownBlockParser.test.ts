@@ -450,6 +450,100 @@ describe("markdownBlockParser", () => {
     });
   });
 
+  describe("Code Blocks with Empty Lines (Bug Fix)", () => {
+    test("code block with internal empty lines is not split (char-by-char)", () => {
+      const content = `\`\`\`python
+# 1D
+BatchNorm1d = True
+
+# 2D
+BatchNorm2d = True
+
+# 3D
+BatchNorm3d = True
+\`\`\`
+`;
+      const state = streamAndFinalize(content, "char");
+      const codeBlocks = state.completedBlocks.filter((b) => b.type === "code_block");
+      expect(codeBlocks).toHaveLength(1);
+      expect(codeBlocks[0].content).toContain("# 2D");
+      expect(codeBlocks[0].content).toContain("# 3D");
+      expect(codeBlocks[0].isComplete).toBe(true);
+    });
+
+    test("exact session content: header then code block with empty lines", () => {
+      const content = `## Normalization Layers
+
+\`\`\`python
+# 1D
+nn.BatchNorm1d(num_features)
+nn.InstanceNorm1d(num_features)
+nn.LayerNorm(normalized_shape)
+
+# 2D
+nn.BatchNorm2d(num_features)
+nn.InstanceNorm2d(num_features)
+
+# 3D
+nn.BatchNorm3d(num_features)
+nn.InstanceNorm3d(num_features)
+\`\`\`
+`;
+      const state = streamAndFinalize(content, "char");
+      const types = state.completedBlocks.map((b) => b.type);
+      expect(types).toContain("header");
+      expect(types).toContain("code_block");
+
+      // The code block must be a single block, not fragmented
+      const codeBlocks = state.completedBlocks.filter((b) => b.type === "code_block");
+      expect(codeBlocks).toHaveLength(1);
+      expect(codeBlocks[0].content).toContain("# 1D");
+      expect(codeBlocks[0].content).toContain("# 2D");
+      expect(codeBlocks[0].content).toContain("# 3D");
+    });
+
+    test("code block after single-newline paragraph boundary is detected", () => {
+      const content = "Some intro text.\n```js\nconst x = 1;\n\nconst y = 2;\n```\n";
+      const state = streamAndFinalize(content, "char");
+      expect(state.completedBlocks.some((b) => b.type === "paragraph")).toBe(true);
+      const codeBlocks = state.completedBlocks.filter((b) => b.type === "code_block");
+      expect(codeBlocks).toHaveLength(1);
+      expect(codeBlocks[0].content).toContain("const x = 1;");
+      expect(codeBlocks[0].content).toContain("const y = 2;");
+    });
+
+    test("regression: paragraph → double-newline → list still works", () => {
+      const content = "Paragraph text.\n\n- List item one\n- List item two\n";
+      const state = streamAndFinalize(content, "char");
+      expect(state.completedBlocks[0].type).toBe("paragraph");
+      const listItems = state.completedBlocks.filter((b) => b.type === "list_item");
+      expect(listItems).toHaveLength(2);
+    });
+
+    test("code block with empty lines at various chunk sizes", () => {
+      const content = "```\nline1\n\nline2\n\nline3\n```\n";
+      for (const chunkSize of [1, 2, 3, 5, 7, 10, 20]) {
+        const state = streamAndFinalize(content, chunkSize);
+        const codeBlocks = state.completedBlocks.filter((b) => b.type === "code_block");
+        expect(codeBlocks).toHaveLength(1);
+        expect(codeBlocks[0].content).toContain("line1");
+        expect(codeBlocks[0].content).toContain("line2");
+        expect(codeBlocks[0].content).toContain("line3");
+        expect(getAllContent(state)).toBe(content);
+      }
+    });
+
+    test("single-token processing of full content with code block", () => {
+      const content = "Text before.\n```python\ncode\n\nmore code\n```\nText after.\n\n";
+      let state = { ...initialParserState };
+      state = parseMarkdownBlocks(state, content);
+      state = finalizeState(state);
+      const codeBlocks = state.completedBlocks.filter((b) => b.type === "code_block");
+      expect(codeBlocks).toHaveLength(1);
+      expect(getAllContent(state)).toBe(content);
+    });
+  });
+
   describe("Complex Documents", () => {
     test("full document with all block types", () => {
       const doc = `# Main Title
