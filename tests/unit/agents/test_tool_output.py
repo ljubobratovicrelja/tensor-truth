@@ -6,7 +6,7 @@ import pytest
 from llama_index.core.tools import FunctionTool
 from mcp.types import CallToolResult, TextContent
 
-from tensortruth.agents.tool_output import extract_tool_text
+from tensortruth.agents.tool_output import describe_tool_call, extract_tool_text
 
 
 class TestExtractToolText:
@@ -166,3 +166,73 @@ class TestMCPToolOutputForLLM:
         output = await tool.acall(query="test")
 
         assert output.content == "plain string result"
+
+
+class TestDescribeToolCall:
+    """Tests for describe_tool_call()."""
+
+    def test_url_param_shows_domain(self):
+        result = describe_tool_call(
+            "fetch_page", {"url": "https://docs.pytorch.org/stable/nn.html"}
+        )
+        assert "Fetching" in result
+        assert "docs.pytorch.org" in result
+
+    def test_url_strips_www(self):
+        result = describe_tool_call("fetch", {"url": "https://www.example.com/page"})
+        assert "www." not in result
+        assert "example.com" in result
+
+    def test_urls_list_shows_count(self):
+        result = describe_tool_call(
+            "fetch_pages",
+            {
+                "urls": [
+                    "https://a.com",
+                    "https://b.com",
+                    "https://c.com",
+                    "https://d.com",
+                ]
+            },
+        )
+        assert "4" in result
+        assert "Fetching" in result
+
+    def test_query_shows_searching(self):
+        result = describe_tool_call(
+            "search_web", {"query": "attention is all you need"}
+        )
+        assert "Searching" in result
+        assert "attention" in result
+
+    def test_queries_list(self):
+        result = describe_tool_call(
+            "search_web", {"queries": ["pytorch batch norm", "layer norm"]}
+        )
+        assert "2" in result or "Searching" in result
+
+    def test_topic_shows_looking_up(self):
+        result = describe_tool_call("query-docs", {"topic": "batch normalization"})
+        assert "Looking up" in result
+
+    def test_name_shows_resolving(self):
+        result = describe_tool_call("resolve-library-id", {"libraryName": "pytorch"})
+        assert "Resolving" in result
+        assert "pytorch" in result
+
+    def test_empty_kwargs_fallback(self):
+        result = describe_tool_call("my-tool", {})
+        assert result == "Calling my-tool..."
+
+    def test_first_short_string_catchall(self):
+        result = describe_tool_call("process", {"data": "some value"})
+        assert "some value" in result
+
+    def test_long_values_truncated(self):
+        long_query = "x" * 200
+        result = describe_tool_call("search", {"query": long_query})
+        assert len(result) < 200
+
+    def test_only_numeric_kwargs_fallback(self):
+        result = describe_tool_call("counter", {"count": 5})
+        assert result == "Calling counter..."

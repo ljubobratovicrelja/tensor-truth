@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 
 from fastapi import WebSocket
 
-from tensortruth.agents.tool_output import extract_tool_text
+from tensortruth.agents.tool_output import describe_tool_call, extract_tool_text
 from tensortruth.api.routes.commands import ToolCommand
 from tensortruth.extensions.errors import TemplateResolutionError
 from tensortruth.extensions.schema import CommandSpec, StepSpec
@@ -184,17 +184,7 @@ class YamlCommand(ToolCommand):
         last_result: Any = None
 
         for i, step in enumerate(self._steps):
-            # Progress
-            await websocket.send_json(
-                {
-                    "type": "agent_progress",
-                    "agent": self.name,
-                    "phase": "tool_call",
-                    "message": f"Calling {step.tool}...",
-                }
-            )
-
-            # Resolve params
+            # Resolve params first (needed for descriptive progress message)
             try:
                 resolved_params = _resolve_params(step.params, context)
             except TemplateResolutionError as e:
@@ -202,6 +192,16 @@ class YamlCommand(ToolCommand):
                     {"type": "error", "detail": f"Template error: {e}"}
                 )
                 return
+
+            # Descriptive progress
+            await websocket.send_json(
+                {
+                    "type": "agent_progress",
+                    "agent": self.name,
+                    "phase": "tool_call",
+                    "message": describe_tool_call(step.tool, resolved_params),
+                }
+            )
 
             # Execute
             result = await tool_service.execute_tool(step.tool, resolved_params)

@@ -213,8 +213,10 @@ async def test_run_tool_call_fires_progress():
 
     await wrapper.run("hello", AgentCallbacks(on_progress=on_progress))
 
+    from tensortruth.agents.tool_output import describe_tool_call
+
     on_progress.assert_any_call("Starting my_agent agent...")
-    on_progress.assert_any_call("Calling search...")
+    on_progress.assert_any_call(describe_tool_call("search", {"q": "test"}))
 
 
 @pytest.mark.asyncio

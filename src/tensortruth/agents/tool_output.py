@@ -29,6 +29,83 @@ def wrap_mcp_tool_fn(fn: Callable) -> Callable:
     return _wrapped
 
 
+def _truncate(text: str, max_len: int = 60) -> str:
+    """Truncate with ellipsis."""
+    return text if len(text) <= max_len else text[: max_len - 1] + "\u2026"
+
+
+def _extract_domain(url: str) -> str:
+    """Extract domain from URL, stripping www. prefix."""
+    from urllib.parse import urlparse
+
+    try:
+        netloc = urlparse(url).netloc
+        return netloc[4:] if netloc.startswith("www.") else (netloc or url[:40])
+    except Exception:
+        return url[:40]
+
+
+# Key patterns checked against lowercased kwarg key names.
+_URL_KEYS = {"url", "page_url", "target_url", "link"}
+_URL_LIST_KEYS = {"urls", "pages", "links"}
+_QUERY_KEYS = {"query", "queries", "q", "search_query", "search_term"}
+_TOPIC_KEYS = {"topic", "subject", "question"}
+_NAME_KEYS = {"libraryname", "library", "name", "package"}
+
+
+def describe_tool_call(tool_name: str, kwargs: dict) -> str:
+    """Human-readable one-line description of a tool call.
+
+    Inspects kwarg keys (not tool names) to choose a descriptive verb.
+    Priority order, first match wins.
+    """
+    first_short_string: str | None = None
+
+    for key, value in kwargs.items():
+        low = key.lower()
+
+        # Priority 1: single URL
+        if low in _URL_KEYS and isinstance(value, str):
+            return f"Fetching {_extract_domain(value)}..."
+
+        # Priority 2: list of URLs
+        if low in _URL_LIST_KEYS and isinstance(value, list) and value:
+            domains = [_extract_domain(u) for u in value[:3] if isinstance(u, str)]
+            summary = ", ".join(domains)
+            if len(value) > 3:
+                summary += "\u2026"
+            return f"Fetching {len(value)} pages ({summary})..."
+
+        # Priority 3: query / search term
+        if low in _QUERY_KEYS:
+            if isinstance(value, str):
+                return f"Searching: {_truncate(value)}"
+            if isinstance(value, list) and value:
+                first = _truncate(str(value[0]), 40)
+                if len(value) == 1:
+                    return f"Searching: {first}"
+                return f"Searching {len(value)} queries: {first}\u2026"
+
+        # Priority 4: topic / subject / question
+        if low in _TOPIC_KEYS and isinstance(value, str):
+            return f"Looking up: {_truncate(value)}"
+
+        # Priority 5: library / name / package
+        if low in _NAME_KEYS and isinstance(value, str):
+            return f"Resolving {_truncate(value)}..."
+
+        # Track first short string for priority 6 fallback
+        if first_short_string is None and isinstance(value, str) and len(value) <= 80:
+            first_short_string = value
+
+    # Priority 6: first short string value
+    if first_short_string is not None:
+        return f"Calling {tool_name}: {first_short_string}"
+
+    # Priority 7: bare fallback
+    return f"Calling {tool_name}..."
+
+
 def extract_tool_text(raw_data: Any) -> str:
     """Get a clean string from a tool result.
 

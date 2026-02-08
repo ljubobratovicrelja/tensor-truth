@@ -9,7 +9,7 @@ from llama_index.core.agent.workflow.function_agent import (
 
 from tensortruth.agents.base import Agent
 from tensortruth.agents.config import AgentCallbacks, AgentResult
-from tensortruth.agents.tool_output import extract_tool_text
+from tensortruth.agents.tool_output import describe_tool_call, extract_tool_text
 
 
 class FunctionAgentWrapper(Agent):
@@ -62,7 +62,9 @@ class FunctionAgentWrapper(Agent):
                 if callbacks.on_tool_call:
                     callbacks.on_tool_call(event.tool_name, event.tool_kwargs)
                 if callbacks.on_progress:
-                    callbacks.on_progress(f"Calling {event.tool_name}...")
+                    callbacks.on_progress(
+                        describe_tool_call(event.tool_name, event.tool_kwargs)
+                    )
             elif isinstance(event, ToolCallResult):
                 output_text = extract_tool_text(event.tool_output)[:2000]
                 is_error = event.tool_output.is_error
