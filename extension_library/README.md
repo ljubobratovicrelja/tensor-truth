@@ -40,6 +40,8 @@ Agents are autonomous LLM-powered tools that reason over multiple steps. They mu
 |------|-------|-------------|------------|---------|
 | `agents/doc_researcher.yaml` | `doc_researcher` | Multi-tool documentation research agent | Context7 MCP + built-in web tools | `commands/research_docs.yaml` |
 
+**Model requirements for `doc_researcher`:** This agent relies on native tool calling, so the model must support it and correctly pass parameters to MCP tools. `gpt-oss:20b` produces the best results (structured tables, code, math) if your system has enough VRAM. `qwen3:8b` and `llama3.1:8b` are the minimum for reliable tool calling. Smaller models like `llama3.2:3b` tend to pass broken parameters, and reasoning models like `deepseek-r1` don't support tool calling at all.
+
 To install the doc_researcher agent, copy **both** files:
 
 ```bash

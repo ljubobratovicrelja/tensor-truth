@@ -151,6 +151,35 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     config.web_search.input_context_pct
   );
 
+  // Sync form state when config prop changes (e.g., after save)
+  useEffect(() => {
+    setRagModel(config.models.default_rag_model);
+    setAgentReasoningModel(config.agent.router_model);
+    setFunctionAgentModel(config.agent.function_agent_model);
+    setTemperature(config.ui.default_temperature);
+    setContextWindow(config.ui.default_context_window);
+    setMaxTokens(config.ui.default_max_tokens);
+    setTopN(config.ui.default_top_n);
+    setConfidenceThreshold(config.ui.default_confidence_threshold);
+    setConfidenceCutoffHard(config.ui.default_confidence_cutoff_hard);
+    setDevice(config.rag.default_device);
+    setEmbeddingModel(config.rag.default_embedding_model);
+    setReranker(config.rag.default_reranker);
+    setHistoryCleaningEnabled(config.history_cleaning.enabled);
+    setRemoveEmojis(config.history_cleaning.remove_emojis);
+    setRemoveFillerPhrases(config.history_cleaning.remove_filler_phrases);
+    setNormalizeWhitespace(config.history_cleaning.normalize_whitespace);
+    setCollapseNewlines(config.history_cleaning.collapse_newlines);
+    setMaxHistoryTurns(config.rag.max_history_turns);
+    setMemoryTokenLimit(config.rag.memory_token_limit);
+    setDdgMaxResults(config.web_search.ddg_max_results);
+    setMaxPagesToFetch(config.web_search.max_pages_to_fetch);
+    setRerankTitleThreshold(config.web_search.rerank_title_threshold);
+    setRerankContentThreshold(config.web_search.rerank_content_threshold);
+    setMaxSourceContextPct(config.web_search.max_source_context_pct);
+    setInputContextPct(config.web_search.input_context_pct);
+  }, [config]);
+
   // Fetch available devices from backend
   useEffect(() => {
     import("@/api/config").then(({ getAvailableDevices }) => {

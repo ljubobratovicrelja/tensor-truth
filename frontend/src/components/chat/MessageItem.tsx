@@ -171,7 +171,7 @@ function MessageItemComponent({
           {!isUser && (messageSources?.length || messageMetrics) && (
             <SourcesList sources={messageSources ?? []} metrics={messageMetrics} />
           )}
-          {!isUser && messageToolSteps.length > 0 && (
+          {!isUser && !isStreaming && messageToolSteps.length > 0 && (
             <ToolSteps steps={messageToolSteps} defaultOpen={isStreaming} />
           )}
         </div>

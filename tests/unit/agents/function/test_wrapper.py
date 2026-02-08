@@ -359,7 +359,10 @@ async def test_run_mcp_text_content_produces_clean_output():
     text_content = [SimpleNamespace(type="text", text="The actual documentation text")]
     call_tool_result = SimpleNamespace(content=text_content)
     tool_output = ToolOutput(
-        content="meta=None content=[TextContent(type='text', text='The actual documentation text')]",
+        content=(
+            "meta=None content=[TextContent(type='text',"
+            " text='The actual documentation text')]"
+        ),
         tool_name="get-library-docs",
         raw_input={"topic": "react hooks"},
         raw_output=call_tool_result,
