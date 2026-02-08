@@ -49,3 +49,26 @@ export function convertLatexDelimiters(text: string | null | undefined): string 
 
   return converted;
 }
+
+/**
+ * Preprocesses markdown tables that contain fenced code blocks with `<br>` tags.
+ *
+ * GFM tables cannot contain fenced code blocks (``` becomes inline code delimiters).
+ * LLMs sometimes generate table cells like: ```python<br>code<br>more```
+ * This converts them to proper inline code with %%BR%% placeholders that can be
+ * rendered as actual line breaks by a custom React component.
+ *
+ * Only processes lines that look like table rows (start and end with |).
+ */
+export function preprocessTableCodeBlocks(markdown: string): string {
+  const lines = markdown.split("\n");
+  return lines
+    .map((line) => {
+      if (!line.match(/^\|.*\|$/)) return line;
+      return line.replace(/```\w*<br\s*\/?>(.*?)```/gi, (_match, code) => {
+        const cleanCode = code.replace(/<br\s*\/?>/gi, "%%BR%%");
+        return "`" + cleanCode + "`";
+      });
+    })
+    .join("\n");
+}

@@ -1,5 +1,4 @@
-import { memo, useState, useEffect, useMemo, useRef } from "react";
-import { convertLatexDelimiters } from "@/lib/utils";
+import { memo, useState, useEffect, useRef } from "react";
 import { MemoizedMarkdown } from "./MemoizedMarkdown";
 import type { MarkdownBlock } from "@/lib/markdownBlockParser";
 
@@ -28,8 +27,8 @@ interface AnimatedBlockProps {
  * - "typewriter": Character-by-character reveal (good for text)
  * - "fade": Fade-in effect (good for math blocks that shouldn't show partial content)
  *
- * CRITICAL: Converts LaTeX delimiters (\[..\] -> $$..$$ and \(..\) -> $..$)
- * before rendering, as LLMs stream these formats but KaTeX needs dollar signs.
+ * LaTeX delimiter conversion (\[..\] -> $$..$$ and \(..\) -> $..$) is handled
+ * by MemoizedMarkdown — this component passes raw content through.
  */
 function AnimatedBlockComponent({
   block,
@@ -40,20 +39,13 @@ function AnimatedBlockComponent({
   fadeDuration = 400,
   onAnimationComplete,
 }: AnimatedBlockProps) {
-  // CRITICAL: Convert LaTeX delimiters before rendering
-  // LLMs stream \[..\] and \(..\), KaTeX needs $$..$$ and $..$
-  const convertedContent = useMemo(
-    () => convertLatexDelimiters(block.content),
-    [block.content]
-  );
-
   // Use fade animation for this block?
   const useFade = animationType === "fade";
 
   if (useFade) {
     return (
       <FadeAnimatedBlock
-        content={convertedContent}
+        content={block.content}
         animate={animate}
         fadeDuration={fadeDuration}
         onAnimationComplete={onAnimationComplete}
@@ -64,7 +56,6 @@ function AnimatedBlockComponent({
   return (
     <TypewriterAnimatedBlock
       block={block}
-      convertedContent={convertedContent}
       animate={animate}
       charsPerBatch={charsPerBatch}
       batchInterval={batchInterval}
@@ -130,7 +121,6 @@ function FadeAnimatedBlock({
 
 interface TypewriterAnimatedBlockProps {
   block: MarkdownBlock;
-  convertedContent: string;
   animate: boolean;
   charsPerBatch: number;
   batchInterval: number;
@@ -139,7 +129,6 @@ interface TypewriterAnimatedBlockProps {
 
 function TypewriterAnimatedBlock({
   block,
-  convertedContent,
   animate,
   charsPerBatch,
   batchInterval,
@@ -188,15 +177,14 @@ function TypewriterAnimatedBlock({
     }
   }, [block.content.length, animate, displayLength]);
 
-  // During animation: render partial converted content
+  // During animation: render partial content (MemoizedMarkdown handles LaTeX conversion)
   if (animate && displayLength < block.content.length) {
     const partialContent = block.content.slice(0, displayLength);
-    const partialConverted = convertLatexDelimiters(partialContent);
-    return <MemoizedMarkdown content={partialConverted} />;
+    return <MemoizedMarkdown content={partialContent} />;
   }
 
-  // Animation complete: render full converted content
-  return <MemoizedMarkdown content={convertedContent} />;
+  // Animation complete: render full content
+  return <MemoizedMarkdown content={block.content} />;
 }
 
 /**

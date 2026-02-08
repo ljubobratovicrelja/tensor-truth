@@ -346,6 +346,10 @@
     @apply border border-zinc-700 px-3 py-2;
   }
 
+  .chat-markdown td code {
+    white-space: pre-wrap;
+  }
+
   /* Links */
   .chat-markdown a {
     @apply text-blue-400 underline underline-offset-2 hover:text-blue-300;
