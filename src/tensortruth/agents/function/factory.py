@@ -43,7 +43,7 @@ def create_function_agent(
     # Small models may "know" about tools from training and try to call them
     # even when they aren't provided in the function-calling schema.
     base_prompt = config.system_prompt or "You are a helpful assistant."
-    tool_names = [t.metadata.name for t in tools]
+    tool_names = [t.metadata.name for t in tools if t.metadata.name]
     tool_list_str = ", ".join(tool_names)
     enhanced_prompt = (
         f"{base_prompt}\n\n"
