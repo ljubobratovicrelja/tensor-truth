@@ -91,6 +91,8 @@ class StreamToolProgress(BaseModel):
     tool: str
     action: Literal["calling", "completed", "failed"]
     params: Dict[str, Any] = Field(default_factory=dict)
+    output: Optional[str] = None
+    is_error: Optional[bool] = None
 
 
 class AgentPhase(str, Enum):

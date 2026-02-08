@@ -4,6 +4,7 @@ import type {
   SourceNode,
   StreamToolProgress,
   StreamAgentProgress,
+  ToolStep,
 } from "@/api/types";
 
 export type PipelineStatus =
@@ -26,7 +27,7 @@ interface ChatStore {
   pendingUserMessage: string | null;
 
   // Agent/tool progress
-  toolProgress: StreamToolProgress | null;
+  streamingToolSteps: (ToolStep & { status: "calling" | "completed" | "failed" })[];
   agentProgress: StreamAgentProgress | null;
 
   startStreaming: (userMessage: string) => void;
@@ -42,7 +43,7 @@ interface ChatStore {
   reset: () => void;
 
   // Agent/tool progress setters
-  setToolProgress: (progress: StreamToolProgress | null) => void;
+  addToolStep: (progress: StreamToolProgress) => void;
   setAgentProgress: (progress: StreamAgentProgress | null) => void;
 }
 
@@ -56,7 +57,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   pipelineStatus: null,
   error: null,
   pendingUserMessage: null,
-  toolProgress: null,
+  streamingToolSteps: [],
   agentProgress: null,
 
   startStreaming: (userMessage: string) =>
@@ -70,7 +71,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       pipelineStatus: null,
       error: null,
       pendingUserMessage: userMessage,
-      toolProgress: null,
+      streamingToolSteps: [],
       agentProgress: null,
     }),
 
@@ -121,12 +122,42 @@ export const useChatStore = create<ChatStore>((set) => ({
       confidenceLevel: null,
       pipelineStatus: null,
       error: null,
-      toolProgress: null,
+      streamingToolSteps: [],
       agentProgress: null,
       // Note: pendingUserMessage is NOT cleared here - it's needed for auto-send
       // from welcome page. It's cleared by finishStreaming, setError, or explicitly.
     }),
 
-  setToolProgress: (progress) => set({ toolProgress: progress }),
+  addToolStep: (progress) =>
+    set((state) => {
+      if (progress.action === "calling") {
+        return {
+          streamingToolSteps: [
+            ...state.streamingToolSteps,
+            {
+              tool: progress.tool,
+              params: progress.params,
+              output: "",
+              is_error: false,
+              status: "calling" as const,
+            },
+          ],
+        };
+      }
+      // "completed" or "failed": find last matching "calling" step and update it
+      const steps = [...state.streamingToolSteps];
+      for (let i = steps.length - 1; i >= 0; i--) {
+        if (steps[i].tool === progress.tool && steps[i].status === "calling") {
+          steps[i] = {
+            ...steps[i],
+            output: progress.output ?? "",
+            is_error: progress.is_error ?? false,
+            status: progress.action,
+          };
+          break;
+        }
+      }
+      return { streamingToolSteps: steps };
+    }),
   setAgentProgress: (progress) => set({ agentProgress: progress }),
 }));

@@ -2,6 +2,8 @@ import { memo, useState, useRef } from "react";
 import { User, Bot, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourcesList } from "./SourceCard";
+import { ToolSteps } from "./ToolSteps";
+import type { ToolStepWithStatus } from "./ToolSteps";
 import { ThinkingBox } from "./ThinkingBox";
 import { StreamingText } from "./StreamingText";
 import { MemoizedMarkdown } from "./MemoizedMarkdown";
@@ -13,6 +15,8 @@ interface MessageItemProps {
   metrics?: RetrievalMetrics | null;
   /** Override thinking content (used during streaming) */
   thinking?: string;
+  /** Tool steps to display (used during streaming or from saved message) */
+  toolSteps?: ToolStepWithStatus[];
   /** Whether this message is currently being streamed */
   isStreaming?: boolean;
 }
@@ -22,6 +26,7 @@ function MessageItemComponent({
   sources,
   metrics,
   thinking,
+  toolSteps,
   isStreaming,
 }: MessageItemProps) {
   const isUser = message.role === "user";
@@ -30,6 +35,14 @@ function MessageItemComponent({
   const messageMetrics = metrics ?? message.metrics;
   // Use prop thinking (streaming) or message.thinking (saved)
   const thinkingContent = thinking ?? message.thinking;
+  // Use prop toolSteps (streaming) or derive from saved message
+  const messageToolSteps: ToolStepWithStatus[] =
+    toolSteps ??
+    message.tool_steps?.map((s) => ({
+      ...s,
+      status: (s.is_error ? "failed" : "completed") as "failed" | "completed",
+    })) ??
+    [];
   const [copied, setCopied] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -158,6 +171,9 @@ function MessageItemComponent({
           {!isUser && (messageSources?.length || messageMetrics) && (
             <SourcesList sources={messageSources ?? []} metrics={messageMetrics} />
           )}
+          {!isUser && messageToolSteps.length > 0 && (
+            <ToolSteps steps={messageToolSteps} defaultOpen={isStreaming} />
+          )}
         </div>
       </div>
     </div>
@@ -175,6 +191,7 @@ export const MessageItem = memo(MessageItemComponent, (prev, next) => {
     prev.message.role === next.message.role &&
     prev.thinking === next.thinking &&
     prev.sources === next.sources &&
-    prev.metrics === next.metrics
+    prev.metrics === next.metrics &&
+    prev.toolSteps === next.toolSteps
   );
 });

@@ -230,22 +230,26 @@ async def websocket_chat(
                     # Create a wrapper websocket that captures response and sources
                     full_response = ""
                     captured_sources = None
+                    captured_tool_steps = None
                     title_pending = False
 
                     class ResponseCapturingWebSocket:
-                        """Wrapper that captures command response and sources."""
+                        """Wrapper that captures command response, sources, and tool steps."""
 
                         def __init__(self, ws: WebSocket):
                             self.ws = ws
 
                         async def send_json(self, data: dict) -> None:
-                            nonlocal full_response, captured_sources, title_pending
-                            # Capture response and sources from done message
+                            nonlocal full_response, captured_sources
+                            nonlocal captured_tool_steps, title_pending
+                            # Capture response, sources, and tool_steps from done message
                             if data.get("type") == "done":
                                 if "content" in data:
                                     full_response = data["content"]
                                 if "sources" in data:
                                     captured_sources = data["sources"]
+                                if "tool_steps" in data:
+                                    captured_tool_steps = data["tool_steps"]
                                 if data.get("title_pending"):
                                     title_pending = True
                             # Forward all messages to real websocket
@@ -267,6 +271,8 @@ async def websocket_chat(
                         }
                         if captured_sources:
                             cmd_response["sources"] = captured_sources
+                        if captured_tool_steps:
+                            cmd_response["tool_steps"] = captured_tool_steps
 
                         data = session_service.load()
                         data = session_service.add_message(

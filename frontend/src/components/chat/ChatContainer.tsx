@@ -31,6 +31,7 @@ export function ChatContainer() {
     pendingUserMessage,
     clearPendingUserMessage,
     agentProgress,
+    streamingToolSteps,
   } = useChatStore();
   const autoSendTriggered = useRef(false);
   const prevSessionIdRef = useRef<string | undefined>(undefined);
@@ -186,6 +187,9 @@ export function ChatContainer() {
         streamingSources={streamingSources.length > 0 ? streamingSources : undefined}
         streamingMetrics={streamingMetrics}
         isStreaming={isStreaming}
+        streamingToolSteps={
+          streamingToolSteps.length > 0 ? streamingToolSteps : undefined
+        }
         pipelineStatus={pipelineStatus}
         agentProgress={agentProgress}
       />

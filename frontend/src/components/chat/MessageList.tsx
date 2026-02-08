@@ -15,6 +15,7 @@ import type {
   SourceNode,
   StreamAgentProgress,
 } from "@/api/types";
+import type { ToolStepWithStatus } from "./ToolSteps";
 import type { PipelineStatus } from "@/stores/chatStore";
 
 interface MessageListProps {
@@ -26,6 +27,7 @@ interface MessageListProps {
   streamingThinking?: string;
   streamingSources?: SourceNode[];
   streamingMetrics?: RetrievalMetrics | null;
+  streamingToolSteps?: ToolStepWithStatus[];
   isStreaming?: boolean;
   pipelineStatus?: PipelineStatus;
   agentProgress?: StreamAgentProgress | null;
@@ -40,6 +42,7 @@ export function MessageList({
   streamingThinking,
   streamingSources,
   streamingMetrics,
+  streamingToolSteps,
   isStreaming,
   pipelineStatus,
   agentProgress,
@@ -209,6 +212,7 @@ export function MessageList({
                   sources={streamingSources}
                   metrics={streamingMetrics}
                   thinking={streamingThinking}
+                  toolSteps={streamingToolSteps}
                   isStreaming
                 />
               </>

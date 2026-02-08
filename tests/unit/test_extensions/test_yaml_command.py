@@ -1,12 +1,13 @@
-"""Tests for YamlCommand execution."""
+"""Tests for YamlCommand and YamlAgentCommand execution."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tensortruth.agents.config import AgentResult
 from tensortruth.extensions.schema import CommandSpec, StepSpec
-from tensortruth.extensions.yaml_command import YamlCommand
+from tensortruth.extensions.yaml_command import YamlAgentCommand, YamlCommand
 
 
 @pytest.fixture
@@ -193,3 +194,194 @@ class TestYamlCommand:
         ]
         assert len(error_calls) == 1
         assert "Template error" in error_calls[0].args[0]["detail"]
+
+
+class TestYamlAgentCommand:
+    """Tests for YamlAgentCommand tool_steps wiring."""
+
+    @pytest.fixture
+    def websocket(self):
+        ws = AsyncMock()
+        ws.send_json = AsyncMock()
+        return ws
+
+    @pytest.fixture
+    def mock_agent_service(self):
+        svc = MagicMock()
+        svc.run = AsyncMock()
+        return svc
+
+    @pytest.fixture
+    def mock_config_service(self):
+        config = MagicMock()
+        config.models.default_agent_reasoning_model = "llama3.2:3b"
+        config.ollama.base_url = "http://localhost:11434"
+        config.ui.default_context_window = 4096
+        svc = MagicMock()
+        svc.load.return_value = config
+        return svc
+
+    @pytest.mark.asyncio
+    async def test_tool_steps_in_done_message(
+        self, websocket, mock_agent_service, mock_config_service
+    ):
+        """tool_steps appears in done message when agent returns tool_steps."""
+        tool_steps = [
+            {
+                "tool": "search",
+                "params": {"q": "test"},
+                "output": "found it",
+                "is_error": False,
+            },
+        ]
+
+        # The agent service run will capture the callbacks and fire them
+        async def fake_run(agent_name, goal, callbacks, session_params):
+            # Simulate on_tool_call_result being fired
+            if callbacks.on_tool_call_result:
+                callbacks.on_tool_call_result(
+                    "search", {"q": "test"}, "found it", False
+                )
+            return AgentResult(
+                final_answer="The answer",
+                tool_steps=tool_steps,
+            )
+
+        mock_agent_service.run = fake_run
+
+        spec = CommandSpec(
+            name="research",
+            description="Research docs",
+            agent="research_docs",
+        )
+        cmd = YamlAgentCommand(spec)
+        session = {"params": {}}
+
+        with (
+            patch(
+                "tensortruth.api.deps.get_agent_service",
+                return_value=mock_agent_service,
+            ),
+            patch(
+                "tensortruth.services.config_service.ConfigService",
+                return_value=mock_config_service,
+            ),
+        ):
+            await cmd.execute("pytorch tensors", session, websocket)
+
+        # Find the done message
+        done_calls = [
+            c
+            for c in websocket.send_json.call_args_list
+            if isinstance(c.args[0], dict) and c.args[0].get("type") == "done"
+        ]
+        assert len(done_calls) == 1
+        done_msg = done_calls[0].args[0]
+        assert done_msg["content"] == "The answer"
+        assert "tool_steps" in done_msg
+        assert len(done_msg["tool_steps"]) == 1
+        assert done_msg["tool_steps"][0]["tool"] == "search"
+
+    @pytest.mark.asyncio
+    async def test_no_tool_steps_when_empty(
+        self, websocket, mock_agent_service, mock_config_service
+    ):
+        """tool_steps is omitted from done message when no tools were called."""
+        mock_agent_service.run = AsyncMock(
+            return_value=AgentResult(final_answer="Direct answer")
+        )
+
+        spec = CommandSpec(
+            name="research",
+            description="Research docs",
+            agent="research_docs",
+        )
+        cmd = YamlAgentCommand(spec)
+        session = {"params": {}}
+
+        with (
+            patch(
+                "tensortruth.api.deps.get_agent_service",
+                return_value=mock_agent_service,
+            ),
+            patch(
+                "tensortruth.services.config_service.ConfigService",
+                return_value=mock_config_service,
+            ),
+        ):
+            await cmd.execute("pytorch tensors", session, websocket)
+
+        done_calls = [
+            c
+            for c in websocket.send_json.call_args_list
+            if isinstance(c.args[0], dict) and c.args[0].get("type") == "done"
+        ]
+        assert len(done_calls) == 1
+        assert "tool_steps" not in done_calls[0].args[0]
+
+    @pytest.mark.asyncio
+    async def test_tool_progress_sent_on_result(
+        self, websocket, mock_agent_service, mock_config_service
+    ):
+        """tool_progress messages are sent when on_tool_call_result fires."""
+
+        async def fake_run(agent_name, goal, callbacks, session_params):
+            if callbacks.on_tool_call_result:
+                callbacks.on_tool_call_result("search", {"q": "test"}, "results", False)
+            return AgentResult(final_answer="Done")
+
+        mock_agent_service.run = fake_run
+
+        spec = CommandSpec(
+            name="research",
+            description="Research docs",
+            agent="research_docs",
+        )
+        cmd = YamlAgentCommand(spec)
+        session = {"params": {}}
+
+        with (
+            patch(
+                "tensortruth.api.deps.get_agent_service",
+                return_value=mock_agent_service,
+            ),
+            patch(
+                "tensortruth.services.config_service.ConfigService",
+                return_value=mock_config_service,
+            ),
+        ):
+            await cmd.execute("test query", session, websocket)
+
+        # Find tool_progress messages with action "completed"
+        tool_progress_calls = [
+            c
+            for c in websocket.send_json.call_args_list
+            if isinstance(c.args[0], dict)
+            and c.args[0].get("type") == "tool_progress"
+            and c.args[0].get("action") == "completed"
+        ]
+        assert len(tool_progress_calls) == 1
+        msg = tool_progress_calls[0].args[0]
+        assert msg["tool"] == "search"
+        assert msg["output"] == "results"
+        assert msg["is_error"] is False
+
+    @pytest.mark.asyncio
+    async def test_empty_args_sends_error(self, websocket, mock_agent_service):
+        """Empty args sends usage error."""
+        spec = CommandSpec(
+            name="research",
+            description="Research docs",
+            usage="/research <query>",
+            agent="research_docs",
+        )
+        cmd = YamlAgentCommand(spec)
+
+        await cmd.execute("", {}, websocket)
+
+        error_calls = [
+            c
+            for c in websocket.send_json.call_args_list
+            if isinstance(c.args[0], dict) and c.args[0].get("type") == "error"
+        ]
+        assert len(error_calls) == 1

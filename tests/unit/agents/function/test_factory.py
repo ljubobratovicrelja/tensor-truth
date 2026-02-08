@@ -104,3 +104,28 @@ def test_create_function_agent_handles_empty_tools():
     # Should succeed (LlamaIndex handles empty tool list)
     agent = create_function_agent(config, [], llm, {})
     assert isinstance(agent, FunctionAgentWrapper)
+
+
+def test_create_function_agent_enhances_system_prompt_with_tool_list():
+    """Test that factory appends available tool names to system prompt."""
+    config = AgentConfig(
+        name="test",
+        description="Test",
+        tools=["search_web", "fetch_page"],
+        system_prompt="You are a researcher.",
+    )
+
+    tools = [
+        FunctionTool.from_defaults(fn=lambda x: x, name="search_web"),
+        FunctionTool.from_defaults(fn=lambda x: x, name="fetch_page"),
+    ]
+    llm = Ollama(model="llama3.2:3b")
+
+    agent = create_function_agent(config, tools, llm, {})
+
+    # The underlying LlamaIndex agent should have the enhanced prompt
+    inner_prompt = agent._agent.system_prompt
+    assert "You are a researcher." in inner_prompt
+    assert "search_web" in inner_prompt
+    assert "fetch_page" in inner_prompt
+    assert "ONLY" in inner_prompt

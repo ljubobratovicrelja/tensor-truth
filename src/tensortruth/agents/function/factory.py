@@ -39,11 +39,23 @@ def create_function_agent(
         f"model={llm.model}"
     )
 
+    # Enhance system prompt with explicit tool list to prevent hallucination.
+    # Small models may "know" about tools from training and try to call them
+    # even when they aren't provided in the function-calling schema.
+    base_prompt = config.system_prompt or "You are a helpful assistant."
+    tool_names = [t.metadata.name for t in tools]
+    tool_list_str = ", ".join(tool_names)
+    enhanced_prompt = (
+        f"{base_prompt}\n\n"
+        f"You have access to ONLY these tools: {tool_list_str}. "
+        f"Do NOT call any tool not in this list."
+    )
+
     # Create LlamaIndex FunctionAgent
     function_agent = LIFunctionAgent(
         tools=list(tools),
         llm=llm,
-        system_prompt=config.system_prompt or "You are a helpful assistant.",
+        system_prompt=enhanced_prompt,
     )
 
     # Wrap in our Agent interface

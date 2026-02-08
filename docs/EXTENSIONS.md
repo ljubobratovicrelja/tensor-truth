@@ -207,13 +207,17 @@ Agent YAML files define autonomous agents that use LLM reasoning with tool acces
 name: doc_researcher
 description: "Research using Context7 + web search"
 tools:                            # List of MCP/built-in tool names
+  - resolve-library-id
+  - query-docs
   - search_web
   - fetch_page
-  - get-library-docs
 agent_type: function              # "function" (recommended) or "router"
 system_prompt: |                  # Instructions for the LLM
-  You are a documentation researcher. Use library docs and web search
-  to find accurate, up-to-date information. Always cite your sources.
+  You are a documentation researcher. Follow this workflow:
+  1. Call resolve-library-id to get the Context7 library ID.
+  2. Call query-docs with the resolved library ID.
+  3. Use search_web and fetch_page for supplementary information.
+  Always cite your sources.
 max_iterations: 10                # Max tool-call rounds (default: 10)
 model: null                       # null = use session model
 factory_params: {}                # Advanced: passed to agent factory

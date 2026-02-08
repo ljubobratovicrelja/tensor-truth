@@ -26,7 +26,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
     setError,
     reset,
     isStreaming,
-    setToolProgress,
+    addToolStep,
     setAgentProgress,
   } = useChatStore();
 
@@ -141,7 +141,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               break;
 
             case "tool_progress":
-              setToolProgress(data);
+              addToolStep(data);
               break;
 
             case "agent_progress":
@@ -178,7 +178,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       finishStreaming,
       setError,
       onError,
-      setToolProgress,
+      addToolStep,
       setAgentProgress,
     ]
   );

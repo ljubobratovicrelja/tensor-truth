@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 
 from tensortruth.core.constants import (
     DEFAULT_AGENT_REASONING_MODEL,
+    DEFAULT_FUNCTION_AGENT_MODEL,
     DEFAULT_RAG_MODEL,
     DEFAULT_ROUTER_MODEL,
 )
@@ -166,6 +167,7 @@ class AgentConfig:
 
     # Router-based agent configuration
     router_model: str = DEFAULT_ROUTER_MODEL
+    function_agent_model: str = DEFAULT_FUNCTION_AGENT_MODEL
     enable_search_reranking: bool = True
 
     # Natural language agent routing
@@ -192,6 +194,13 @@ class AgentConfig:
         if not self.router_model or not isinstance(self.router_model, str):
             raise ValueError(
                 f"router_model must be a non-empty string, got {self.router_model!r}"
+            )
+        if not self.function_agent_model or not isinstance(
+            self.function_agent_model, str
+        ):
+            raise ValueError(
+                "function_agent_model must be a non-empty string, "
+                f"got {self.function_agent_model!r}"
             )
 
 

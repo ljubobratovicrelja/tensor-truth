@@ -119,6 +119,8 @@ class TestContext7ExtensionLoading:
         config = mock_agent_svc.register_agent.call_args.args[0]
         assert config.name == "doc_researcher"
         assert config.agent_type == "function"
+        assert "resolve-library-id" in config.tools
+        assert "query-docs" in config.tools
         assert "search_web" in config.tools
 
 
@@ -166,8 +168,8 @@ class TestContext7ExtensionExecution:
             "resolve-library-id" in tool_names
         ), f"resolve-library-id not found. Available tools: {tool_names}"
         assert (
-            "get-library-docs" in tool_names
-        ), f"get-library-docs not found. Available tools: {tool_names}"
+            "query-docs" in tool_names
+        ), f"query-docs not found. Available tools: {tool_names}"
 
     @pytest.mark.asyncio
     async def test_resolve_library_id(self, tool_service_with_mcp):

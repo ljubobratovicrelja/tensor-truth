@@ -345,6 +345,7 @@ class BrowseCommand(ToolCommand):
             "reranker_model": params.get("reranker_model"),  # Already in session params
             "rag_device": params.get("rag_device"),  # Already in session params
             "router_model": params.get("router_model"),  # Already in session params
+            "function_agent_model": params.get("function_agent_model"),
             "conversation_history": conversation_history,  # NEW: For context-aware queries
         }
 

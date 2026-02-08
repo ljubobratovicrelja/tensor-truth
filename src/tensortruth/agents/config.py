@@ -51,11 +51,13 @@ class AgentCallbacks:
     Attributes:
         on_progress: Called with status messages during execution.
         on_tool_call: Called when a tool is invoked with tool name and params.
+        on_tool_call_result: Called when a tool finishes with (name, params, output, is_error).
         on_token: Called with streaming tokens during generation.
     """
 
     on_progress: Optional[Callable[[str], None]] = None
     on_tool_call: Optional[Callable[[str, Dict], None]] = None
+    on_tool_call_result: Optional[Callable[[str, Dict, str, bool], None]] = None
     on_token: Optional[Callable[[str], None]] = None
 
 
@@ -79,6 +81,7 @@ class AgentResult:
     sources: list[Any] = field(
         default_factory=list
     )  # List[SourceNode] but avoid circular import
+    tool_steps: list[Dict[str, Any]] = field(default_factory=list)
     error: Optional[str] = None
 
 

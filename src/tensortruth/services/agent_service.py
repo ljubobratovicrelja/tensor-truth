@@ -11,6 +11,7 @@ from llama_index.llms.ollama import Ollama
 
 from tensortruth.agents.config import AgentCallbacks, AgentConfig, AgentResult
 from tensortruth.agents.factory import get_agent_factory_registry
+from tensortruth.core.constants import DEFAULT_FUNCTION_AGENT_MODEL
 from tensortruth.services.tool_service import ToolService
 
 logger = logging.getLogger(__name__)
@@ -221,8 +222,19 @@ class AgentService:
                 final_answer="", error=f"Missing tools: {', '.join(missing)}"
             )
 
-        # Determine model
-        model = config.model or session_params.get("model", "llama3.1:8b")
+        # Determine model (use `or` to skip None values from session params)
+        if config.model:
+            model = config.model
+        elif config.agent_type == "function":
+            model = (
+                session_params.get("function_agent_model")
+                or self._config.get("agent", {}).get("function_agent_model")
+                or DEFAULT_FUNCTION_AGENT_MODEL
+            )
+        else:
+            model = (
+                session_params.get("model") or DEFAULT_FUNCTION_AGENT_MODEL
+            )
         context_window = session_params.get("context_window", 16384)
         ollama_url = session_params.get("ollama_url", "http://localhost:11434")
 
@@ -233,6 +245,9 @@ class AgentService:
         factory_params = {
             "router_model": self._config.get("agent", {}).get(
                 "router_model", "llama3.2:3b"
+            ),
+            "function_agent_model": self._config.get("agent", {}).get(
+                "function_agent_model", DEFAULT_FUNCTION_AGENT_MODEL
             ),
             "min_pages_required": self._config.get("agent", {}).get(
                 "min_pages_required", 3

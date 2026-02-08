@@ -286,6 +286,143 @@ class TestAgentServiceRun:
 
     @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
+    async def test_run_function_agent_uses_function_agent_model(
+        self, mock_import, mock_load
+    ):
+        """Function agents should use function_agent_model when config.model is None."""
+        from llama_index.core.tools import FunctionTool
+
+        mock_tool_service = MagicMock()
+        tool = FunctionTool.from_defaults(fn=lambda: "test", name="test_tool")
+        mock_tool_service.get_tools_by_names.return_value = [tool]
+
+        service = AgentService(
+            tool_service=mock_tool_service,
+            config={"agent": {"function_agent_model": "qwen2.5:7b"}},
+        )
+
+        config = AgentConfig(
+            name="test_func",
+            description="Test function agent",
+            tools=["test_tool"],
+            agent_type="function",
+            model=None,  # No explicit model
+        )
+        service.register_agent(config)
+
+        created_llm_model = None
+
+        def capturing_factory(config, tools, llm, params):
+            nonlocal created_llm_model
+            created_llm_model = llm.model
+            return MockAgent("test_func")
+
+        # Overwrite directly since "function" may already be registered globally
+        service._factory_registry._factories["function"] = capturing_factory
+
+        await service.run(
+            agent_name="test_func",
+            goal="test",
+            callbacks=AgentCallbacks(),
+            session_params={},
+        )
+
+        assert created_llm_model == "qwen2.5:7b"
+
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
+    async def test_run_function_agent_with_none_session_param(
+        self, mock_import, mock_load
+    ):
+        """Should fall back to config when session param is explicitly None.
+
+        This mirrors the real-world case where yaml_command.py passes
+        {"function_agent_model": None} from params.get().
+        """
+        from llama_index.core.tools import FunctionTool
+
+        mock_tool_service = MagicMock()
+        tool = FunctionTool.from_defaults(fn=lambda: "test", name="test_tool")
+        mock_tool_service.get_tools_by_names.return_value = [tool]
+
+        service = AgentService(
+            tool_service=mock_tool_service,
+            config={"agent": {"function_agent_model": "qwen2.5:7b"}},
+        )
+
+        config = AgentConfig(
+            name="test_func_none",
+            description="Test function agent",
+            tools=["test_tool"],
+            agent_type="function",
+            model=None,
+        )
+        service.register_agent(config)
+
+        created_llm_model = None
+
+        def capturing_factory(config, tools, llm, params):
+            nonlocal created_llm_model
+            created_llm_model = llm.model
+            return MockAgent("test_func_none")
+
+        service._factory_registry._factories["function"] = capturing_factory
+
+        await service.run(
+            agent_name="test_func_none",
+            goal="test",
+            callbacks=AgentCallbacks(),
+            # Key present but None — exactly what yaml_command.py does
+            session_params={"function_agent_model": None},
+        )
+
+        assert created_llm_model == "qwen2.5:7b"
+
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
+    async def test_run_function_agent_session_override(self, mock_import, mock_load):
+        """Session params should override global function_agent_model."""
+        from llama_index.core.tools import FunctionTool
+
+        mock_tool_service = MagicMock()
+        tool = FunctionTool.from_defaults(fn=lambda: "test", name="test_tool")
+        mock_tool_service.get_tools_by_names.return_value = [tool]
+
+        service = AgentService(
+            tool_service=mock_tool_service,
+            config={"agent": {"function_agent_model": "qwen2.5:7b"}},
+        )
+
+        config = AgentConfig(
+            name="test_func2",
+            description="Test function agent",
+            tools=["test_tool"],
+            agent_type="function",
+            model=None,
+        )
+        service.register_agent(config)
+
+        created_llm_model = None
+
+        def capturing_factory(config, tools, llm, params):
+            nonlocal created_llm_model
+            created_llm_model = llm.model
+            return MockAgent("test_func2")
+
+        # Overwrite directly since "function" may already be registered
+        service._factory_registry._factories["function"] = capturing_factory
+
+        await service.run(
+            agent_name="test_func2",
+            goal="test",
+            callbacks=AgentCallbacks(),
+            session_params={"function_agent_model": "mistral:7b"},
+        )
+
+        assert created_llm_model == "mistral:7b"
+
+    @patch.object(AgentService, "_load_builtin_agents")
+    @patch.object(AgentService, "_import_factories")
     async def test_run_passes_factory_params(self, mock_import, mock_load):
         """Should pass factory_params to factory."""
         from llama_index.core.tools import FunctionTool
@@ -325,6 +462,7 @@ class TestAgentServiceRun:
 
         # Check params were passed correctly
         assert received_params["router_model"] == "llama3.2:3b"
+        assert received_params["function_agent_model"] is not None
         assert received_params["min_pages_required"] == 5
         assert received_params["custom_param"] == "custom_value"
         assert received_params["context_window"] == 8192

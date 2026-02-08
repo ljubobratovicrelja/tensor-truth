@@ -3,11 +3,12 @@
 from unittest.mock import MagicMock, call
 
 import pytest
-from llama_index.core.agent.workflow import AgentStream, ToolCall
+from llama_index.core.agent.workflow import AgentStream, ToolCall, ToolCallResult
 from llama_index.core.agent.workflow.function_agent import (
     FunctionAgent as LIFunctionAgent,
 )
 from llama_index.core.tools import FunctionTool
+from llama_index.core.tools.types import ToolOutput
 from llama_index.llms.ollama import Ollama
 
 from tensortruth.agents.config import AgentCallbacks, AgentResult
@@ -230,3 +231,120 @@ async def test_run_skips_empty_deltas():
     # Only one call — the empty delta is skipped
     on_token.assert_called_once_with("content")
     assert result.final_answer == "content"
+
+
+# ---------------------------------------------------------------------------
+# ToolCallResult tests
+# ---------------------------------------------------------------------------
+
+
+def _make_tool_output(content: str, is_error: bool = False) -> ToolOutput:
+    """Create a ToolOutput with the given content."""
+    return ToolOutput(
+        content=content,
+        tool_name="test_tool",
+        raw_input={},
+        raw_output=content,
+        is_error=is_error,
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_captures_tool_call_result():
+    """ToolCallResult events populate tool_steps in AgentResult."""
+    tool_output = _make_tool_output("search results here")
+    events = [
+        ToolCall(tool_name="search", tool_kwargs={"q": "python"}, tool_id="t1"),
+        ToolCallResult(
+            tool_name="search",
+            tool_kwargs={"q": "python"},
+            tool_id="t1",
+            tool_output=tool_output,
+            return_direct=False,
+        ),
+    ]
+    wrapper = _make_wrapper_with_mock(events)
+
+    result = await wrapper.run("hello", AgentCallbacks())
+
+    assert len(result.tool_steps) == 1
+    step = result.tool_steps[0]
+    assert step["tool"] == "search"
+    assert step["params"] == {"q": "python"}
+    assert step["output"] == "search results here"
+    assert step["is_error"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_fires_on_tool_call_result_callback():
+    """on_tool_call_result is fired for each ToolCallResult event."""
+    tool_output = _make_tool_output("result data")
+    events = [
+        ToolCallResult(
+            tool_name="fetch",
+            tool_kwargs={"url": "https://example.com"},
+            tool_id="t1",
+            tool_output=tool_output,
+            return_direct=False,
+        ),
+    ]
+    wrapper = _make_wrapper_with_mock(events)
+    on_tool_call_result = MagicMock()
+
+    await wrapper.run("hello", AgentCallbacks(on_tool_call_result=on_tool_call_result))
+
+    on_tool_call_result.assert_called_once_with(
+        "fetch", {"url": "https://example.com"}, "result data", False
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_captures_tool_error():
+    """ToolCallResult with is_error=True is captured correctly."""
+    tool_output = _make_tool_output("Error: tool not found", is_error=True)
+    events = [
+        ToolCallResult(
+            tool_name="bad_tool",
+            tool_kwargs={},
+            tool_id="t1",
+            tool_output=tool_output,
+            return_direct=False,
+        ),
+    ]
+    wrapper = _make_wrapper_with_mock(events)
+
+    result = await wrapper.run("hello", AgentCallbacks())
+
+    assert len(result.tool_steps) == 1
+    assert result.tool_steps[0]["is_error"] is True
+    assert "Error" in result.tool_steps[0]["output"]
+
+
+@pytest.mark.asyncio
+async def test_run_multiple_tool_results():
+    """Multiple ToolCallResult events are accumulated in order."""
+    events = [
+        ToolCall(tool_name="search", tool_kwargs={"q": "a"}, tool_id="t1"),
+        ToolCallResult(
+            tool_name="search",
+            tool_kwargs={"q": "a"},
+            tool_id="t1",
+            tool_output=_make_tool_output("result a"),
+            return_direct=False,
+        ),
+        ToolCall(tool_name="fetch", tool_kwargs={"url": "b"}, tool_id="t2"),
+        ToolCallResult(
+            tool_name="fetch",
+            tool_kwargs={"url": "b"},
+            tool_id="t2",
+            tool_output=_make_tool_output("result b"),
+            return_direct=False,
+        ),
+    ]
+    wrapper = _make_wrapper_with_mock(events)
+
+    result = await wrapper.run("hello", AgentCallbacks())
+
+    assert len(result.tool_steps) == 2
+    assert result.tool_steps[0]["tool"] == "search"
+    assert result.tool_steps[1]["tool"] == "fetch"

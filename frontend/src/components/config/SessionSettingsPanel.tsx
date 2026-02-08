@@ -92,6 +92,7 @@ export function SessionSettingsPanel({
   const [maxHistoryTurns, setMaxHistoryTurns] = useState<number>(3);
   const [memoryTokenLimit, setMemoryTokenLimit] = useState<number>(4000);
   const [routerModel, setRouterModel] = useState<string>("");
+  const [functionAgentModel, setFunctionAgentModel] = useState<string>("");
 
   // Fetch available devices from backend
   useEffect(() => {
@@ -142,6 +143,10 @@ export function SessionSettingsPanel({
         (currentParams.memory_token_limit as number) ?? config.rag.memory_token_limit
       );
       setRouterModel((currentParams.router_model as string) ?? config.agent.router_model);
+      setFunctionAgentModel(
+        (currentParams.function_agent_model as string) ??
+          config.agent.function_agent_model
+      );
     }
   }, [open, config, currentParams]);
 
@@ -161,6 +166,7 @@ export function SessionSettingsPanel({
       max_history_turns: maxHistoryTurns,
       memory_token_limit: memoryTokenLimit,
       router_model: routerModel,
+      function_agent_model: functionAgentModel,
     };
 
     // Only include system_prompt if non-empty
@@ -487,10 +493,28 @@ export function SessionSettingsPanel({
             <h3 className="text-sm font-medium">Agent</h3>
             <div className="space-y-2">
               <Label>
-                Agent Reasoning Model
-                <HelpTooltip text="Fast model used by the browse agent for routing decisions (search/fetch/summarize). Smaller models work well here." />
+                Reasoning Model
+                <HelpTooltip text="Model used by routing agents for step-by-step decisions (e.g., search, fetch, summarize). Smaller, fast models work well here." />
               </Label>
               <Select value={routerModel} onValueChange={setRouterModel}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelsData?.models.map((model) => (
+                    <SelectItem key={model.name} value={model.name}>
+                      {model.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>
+                Function Model
+                <HelpTooltip text="Model used by function agents that call tools autonomously via LLM tool-calling. Needs a model with good tool-use support." />
+              </Label>
+              <Select value={functionAgentModel} onValueChange={setFunctionAgentModel}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select model" />
                 </SelectTrigger>

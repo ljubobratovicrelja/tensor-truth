@@ -2,7 +2,7 @@
 
 from typing import Any, Dict
 
-from llama_index.core.agent.workflow import AgentStream, ToolCall
+from llama_index.core.agent.workflow import AgentStream, ToolCall, ToolCallResult
 from llama_index.core.agent.workflow.function_agent import (
     FunctionAgent as LIFunctionAgent,
 )
@@ -48,6 +48,7 @@ class FunctionAgentWrapper(Agent):
             callbacks.on_progress(f"Starting {self._agent_name} agent...")
 
         tools_called: list[str] = []
+        tool_steps: list[dict] = []
         full_response = ""
 
         # Get handler (starts workflow) — don't await directly
@@ -61,6 +62,21 @@ class FunctionAgentWrapper(Agent):
                     callbacks.on_tool_call(event.tool_name, event.tool_kwargs)
                 if callbacks.on_progress:
                     callbacks.on_progress(f"Calling {event.tool_name}...")
+            elif isinstance(event, ToolCallResult):
+                output_text = str(event.tool_output.content or "")[:2000]
+                is_error = event.tool_output.is_error
+                tool_steps.append(
+                    {
+                        "tool": event.tool_name,
+                        "params": event.tool_kwargs,
+                        "output": output_text,
+                        "is_error": is_error,
+                    }
+                )
+                if callbacks.on_tool_call_result:
+                    callbacks.on_tool_call_result(
+                        event.tool_name, event.tool_kwargs, output_text, is_error
+                    )
             elif isinstance(event, AgentStream):
                 if event.delta and callbacks.on_token:
                     full_response += event.delta
@@ -73,6 +89,7 @@ class FunctionAgentWrapper(Agent):
         return AgentResult(
             final_answer=final,
             tools_called=tools_called,
+            tool_steps=tool_steps,
         )
 
     def get_metadata(self) -> Dict[str, Any]:

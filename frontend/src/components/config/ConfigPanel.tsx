@@ -86,6 +86,9 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   const [agentReasoningModel, setAgentReasoningModel] = useState(
     config.agent.router_model
   );
+  const [functionAgentModel, setFunctionAgentModel] = useState(
+    config.agent.function_agent_model
+  );
 
   // Generation
   const [temperature, setTemperature] = useState(config.ui.default_temperature);
@@ -203,6 +206,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     await onSave({
       models_default_rag_model: ragModel,
       agent_router_model: agentReasoningModel,
+      agent_function_agent_model: functionAgentModel,
       ui_default_temperature: temperature,
       ui_default_context_window: contextWindow,
       ui_default_max_tokens: maxTokens,
@@ -280,10 +284,28 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
           </div>
           <div className="space-y-2">
             <Label>
-              Agent Reasoning Model
-              <HelpTooltip text="Fast model used by the browse agent for routing decisions (search/fetch/summarize). Smaller models work well here." />
+              Reasoning Model
+              <HelpTooltip text="Model used by routing agents for step-by-step decisions (e.g., search, fetch, summarize). Smaller, fast models work well here." />
             </Label>
             <Select value={agentReasoningModel} onValueChange={setAgentReasoningModel}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              <SelectContent>
+                {modelsData?.models.map((model) => (
+                  <SelectItem key={model.name} value={model.name}>
+                    {model.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>
+              Function Model
+              <HelpTooltip text="Model used by function agents that call tools autonomously via LLM tool-calling. Needs a model with good tool-use support." />
+            </Label>
+            <Select value={functionAgentModel} onValueChange={setFunctionAgentModel}>
               <SelectTrigger>
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>

@@ -334,10 +334,12 @@ class YamlAgentCommand(ToolCommand):
                 "context_window", config.ui.default_context_window
             ),
             "router_model": params.get("router_model"),
+            "function_agent_model": params.get("function_agent_model"),
         }
 
         # Streaming callbacks
         full_response = ""
+        tool_steps_data: list[dict] = []
 
         def on_progress(msg: str) -> None:
             asyncio.create_task(
@@ -363,6 +365,29 @@ class YamlAgentCommand(ToolCommand):
                 )
             )
 
+        def on_tool_call_result(
+            tool_name: str, tool_params: dict, output: str, is_error: bool
+        ) -> None:
+            step = {
+                "tool": tool_name,
+                "params": tool_params,
+                "output": output[:500],
+                "is_error": is_error,
+            }
+            tool_steps_data.append(step)
+            asyncio.create_task(
+                websocket.send_json(
+                    {
+                        "type": "tool_progress",
+                        "tool": tool_name,
+                        "action": "failed" if is_error else "completed",
+                        "params": tool_params,
+                        "output": output[:500],
+                        "is_error": is_error,
+                    }
+                )
+            )
+
         def on_token(token: str) -> None:
             nonlocal full_response
             full_response += token
@@ -373,6 +398,7 @@ class YamlAgentCommand(ToolCommand):
         callbacks = AgentCallbacks(
             on_progress=on_progress,
             on_tool_call=on_tool_call,
+            on_tool_call_result=on_tool_call_result,
             on_token=on_token,
         )
 
@@ -391,7 +417,10 @@ class YamlAgentCommand(ToolCommand):
                 )
                 return
 
-            await websocket.send_json({"type": "done", "content": result.final_answer})
+            done_msg: dict = {"type": "done", "content": result.final_answer}
+            if tool_steps_data:
+                done_msg["tool_steps"] = tool_steps_data
+            await websocket.send_json(done_msg)
 
         except Exception as e:
             logger.error(f"YamlAgentCommand failed: {e}", exc_info=True)

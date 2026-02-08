@@ -36,6 +36,7 @@ export interface MessageResponse {
   sources?: SourceNode[] | null;
   thinking?: string | null;
   metrics?: RetrievalMetrics | null;
+  tool_steps?: ToolStep[] | null;
 }
 
 export interface MessagesResponse {
@@ -133,6 +134,15 @@ export interface StreamToolProgress {
   tool: string;
   action: "calling" | "completed" | "failed";
   params: Record<string, unknown>;
+  output?: string;
+  is_error?: boolean;
+}
+
+export interface ToolStep {
+  tool: string;
+  params: Record<string, unknown>;
+  output: string;
+  is_error: boolean;
 }
 
 export type AgentPhase =
@@ -239,6 +249,7 @@ export interface AgentConfig {
   min_pages_required: number;
   reasoning_model: string;
   router_model: string;
+  function_agent_model: string;
   enable_natural_language_agents: boolean;
   intent_classifier_model: string;
 }
