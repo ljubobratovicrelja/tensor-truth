@@ -282,7 +282,7 @@ class YamlAgentCommand(ToolCommand):
         params = session.get("params", {})
         session_params = {
             "model": params.get("model", config.llm.default_model),
-            "ollama_url": params.get("ollama_url", config.ollama.base_url),
+            "ollama_url": params.get("ollama_url") or config_service.get_ollama_url(),
             "context_window": params.get(
                 "context_window", config.llm.default_context_window
             ),

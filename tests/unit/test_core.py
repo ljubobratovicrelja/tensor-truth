@@ -8,6 +8,7 @@ import pytest
 import torch
 
 from tensortruth.core import get_max_memory_gb, get_running_models, stop_model
+from tensortruth.core.ollama import get_ollama_url
 
 # ============================================================================
 # Tests for Ollama Module
@@ -86,6 +87,42 @@ class TestOllamaModule:
         result = stop_model("deepseek-r1:8b")
 
         assert result is False
+
+
+@pytest.mark.unit
+class TestGetOllamaUrl:
+    """Tests for get_ollama_url() env var handling."""
+
+    @patch("tensortruth.core.ollama.os.environ.get", return_value="0.0.0.0")
+    def test_bare_host_gets_default_port(self, mock_env):
+        """OLLAMA_HOST=0.0.0.0 should become http://0.0.0.0:11434."""
+        assert get_ollama_url() == "http://0.0.0.0:11434"
+
+    @patch("tensortruth.core.ollama.os.environ.get", return_value="0.0.0.0:11434")
+    def test_host_with_port_preserved(self, mock_env):
+        """OLLAMA_HOST=0.0.0.0:11434 should become http://0.0.0.0:11434."""
+        assert get_ollama_url() == "http://0.0.0.0:11434"
+
+    @patch("tensortruth.core.ollama.os.environ.get", return_value="myhost")
+    def test_bare_hostname_gets_default_port(self, mock_env):
+        """OLLAMA_HOST=myhost should become http://myhost:11434."""
+        assert get_ollama_url() == "http://myhost:11434"
+
+    @patch(
+        "tensortruth.core.ollama.os.environ.get",
+        return_value="http://192.168.1.100:11434",
+    )
+    def test_full_url_preserved(self, mock_env):
+        """Full http URL should be returned as-is."""
+        assert get_ollama_url() == "http://192.168.1.100:11434"
+
+    @patch("tensortruth.core.ollama.os.environ.get", return_value=None)
+    def test_falls_back_to_config(self, mock_env):
+        """When no env var, should fall back to config file."""
+        url = get_ollama_url()
+        # Should return config value or default, not crash
+        assert url.startswith("http")
+        assert "11434" in url
 
 
 # ============================================================================

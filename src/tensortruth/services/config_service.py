@@ -162,13 +162,19 @@ class ConfigService:
             return None
 
     def get_ollama_url(self) -> str:
-        """Get the Ollama base URL from config.
+        """Get the Ollama base URL, respecting OLLAMA_HOST env var.
+
+        Delegates to core.ollama.get_ollama_url() which checks:
+        1. OLLAMA_HOST environment variable (highest priority)
+        2. Config file (ollama.base_url)
+        3. Default (http://localhost:11434)
 
         Returns:
             Ollama base URL string.
         """
-        config = self.load()
-        return config.ollama.base_url
+        from tensortruth.core.ollama import get_ollama_url
+
+        return get_ollama_url()
 
     def get_default_model(self) -> str:
         """Get the default RAG model from config.

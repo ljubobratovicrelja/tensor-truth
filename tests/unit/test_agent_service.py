@@ -384,12 +384,17 @@ class TestAgentServiceLLMCreation:
         assert llm.base_url == "http://test:11434"
         assert llm.context_window == 8192
 
-    def test_create_llm_static_uses_defaults(self):
+    @patch(
+        "tensortruth.services.agent_service.get_ollama_url",
+        return_value="http://localhost:11434",
+    )
+    def test_create_llm_static_uses_defaults(self, mock_url):
         """Should use default values when not provided."""
         llm = AgentService._create_llm_static("llama3.1:8b")
 
         assert llm.base_url == "http://localhost:11434"
         assert llm.context_window == 16384
+        mock_url.assert_called_once()
 
     @patch.object(AgentService, "_import_factories")
     def test_create_llm_instance_method(self, mock_import):

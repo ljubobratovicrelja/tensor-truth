@@ -14,6 +14,7 @@ from llama_index.llms.ollama import Ollama
 from tensortruth.agents.config import AgentCallbacks, AgentConfig, AgentResult
 from tensortruth.agents.factory import get_agent_factory_registry
 from tensortruth.core.constants import DEFAULT_MODEL
+from tensortruth.core.ollama import get_ollama_url
 from tensortruth.services.tool_service import ToolService
 
 if TYPE_CHECKING:
@@ -111,7 +112,7 @@ class AgentService:
         Returns:
             Configured Ollama LLM instance.
         """
-        base_url = ollama_url or "http://localhost:11434"
+        base_url = ollama_url or get_ollama_url()
         ctx_window = context_window or 16384
 
         return Ollama(
@@ -139,9 +140,7 @@ class AgentService:
         Returns:
             Configured Ollama LLM instance.
         """
-        ollama_url = ollama_url or self._config.get(
-            "ollama_url", "http://localhost:11434"
-        )
+        ollama_url = ollama_url or self._config.get("ollama_url") or get_ollama_url()
         return self._create_llm_static(model, context_window, ollama_url)
 
     async def run(
@@ -189,7 +188,7 @@ class AgentService:
         else:
             model = session_params.get("model") or DEFAULT_MODEL
         context_window = session_params.get("context_window", 16384)
-        ollama_url = session_params.get("ollama_url", "http://localhost:11434")
+        ollama_url = session_params.get("ollama_url") or get_ollama_url()
 
         # Create LLM
         llm = self._create_llm(model, context_window, ollama_url)

@@ -1,6 +1,7 @@
 """Unit tests for ConfigService."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -267,8 +268,9 @@ class TestConfigServiceComputeHash:
 class TestConfigServiceHelpers:
     """Tests for helper methods."""
 
-    def test_get_ollama_url(self, config_service: ConfigService):
-        """Get ollama URL returns correct value."""
+    @patch("tensortruth.core.ollama.os.environ.get", return_value=None)
+    def test_get_ollama_url(self, mock_env, config_service: ConfigService):
+        """Get ollama URL returns config value when no env var set."""
         url = config_service.get_ollama_url()
 
         assert url == "http://localhost:11434"
