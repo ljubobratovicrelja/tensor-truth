@@ -52,6 +52,54 @@ def sanitize_model_id(model_name: str) -> str:
     return model_id
 
 
+def resolve_embedding_model_name(value: str) -> str:
+    """Resolve a potentially sanitized model ID back to the full HuggingFace path.
+
+    Reverses the effect of sanitize_model_id() by looking up known model configs
+    and the current application config.
+
+    Args:
+        value: Model name or sanitized ID (e.g., "BAAI/bge-m3" or "bge-m3")
+
+    Returns:
+        Full HuggingFace model path if resolvable, otherwise the original value.
+
+    Examples:
+        >>> resolve_embedding_model_name("BAAI/bge-m3")
+        'BAAI/bge-m3'
+        >>> resolve_embedding_model_name("bge-m3")
+        'BAAI/bge-m3'
+    """
+    # Fast path: already a full HuggingFace path
+    if "/" in value:
+        return value
+
+    # Check built-in model configs (covers "bge-m3" → "BAAI/bge-m3")
+    from tensortruth.app_utils.config_schema import DEFAULT_EMBEDDING_MODEL_CONFIGS
+
+    for full_name in DEFAULT_EMBEDDING_MODEL_CONFIGS:
+        if sanitize_model_id(full_name) == value:
+            return full_name
+
+    # Check application config for additional models
+    try:
+        from tensortruth.app_utils.config_loader import load_config
+
+        config = load_config()
+        # Check default_embedding_model
+        if sanitize_model_id(config.rag.default_embedding_model) == value:
+            return config.rag.default_embedding_model
+        # Check user-configured embedding model configs
+        for full_name in config.rag.embedding_model_configs:
+            if sanitize_model_id(full_name) == value:
+                return full_name
+    except Exception:
+        pass
+
+    # Unknown — return as-is
+    return value
+
+
 def write_index_metadata(
     index_dir: Path,
     embedding_model: str,

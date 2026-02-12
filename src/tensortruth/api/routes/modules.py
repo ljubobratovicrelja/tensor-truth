@@ -120,6 +120,7 @@ async def list_embedding_models(
     Returns embedding models that have indexes built, along with the
     currently configured model.
     """
+    from tensortruth.app_utils.config_schema import DEFAULT_EMBEDDING_MODEL_CONFIGS
     from tensortruth.indexing.metadata import (
         get_available_embedding_models,
         sanitize_model_id,
@@ -131,11 +132,21 @@ async def list_embedding_models(
     config = config_service.load()
     current_model_id = sanitize_model_id(config.rag.default_embedding_model)
 
+    # Build lookup from sanitized model_id -> full HuggingFace path
+    # so we can fill in model_name when index metadata doesn't have it.
+    # Priority: built-in defaults < user config < current default (highest)
+    known_full_names: Dict[str, str] = {}
+    for full_name in DEFAULT_EMBEDDING_MODEL_CONFIGS:
+        known_full_names[sanitize_model_id(full_name)] = full_name
+    for full_name in config.rag.embedding_model_configs:
+        known_full_names[sanitize_model_id(full_name)] = full_name
+    known_full_names[current_model_id] = config.rag.default_embedding_model
+
     return EmbeddingModelsResponse(
         models=[
             EmbeddingModelInfo(
                 model_id=m["model_id"],
-                model_name=m.get("model_name"),
+                model_name=m.get("model_name") or known_full_names.get(m["model_id"]),
                 index_count=m["index_count"],
                 modules=m["modules"],
             )

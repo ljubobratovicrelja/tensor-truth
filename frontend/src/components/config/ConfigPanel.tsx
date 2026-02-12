@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Settings, Loader2, HelpCircle, RefreshCw, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -220,6 +220,37 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     return () => clearInterval(interval);
   }, [isReinitializing, reinitializeStartTime]);
 
+  // Resolve embedding model config value to a model_id for Select matching.
+  // Config stores full HuggingFace path (e.g., "BAAI/bge-m3") but SelectItem
+  // values use model_id (e.g., "bge-m3"). We derive the matching model_id here
+  // while keeping the full path in state for saving back to config.
+  const embeddingModelSelectValue = useMemo(() => {
+    if (!embeddingModelsData?.models.length || !embeddingModel) return "";
+    // Direct match by model_name or model_id
+    const direct = embeddingModelsData.models.find(
+      (m) => m.model_name === embeddingModel || m.model_id === embeddingModel
+    );
+    if (direct) return direct.model_id;
+    // Match by sanitized short ID (e.g., "BAAI/bge-m3" -> "bge-m3")
+    const shortId = embeddingModel.split("/").pop()?.toLowerCase() ?? "";
+    const match = embeddingModelsData.models.find((m) => m.model_id === shortId);
+    return match?.model_id ?? "";
+  }, [embeddingModelsData, embeddingModel]);
+
+  // Include current config values in Ollama model options even if not installed,
+  // so the Select always shows the current value instead of appearing empty.
+  const ollamaModelOptions = useMemo(() => {
+    const models = modelsData?.models ?? [];
+    const names = new Set(models.map((m) => m.name));
+    const extras: string[] = [];
+    for (const val of [ragModel, agentReasoningModel, functionAgentModel]) {
+      if (val && !names.has(val) && !extras.includes(val)) {
+        extras.push(val);
+      }
+    }
+    return { models, extras };
+  }, [modelsData, ragModel, agentReasoningModel, functionAgentModel]);
+
   // Detect when reinitialization completes
   useEffect(() => {
     if (isReinitializing && startupStatus?.indexes_ok) {
@@ -303,7 +334,12 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
               <SelectContent>
-                {modelsData?.models.map((model) => (
+                {ollamaModelOptions.extras.map((name) => (
+                  <SelectItem key={name} value={name} className="text-muted-foreground">
+                    {name} (not installed)
+                  </SelectItem>
+                ))}
+                {ollamaModelOptions.models.map((model) => (
                   <SelectItem key={model.name} value={model.name}>
                     {model.name}
                   </SelectItem>
@@ -321,7 +357,12 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
               <SelectContent>
-                {modelsData?.models.map((model) => (
+                {ollamaModelOptions.extras.map((name) => (
+                  <SelectItem key={name} value={name} className="text-muted-foreground">
+                    {name} (not installed)
+                  </SelectItem>
+                ))}
+                {ollamaModelOptions.models.map((model) => (
                   <SelectItem key={model.name} value={model.name}>
                     {model.name}
                   </SelectItem>
@@ -339,7 +380,12 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
               <SelectContent>
-                {modelsData?.models.map((model) => (
+                {ollamaModelOptions.extras.map((name) => (
+                  <SelectItem key={name} value={name} className="text-muted-foreground">
+                    {name} (not installed)
+                  </SelectItem>
+                ))}
+                {ollamaModelOptions.models.map((model) => (
                   <SelectItem key={model.name} value={model.name}>
                     {model.name}
                   </SelectItem>
@@ -414,17 +460,28 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
               Embedding Model
               <HelpTooltip text="Model used for vector embeddings. Changing this switches to a different set of indexes." />
             </Label>
-            <Select value={embeddingModel} onValueChange={setEmbeddingModel}>
+            <Select
+              value={embeddingModelSelectValue}
+              onValueChange={(selectedId) => {
+                const model = embeddingModelsData?.models.find(
+                  (m) => m.model_id === selectedId
+                );
+                if (model?.model_name) {
+                  setEmbeddingModel(model.model_name);
+                } else {
+                  console.warn(
+                    `Embedding model "${selectedId}" has no model_name; keeping current value`
+                  );
+                }
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select embedding model" />
               </SelectTrigger>
               <SelectContent>
                 {embeddingModelsData?.models.map((model) => (
-                  <SelectItem
-                    key={model.model_id}
-                    value={model.model_name || model.model_id}
-                  >
-                    {model.model_id} ({model.index_count} modules)
+                  <SelectItem key={model.model_id} value={model.model_id}>
+                    {model.model_name || model.model_id} ({model.index_count} modules)
                   </SelectItem>
                 ))}
               </SelectContent>

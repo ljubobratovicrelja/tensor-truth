@@ -583,6 +583,11 @@ def load_engine_for_modules(
         except (ImportError, Exception):
             embedding_model = "BAAI/bge-m3"
 
+    # Heal any corrupted/sanitized embedding model name (e.g., "bge-m3" → "BAAI/bge-m3")
+    from tensortruth.indexing.metadata import resolve_embedding_model_name
+
+    embedding_model = resolve_embedding_model_name(embedding_model)
+
     # Calculate adaptive similarity_top_k based on reranker_top_n
     # Retrieve 2-3x more candidates than final target to ensure quality
     reranker_top_n = engine_params.get("reranker_top_n", 3)

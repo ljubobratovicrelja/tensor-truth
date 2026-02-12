@@ -113,6 +113,12 @@ class ModelManager:
             RuntimeError: If model fails to load
         """
         model_name = model_name or DEFAULT_EMBEDDING_MODEL
+
+        # Heal corrupted/sanitized model names (e.g., "bge-m3" → "BAAI/bge-m3")
+        from tensortruth.indexing.metadata import resolve_embedding_model_name
+
+        model_name = resolve_embedding_model_name(model_name)
+
         device = device or self._default_device
 
         with self._model_lock:

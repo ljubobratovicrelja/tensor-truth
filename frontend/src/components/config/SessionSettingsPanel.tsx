@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Settings, Loader2, HelpCircle, Plus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -105,6 +105,31 @@ export function SessionSettingsPanel({
         });
     });
   }, []);
+
+  // Resolve embedding model config value to a model_id for Select matching.
+  const embeddingModelSelectValue = useMemo(() => {
+    if (!embeddingModelsData?.models.length || !embeddingModel) return "";
+    const direct = embeddingModelsData.models.find(
+      (m) => m.model_name === embeddingModel || m.model_id === embeddingModel
+    );
+    if (direct) return direct.model_id;
+    const shortId = embeddingModel.split("/").pop()?.toLowerCase() ?? "";
+    const match = embeddingModelsData.models.find((m) => m.model_id === shortId);
+    return match?.model_id ?? "";
+  }, [embeddingModelsData, embeddingModel]);
+
+  // Include current config values in Ollama model options even if not installed
+  const ollamaModelOptions = useMemo(() => {
+    const models = modelsData?.models ?? [];
+    const names = new Set(models.map((m) => m.name));
+    const extras: string[] = [];
+    for (const val of [routerModel, functionAgentModel]) {
+      if (val && !names.has(val) && !extras.includes(val)) {
+        extras.push(val);
+      }
+    }
+    return { models, extras };
+  }, [modelsData, routerModel, functionAgentModel]);
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -290,17 +315,28 @@ export function SessionSettingsPanel({
                   Embedding Model
                   <HelpTooltip text="The embedding model used for vector search. Only models with built indexes are available." />
                 </Label>
-                <Select value={embeddingModel} onValueChange={setEmbeddingModel}>
+                <Select
+                  value={embeddingModelSelectValue}
+                  onValueChange={(selectedId) => {
+                    const model = embeddingModelsData?.models.find(
+                      (m) => m.model_id === selectedId
+                    );
+                    if (model?.model_name) {
+                      setEmbeddingModel(model.model_name);
+                    } else {
+                      console.warn(
+                        `Embedding model "${selectedId}" has no model_name; keeping current value`
+                      );
+                    }
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select embedding model" />
                   </SelectTrigger>
                   <SelectContent>
                     {embeddingModelsData?.models.map((model) => (
-                      <SelectItem
-                        key={model.model_id}
-                        value={model.model_name || model.model_id}
-                      >
-                        {model.model_id} ({model.index_count} indexes)
+                      <SelectItem key={model.model_id} value={model.model_id}>
+                        {model.model_name || model.model_id} ({model.index_count} indexes)
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -501,7 +537,12 @@ export function SessionSettingsPanel({
                   <SelectValue placeholder="Select model" />
                 </SelectTrigger>
                 <SelectContent>
-                  {modelsData?.models.map((model) => (
+                  {ollamaModelOptions.extras.map((name) => (
+                    <SelectItem key={name} value={name} className="text-muted-foreground">
+                      {name} (not installed)
+                    </SelectItem>
+                  ))}
+                  {ollamaModelOptions.models.map((model) => (
                     <SelectItem key={model.name} value={model.name}>
                       {model.name}
                     </SelectItem>
@@ -519,7 +560,12 @@ export function SessionSettingsPanel({
                   <SelectValue placeholder="Select model" />
                 </SelectTrigger>
                 <SelectContent>
-                  {modelsData?.models.map((model) => (
+                  {ollamaModelOptions.extras.map((name) => (
+                    <SelectItem key={name} value={name} className="text-muted-foreground">
+                      {name} (not installed)
+                    </SelectItem>
+                  ))}
+                  {ollamaModelOptions.models.map((model) => (
                     <SelectItem key={model.name} value={model.name}>
                       {model.name}
                     </SelectItem>
