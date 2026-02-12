@@ -224,13 +224,26 @@ async def test_web_command_handles_errors():
 
 
 @pytest.mark.asyncio
-async def test_web_command_uses_session_params():
+async def test_web_command_uses_session_params(tmp_path, monkeypatch):
     """WebSearchCommand extracts model/ollama parameters from session.
 
     Note: Web search specific settings (max_results, max_pages) come from config,
     not session params, to maintain consistency across sessions.
     """
     from tensortruth.api.routes.commands import WebSearchCommand
+
+    # Use a temp config file to avoid loading user's actual config
+    config_file = tmp_path / "config.yaml"
+    from tensortruth.services.config_service import ConfigService
+
+    test_service = ConfigService(config_file=config_file)
+
+    def get_test_config_service():
+        return test_service
+
+    monkeypatch.setattr(
+        "tensortruth.api.routes.commands.ConfigService", get_test_config_service
+    )
 
     cmd = WebSearchCommand()
     websocket = AsyncMock()
@@ -259,9 +272,22 @@ async def test_web_command_uses_session_params():
 
 
 @pytest.mark.asyncio
-async def test_web_command_uses_defaults():
+async def test_web_command_uses_defaults(tmp_path, monkeypatch):
     """WebSearchCommand uses sensible defaults when params missing."""
     from tensortruth.api.routes.commands import WebSearchCommand
+
+    # Use a temp config file to avoid loading user's actual config
+    config_file = tmp_path / "config.yaml"
+    from tensortruth.services.config_service import ConfigService
+
+    test_service = ConfigService(config_file=config_file)
+
+    def get_test_config_service():
+        return test_service
+
+    monkeypatch.setattr(
+        "tensortruth.api.routes.commands.ConfigService", get_test_config_service
+    )
 
     cmd = WebSearchCommand()
     websocket = AsyncMock()

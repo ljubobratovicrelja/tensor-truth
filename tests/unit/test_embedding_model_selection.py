@@ -63,6 +63,29 @@ class TestSanitizeModelId:
 
 
 @pytest.mark.unit
+class TestResolveEmbeddingModelName:
+    """Tests for resolve_embedding_model_name function."""
+
+    def test_full_path_returned_as_is(self):
+        """Test that a full HuggingFace path is returned unchanged."""
+        from tensortruth.indexing.metadata import resolve_embedding_model_name
+
+        assert resolve_embedding_model_name("BAAI/bge-m3") == "BAAI/bge-m3"
+
+    def test_sanitized_id_resolved(self):
+        """Test that a sanitized model ID is resolved to the full path."""
+        from tensortruth.indexing.metadata import resolve_embedding_model_name
+
+        assert resolve_embedding_model_name("bge-m3") == "BAAI/bge-m3"
+
+    def test_unknown_id_returned_as_is(self):
+        """Test that an unknown sanitized ID is returned unchanged."""
+        from tensortruth.indexing.metadata import resolve_embedding_model_name
+
+        assert resolve_embedding_model_name("totally-unknown") == "totally-unknown"
+
+
+@pytest.mark.unit
 class TestWriteAndReadIndexMetadata:
     """Tests for write_index_metadata and read_index_metadata functions."""
 
