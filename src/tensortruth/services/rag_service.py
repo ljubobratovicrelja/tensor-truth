@@ -104,14 +104,14 @@ class RAGService:
         self,
         modules: Optional[List[str]],
         params: Dict[str, Any],
-        session_index_path: Optional[str] = None,
+        additional_index_paths: Optional[List[str]] = None,
     ) -> Optional[Tuple[Any, ...]]:
         """Compute configuration hash for cache invalidation.
 
         Args:
             modules: List of module names.
             params: Engine parameters (may contain nested dicts/lists).
-            session_index_path: Optional session index path.
+            additional_index_paths: Optional list of additional index paths.
 
         Returns:
             Hashable tuple for comparison.
@@ -121,17 +121,19 @@ class RAGService:
         # sort_keys ensures {"a":1,"b":2} == {"b":2,"a":1}
         # default=str handles non-serializable objects gracefully
         param_hash = json.dumps(params, sort_keys=True, default=str)
-        has_session_index = bool(session_index_path)
+        paths_tuple = (
+            tuple(sorted(additional_index_paths)) if additional_index_paths else None
+        )
 
-        if modules_tuple or has_session_index:
-            return (modules_tuple, param_hash, has_session_index)
+        if modules_tuple or paths_tuple:
+            return (modules_tuple, param_hash, paths_tuple)
         return None
 
     def load_engine(
         self,
         modules: List[str],
         params: Dict[str, Any],
-        session_index_path: Optional[str] = None,
+        additional_index_paths: Optional[List[str]] = None,
     ) -> None:
         """Load or reload the RAG engine with specified configuration.
 
@@ -141,7 +143,8 @@ class RAGService:
         Args:
             modules: List of module names to load.
             params: Engine parameters (model, temperature, etc).
-            session_index_path: Optional path to session-specific PDF index.
+            additional_index_paths: Optional list of additional index paths
+                (session PDFs, project indexes).
         """
         # Clear existing engine first to free GPU memory
         self.clear()
@@ -151,7 +154,7 @@ class RAGService:
         self._engine = load_engine_for_modules(
             selected_modules=modules,
             engine_params=params,
-            session_index_path=session_index_path,
+            additional_index_paths=additional_index_paths,
         )
 
         # Cache components - single point of private access (acceptable during init)
@@ -163,7 +166,7 @@ class RAGService:
         self._current_modules = modules
         self._current_params = params
         self._current_config_hash = self._compute_config_hash(
-            modules, params, session_index_path
+            modules, params, additional_index_paths
         )
 
         logger.info(f"RAG engine loaded successfully for {len(modules)} modules")
@@ -172,23 +175,25 @@ class RAGService:
         self,
         modules: List[str],
         params: Dict[str, Any],
-        session_index_path: Optional[str] = None,
+        additional_index_paths: Optional[List[str]] = None,
     ) -> bool:
         """Check if engine needs to be reloaded due to config changes.
 
         Args:
             modules: List of module names.
             params: Engine parameters.
-            session_index_path: Optional session index path.
+            additional_index_paths: Optional list of additional index paths.
 
         Returns:
             True if engine should be reloaded.
         """
         if self._engine is None:
-            new_hash = self._compute_config_hash(modules, params, session_index_path)
+            new_hash = self._compute_config_hash(
+                modules, params, additional_index_paths
+            )
             return new_hash is not None  # Only reload if there's something to load
 
-        new_hash = self._compute_config_hash(modules, params, session_index_path)
+        new_hash = self._compute_config_hash(modules, params, additional_index_paths)
         return new_hash != self._current_config_hash
 
     def is_loaded(self) -> bool:

@@ -29,7 +29,7 @@ class TestChatService:
                 modules=[],
                 params={"temperature": 0.7},
                 session_messages=[],
-                session_index_path=None,
+                additional_index_paths=None,
             )
         )
 
@@ -58,7 +58,7 @@ class TestChatService:
                 modules=["pytorch"],
                 params={},
                 session_messages=[{"role": "user", "content": "previous"}],
-                session_index_path=None,
+                additional_index_paths=None,
             )
         )
 
@@ -69,7 +69,7 @@ class TestChatService:
         )
 
     def test_routes_to_rag_when_pdf_index_present(self):
-        """Verify query called when session_index_path provided."""
+        """Verify query called when additional_index_paths provided."""
         mock_rag_service = MagicMock()
         mock_rag_service.needs_reload.return_value = False
         mock_rag_service.query.return_value = iter(
@@ -84,7 +84,7 @@ class TestChatService:
                 modules=[],
                 params={},
                 session_messages=[],
-                session_index_path="/path/to/pdf/index",
+                additional_index_paths=["/path/to/pdf/index"],
             )
         )
 
@@ -110,7 +110,7 @@ class TestChatService:
                 modules=["pytorch"],
                 params={"temperature": 0.7},
                 session_messages=[],
-                session_index_path="/path/to/index",
+                additional_index_paths=["/path/to/index"],
             )
         )
 
@@ -120,12 +120,12 @@ class TestChatService:
         mock_rag_service.needs_reload.assert_called_once_with(
             ["pytorch"],
             {"temperature": 0.7},
-            "/path/to/index",
+            ["/path/to/index"],
         )
         mock_rag_service.load_engine.assert_called_once_with(
             modules=["pytorch"],
             params={"temperature": 0.7},
-            session_index_path="/path/to/index",
+            additional_index_paths=["/path/to/index"],
         )
 
     def test_skips_load_engine_when_no_reload_needed(self):
@@ -144,7 +144,7 @@ class TestChatService:
                 modules=["pytorch"],
                 params={},
                 session_messages=[],
-                session_index_path=None,
+                additional_index_paths=None,
             )
         )
 
@@ -171,7 +171,7 @@ class TestChatService:
                 modules=["pytorch"],
                 params={},
                 session_messages=messages,
-                session_index_path=None,
+                additional_index_paths=None,
             )
         )
 
@@ -200,7 +200,7 @@ class TestChatService:
                 modules=["pytorch"],
                 params={},
                 session_messages=[],
-                session_index_path=None,
+                additional_index_paths=None,
             )
         )
 
@@ -230,7 +230,7 @@ class TestChatService:
                 modules=["pytorch"],
                 params={},
                 session_messages=[],
-                session_index_path=None,
+                additional_index_paths=None,
             )
         )
 
@@ -260,7 +260,7 @@ class TestChatService:
                 modules=["pytorch"],
                 params={},
                 session_messages=[],
-                session_index_path=None,
+                additional_index_paths=None,
             )
         )
 
@@ -296,7 +296,7 @@ class TestChatServiceExecute:
             modules=["pytorch"],
             params={},
             session_messages=[],
-            session_index_path=None,
+            additional_index_paths=None,
         )
 
         assert isinstance(result, ChatResult)
@@ -321,7 +321,7 @@ class TestChatServiceExecute:
             modules=[],
             params={"model": "llama3"},
             session_messages=[],
-            session_index_path=None,
+            additional_index_paths=None,
         )
 
         assert result.response == "LLM response"
@@ -367,7 +367,7 @@ class TestChatServiceExecute:
             modules=["pytorch"],
             params={},
             session_messages=[],
-            session_index_path=None,
+            additional_index_paths=None,
         )
 
         # Verify source was converted

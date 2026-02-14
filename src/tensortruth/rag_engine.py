@@ -528,7 +528,7 @@ class MultiIndexRetriever(BaseRetriever):
 def load_engine_for_modules(
     selected_modules: List[str],
     engine_params: Optional[Dict[str, Any]] = None,
-    session_index_path: Optional[str] = None,
+    additional_index_paths: Optional[List[str]] = None,
 ) -> CondensePlusContextChatEngine:
     """Load RAG chat engine with selected module indexes.
 
@@ -539,7 +539,8 @@ def load_engine_for_modules(
     Args:
         selected_modules: List of module names to load
         engine_params: Engine configuration parameters
-        session_index_path: Optional session-specific index path
+        additional_index_paths: Optional list of additional index paths
+            (session PDFs, project indexes)
 
     Returns:
         Configured CondensePlusContextChatEngine instance
@@ -653,16 +654,18 @@ def load_engine_for_modules(
         f"{loaded_modules}"
     )
 
-    # Load session-specific PDF index if provided
-    if session_index_path and os.path.exists(session_index_path):
-        print(f"--- LOADING SESSION INDEX: {session_index_path} ---")
+    # Load additional indexes (session PDFs, project indexes) if provided
+    for idx_path in additional_index_paths or []:
+        if not os.path.exists(idx_path):
+            logger.warning(f"Additional index path not found, skipping: {idx_path}")
+            continue
         try:
-            db = chromadb.PersistentClient(path=session_index_path)
+            db = chromadb.PersistentClient(path=idx_path)
             collection = db.get_or_create_collection("data")
             vector_store = ChromaVectorStore(chroma_collection=collection)
 
             storage_context = StorageContext.from_defaults(
-                persist_dir=session_index_path, vector_store=vector_store
+                persist_dir=idx_path, vector_store=vector_store
             )
 
             index = load_index_from_storage(storage_context, embed_model=embed_model)
@@ -673,9 +676,9 @@ def load_engine_for_modules(
                 base, index.storage_context, verbose=False  # type: ignore[arg-type]
             )
             active_retrievers.append(am_retriever)
-            print("Session index loaded successfully")
+            logger.info(f"Additional index loaded: {idx_path}")
         except Exception as e:
-            print(f"Failed to load session index: {e}")
+            logger.warning(f"Failed to load additional index {idx_path}: {e}")
 
     if not active_retrievers:
         raise FileNotFoundError("No valid indices loaded.")

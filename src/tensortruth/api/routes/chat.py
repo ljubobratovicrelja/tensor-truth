@@ -2,8 +2,9 @@
 
 import asyncio
 import json
+import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
@@ -11,9 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from tensortruth.api.deps import (
     ChatServiceDep,
     IntentServiceDep,
+    ProjectServiceDep,
     SessionServiceDep,
     get_chat_service,
     get_pdf_service,
+    get_project_service,
     get_session_service,
 )
 from tensortruth.api.routes.commands import registry as command_registry
@@ -24,8 +27,11 @@ from tensortruth.api.schemas import (
     IntentResponse,
     SourceNode,
 )
+from tensortruth.app_utils.paths import get_project_index_dir
 from tensortruth.app_utils.title_generation import generate_smart_title_async
-from tensortruth.services import SessionService
+from tensortruth.services import ProjectService, SessionService
+
+logger = logging.getLogger(__name__)
 
 # REST endpoints (mounted under /api)
 rest_router = APIRouter()
@@ -48,7 +54,7 @@ class ChatContext:
     modules: List[str]
     params: Dict[str, Any]
     session_messages: List[Dict[str, Any]]
-    session_index_path: Optional[str]
+    additional_index_paths: List[str] = field(default_factory=list)
 
     @classmethod
     def from_session(
@@ -57,26 +63,69 @@ class ChatContext:
         prompt: str,
         session: Dict[str, Any],
         pdf_service: Any,
+        project_service: Optional[ProjectService] = None,
     ) -> "ChatContext":
         """Create ChatContext from session data and PDF service.
+
+        When the session belongs to a project, merges project-level catalog
+        modules and collects project/session index paths.
 
         Args:
             session_id: The session identifier.
             prompt: The user's current prompt.
             session: Session dict containing modules, params, messages.
             pdf_service: PDFService instance to check for PDF index.
+            project_service: Optional ProjectService for project context resolution.
 
         Returns:
             ChatContext instance with all fields populated.
         """
-        index_path = pdf_service.get_index_path()
+        session_modules = session.get("modules") or []
+        additional_index_paths: List[str] = []
+
+        # Resolve project context if session belongs to a project
+        project_id = session.get("project_id")
+        project_modules: List[str] = []
+        if project_id and project_service:
+            project_data = project_service.load()
+            project = project_service.get_project(project_id, project_data)
+            if project:
+                # Extract indexed catalog modules from project
+                # catalog_modules is a dict: {"module_name": {"status": "indexed"}}
+                catalog = project.get("catalog_modules", {})
+                project_modules = [
+                    module_name
+                    for module_name, mod_info in catalog.items()
+                    if isinstance(mod_info, dict)
+                    and mod_info.get("status") == "indexed"
+                ]
+
+                # Check for project index directory on disk
+                project_index_dir = get_project_index_dir(project_id)
+                chroma_db_path = project_index_dir / "chroma.sqlite3"
+                if chroma_db_path.exists():
+                    additional_index_paths.append(str(project_index_dir))
+            else:
+                logger.warning(
+                    f"Project {project_id} not found for session {session_id}, "
+                    "falling back to session-only context"
+                )
+
+        # Merge modules: project modules first, then session, deduplicated
+        merged_modules = list(dict.fromkeys(project_modules + session_modules))
+
+        # Add session PDF index if it exists
+        session_index_path = pdf_service.get_index_path()
+        if session_index_path:
+            additional_index_paths.append(str(session_index_path))
+
         return cls(
             session_id=session_id,
             prompt=prompt,
-            modules=session.get("modules") or [],
+            modules=merged_modules,
             params=session.get("params", {}),
             session_messages=session.get("messages", []),
-            session_index_path=str(index_path) if index_path else None,
+            additional_index_paths=additional_index_paths,
         )
 
 
@@ -113,6 +162,7 @@ async def chat(
     body: ChatRequest,
     session_service: SessionServiceDep,
     chat_service: ChatServiceDep,
+    project_service: ProjectServiceDep,
 ) -> ChatResponse:
     """Non-streaming chat endpoint."""
     # 1. Validate session
@@ -124,7 +174,11 @@ async def chat(
     # 2. Build context
     with get_pdf_service(session_id) as pdf_service:
         context = ChatContext.from_session(
-            session_id, body.prompt, session, pdf_service
+            session_id,
+            body.prompt,
+            session,
+            pdf_service,
+            project_service=project_service,
         )
 
     # 3. Save user message
@@ -139,7 +193,7 @@ async def chat(
         modules=context.modules,
         params=context.params,
         session_messages=context.session_messages,
-        session_index_path=context.session_index_path,
+        additional_index_paths=context.additional_index_paths,
     )
 
     # 5. Save assistant message
@@ -164,6 +218,7 @@ async def websocket_chat(
     session_id: str,
     session_service=Depends(get_session_service),
     chat_service=Depends(get_chat_service),
+    project_service=Depends(get_project_service),
 ) -> None:
     """WebSocket endpoint for streaming chat.
 
@@ -316,16 +371,15 @@ async def websocket_chat(
                 )
                 break
 
-            modules = session.get("modules") or []
-            params = session.get("params", {})
-
-            # Check for session PDF index
+            # Build context (resolves project modules + index paths)
             with get_pdf_service(session_id) as pdf_service:
-                index_path = pdf_service.get_index_path()
-                session_index_path = str(index_path) if index_path else None
-
-            # Get session messages for history BEFORE adding the new user message
-            session_messages = session.get("messages", [])
+                context = ChatContext.from_session(
+                    session_id,
+                    prompt,
+                    session,
+                    pdf_service,
+                    project_service=project_service,
+                )
 
             # Add user message
             data = session_service.load()
@@ -345,11 +399,11 @@ async def websocket_chat(
 
             # Use ChatService for query routing (handles engine loading internally)
             query_generator = chat_service.query(
-                prompt=prompt,
-                modules=modules,
-                params=params,
-                session_messages=session_messages,
-                session_index_path=session_index_path,
+                prompt=context.prompt,
+                modules=context.modules,
+                params=context.params,
+                session_messages=context.session_messages,
+                additional_index_paths=context.additional_index_paths,
             )
 
             # Iterate generator in thread pool to prevent blocking event loop

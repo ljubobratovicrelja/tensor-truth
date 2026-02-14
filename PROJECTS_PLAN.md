@@ -494,16 +494,14 @@ What landed:
 - `needs_reload()` now returns `False` (not `True`) when engine is None and
   there's nothing to load (hash is None).
 
-What Story 2 should know:
+What future stories should know:
 - `RAGService.query(prompt, params, session_messages)` — `params` is used
   for ad-hoc LLM creation when engine is None. When engine exists, it uses
   `self._current_params`.
 - `ChatService.query()` always passes `params` through to `rag_service.query()`.
-- The `session_index_path` parameter still flows through `ChatService` →
-  `needs_reload()` / `load_engine()` unchanged — ready for the rename to
-  `additional_index_paths`.
-- `_compute_config_hash()` still uses `bool(session_index_path)` — Story 2
-  must fix this to include actual paths.
+- Story 2 renamed `session_index_path` → `additional_index_paths: List[str]`
+  and fixed the config hash. The call chain is now:
+  `chat.py` → `chat_service.py` → `rag_service.py` → `rag_engine.py`.
 
 ### Phase 1: Foundation
 
@@ -534,12 +532,13 @@ What landed:
   `DocumentInfo` in `frontend/src/api/types.ts`.
 - Tests: 25 unit (service), 4 unit (config inheritance), 19 integration (API).
 
-What Story 2 should know:
-- `get_project_service()` already exists in `api/deps.py` — just inject via
+What future stories should know:
+- `get_project_service()` exists in `api/deps.py` — inject via
   `ProjectServiceDep`. Cache cleared in lifespan shutdown.
 - To resolve project context from a session: read `session.get("project_id")`,
   then `project_service.load()` + `get_project()`. Project dict has
-  `catalog_modules` (dict of module_name → status), `config`, `session_ids`.
+  `catalog_modules` (dict of `{module_name: {"status": "..."}}`), `config`,
+  `session_ids`. Story 2 already does this in `ChatContext.from_session()`.
 - `get_project_index_dir(project_id)` returns the project's vector index path.
 - Router registered in `main.py` at `/api/projects`.
 
@@ -598,7 +597,80 @@ Original spec (for reference):
 - Unit tests for project CRUD, session-project bookkeeping, and config
   inheritance.
 
-**Story 2. Backend: Session-project association + RAG engine**
+**Story 2. Backend: Session-project association + RAG engine** ✅ DONE
+
+What landed:
+- Renamed `session_index_path: Optional[str]` → `additional_index_paths:
+  Optional[List[str]]` across the full 4-file call chain:
+  `rag_engine.py` → `rag_service.py` → `chat_service.py` → `chat.py`.
+- `rag_engine.py`: `load_engine_for_modules()` now loops over
+  `additional_index_paths or []`. Each path is independent — errors log a
+  warning and skip that path, not abort the whole load.
+- `rag_service.py`: **Config hash bug fixed.** `_compute_config_hash()` now
+  uses `tuple(sorted(additional_index_paths))` instead of
+  `bool(session_index_path)`. Different project indexes produce different
+  hashes → engine reloads correctly when switching projects.
+- `chat_service.py`: `execute()` and `query()` pass through the renamed
+  param to `needs_reload()` / `load_engine()`.
+- `ChatContext` dataclass: `session_index_path: Optional[str]` →
+  `additional_index_paths: List[str]` (default `[]`).
+- `ChatContext.from_session()`: accepts optional `project_service` param.
+  When session has `project_id` and project exists: extracts indexed
+  catalog modules (dict format: `{name: {status}}`, filters
+  `status == "indexed"`), checks for project index dir on disk
+  (`chroma.sqlite3` exists), merges modules via
+  `list(dict.fromkeys(project_modules + session_modules))`.
+- REST `chat()` endpoint: injects `ProjectServiceDep`, passes to
+  `from_session()`, uses `additional_index_paths=context.additional_index_paths`.
+- WebSocket `websocket_chat()`: injects `Depends(get_project_service)`.
+  **Refactored** to use `ChatContext.from_session()` instead of inline
+  context extraction — both REST and WS now share the same code path.
+- Edge cases handled: session without project (skips resolution), deleted
+  project (graceful fallback with warning log), no indexed modules (empty
+  list), duplicate modules (deduplicated), empty paths (loop is a no-op).
+- Tests: 5 new config hash regression tests in `test_rag_service.py`,
+  4 new project resolution tests in `test_chat_routes.py`, updated param
+  names across `test_chat_service.py` (~15 call sites) and
+  `test_api_chat.py` (integration mock signature).
+
+What Story 3 (task runner) should know:
+- Story 3 has no direct dependency on Story 2. It builds standalone
+  infrastructure (task state machine, polling endpoint, concurrency queue).
+- When Story 6 wires catalog module add/remove to the task runner, the
+  task completion handler should update the module's status in
+  `project.json` from `"building"` to `"indexed"`. At that point, the
+  next chat query will pick up the module via the `from_session()` logic
+  implemented here (it checks `status == "indexed"`).
+
+What Story 4 (generalize document backend) should know:
+- `PDFService` / `get_pdf_service()` is still used for session index paths.
+  The rename to `DocumentService` is Story 4's scope.
+- `ChatContext.from_session()` calls `pdf_service.get_index_path()` to get
+  the session index path, then appends it to `additional_index_paths`.
+  When Story 4 renames to `DocumentService`, update this call site.
+- Project index paths come from `get_project_index_dir(project_id)` in
+  `app_utils/paths.py` — not from `PDFService`. No change needed here.
+
+What Story 6 (document management API) should know:
+- `from_session()` checks `(project_index_dir / "chroma.sqlite3").exists()`
+  before adding the project index path. When Story 6 builds project-level
+  document indexes, they must write to `get_project_index_dir(project_id)`
+  so this check passes.
+- `catalog_modules` is a dict `{module_name: {"status": "...", ...}}` in
+  project.json. The add/remove endpoints must maintain this format. Only
+  modules with `status == "indexed"` are loaded at query time.
+
+What Story 7 (frontend routing) should know:
+- No frontend changes in Story 2. All project context resolution is
+  server-side — the WebSocket and REST endpoints resolve project modules
+  and indexes transparently from the session's `project_id`.
+- The frontend does NOT need to send project info when chatting. Just
+  opening a session that belongs to a project automatically activates
+  project knowledge.
+- `SessionResponse.project_id` (from Story 1) is available for the
+  frontend to detect project context and adapt UI accordingly.
+
+Original spec (for reference):
 - Change `session_index_path` → `additional_index_paths: List[str]` across
   the full call chain (signature cascades through 4 files):
   - `rag_engine.py`: `load_engine_for_modules()`

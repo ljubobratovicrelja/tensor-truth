@@ -182,7 +182,7 @@ class TestChatAPIWithMockedRAG:
         mock = MagicMock()
 
         def execute_impl(
-            prompt, modules, params, session_messages=None, session_index_path=None
+            prompt, modules, params, session_messages=None, additional_index_paths=None
         ):
             return ChatResult(
                 response="Mocked RAG response",

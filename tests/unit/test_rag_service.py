@@ -620,8 +620,8 @@ def test_config_hash_consistency_with_nested_params():
 
 
 @pytest.mark.unit
-def test_needs_reload_with_session_index_addition():
-    """needs_reload() should return True when session index is added."""
+def test_needs_reload_with_additional_index_addition():
+    """needs_reload() should return True when additional index is added."""
     from tensortruth.services.rag_service import RAGService
 
     service = RAGService(_create_mock_config())
@@ -636,8 +636,94 @@ def test_needs_reload_with_session_index_addition():
 
     # Adding session index should trigger reload
     assert service.needs_reload(
-        ["module_a"], service._current_params, "/path/to/session/index"
-    ), "needs_reload() should return True when session index is added"
+        ["module_a"], service._current_params, ["/path/to/session/index"]
+    ), "needs_reload() should return True when additional index is added"
+
+
+@pytest.mark.unit
+def test_config_hash_different_paths_produce_different_hashes():
+    """Different additional_index_paths must produce different hashes (bug regression)."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+    params = {"model": "test-model"}
+
+    hash_a = service._compute_config_hash(
+        ["module_a"], params, ["/path/to/project_A/index"]
+    )
+    hash_b = service._compute_config_hash(
+        ["module_a"], params, ["/path/to/project_B/index"]
+    )
+
+    assert hash_a != hash_b, (
+        "Different index paths must produce different hashes "
+        "(old bool-based hash would have treated these as equal)"
+    )
+
+
+@pytest.mark.unit
+def test_config_hash_empty_paths_vs_none():
+    """Empty list and None should produce equivalent hashes."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+    params = {"model": "test-model"}
+
+    hash_empty = service._compute_config_hash(["module_a"], params, [])
+    hash_none = service._compute_config_hash(["module_a"], params, None)
+
+    assert hash_empty == hash_none, "[] and None should be treated equivalently"
+
+
+@pytest.mark.unit
+def test_config_hash_path_order_independent():
+    """Path order should not affect the hash (sorted internally)."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+    params = {"model": "test-model"}
+
+    hash_ab = service._compute_config_hash(["module_a"], params, ["/path/a", "/path/b"])
+    hash_ba = service._compute_config_hash(["module_a"], params, ["/path/b", "/path/a"])
+
+    assert hash_ab == hash_ba, "Path order should not affect config hash"
+
+
+@pytest.mark.unit
+def test_config_hash_multiple_paths():
+    """Adding an extra path should change the hash."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+    params = {"model": "test-model"}
+
+    hash_one = service._compute_config_hash(["module_a"], params, ["/path/a"])
+    hash_two = service._compute_config_hash(
+        ["module_a"], params, ["/path/a", "/path/b"]
+    )
+
+    assert hash_one != hash_two, "Adding a path should change the hash"
+
+
+@pytest.mark.unit
+def test_needs_reload_detects_index_path_change():
+    """Switching projects (different index paths) should trigger reload."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+
+    # Simulate loaded state with project A's index
+    service._engine = Mock()
+    service._current_modules = ["module_a"]
+    service._current_params = {"model": "test-model"}
+    service._current_config_hash = service._compute_config_hash(
+        ["module_a"], service._current_params, ["/projects/A/index"]
+    )
+
+    # Switching to project B's index should trigger reload
+    assert service.needs_reload(
+        ["module_a"], service._current_params, ["/projects/B/index"]
+    ), "Switching project index paths should trigger reload"
 
 
 @pytest.mark.unit

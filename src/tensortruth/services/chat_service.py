@@ -41,7 +41,7 @@ class ChatService:
         modules: List[str],
         params: Dict[str, Any],
         session_messages: Optional[List[Dict[str, Any]]] = None,
-        session_index_path: Optional[str] = None,
+        additional_index_paths: Optional[List[str]] = None,
     ) -> ChatResult:
         """Execute chat query and return complete result.
 
@@ -53,7 +53,8 @@ class ChatService:
             modules: List of module names for RAG retrieval.
             params: Engine parameters (model, temperature, etc).
             session_messages: Chat history from session storage.
-            session_index_path: Optional path to session-specific PDF index.
+            additional_index_paths: Optional list of additional index paths
+                (session PDFs, project indexes).
 
         Returns:
             ChatResult with response text, sources (as API dicts), and metrics.
@@ -67,7 +68,7 @@ class ChatService:
             modules=modules,
             params=params,
             session_messages=session_messages,
-            session_index_path=session_index_path,
+            additional_index_paths=additional_index_paths,
         ):
             if chunk.is_complete:
                 sources = self._extract_sources(chunk.source_nodes)
@@ -87,7 +88,7 @@ class ChatService:
         modules: List[str],
         params: Dict[str, Any],
         session_messages: Optional[List[Dict[str, Any]]] = None,
-        session_index_path: Optional[str] = None,
+        additional_index_paths: Optional[List[str]] = None,
     ) -> Generator[RAGChunk, None, RAGResponse]:
         """Execute chat query through the unified pipeline (streaming).
 
@@ -104,7 +105,8 @@ class ChatService:
             modules: List of module names for RAG retrieval.
             params: Engine parameters (model, temperature, etc).
             session_messages: Chat history from session storage.
-            session_index_path: Optional path to session-specific PDF index.
+            additional_index_paths: Optional list of additional index paths
+                (session PDFs, project indexes).
 
         Yields:
             RAGChunk with status, thinking, or text content.
@@ -112,12 +114,12 @@ class ChatService:
         Returns:
             Final RAGResponse with complete text and sources.
         """
-        if self._rag_service.needs_reload(modules, params, session_index_path):
+        if self._rag_service.needs_reload(modules, params, additional_index_paths):
             yield RAGChunk(status="loading_models")
             self._rag_service.load_engine(
                 modules=modules,
                 params=params,
-                session_index_path=session_index_path,
+                additional_index_paths=additional_index_paths,
             )
 
         return (
