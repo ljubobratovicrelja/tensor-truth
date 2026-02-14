@@ -52,6 +52,7 @@ from .startup import (
     ReinitializeIndexesResponse,
     StartupStatusResponse,
 )
+from .task import TaskListResponse, TaskResponse, TaskSubmitResponse
 
 __all__ = [
     # Common
@@ -106,4 +107,8 @@ __all__ = [
     "ModelPullRequest",
     "ModelPullResponse",
     "ReinitializeIndexesResponse",
+    # Task
+    "TaskResponse",
+    "TaskListResponse",
+    "TaskSubmitResponse",
 ]

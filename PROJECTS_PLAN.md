@@ -703,7 +703,56 @@ Original spec (for reference):
 - Regression test for config hash fix.
 - Depends on: Stories 0, 1.
 
-**Story 3. Backend: Async task runner infrastructure**
+**Story 3. Backend: Async task runner infrastructure** ✅ DONE
+
+What landed:
+- `TaskRunner` singleton in `services/task_runner.py` — async queue, single
+  worker coroutine, `ThreadPoolExecutor(max_workers=1)`, serial execution.
+- `TaskStatus` enum (`PENDING`, `RUNNING`, `COMPLETED`, `ERROR`).
+- `TaskInfo` dataclass: `task_id`, `task_type`, `status`, `created_at`,
+  `updated_at`, `progress` (0-100 int), `stage` (str), `result`
+  (Optional[Dict]), `error` (Optional[str]), `metadata` (Dict).
+- `submit(task_type, fn, *, on_complete=None, metadata=None) -> str`:
+  fn receives a `progress_callback(stage, current, total)`. Returns task_id.
+- `on_complete` callback fires after completion or error, receives `TaskInfo`.
+  Supports both sync and async callables.
+- `get_task_runner()` in `deps.py` using `_tool_service`-style global
+  (NOT `@lru_cache` — needs async lifecycle). `TaskRunnerDep` type alias.
+- Lifespan: `start()` on startup, `stop()` on shutdown in `main.py`.
+- Pydantic schemas: `TaskResponse`, `TaskListResponse`, `TaskSubmitResponse`
+  in `api/schemas/task.py`.
+- Endpoints: `GET /api/tasks/{task_id}` (404 if not found),
+  `GET /api/tasks` (optional `task_type` and `status` query params).
+- Router at `/api/tasks` in `main.py`.
+- Tests: 18 unit (service), 5 integration (API).
+
+What Story 6 (document management API) should know:
+- Import: `from tensortruth.api.deps import get_task_runner` or inject
+  `TaskRunnerDep`. Call `await runner.submit(...)`.
+- Submit pattern for catalog module builds:
+  ```python
+  task_id = await runner.submit(
+      "build_module",
+      lambda cb: build_module(..., progress_callback=cb),
+      on_complete=lambda info: update_project_module_status(info),
+      metadata={"project_id": pid, "module_name": name},
+  )
+  ```
+- `on_complete` runs on the event loop thread (not executor), so sync
+  `ProjectService.load()`/`save()` calls are fine inside it.
+- Guard against duplicate submissions: check if module already has
+  `status == "building"` before submitting. The runner is a generic queue
+  and won't deduplicate for you.
+- Return `TaskSubmitResponse(task_id=task_id)` from the add endpoint.
+
+What Story 10 (frontend progress UI) should know:
+- Poll `GET /api/tasks/{task_id}` — returns `progress` (0-100),
+  `stage` (human-readable string), `status`, `error`.
+- List active builds: `GET /api/tasks?task_type=build_module&status=running`.
+- `task_id` is stored in `project.json` `catalog_modules` entry during
+  build (Story 6 writes it). Frontend reads it from `ProjectResponse`.
+
+Original spec (for reference):
 - Background task execution framework for long-running operations (doc
   fetching, index building). Needed before any API endpoint can trigger
   `scrape_library()` or `build_module()` without blocking.
@@ -835,4 +884,4 @@ Manual testing is done collaboratively after each story lands.
 
 ---
 
-*Last updated: 2026-02-14*
+*Last updated: 2026-02-15*

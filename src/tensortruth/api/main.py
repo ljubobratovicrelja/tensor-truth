@@ -24,6 +24,7 @@ from tensortruth.api.routes import (
     sessions,
     startup,
     system,
+    tasks,
     tools,
 )
 from tensortruth.api.schemas import HealthResponse
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         get_project_service,
         get_session_service,
         get_startup_service,
+        get_task_runner,
         get_tool_service,
     )
 
@@ -74,12 +76,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.warning(f"Failed to load user extensions: {e}")
 
+    # Start background task runner
+    task_runner = get_task_runner()
+    await task_runner.start()
+    logger.info("✓ TaskRunner started")
+
     logger.info("✓ TensorTruth API startup complete")
 
     yield
 
     # Shutdown - cleanup resources
     logger.info("Shutting down TensorTruth API...")
+
+    # Stop task runner
+    task_runner = get_task_runner()
+    await task_runner.stop()
 
     # Clear LRU caches on shutdown
     get_session_service.cache_clear()
@@ -117,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(modules.router, prefix="/api", tags=["modules"])
     app.include_router(pdfs.router, prefix="/api", tags=["pdfs"])
     app.include_router(system.router, prefix="/api/system", tags=["system"])
+    app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
     app.include_router(tools.router, prefix="/api", tags=["tools"])
 
     # WebSocket router at /ws (not under /api)

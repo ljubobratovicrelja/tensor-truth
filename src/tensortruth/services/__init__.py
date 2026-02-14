@@ -15,6 +15,7 @@ from .pdf_service import PDFService
 from .project_service import ProjectService
 from .rag_service import RAGService
 from .session_service import SessionService
+from .task_runner import TaskInfo, TaskRunner, TaskStatus
 from .tool_service import ToolService
 
 __all__ = [
@@ -35,5 +36,8 @@ __all__ = [
     "ChatHistory",
     "ChatHistoryMessage",
     "ChatHistoryService",
+    "TaskInfo",
+    "TaskRunner",
+    "TaskStatus",
     "ToolService",
 ]

@@ -25,6 +25,7 @@ from tensortruth.services import (
     ProjectService,
     RAGService,
     SessionService,
+    TaskRunner,
     ToolService,
 )
 from tensortruth.services.startup_service import StartupService
@@ -153,4 +154,17 @@ ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
 IntentServiceDep = Annotated[IntentService, Depends(get_intent_service)]
 ChatHistoryServiceDep = Annotated[ChatHistoryService, Depends(get_chat_history_service)]
 ToolServiceDep = Annotated[ToolService, Depends(get_tool_service)]
+# TaskRunner singleton - needs async start()/stop() lifecycle
+_task_runner: TaskRunner | None = None
+
+
+def get_task_runner() -> TaskRunner:
+    """Get the singleton TaskRunner instance."""
+    global _task_runner
+    if _task_runner is None:
+        _task_runner = TaskRunner()
+    return _task_runner
+
+
 AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
+TaskRunnerDep = Annotated[TaskRunner, Depends(get_task_runner)]
