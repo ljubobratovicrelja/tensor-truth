@@ -26,6 +26,7 @@ class SessionResponse(BaseModel):
     modules: Optional[List[str]] = None
     params: Dict[str, Any] = Field(default_factory=dict)
     message_count: int = 0
+    project_id: Optional[str] = None
 
 
 class SessionListResponse(BaseModel):

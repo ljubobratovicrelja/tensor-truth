@@ -10,8 +10,9 @@ from .chat_service import ChatResult, ChatService
 from .config_service import ConfigService
 from .intent_service import IntentService
 from .model_manager import ModelManager
-from .models import IntentResult, SessionData
+from .models import IntentResult, ProjectData, SessionData
 from .pdf_service import PDFService
+from .project_service import ProjectService
 from .rag_service import RAGService
 from .session_service import SessionService
 from .tool_service import ToolService
@@ -27,6 +28,8 @@ __all__ = [
     "IntentService",
     "IntentResult",
     "RAGService",
+    "ProjectData",
+    "ProjectService",
     "PDFService",
     "ModelManager",
     "ChatHistory",

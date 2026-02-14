@@ -10,6 +10,7 @@ from fastapi import Depends
 
 from tensortruth.app_utils.paths import (
     get_indexes_dir,
+    get_projects_data_dir,
     get_session_dir,
     get_sessions_data_dir,
     get_sessions_file,
@@ -21,6 +22,7 @@ from tensortruth.services import (
     ConfigService,
     IntentService,
     PDFService,
+    ProjectService,
     RAGService,
     SessionService,
     ToolService,
@@ -35,6 +37,12 @@ def get_session_service() -> SessionService:
         sessions_file=get_sessions_file(),  # Legacy path for migration
         sessions_dir=get_sessions_data_dir(),  # New per-session storage
     )
+
+
+@lru_cache
+def get_project_service() -> ProjectService:
+    """Get the singleton ProjectService instance."""
+    return ProjectService(projects_dir=get_projects_data_dir())
 
 
 @lru_cache
@@ -137,6 +145,7 @@ def get_agent_service() -> AgentService:
 
 # Type aliases for FastAPI dependency injection
 SessionServiceDep = Annotated[SessionService, Depends(get_session_service)]
+ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
 ConfigServiceDep = Annotated[ConfigService, Depends(get_config_service)]
 StartupServiceDep = Annotated[StartupService, Depends(get_startup_service)]
 RAGServiceDep = Annotated[RAGService, Depends(get_rag_service)]

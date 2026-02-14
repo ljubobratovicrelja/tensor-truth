@@ -19,6 +19,7 @@ from tensortruth.api.routes import (
     config,
     modules,
     pdfs,
+    projects,
     rerankers,
     sessions,
     startup,
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup - Initialize critical infrastructure
     from tensortruth.api.deps import (
         get_config_service,
+        get_project_service,
         get_session_service,
         get_startup_service,
         get_tool_service,
@@ -81,6 +83,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Clear LRU caches on shutdown
     get_session_service.cache_clear()
+    get_project_service.cache_clear()
     get_config_service.cache_clear()
     get_startup_service.cache_clear()
 
@@ -106,6 +109,7 @@ def create_app() -> FastAPI:
     # Include routers under /api prefix
     app.include_router(startup.router, prefix="/api/startup", tags=["startup"])
     app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
+    app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
     app.include_router(chat.rest_router, prefix="/api", tags=["chat"])
     app.include_router(commands.router, prefix="/api", tags=["commands"])
     app.include_router(config.router, prefix="/api/config", tags=["config"])

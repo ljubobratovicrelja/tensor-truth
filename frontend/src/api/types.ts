@@ -11,6 +11,7 @@ export interface SessionResponse {
   modules?: string[] | null;
   params: Record<string, unknown>;
   message_count: number;
+  project_id?: string | null;
 }
 
 export interface SessionListResponse {
@@ -440,4 +441,51 @@ export interface RerankerRemoveResponse {
 // API Error
 export interface ApiError {
   detail: string;
+}
+
+// Project types
+export interface CatalogModuleStatus {
+  status: string;
+  task_id?: string | null;
+}
+
+export interface DocumentInfo {
+  doc_id: string;
+  type: string;
+  filename?: string | null;
+  url?: string | null;
+  context?: string | null;
+  status: string;
+}
+
+export interface ProjectCreate {
+  name: string;
+  description?: string;
+}
+
+export interface ProjectUpdate {
+  name?: string | null;
+  description?: string | null;
+  config?: Record<string, unknown> | null;
+}
+
+export interface ProjectResponse {
+  project_id: string;
+  name: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+  catalog_modules: Record<string, CatalogModuleStatus>;
+  documents: DocumentInfo[];
+  session_ids: string[];
+  config: Record<string, unknown>;
+}
+
+export interface ProjectListResponse {
+  projects: ProjectResponse[];
+}
+
+export interface ProjectSessionCreate {
+  modules?: string[] | null;
+  params?: Record<string, unknown>;
 }

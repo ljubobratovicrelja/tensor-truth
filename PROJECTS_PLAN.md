@@ -507,7 +507,48 @@ What Story 2 should know:
 
 ### Phase 1: Foundation
 
-**Story 1. Backend: Project data model + CRUD API**
+**Story 1. Backend: Project data model + CRUD API** ✅ DONE
+
+What landed:
+- `ProjectService` in `services/project_service.py` — mirrors `SessionService`
+  (immutable state, atomic writes, per-object files + index cache). No legacy
+  migration, no messages, no `current_id`.
+- `ProjectData` dataclass in `services/models.py`.
+- 6 path functions in `app_utils/paths.py`: `get_projects_data_dir()`,
+  `get_project_dir(id)`, `get_project_data_file(id)`,
+  `get_project_documents_dir(id)`, `get_project_markdown_dir(id)`,
+  `get_project_index_dir(id)`.
+- All 7 API endpoints at `/api/projects` (CRUD + session creation + listing).
+- Pydantic schemas in `api/schemas/project.py`.
+- `project_id: Optional[str]` added to `SessionResponse` schema + frontend
+  `types.ts`. `_session_to_response()` maps it.
+- `ProjectServiceDep` in `api/deps.py` (singleton, `@lru_cache`).
+- Session delete in `api/routes/sessions.py` does project bookkeeping
+  (removes session from project's `session_ids`). `SessionService` unchanged.
+- Config inheritance: `create_project_session` passes
+  `{**project_config, **user_params}` to `session_service.create()`, which
+  applies `{**global_defaults, **params}`. Result: global < project < user.
+- Cascade delete: project deletion deletes all owned sessions.
+- Frontend types: `ProjectResponse`, `ProjectCreate`, `ProjectUpdate`,
+  `ProjectListResponse`, `ProjectSessionCreate`, `CatalogModuleStatus`,
+  `DocumentInfo` in `frontend/src/api/types.ts`.
+- Tests: 25 unit (service), 4 unit (config inheritance), 19 integration (API).
+
+What Story 2 should know:
+- `get_project_service()` already exists in `api/deps.py` — just inject via
+  `ProjectServiceDep`. Cache cleared in lifespan shutdown.
+- To resolve project context from a session: read `session.get("project_id")`,
+  then `project_service.load()` + `get_project()`. Project dict has
+  `catalog_modules` (dict of module_name → status), `config`, `session_ids`.
+- `get_project_index_dir(project_id)` returns the project's vector index path.
+- Router registered in `main.py` at `/api/projects`.
+
+What Story 7 (frontend) should know:
+- All project types already defined in `frontend/src/api/types.ts`.
+- `SessionResponse.project_id` is available for detecting project context.
+- API client functions for project CRUD not yet created (Story 7 scope).
+
+Original spec (for reference):
 - `project_service.py` following `session_service.py` pattern.
 - Storage at `~/.tensortruth/projects/{id}/`.
 - Path functions in `paths.py` (`get_project_dir`, `get_project_index_dir`, etc.)

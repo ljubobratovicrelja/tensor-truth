@@ -23,6 +23,15 @@ from .config import (
     WebSearchConfigSchema,
 )
 from .pdf import PDFListResponse, PDFMetadataResponse, ReindexResponse
+from .project import (
+    CatalogModuleStatus,
+    DocumentInfo,
+    ProjectCreate,
+    ProjectListResponse,
+    ProjectResponse,
+    ProjectSessionCreate,
+    ProjectUpdate,
+)
 from .session import (
     MessageCreate,
     MessageResponse,
@@ -76,6 +85,14 @@ __all__ = [
     "StreamToken",
     "StreamSources",
     "StreamDone",
+    # Project
+    "CatalogModuleStatus",
+    "DocumentInfo",
+    "ProjectCreate",
+    "ProjectUpdate",
+    "ProjectResponse",
+    "ProjectListResponse",
+    "ProjectSessionCreate",
     # PDF
     "PDFMetadataResponse",
     "PDFListResponse",

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from tensortruth.api.deps import (
     ChatHistoryServiceDep,
     ConfigServiceDep,
+    ProjectServiceDep,
     SessionServiceDep,
 )
 from tensortruth.api.schemas import (
@@ -35,6 +36,7 @@ def _session_to_response(session_id: str, session: dict) -> SessionResponse:
         modules=session.get("modules"),
         params=session.get("params", {}),
         message_count=len(session.get("messages", [])),
+        project_id=session.get("project_id"),
     )
 
 
@@ -113,11 +115,25 @@ async def update_session(
 
 
 @router.delete("/{session_id}", status_code=204)
-async def delete_session(session_id: str, session_service: SessionServiceDep) -> None:
+async def delete_session(
+    session_id: str,
+    session_service: SessionServiceDep,
+    project_service: ProjectServiceDep,
+) -> None:
     """Delete a session."""
     data = session_service.load()
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    # Remove session from its project if it belongs to one
+    session = data.sessions[session_id]
+    project_id = session.get("project_id")
+    if project_id:
+        project_data = project_service.load()
+        project_data = project_service.remove_session(
+            project_id, session_id, project_data
+        )
+        project_service.save(project_data)
 
     session_dir = get_session_dir(session_id)
     new_data = session_service.delete(session_id, data, session_dir=session_dir)

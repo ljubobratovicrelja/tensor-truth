@@ -100,6 +100,55 @@ def get_session_index_dir(session_id: str) -> Path:
     return index_dir
 
 
+# -------------------------------------------------------------------------
+# Project paths
+# -------------------------------------------------------------------------
+
+
+def get_projects_data_dir() -> Path:
+    """Get the path to the projects data directory (~/.tensortruth/projects/)."""
+    projects_dir = get_user_data_dir() / "projects"
+    projects_dir.mkdir(parents=True, exist_ok=True)
+    return projects_dir
+
+
+def get_project_dir(project_id: str) -> Path:
+    """Get the path to a specific project's directory."""
+    project_dir = get_projects_data_dir() / project_id
+    project_dir.mkdir(parents=True, exist_ok=True)
+    return project_dir
+
+
+def get_project_data_file(project_id: str) -> Path:
+    """Get the path to a project's data file.
+
+    Note: Does not create the project directory - call get_project_dir() first
+    if directory creation is needed.
+    """
+    return get_projects_data_dir() / project_id / "project.json"
+
+
+def get_project_documents_dir(project_id: str) -> Path:
+    """Get the path to a project's document storage directory."""
+    documents_dir = get_project_dir(project_id) / "documents"
+    documents_dir.mkdir(parents=True, exist_ok=True)
+    return documents_dir
+
+
+def get_project_markdown_dir(project_id: str) -> Path:
+    """Get the path to a project's markdown storage directory."""
+    markdown_dir = get_project_dir(project_id) / "markdown"
+    markdown_dir.mkdir(parents=True, exist_ok=True)
+    return markdown_dir
+
+
+def get_project_index_dir(project_id: str) -> Path:
+    """Get the path to a project's vector index directory."""
+    index_dir = get_project_dir(project_id) / "index"
+    index_dir.mkdir(parents=True, exist_ok=True)
+    return index_dir
+
+
 # Enhanced path utilities with ENV var and CLI override support
 
 

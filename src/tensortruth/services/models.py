@@ -73,6 +73,30 @@ class SessionInfo:
 
 
 @dataclass
+class ProjectData:
+    """Immutable project state container.
+
+    Represents the complete state of all projects, designed to be
+    passed between service methods without relying on global state.
+    """
+
+    projects: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "projects": self.projects,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ProjectData":
+        """Create from dictionary (loaded from JSON)."""
+        return cls(
+            projects=data.get("projects", {}),
+        )
+
+
+@dataclass
 class IntentResult:
     """Result of intent classification.
 
