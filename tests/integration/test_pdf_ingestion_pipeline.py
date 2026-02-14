@@ -5,8 +5,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from tensortruth.document_index import DocumentIndexBuilder
 from tensortruth.pdf_handler import PDFHandler
-from tensortruth.session_index import SessionIndexBuilder
 
 
 @pytest.fixture
@@ -64,8 +64,8 @@ class TestPDFUploadToIndex:
     """Test complete pipeline from upload to indexed."""
 
     @patch("tensortruth.pdf_handler.convert_with_marker")
-    @patch("tensortruth.session_index.get_embed_model")
-    @patch("tensortruth.session_index.VectorStoreIndex")
+    @patch("tensortruth.document_index.get_embed_model")
+    @patch("tensortruth.document_index.VectorStoreIndex")
     def test_full_pipeline_marker_success(
         self,
         mock_index,
@@ -74,7 +74,7 @@ class TestPDFUploadToIndex:
         integration_session_dir,
         sample_pdf_content,
     ):
-        """Test complete flow: upload → marker conversion → indexing."""
+        """Test complete flow: upload -> marker conversion -> indexing."""
         # Setup mocks
         mock_marker.return_value = "# Research Paper\n\nThis is a test paper about AI."
         mock_embed.return_value = Mock()
@@ -99,27 +99,21 @@ class TestPDFUploadToIndex:
         assert "Research Paper" in md_content
 
         # Step 3: Build index
-        builder = SessionIndexBuilder("integration_test_session")
-        with (
-            patch("tensortruth.session_index.get_session_index_dir") as mock_index_dir,
-            patch("tensortruth.session_index.get_session_markdown_dir") as mock_md_dir,
-        ):
-            mock_index_dir.return_value = integration_session_dir / "index"
-            mock_md_dir.return_value = integration_session_dir / "markdown"
+        builder = DocumentIndexBuilder(
+            index_dir=integration_session_dir / "index",
+            markdown_dir=integration_session_dir / "markdown",
+        )
 
-            # Create the builder with mocked paths
-            builder = SessionIndexBuilder("integration_test_session")
-
-            # Should not raise
-            builder.build_index([md_path])
+        # Should not raise
+        builder.build_index([md_path])
 
         # Verify embedding was called
         assert mock_embed.called
 
     @patch("tensortruth.pdf_handler.convert_pdf_to_markdown")
     @patch("tensortruth.pdf_handler.convert_with_marker")
-    @patch("tensortruth.session_index.get_embed_model")
-    @patch("tensortruth.session_index.VectorStoreIndex")
+    @patch("tensortruth.document_index.get_embed_model")
+    @patch("tensortruth.document_index.VectorStoreIndex")
     def test_fallback_to_pymupdf_on_marker_failure(
         self,
         mock_index,
@@ -153,8 +147,8 @@ class TestMultiplePDFHandling:
     """Test handling multiple PDFs in a session."""
 
     @patch("tensortruth.pdf_handler.convert_with_marker")
-    @patch("tensortruth.session_index.get_embed_model")
-    @patch("tensortruth.session_index.VectorStoreIndex")
+    @patch("tensortruth.document_index.get_embed_model")
+    @patch("tensortruth.document_index.VectorStoreIndex")
     def test_multiple_pdf_upload_and_indexing(
         self,
         mock_index,
@@ -185,16 +179,11 @@ class TestMultiplePDFHandling:
         assert len(md_files) == 3
 
         # Build index from all
-        builder = SessionIndexBuilder("integration_test_session")
-        with (
-            patch("tensortruth.session_index.get_session_index_dir") as mock_index_dir,
-            patch("tensortruth.session_index.get_session_markdown_dir") as mock_md_dir,
-        ):
-            mock_index_dir.return_value = integration_session_dir / "index"
-            mock_md_dir.return_value = integration_session_dir / "markdown"
-
-            builder = SessionIndexBuilder("integration_test_session")
-            builder.build_index(md_files)
+        builder = DocumentIndexBuilder(
+            index_dir=integration_session_dir / "index",
+            markdown_dir=integration_session_dir / "markdown",
+        )
+        builder.build_index(md_files)
 
         assert mock_index.called
 
@@ -204,8 +193,8 @@ class TestPDFDeletionAndRebuild:
     """Test PDF deletion and index rebuilding."""
 
     @patch("tensortruth.pdf_handler.convert_with_marker")
-    @patch("tensortruth.session_index.get_embed_model")
-    @patch("tensortruth.session_index.VectorStoreIndex")
+    @patch("tensortruth.document_index.get_embed_model")
+    @patch("tensortruth.document_index.VectorStoreIndex")
     def test_delete_pdf_and_rebuild(
         self,
         mock_index,
@@ -242,16 +231,11 @@ class TestPDFDeletionAndRebuild:
         remaining_files = handler.get_all_markdown_files()
         assert len(remaining_files) == 1
 
-        builder = SessionIndexBuilder("integration_test_session")
-        with (
-            patch("tensortruth.session_index.get_session_index_dir") as mock_index_dir,
-            patch("tensortruth.session_index.get_session_markdown_dir") as mock_md_dir,
-        ):
-            mock_index_dir.return_value = integration_session_dir / "index"
-            mock_md_dir.return_value = integration_session_dir / "markdown"
-
-            builder = SessionIndexBuilder("integration_test_session")
-            builder.build_index(remaining_files)
+        builder = DocumentIndexBuilder(
+            index_dir=integration_session_dir / "index",
+            markdown_dir=integration_session_dir / "markdown",
+        )
+        builder.build_index(remaining_files)
 
         # Should have rebuilt successfully
         assert mock_index.called
@@ -262,8 +246,8 @@ class TestSessionCleanup:
     """Test complete session cleanup."""
 
     @patch("tensortruth.pdf_handler.convert_with_marker")
-    @patch("tensortruth.session_index.get_embed_model")
-    @patch("tensortruth.session_index.VectorStoreIndex")
+    @patch("tensortruth.document_index.get_embed_model")
+    @patch("tensortruth.document_index.VectorStoreIndex")
     def test_complete_session_cleanup(
         self,
         mock_index,
@@ -283,19 +267,15 @@ class TestSessionCleanup:
         metadata = handler.upload_pdf(sample_pdf_content, "test_paper.pdf")
         md_path = handler.convert_pdf_to_markdown(metadata["path"])
 
-        with (
-            patch("tensortruth.session_index.get_session_index_dir") as mock_index_dir,
-            patch("tensortruth.session_index.get_session_markdown_dir") as mock_md_dir,
-        ):
-            mock_index_dir.return_value = integration_session_dir / "index"
-            mock_md_dir.return_value = integration_session_dir / "markdown"
-
-            # Use context manager to ensure proper cleanup
-            with SessionIndexBuilder("integration_test_session") as builder:
-                builder.build_index([md_path])
+        # Use context manager to ensure proper cleanup
+        with DocumentIndexBuilder(
+            index_dir=integration_session_dir / "index",
+            markdown_dir=integration_session_dir / "markdown",
+        ) as builder:
+            builder.build_index([md_path])
 
         # Verify everything exists
-        assert (integration_session_dir / "pdfs").exists()
+        assert (integration_session_dir / "documents").exists()
         assert (integration_session_dir / "markdown").exists()
         assert (integration_session_dir / "index").exists()
 
@@ -348,8 +328,8 @@ class TestIndexPersistence:
     """Test index persistence across sessions."""
 
     @patch("tensortruth.pdf_handler.convert_with_marker")
-    @patch("tensortruth.session_index.get_embed_model")
-    @patch("tensortruth.session_index.VectorStoreIndex")
+    @patch("tensortruth.document_index.get_embed_model")
+    @patch("tensortruth.document_index.VectorStoreIndex")
     def test_index_persists_and_loads(
         self,
         mock_index,
@@ -367,31 +347,26 @@ class TestIndexPersistence:
         md_path = handler.convert_pdf_to_markdown(metadata["path"])
 
         # Build index
-        builder = SessionIndexBuilder("integration_test_session")
-        with (
-            patch("tensortruth.session_index.get_session_index_dir") as mock_index_dir,
-            patch("tensortruth.session_index.get_session_markdown_dir") as mock_md_dir,
-        ):
-            mock_index_dir.return_value = integration_session_dir / "index"
-            mock_md_dir.return_value = integration_session_dir / "markdown"
+        builder = DocumentIndexBuilder(
+            index_dir=integration_session_dir / "index",
+            markdown_dir=integration_session_dir / "markdown",
+        )
+        builder.build_index([md_path])
 
-            builder = SessionIndexBuilder("integration_test_session")
-            builder.build_index([md_path])
+        # Create marker files for index existence
+        (integration_session_dir / "index" / "chroma.sqlite3").write_text("")
+        (integration_session_dir / "index" / "docstore.json").write_text("{}")
 
-            # Create marker files for index existence
-            (integration_session_dir / "index" / "chroma.sqlite3").write_text("")
-            (integration_session_dir / "index" / "docstore.json").write_text("{}")
+        # Check index exists
+        assert builder.index_exists()
 
-            # Check index exists
-            assert builder.index_exists()
+        # Get index size
+        size = builder.get_index_size()
+        assert size > 0
 
-            # Get index size
-            size = builder.get_index_size()
-            assert size > 0
-
-            # Get document count
-            count = builder.get_document_count()
-            assert count == 1
+        # Get document count
+        count = builder.get_document_count()
+        assert count == 1
 
 
 @pytest.mark.integration

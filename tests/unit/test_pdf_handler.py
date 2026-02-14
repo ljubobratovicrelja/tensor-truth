@@ -65,23 +65,56 @@ class TestPDFHandlerInit:
     """Test PDFHandler initialization."""
 
     def test_creates_directories(self, temp_session_dir):
-        """Should create pdfs and markdown directories."""
+        """Should create documents and markdown directories."""
         handler = PDFHandler(temp_session_dir)
-        assert handler.pdfs_dir.exists()
+        assert handler.documents_dir.exists()
         assert handler.markdown_dir.exists()
-        assert handler.pdfs_dir == temp_session_dir / "pdfs"
+        assert handler.documents_dir == temp_session_dir / "documents"
         assert handler.markdown_dir == temp_session_dir / "markdown"
 
     def test_handles_existing_directories(self, temp_session_dir):
         """Should not fail if directories already exist."""
         # Create directories first
-        (temp_session_dir / "pdfs").mkdir(parents=True, exist_ok=True)
+        (temp_session_dir / "documents").mkdir(parents=True, exist_ok=True)
         (temp_session_dir / "markdown").mkdir(parents=True, exist_ok=True)
 
         # Should not raise
         handler = PDFHandler(temp_session_dir)
-        assert handler.pdfs_dir.exists()
+        assert handler.documents_dir.exists()
         assert handler.markdown_dir.exists()
+
+    def test_uses_pdfs_dir_fallback(self, temp_session_dir):
+        """Should use existing pdfs/ dir for legacy sessions."""
+        (temp_session_dir / "pdfs").mkdir(parents=True, exist_ok=True)
+
+        handler = PDFHandler(temp_session_dir)
+        assert handler.documents_dir == temp_session_dir / "pdfs"
+
+    def test_documents_dir_takes_precedence(self, temp_session_dir):
+        """Should prefer documents/ over pdfs/ when both exist."""
+        (temp_session_dir / "pdfs").mkdir(parents=True, exist_ok=True)
+        (temp_session_dir / "documents").mkdir(parents=True, exist_ok=True)
+
+        handler = PDFHandler(temp_session_dir)
+        assert handler.documents_dir == temp_session_dir / "documents"
+
+    def test_scope_type_in_header_session(self, temp_session_dir, sample_pdf):
+        """Should use 'Session Upload' in header for session scope."""
+        handler = PDFHandler(temp_session_dir, scope_type="session")
+        with patch("tensortruth.pdf_handler.convert_with_marker") as mock_marker:
+            mock_marker.return_value = "Content"
+            result = handler.convert_pdf_to_markdown(sample_pdf)
+            content = result.read_text()
+            assert "# Source: Session Upload" in content
+
+    def test_scope_type_in_header_project(self, temp_session_dir, sample_pdf):
+        """Should use 'Project Upload' in header for project scope."""
+        handler = PDFHandler(temp_session_dir, scope_type="project")
+        with patch("tensortruth.pdf_handler.convert_with_marker") as mock_marker:
+            mock_marker.return_value = "Content"
+            result = handler.convert_pdf_to_markdown(sample_pdf)
+            content = result.read_text()
+            assert "# Source: Project Upload" in content
 
 
 class TestUploadPDF:

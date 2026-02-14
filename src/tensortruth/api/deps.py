@@ -20,8 +20,8 @@ from tensortruth.services import (
     ChatHistoryService,
     ChatService,
     ConfigService,
+    DocumentService,
     IntentService,
-    PDFService,
     ProjectService,
     RAGService,
     SessionService,
@@ -105,11 +105,12 @@ def get_intent_service() -> IntentService:
     )
 
 
-def get_pdf_service(session_id: str) -> PDFService:
-    """Get PDFService for a specific session."""
-    return PDFService(
-        session_id=session_id,
-        session_dir=get_session_dir(session_id),
+def get_pdf_service(session_id: str) -> DocumentService:
+    """Get DocumentService for a session (name kept for backwards compat)."""
+    return DocumentService(
+        scope_id=session_id,
+        scope_dir=get_session_dir(session_id),
+        scope_type="session",
     )
 
 

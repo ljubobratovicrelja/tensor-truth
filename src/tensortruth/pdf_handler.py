@@ -1,4 +1,4 @@
-"""PDF upload handler for session-scoped document ingestion."""
+"""PDF upload handler for document ingestion (session or project scope)."""
 
 import logging
 import uuid
@@ -14,21 +14,33 @@ logger = logging.getLogger(__name__)
 
 
 class PDFHandler:
-    """Manages PDF upload, conversion, and storage for a session."""
+    """Manages PDF upload, conversion, and storage for a scope (session or project)."""
 
-    def __init__(self, session_dir: Path):
+    def __init__(self, scope_dir: Path, scope_type: str = "session"):
         """
-        Initialize PDF handler for a session.
+        Initialize PDF handler for a scope.
 
         Args:
-            session_dir: Path to session directory (e.g., ~/.tensortruth/sessions/sess_123/)
+            scope_dir: Path to scope directory (e.g., ~/.tensortruth/sessions/sess_123/)
+            scope_type: Scope type ("session" or "project")
         """
-        self.session_dir = Path(session_dir)
-        self.pdfs_dir = self.session_dir / "pdfs"
-        self.markdown_dir = self.session_dir / "markdown"
+        self.scope_dir = Path(scope_dir)
+        self.scope_type = scope_type
 
-        # Ensure directories exist
-        self.pdfs_dir.mkdir(parents=True, exist_ok=True)
+        # New scopes use "documents/"; legacy sessions may have "pdfs/"
+        documents_dir = self.scope_dir / "documents"
+        pdfs_dir = self.scope_dir / "pdfs"
+
+        if documents_dir.exists():
+            self.documents_dir = documents_dir
+        elif pdfs_dir.exists():
+            self.documents_dir = pdfs_dir
+        else:
+            self.documents_dir = documents_dir  # New scope
+
+        self.markdown_dir = self.scope_dir / "markdown"
+
+        self.documents_dir.mkdir(parents=True, exist_ok=True)
         self.markdown_dir.mkdir(parents=True, exist_ok=True)
 
     def upload_pdf(self, content: bytes, filename: str) -> Dict[str, Any]:
@@ -45,7 +57,7 @@ class PDFHandler:
         pdf_id = f"pdf_{uuid.uuid4().hex[:8]}"
 
         # Save PDF to disk
-        pdf_path = self.pdfs_dir / f"{pdf_id}_{filename}"
+        pdf_path = self.documents_dir / f"{pdf_id}_{filename}"
         with open(pdf_path, "wb") as f:
             f.write(content)
 
@@ -132,7 +144,10 @@ class PDFHandler:
 
             # Add metadata header
             pdf_name = pdf_path.name
-            header = f"# Document: {pdf_name}\n# Source: Session Upload\n\n---\n\n"
+            scope_label = (
+                "Project Upload" if self.scope_type == "project" else "Session Upload"
+            )
+            header = f"# Document: {pdf_name}\n# Source: {scope_label}\n\n---\n\n"
             markdown_text = header + markdown_text
 
             # Write to file
@@ -159,7 +174,7 @@ class PDFHandler:
             pdf_id: PDF identifier (e.g., "pdf_abc123")
         """
         # Find and delete PDF file
-        pdf_files = list(self.pdfs_dir.glob(f"{pdf_id}_*"))
+        pdf_files = list(self.documents_dir.glob(f"{pdf_id}_*"))
         for pdf_file in pdf_files:
             pdf_file.unlink()
             logger.info(f"Deleted PDF: {pdf_file}")
@@ -176,7 +191,7 @@ class PDFHandler:
 
     def get_all_pdf_files(self) -> List[Path]:
         """Get list of all PDF files in session."""
-        return list(self.pdfs_dir.glob("pdf_*.pdf"))
+        return list(self.documents_dir.glob("pdf_*.pdf"))
 
     def get_pdf_count(self) -> int:
         """Get number of PDFs in session."""

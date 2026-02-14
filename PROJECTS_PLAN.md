@@ -773,7 +773,46 @@ Original spec (for reference):
 
 **Backend track:**
 
-**Story 4. Generalize document backend**
+**Story 4. Generalize document backend** ✅ DONE
+
+What landed:
+- `DocumentIndexBuilder` in `document_index.py` — constructor takes explicit
+  `index_dir: Path, markdown_dir: Path` instead of `session_id`. No more
+  `paths.py` dependency. `session_index.py` is a backwards-compat shim.
+- `DocumentService` in `services/document_service.py` — constructor takes
+  `scope_id, scope_dir, scope_type` (default `"session"`). `pdf_service.py`
+  is a backwards-compat shim. `services/__init__.py` exports both
+  `DocumentService` and `PDFService` (alias).
+- `PDFHandler` refactored: `scope_dir`/`scope_type` params, `documents/`
+  dir for new scopes with `pdfs/` fallback for legacy sessions, scope-aware
+  metadata header (`"Project Upload"` vs `"Session Upload"`).
+- `upload_text(content, filename)` and `upload_document(content, filename)`
+  on `DocumentService` — text/markdown files written directly to `markdown/`
+  dir with metadata header, no PDF conversion. `upload_document()` dispatches
+  by extension (`.pdf` → `upload()`, `.txt/.md/.markdown` → `upload_text()`).
+- `get_pdf_service()` in `deps.py` now returns `DocumentService` (function
+  name kept for backwards compat — renamed in Story 6).
+- Tests: 21 unit (document_index), 13 unit (document_service), 22 unit
+  (pdf_handler, including 4 new fallback/scope tests), 7 integration
+  (pipeline updated to use `DocumentIndexBuilder` directly, no path mocking).
+
+What Story 5 (URL ingestion) should know:
+- Add a new `upload_url()` method to `DocumentService` alongside
+  `upload_text()`. Same pattern: fetch content, write to `markdown/` dir
+  with metadata header, return `PDFMetadata`.
+- `upload_document()` dispatcher can be extended with URL type handling.
+
+What Story 6 (document management API) should know:
+- `get_pdf_service()` still exists with the old name — rename to
+  `get_document_service(scope_id, scope_type)` in Story 6.
+- For project scope, construct: `DocumentService(scope_id=project_id,
+  scope_dir=get_project_dir(project_id), scope_type="project")`.
+- All method names are unchanged (`upload`, `delete`, `get_index_path`,
+  `index_exists`, `get_all_pdf_files`, `get_pdf_count`, `rebuild_index`).
+- `chat.py` uses `Any` typing for `pdf_service` — no import changes needed.
+- `pdfs.py` imports `get_pdf_service` — function name unchanged.
+
+Original spec (for reference):
 - Rename `session_index.py` → `document_index.py`, class
   `SessionIndexBuilder` → `DocumentIndexBuilder`. Decouple from `paths.py` —
   accept explicit `index_dir`/`markdown_dir` constructor args. Update all
