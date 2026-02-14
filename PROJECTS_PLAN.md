@@ -479,26 +479,31 @@ run in parallel.*
 
 ### Phase 0: Pre-epic cleanup
 
-**Story 0. Remove `is_llm_only_mode` branching**
-- `is_llm_only_mode` is a code smell. RAG is not a "mode" — it's just a
-  pipeline step that enriches the context prompt. If no indexes/modules are
-  present, retrieval returns nothing and the synthesizer works off the base
-  prompt. No special branching needed.
-- Currently checked in `chat_service.py` (`is_llm_only_mode()` line 177) and
-  `chat.py` (`ChatContext.is_llm_only_mode` line 54). Both gate whether the
-  RAG pipeline runs at all, creating fragile branching that breaks every time
-  the index configuration changes (e.g., adding project-level sources).
-- Remove the mode check entirely and all code paths that exist solely to
-  support it. Always run through the same code path. If there are no
-  retrievers, retrieval is a no-op and the synthesizer proceeds with the
-  base prompt alone. The implementer should trace the full call path from
-  the mode check through to the engine to ensure zero-retriever scenarios
-  are handled gracefully end-to-end (no crashes, sensible defaults).
-- This simplifies Story 2 significantly — the signature cascade no longer
-  needs to worry about mode checks reacting to the new `additional_index_paths`.
-- Must land before Phase 1 starts.
-- Tests: verify that chat works with zero modules/indexes (no regression),
-  and that adding indexes mid-session still picks them up.
+**Story 0. Remove `is_llm_only_mode` branching** ✅ DONE
+
+What landed:
+- `RAGService.query()` is now the single entry point. It accepts a `params`
+  arg and creates an ad-hoc LLM when no engine is loaded (retriever=None).
+  `query_llm_only()` is deleted.
+- `ChatService.query()` always calls `needs_reload()` → `query()`. No branching.
+  `is_llm_only_mode()` deleted. `ChatResult.is_llm_only` field removed.
+- `ChatContext.is_llm_only_mode` property removed. REST and WS endpoints
+  always send `confidence_level="normal"`.
+- `rag_engine.py`: `ValueError("No modules or session index selected!")` guard
+  removed from `load_engine_for_modules()`.
+- `needs_reload()` now returns `False` (not `True`) when engine is None and
+  there's nothing to load (hash is None).
+
+What Story 2 should know:
+- `RAGService.query(prompt, params, session_messages)` — `params` is used
+  for ad-hoc LLM creation when engine is None. When engine exists, it uses
+  `self._current_params`.
+- `ChatService.query()` always passes `params` through to `rag_service.query()`.
+- The `session_index_path` parameter still flows through `ChatService` →
+  `needs_reload()` / `load_engine()` unchanged — ready for the rename to
+  `additional_index_paths`.
+- `_compute_config_hash()` still uses `bool(session_index_path)` — Story 2
+  must fix this to include actual paths.
 
 ### Phase 1: Foundation
 

@@ -10,18 +10,19 @@ from tensortruth.services.models import RAGChunk
 
 @pytest.mark.unit
 class TestChatService:
-    """Tests for ChatService routing logic."""
+    """Tests for ChatService unified query routing."""
 
-    def test_routes_to_llm_only_when_no_modules_no_pdfs(self):
-        """Verify query_llm_only called when modules=[] and no index."""
+    def test_zero_modules_calls_unified_query(self):
+        """Verify modules=[] and no index still calls needs_reload() and query()."""
         mock_rag_service = MagicMock()
-        mock_rag_service.query_llm_only.return_value = iter(
+        # needs_reload returns False for zero modules (nothing to load)
+        mock_rag_service.needs_reload.return_value = False
+        mock_rag_service.query.return_value = iter(
             [RAGChunk(text="LLM response", is_complete=True, source_nodes=[])]
         )
 
         chat_service = ChatService(rag_service=mock_rag_service)
 
-        # Consume generator to trigger the call
         list(
             chat_service.query(
                 prompt="Hello",
@@ -32,13 +33,14 @@ class TestChatService:
             )
         )
 
-        mock_rag_service.query_llm_only.assert_called_once_with(
+        mock_rag_service.needs_reload.assert_called_once_with(
+            [], {"temperature": 0.7}, None
+        )
+        mock_rag_service.query.assert_called_once_with(
             "Hello",
             {"temperature": 0.7},
             session_messages=[],
         )
-        mock_rag_service.query.assert_not_called()
-        mock_rag_service.needs_reload.assert_not_called()
 
     def test_routes_to_rag_when_modules_present(self):
         """Verify query called when modules provided."""
@@ -62,9 +64,9 @@ class TestChatService:
 
         mock_rag_service.query.assert_called_once_with(
             "Hello",
+            {},
             session_messages=[{"role": "user", "content": "previous"}],
         )
-        mock_rag_service.query_llm_only.assert_not_called()
 
     def test_routes_to_rag_when_pdf_index_present(self):
         """Verify query called when session_index_path provided."""
@@ -88,9 +90,9 @@ class TestChatService:
 
         mock_rag_service.query.assert_called_once_with(
             "Hello",
+            {},
             session_messages=[],
         )
-        mock_rag_service.query_llm_only.assert_not_called()
 
     def test_calls_load_engine_when_needs_reload(self):
         """Verify load_engine called when needs_reload returns True."""
@@ -149,53 +151,7 @@ class TestChatService:
         mock_rag_service.needs_reload.assert_called_once()
         mock_rag_service.load_engine.assert_not_called()
 
-    def test_is_llm_only_mode_helper(self):
-        """Test the is_llm_only_mode convenience method."""
-        mock_rag_service = MagicMock()
-        chat_service = ChatService(rag_service=mock_rag_service)
-
-        # No modules, no PDF index -> LLM only
-        assert chat_service.is_llm_only_mode([], None) is True
-
-        # Modules present -> RAG mode
-        assert chat_service.is_llm_only_mode(["pytorch"], None) is False
-
-        # PDF index present -> RAG mode
-        assert chat_service.is_llm_only_mode([], "/path/to/index") is False
-
-        # Both present -> RAG mode
-        assert chat_service.is_llm_only_mode(["pytorch"], "/path/to/index") is False
-
-    def test_passes_session_messages_to_llm_only(self):
-        """Verify session_messages are passed to query_llm_only."""
-        mock_rag_service = MagicMock()
-        mock_rag_service.query_llm_only.return_value = iter(
-            [RAGChunk(text="response", is_complete=True, source_nodes=[])]
-        )
-
-        chat_service = ChatService(rag_service=mock_rag_service)
-        messages = [
-            {"role": "user", "content": "first"},
-            {"role": "assistant", "content": "response"},
-        ]
-
-        list(
-            chat_service.query(
-                prompt="second",
-                modules=[],
-                params={"model": "llama3"},
-                session_messages=messages,
-                session_index_path=None,
-            )
-        )
-
-        mock_rag_service.query_llm_only.assert_called_once_with(
-            "second",
-            {"model": "llama3"},
-            session_messages=messages,
-        )
-
-    def test_passes_session_messages_to_rag_query(self):
+    def test_passes_session_messages_to_query(self):
         """Verify session_messages are passed to query."""
         mock_rag_service = MagicMock()
         mock_rag_service.needs_reload.return_value = False
@@ -221,6 +177,7 @@ class TestChatService:
 
         mock_rag_service.query.assert_called_once_with(
             "second",
+            {},
             session_messages=messages,
         )
 
@@ -345,12 +302,12 @@ class TestChatServiceExecute:
         assert isinstance(result, ChatResult)
         assert result.response == "Hello world"
         assert result.metrics == {"mean_score": 0.88}
-        assert result.is_llm_only is False
 
-    def test_execute_llm_only_mode(self):
-        """Verify execute() sets is_llm_only correctly."""
+    def test_execute_zero_modules(self):
+        """Verify execute() works with zero modules (unified query path)."""
         mock_rag_service = MagicMock()
-        mock_rag_service.query_llm_only.return_value = iter(
+        mock_rag_service.needs_reload.return_value = False
+        mock_rag_service.query.return_value = iter(
             [
                 RAGChunk(text="LLM response"),
                 RAGChunk(is_complete=True, source_nodes=[]),
@@ -362,13 +319,17 @@ class TestChatServiceExecute:
         result = chat_service.execute(
             prompt="Hello",
             modules=[],
-            params={},
+            params={"model": "llama3"},
             session_messages=[],
             session_index_path=None,
         )
 
-        assert result.is_llm_only is True
         assert result.response == "LLM response"
+        mock_rag_service.query.assert_called_once_with(
+            "Hello",
+            {"model": "llama3"},
+            session_messages=[],
+        )
 
     @patch("tensortruth.services.chat_service.SourceConverter")
     def test_execute_extracts_sources_to_api_format(self, mock_converter):

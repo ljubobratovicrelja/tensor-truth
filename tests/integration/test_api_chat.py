@@ -85,7 +85,7 @@ class TestChatAPI:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["confidence_level"] == "llm_only"
+        assert data["confidence_level"] == "normal"
         assert len(data["content"]) > 0
         assert data["sources"] == []
         # LLM-only mode should have no metrics
@@ -194,11 +194,9 @@ class TestChatAPIWithMockedRAG:
                     }
                 ],
                 metrics={"mean_score": 0.88},
-                is_llm_only=False,
             )
 
         mock.execute.side_effect = execute_impl
-        mock.is_llm_only_mode.return_value = False
 
         # Use FastAPI's dependency override mechanism
         app.dependency_overrides[get_chat_service] = lambda: mock

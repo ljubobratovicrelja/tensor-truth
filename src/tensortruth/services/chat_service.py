@@ -23,14 +23,10 @@ class ChatResult:
     response: str
     sources: List[Dict[str, Any]] = field(default_factory=list)
     metrics: Optional[Dict[str, Any]] = None
-    is_llm_only: bool = False
 
 
 class ChatService:
-    """Routes chat queries to appropriate backend (LLM-only or RAG).
-
-    Encapsulates mode detection, engine management, and source conversion,
-    providing a unified interface for chat endpoints.
+    """Unified chat query interface with engine management and source conversion.
 
     Foreign types (LlamaIndex NodeWithScore) are contained within this service.
     External callers receive only our own API-compatible types.
@@ -65,7 +61,6 @@ class ChatService:
         full_response = ""
         sources: List[Dict[str, Any]] = []
         metrics: Optional[Dict[str, Any]] = None
-        is_llm_only = self.is_llm_only_mode(modules, session_index_path)
 
         for chunk in self.query(
             prompt=prompt,
@@ -84,7 +79,6 @@ class ChatService:
             response=full_response,
             sources=sources,
             metrics=metrics,
-            is_llm_only=is_llm_only,
         )
 
     def query(
@@ -95,11 +89,11 @@ class ChatService:
         session_messages: Optional[List[Dict[str, Any]]] = None,
         session_index_path: Optional[str] = None,
     ) -> Generator[RAGChunk, None, RAGResponse]:
-        """Execute chat query with automatic mode routing (streaming).
+        """Execute chat query through the unified pipeline (streaming).
 
-        Routes to LLM-only when no modules/PDFs, otherwise RAG mode.
         Handles engine reload internally, yielding "loading_models" status
-        if reload is needed.
+        if reload is needed. When no modules/PDFs exist, the RAG service
+        skips retrieval and uses LLM-only prompting.
 
         Note: The final RAGChunk contains source_nodes as LlamaIndex types.
         Use execute() for a non-streaming interface with clean API types,
@@ -118,16 +112,6 @@ class ChatService:
         Returns:
             Final RAGResponse with complete text and sources.
         """
-        is_llm_only = self.is_llm_only_mode(modules, session_index_path)
-
-        if is_llm_only:
-            return (
-                yield from self._rag_service.query_llm_only(
-                    prompt, params, session_messages=session_messages
-                )
-            )
-
-        # RAG mode: ensure engine is loaded
         if self._rag_service.needs_reload(modules, params, session_index_path):
             yield RAGChunk(status="loading_models")
             self._rag_service.load_engine(
@@ -138,7 +122,7 @@ class ChatService:
 
         return (
             yield from self._rag_service.query(
-                prompt, session_messages=session_messages
+                prompt, params, session_messages=session_messages
             )
         )
 
@@ -173,19 +157,3 @@ class ChatService:
             api_dict = SourceConverter.to_api_schema(unified)
             sources.append(api_dict)
         return sources
-
-    def is_llm_only_mode(
-        self,
-        modules: List[str],
-        session_index_path: Optional[str],
-    ) -> bool:
-        """Check if configuration results in LLM-only mode.
-
-        Args:
-            modules: List of module names.
-            session_index_path: Optional path to session-specific PDF index.
-
-        Returns:
-            True if no modules and no PDF index (LLM-only mode).
-        """
-        return not modules and not session_index_path

@@ -157,13 +157,13 @@ class TestMetricsPersistence:
         assert metrics["coverage"]["total_chunks"] == 1
         assert metrics["quality"]["high_confidence_ratio"] == 1.0
 
-    def test_llm_only_mode_no_metrics(
+    def test_zero_modules_no_metrics(
         self, session_service: SessionService, tmp_path: Path
     ):
-        """Test that LLM-only mode (no RAG) has no metrics.
+        """Test that zero-module sessions (no retrieval) have no metrics.
 
-        When no modules are attached, queries use LLM-only mode
-        which doesn't perform retrieval and thus has no metrics.
+        When no modules are attached, queries skip retrieval
+        and thus have no metrics.
         """
         # Create a session without modules
         data = session_service.load()

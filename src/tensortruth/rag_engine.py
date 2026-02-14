@@ -548,9 +548,6 @@ def load_engine_for_modules(
         ValueError: If no modules or session index selected
         FileNotFoundError: If no valid indices loaded
     """
-    if not selected_modules and not session_index_path:
-        raise ValueError("No modules or session index selected!")
-
     if engine_params is None:
         engine_params = {}
 

@@ -50,11 +50,6 @@ class ChatContext:
     session_messages: List[Dict[str, Any]]
     session_index_path: Optional[str]
 
-    @property
-    def is_llm_only_mode(self) -> bool:
-        """Determine if this is LLM-only mode (no RAG retrieval)."""
-        return not self.modules and not self.session_index_path
-
     @classmethod
     def from_session(
         cls,
@@ -158,7 +153,7 @@ async def chat(
     return ChatResponse(
         content=result.response,
         sources=sources,
-        confidence_level="llm_only" if result.is_llm_only else "normal",
+        confidence_level="normal",
         metrics=result.metrics,
     )
 
@@ -329,9 +324,6 @@ async def websocket_chat(
                 index_path = pdf_service.get_index_path()
                 session_index_path = str(index_path) if index_path else None
 
-            # Determine if we're in LLM-only mode (no modules or PDFs)
-            llm_only_mode = chat_service.is_llm_only_mode(modules, session_index_path)
-
             # Get session messages for history BEFORE adding the new user message
             session_messages = session.get("messages", [])
 
@@ -417,7 +409,7 @@ async def websocket_chat(
                 {
                     "type": "done",
                     "content": full_response,
-                    "confidence_level": "llm_only" if llm_only_mode else "normal",
+                    "confidence_level": "normal",
                     "title_pending": needs_title,
                 }
             )

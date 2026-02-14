@@ -15,8 +15,8 @@ from tensortruth.api.routes.chat import ChatContext
 class TestChatContext:
     """Tests for ChatContext dataclass."""
 
-    def test_is_llm_only_mode_no_modules_no_pdfs(self):
-        """LLM-only mode when modules=[] and no PDF index."""
+    def test_construction_no_modules_no_pdfs(self):
+        """ChatContext construction with modules=[] and no PDF index."""
         context = ChatContext(
             session_id="test-session",
             prompt="Hello",
@@ -25,10 +25,11 @@ class TestChatContext:
             session_messages=[],
             session_index_path=None,
         )
-        assert context.is_llm_only_mode is True
+        assert context.modules == []
+        assert context.session_index_path is None
 
-    def test_is_rag_mode_when_modules_present(self):
-        """RAG mode when modules=['pytorch']."""
+    def test_construction_with_modules(self):
+        """ChatContext construction with modules=['pytorch']."""
         context = ChatContext(
             session_id="test-session",
             prompt="Hello",
@@ -37,10 +38,10 @@ class TestChatContext:
             session_messages=[],
             session_index_path=None,
         )
-        assert context.is_llm_only_mode is False
+        assert context.modules == ["pytorch"]
 
-    def test_is_rag_mode_when_pdf_index_present(self):
-        """RAG mode when PDF index exists (even without modules)."""
+    def test_construction_with_pdf_index(self):
+        """ChatContext construction with PDF index (even without modules)."""
         context = ChatContext(
             session_id="test-session",
             prompt="Hello",
@@ -49,10 +50,10 @@ class TestChatContext:
             session_messages=[],
             session_index_path="/path/to/index",
         )
-        assert context.is_llm_only_mode is False
+        assert context.session_index_path == "/path/to/index"
 
-    def test_is_rag_mode_when_both_present(self):
-        """RAG mode when both modules and PDF index exist."""
+    def test_construction_with_both(self):
+        """ChatContext construction with both modules and PDF index."""
         context = ChatContext(
             session_id="test-session",
             prompt="Hello",
@@ -61,7 +62,8 @@ class TestChatContext:
             session_messages=[],
             session_index_path="/path/to/index",
         )
-        assert context.is_llm_only_mode is False
+        assert context.modules == ["pytorch"]
+        assert context.session_index_path == "/path/to/index"
 
     def test_from_session_creates_context(self):
         """Test from_session factory method creates valid context."""
@@ -108,7 +110,7 @@ class TestChatContext:
         )
 
         assert context.session_index_path is None
-        assert context.is_llm_only_mode is True
+        assert context.modules == []
 
     def test_from_session_handles_missing_modules(self):
         """Test from_session handles session with no modules key."""
@@ -129,4 +131,3 @@ class TestChatContext:
         )
 
         assert context.modules == []
-        assert context.is_llm_only_mode is True

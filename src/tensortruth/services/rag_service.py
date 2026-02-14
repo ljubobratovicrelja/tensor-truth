@@ -185,7 +185,8 @@ class RAGService:
             True if engine should be reloaded.
         """
         if self._engine is None:
-            return True
+            new_hash = self._compute_config_hash(modules, params, session_index_path)
+            return new_hash is not None  # Only reload if there's something to load
 
         new_hash = self._compute_config_hash(modules, params, session_index_path)
         return new_hash != self._current_config_hash
@@ -201,15 +202,20 @@ class RAGService:
     def query(
         self,
         prompt: str,
+        params: Optional[Dict[str, Any]] = None,
         session_messages: Optional[List[Dict[str, Any]]] = None,
     ) -> Generator[RAGChunk, None, RAGResponse]:
-        """Execute a streaming RAG query with thinking token support.
+        """Execute a streaming query through the unified pipeline.
 
-        Yields status updates during retrieval and thinking phases, then
-        streams content tokens (and thinking tokens if model supports them).
+        Handles both RAG (with retriever) and LLM-only (no retriever) cases.
+        When no engine is loaded, creates an ad-hoc LLM from params and skips
+        retrieval. Prompt selection adapts based on whether retrieval was
+        performed and what it returned.
 
         Args:
             prompt: User's query prompt.
+            params: Engine parameters (model, temperature, etc). Used to create
+                an ad-hoc LLM when no engine is loaded.
             session_messages: Chat history from session storage.
                 Pass session["messages"] or session_service.get_messages().
                 If None, query runs without history context.
@@ -219,35 +225,27 @@ class RAGService:
 
         Returns:
             Final RAGResponse with complete text and sources.
-
-        Raises:
-            RuntimeError: If engine is not loaded.
         """
-        if self._engine is None:
-            raise RuntimeError("RAG engine not loaded. Call load_engine() first.")
+        # Determine LLM and retriever based on engine state
+        if self._engine is not None:
+            llm = self._llm
+            retriever = self._retriever
+            effective_params = self._current_params or params or {}
+        else:
+            llm = get_llm(params or {})
+            retriever = None
+            effective_params = params or {}
 
-        # Verify cache is populated
-        assert self._llm is not None, "LLM not cached during load_engine"
-        assert self._retriever is not None, "Retriever not cached during load_engine"
+        assert llm is not None, "LLM must be available"
 
         logger.info(f"=== RAG Query Start: '{prompt}' ===")
         logger.info(
             f"Session has {len(session_messages) if session_messages else 0} messages"
         )
-
-        # Phase 1: Retrieval
-        yield RAGChunk(status="retrieving")
-
-        # Get retriever and condenser
-        retriever = self._retriever
-        condenser = getattr(self._engine, "_condense_prompt_template", None)
-        logger.info(f"Condenser value: {condenser}")
-        logger.info(f"Condenser type: {type(condenser)}")
-        logger.info(f"_skip_condense: {getattr(self._engine, '_skip_condense', None)}")
+        logger.info(f"Retriever available: {retriever is not None}")
 
         # Build chat history from session messages using ChatHistoryService
-        # Session params can override max_history_turns
-        max_turns = (self._current_params or {}).get("max_history_turns")
+        max_turns = effective_params.get("max_history_turns")
         history = self.chat_history_service.build_history(
             session_messages,
             max_turns=max_turns,
@@ -258,132 +256,143 @@ class RAGService:
         chat_history = history.to_llama_messages()
         chat_history_str = history.to_prompt_string()
 
-        # Condense the question with chat history if we have a condenser
-        condensed_question = prompt
-        if condenser and not history.is_empty:
-            # Build condensed question using LLM
-            logger.info(f"Original query: {prompt}")
-            logger.info(f"History length: {len(history.messages)} messages")
+        source_nodes: list = []
+        metrics_dict: Optional[Dict[str, Any]] = None
 
-            # Extract template string from condenser (PromptTemplate object)
-            # PromptTemplate has a .template attribute or can be converted to string
-            template_str = getattr(condenser, "template", str(condenser))
+        if retriever is not None:
+            # Phase 1: Retrieval
+            yield RAGChunk(status="retrieving")
 
-            # Create condenser LLM (reuses same model, optimized for condensation)
-            condenser_llm = create_condenser_llm(self._llm)
-
-            # Condense the query using the utility function
-            condensed_question = condense_query(
-                llm=condenser_llm,
-                chat_history=chat_history_str,
-                question=prompt,
-                prompt_template=template_str,
-                fallback_on_error=True,
+            condenser = getattr(self._engine, "_condense_prompt_template", None)
+            logger.info(f"Condenser value: {condenser}")
+            logger.info(f"Condenser type: {type(condenser)}")
+            logger.info(
+                f"_skip_condense: {getattr(self._engine, '_skip_condense', None)}"
             )
-            logger.info(f"Condensed query: {condensed_question}")
-        else:
-            if not condenser:
-                logger.debug("No condenser configured, using original query")
-            elif history.is_empty:
-                logger.debug("History is empty, skipping condensation")
 
-        # Retrieve context nodes
-        source_nodes = retriever.retrieve(condensed_question)
-        logger.info(f"Retrieved {len(source_nodes)} nodes before reranking")
+            # Condense the question with chat history if we have a condenser
+            condensed_question = prompt
+            if condenser and not history.is_empty:
+                logger.info(f"Original query: {prompt}")
+                logger.info(f"History length: {len(history.messages)} messages")
 
-        # Phase 2: Reranking (if postprocessors exist)
-        if (
-            hasattr(self._engine, "_node_postprocessors")
-            and self._engine._node_postprocessors
-        ):
-            yield RAGChunk(status="reranking")
+                template_str = getattr(condenser, "template", str(condenser))
+                condenser_llm = create_condenser_llm(llm)
 
-            from llama_index.core.schema import QueryBundle
+                condensed_question = condense_query(
+                    llm=condenser_llm,
+                    chat_history=chat_history_str,
+                    question=prompt,
+                    prompt_template=template_str,
+                    fallback_on_error=True,
+                )
+                logger.info(f"Condensed query: {condensed_question}")
+            else:
+                if not condenser:
+                    logger.debug("No condenser configured, using original query")
+                elif history.is_empty:
+                    logger.debug("History is empty, skipping condensation")
 
-            query_bundle = QueryBundle(query_str=condensed_question)
+            # Retrieve context nodes
+            source_nodes = retriever.retrieve(condensed_question)
+            logger.info(f"Retrieved {len(source_nodes)} nodes before reranking")
 
-            try:
-                for postprocessor in self._engine._node_postprocessors:
-                    source_nodes = postprocessor.postprocess_nodes(
-                        source_nodes, query_bundle=query_bundle
+            # Phase 2: Reranking (if postprocessors exist)
+            assert self._engine is not None  # guaranteed when retriever exists
+            if (
+                hasattr(self._engine, "_node_postprocessors")
+                and self._engine._node_postprocessors
+            ):
+                yield RAGChunk(status="reranking")
+
+                from llama_index.core.schema import QueryBundle
+
+                query_bundle = QueryBundle(query_str=condensed_question)
+
+                try:
+                    for postprocessor in self._engine._node_postprocessors:
+                        source_nodes = postprocessor.postprocess_nodes(
+                            source_nodes, query_bundle=query_bundle
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Postprocessor failed, using unprocessed nodes: {e}"
                     )
-            except Exception as e:
-                # Log but don't break streaming if postprocessor fails
-                logger.warning(f"Postprocessor failed, using unprocessed nodes: {e}")
 
-        # Enforce reranker_top_n limit as a safeguard
-        # LlamaIndex's SentenceTransformerRerank may not always respect top_n
-        reranker_top_n = (self._current_params or {}).get("reranker_top_n")
-        logger.info(
-            f"After reranking: {len(source_nodes)} nodes (reranker_top_n={reranker_top_n})"
-        )
-        if reranker_top_n and len(source_nodes) > reranker_top_n:
-            source_nodes = source_nodes[:reranker_top_n]
-            logger.info(f"Truncated to {len(source_nodes)} nodes")
+            # Enforce reranker_top_n limit as a safeguard
+            reranker_top_n = effective_params.get("reranker_top_n")
+            logger.info(
+                f"After reranking: {len(source_nodes)} nodes "
+                f"(reranker_top_n={reranker_top_n})"
+            )
+            if reranker_top_n and len(source_nodes) > reranker_top_n:
+                source_nodes = source_nodes[:reranker_top_n]
+                logger.info(f"Truncated to {len(source_nodes)} nodes")
 
-        # Compute retrieval metrics from final reranked nodes
-        metrics = compute_retrieval_metrics(source_nodes)
-        # Add configured top_n for debugging/verification
-        configured_top_n = (self._current_params or {}).get("reranker_top_n")
-        metrics.configured_top_n = configured_top_n
-        metrics_dict = metrics.to_dict()
+            # Compute retrieval metrics from final reranked nodes
+            metrics = compute_retrieval_metrics(source_nodes)
+            configured_top_n = effective_params.get("reranker_top_n")
+            metrics.configured_top_n = configured_top_n
+            metrics_dict = metrics.to_dict()
 
-        # Phase 3: Determine prompt template based on source quality
-        confidence_threshold = (self._current_params or {}).get(
-            "confidence_cutoff", 0.0
-        )
-
-        # Select appropriate prompt based on source availability and confidence
-        if not source_nodes:
-            # No sources after filtering - use no-sources prompt
+        # Phase 3: Prompt selection
+        if retriever is None:
+            # No retriever — LLM-only mode with system prompt
+            messages = [
+                ChatMessage(role=MessageRole.SYSTEM, content=LLM_ONLY_SYSTEM_PROMPT)
+            ]
+            if not history.is_empty:
+                messages.extend(chat_history)
+            messages.append(ChatMessage(role=MessageRole.USER, content=prompt))
+        elif not source_nodes:
+            # Retrieval ran but returned nothing
             formatted_prompt = CUSTOM_CONTEXT_PROMPT_NO_SOURCES.format(
                 chat_history=chat_history_str,
                 query_str=prompt,
             )
-        elif confidence_threshold > 0:
-            # Check best score against threshold
-            best_score = max(
-                (node.score for node in source_nodes if node.score is not None),
-                default=0.0,
-            )
+            messages = chat_history + [
+                ChatMessage(role=MessageRole.USER, content=formatted_prompt)
+            ]
+        else:
+            # Retrieval returned sources — check confidence
+            confidence_threshold = effective_params.get("confidence_cutoff", 0.0)
             context_str = "\n\n".join([n.get_content() for n in source_nodes])
 
-            if best_score < confidence_threshold:
-                # Low confidence - use low-confidence prompt
-                formatted_prompt = CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE.format(
-                    context_str=context_str,
-                    chat_history=chat_history_str,
-                    query_str=prompt,
+            if confidence_threshold > 0:
+                best_score = max(
+                    (node.score for node in source_nodes if node.score is not None),
+                    default=0.0,
                 )
+                if best_score < confidence_threshold:
+                    formatted_prompt = CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE.format(
+                        context_str=context_str,
+                        chat_history=chat_history_str,
+                        query_str=prompt,
+                    )
+                else:
+                    formatted_prompt = CUSTOM_CONTEXT_PROMPT_TEMPLATE.format(
+                        context_str=context_str,
+                        chat_history=chat_history_str,
+                        query_str=prompt,
+                    )
             else:
-                # Good confidence - use normal prompt
                 formatted_prompt = CUSTOM_CONTEXT_PROMPT_TEMPLATE.format(
                     context_str=context_str,
                     chat_history=chat_history_str,
                     query_str=prompt,
                 )
-        else:
-            # No threshold configured - use normal prompt
-            context_str = "\n\n".join([n.get_content() for n in source_nodes])
-            formatted_prompt = CUSTOM_CONTEXT_PROMPT_TEMPLATE.format(
-                context_str=context_str,
-                chat_history=chat_history_str,
-                query_str=prompt,
-            )
+
+            messages = chat_history + [
+                ChatMessage(role=MessageRole.USER, content=formatted_prompt)
+            ]
 
         # Phase 4: Check if model supports thinking and start generation
-        llm = self._llm
         thinking_enabled = getattr(llm, "thinking", False)
 
         if thinking_enabled:
             yield RAGChunk(status="thinking")
         else:
             yield RAGChunk(status="generating")
-
-        # Build messages with the formatted prompt
-        messages = chat_history + [
-            ChatMessage(role=MessageRole.USER, content=formatted_prompt)
-        ]
 
         # Stream directly from LLM to access thinking tokens
         full_response = ""
@@ -448,87 +457,6 @@ class RAGService:
             yield token
 
         return full_response
-
-    def query_llm_only(
-        self,
-        prompt: str,
-        params: Dict[str, Any],
-        session_messages: Optional[List[Dict[str, Any]]] = None,
-    ) -> Generator[RAGChunk, None, RAGResponse]:
-        """Execute a streaming query using LLM only, without RAG retrieval.
-
-        Used when no modules or PDFs are attached to the session.
-        Includes appropriate disclaimers about lack of document verification.
-
-        Args:
-            prompt: User's query prompt.
-            params: Engine parameters (model, temperature, etc).
-            session_messages: Chat history from session storage.
-                If None, query runs without history context.
-
-        Yields:
-            RAGChunk with status or text content.
-
-        Returns:
-            Final RAGResponse with complete text (no sources).
-        """
-        # Create LLM instance
-        llm = get_llm(params)
-
-        # Check if model supports thinking
-        thinking_enabled = getattr(llm, "thinking", False)
-
-        if thinking_enabled:
-            yield RAGChunk(status="thinking")
-        else:
-            yield RAGChunk(status="generating")
-
-        # Build messages with system prompt
-        messages = [
-            ChatMessage(role=MessageRole.SYSTEM, content=LLM_ONLY_SYSTEM_PROMPT)
-        ]
-
-        # Build chat history from session messages using ChatHistoryService
-        # Session params can override max_history_turns
-        max_turns = params.get("max_history_turns")
-        history = self.chat_history_service.build_history(
-            session_messages,
-            max_turns=max_turns,
-            apply_cleaning=self.config.history_cleaning.enabled,
-        )
-
-        # Add history to messages
-        if not history.is_empty:
-            messages.extend(history.to_llama_messages())
-
-        # Add user prompt
-        messages.append(ChatMessage(role=MessageRole.USER, content=prompt))
-
-        # Stream from LLM
-        full_response = ""
-        full_thinking = ""
-        sent_generating_status = not thinking_enabled
-
-        for chunk in llm.stream_chat(messages):
-            # Extract thinking delta if present
-            thinking_delta = chunk.additional_kwargs.get("thinking_delta")
-            if thinking_delta:
-                full_thinking += thinking_delta
-                yield RAGChunk(thinking=thinking_delta)
-            elif not sent_generating_status and thinking_enabled:
-                # Transition from thinking to generating
-                yield RAGChunk(status="generating")
-                sent_generating_status = True
-
-            # Extract content delta
-            if chunk.delta:
-                full_response += chunk.delta
-                yield RAGChunk(text=chunk.delta)
-
-        # Yield final complete chunk (no sources in LLM-only mode)
-        yield RAGChunk(source_nodes=[], is_complete=True)
-
-        return RAGResponse(text=full_response, source_nodes=[], metrics=None)
 
     def get_llm(self) -> Optional[Ollama]:
         """Get the underlying LLM instance from the engine.

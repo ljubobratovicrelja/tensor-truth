@@ -132,8 +132,8 @@ class TestRAGServiceMetrics:
         assert metrics["score_distribution"]["mean"] == pytest.approx(0.95, rel=0.01)
         assert metrics["score_distribution"]["max"] == pytest.approx(0.95, rel=0.01)
 
-    def test_llm_only_mode_has_no_metrics(self):
-        """Test that query_llm_only() returns None metrics."""
+    def test_no_engine_query_has_no_metrics(self):
+        """Test that query() with no engine returns None metrics."""
         from tensortruth.services.rag_service import RAGService
 
         service = RAGService()
@@ -146,9 +146,9 @@ class TestRAGServiceMetrics:
         ]
 
         with patch("tensortruth.services.rag_service.get_llm", return_value=mock_llm):
-            chunks = list(service.query_llm_only("test", {}))
+            chunks = list(service.query("test", params={}))
             complete_chunk = [c for c in chunks if c.is_complete][0]
 
-            # LLM-only should have explicit None metrics
+            # No-engine path should have explicit None metrics
             assert hasattr(complete_chunk, "metrics")
             assert complete_chunk.metrics is None
