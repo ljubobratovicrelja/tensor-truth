@@ -10,3 +10,4 @@ export * from "./commands";
 export * from "./system";
 export * from "./projects";
 export * from "./documents";
+export * from "./tasks";

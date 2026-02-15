@@ -472,6 +472,24 @@ export interface RerankerRemoveResponse {
   error?: string | null;
 }
 
+// Task types
+export interface TaskResponse {
+  task_id: string;
+  task_type: string;
+  status: "pending" | "running" | "completed" | "error";
+  created_at: string;
+  updated_at: string;
+  progress: number;
+  stage: string;
+  result?: Record<string, unknown> | null;
+  error?: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface TaskListResponse {
+  tasks: TaskResponse[];
+}
+
 // API Error
 export interface ApiError {
   detail: string;

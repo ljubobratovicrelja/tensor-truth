@@ -12,3 +12,4 @@ export * from "./useCommandDetection";
 export * from "./useSystemStatus";
 export * from "./useProjects";
 export * from "./useDocuments";
+export * from "./useTasks";

@@ -23,6 +23,14 @@ export function useProject(projectId: string | null) {
     queryKey: projectId ? QUERY_KEYS.project(projectId) : ["projects", "none"],
     queryFn: () => (projectId ? getProject(projectId) : Promise.resolve(null)),
     enabled: !!projectId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return false;
+      const hasBuilding = Object.values(data.catalog_modules || {}).some(
+        (m: unknown) => (m as { status: string }).status === "building"
+      );
+      return hasBuilding ? 5000 : false;
+    },
   });
 }
 
