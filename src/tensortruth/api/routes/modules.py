@@ -1,13 +1,13 @@
 """Modules and models listing endpoints."""
 
-from typing import Any, Dict, List
+from typing import Dict, List
 
 import requests
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from tensortruth.api.deps import ConfigServiceDep
-from tensortruth.app_utils.paths import get_indexes_dir, get_presets_file
+from tensortruth.app_utils.paths import get_indexes_dir
 
 router = APIRouter()
 
@@ -39,19 +39,6 @@ class ModelsResponse(BaseModel):
     """Response for listing available models."""
 
     models: List[ModelInfo]
-
-
-class PresetInfo(BaseModel):
-    """Information about a preset configuration."""
-
-    name: str
-    config: Dict[str, Any]
-
-
-class PresetsResponse(BaseModel):
-    """Response for listing available presets."""
-
-    presets: List[PresetInfo]
 
 
 @router.get("/modules", response_model=ModulesResponse)
@@ -191,38 +178,3 @@ async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
             status_code=502,
             detail=f"Error fetching models from Ollama: {str(e)}",
         )
-
-
-@router.get("/presets", response_model=PresetsResponse)
-async def list_presets() -> PresetsResponse:
-    """List available presets."""
-    import json
-
-    presets_file = get_presets_file()
-    presets = []
-
-    if presets_file.exists():
-        try:
-            with open(presets_file, "r") as f:
-                data = json.load(f)
-                for name, config in data.items():
-                    presets.append(PresetInfo(name=name, config=config))
-        except (json.JSONDecodeError, IOError):
-            pass
-
-    return PresetsResponse(presets=presets)
-
-
-@router.get("/presets/favorites", response_model=PresetsResponse)
-async def list_favorite_presets() -> PresetsResponse:
-    """List favorite presets sorted by favorite_order."""
-    from tensortruth.app_utils.presets import get_favorites
-
-    presets_file = get_presets_file()
-    favorites = get_favorites(presets_file)
-
-    return PresetsResponse(
-        presets=[
-            PresetInfo(name=name, config=config) for name, config in favorites.items()
-        ]
-    )

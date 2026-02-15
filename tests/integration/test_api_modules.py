@@ -1,7 +1,5 @@
 """Integration tests for modules API endpoints."""
 
-import json
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -24,7 +22,7 @@ async def client(app):
 
 
 class TestModulesAPI:
-    """Test modules/models/presets endpoints."""
+    """Test modules/models endpoints."""
 
     @pytest.mark.asyncio
     async def test_list_modules_empty(self, client, tmp_path, monkeypatch):
@@ -135,41 +133,6 @@ class TestModulesAPI:
         models = response.json()["models"]
         assert len(models) == 2
         assert models[0]["name"] == "llama2:7b"
-
-    @pytest.mark.asyncio
-    async def test_list_presets_empty(self, client, tmp_path, monkeypatch):
-        """Test listing presets when none exist."""
-        presets_file = tmp_path / "presets.json"
-        monkeypatch.setattr(
-            "tensortruth.api.routes.modules.get_presets_file", lambda: presets_file
-        )
-
-        response = await client.get("/api/presets")
-        assert response.status_code == 200
-        assert response.json()["presets"] == []
-
-    @pytest.mark.asyncio
-    async def test_list_presets_with_data(self, client, tmp_path, monkeypatch):
-        """Test listing presets when data exists."""
-        presets_file = tmp_path / "presets.json"
-        presets_data = {
-            "coding": {"model": "deepseek:8b", "temperature": 0.1},
-            "creative": {"model": "llama2:7b", "temperature": 0.9},
-        }
-        with open(presets_file, "w") as f:
-            json.dump(presets_data, f)
-
-        monkeypatch.setattr(
-            "tensortruth.api.routes.modules.get_presets_file", lambda: presets_file
-        )
-
-        response = await client.get("/api/presets")
-        assert response.status_code == 200
-        presets = response.json()["presets"]
-        assert len(presets) == 2
-        preset_names = [p["name"] for p in presets]
-        assert "coding" in preset_names
-        assert "creative" in preset_names
 
 
 class TestEmbeddingModelModulesIntegration:

@@ -1,14 +1,14 @@
 import { useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Send, Bot, Sparkles } from "lucide-react";
+import { Send, Bot, FolderKanban, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
   useModels,
   useCreateSession,
-  usePresets,
+  useProjects,
   useConfig,
   useCommandDetection,
 } from "@/hooks";
@@ -16,7 +16,6 @@ import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
 import { CommandAutocomplete } from "@/components/chat/CommandAutocomplete";
 import { SessionSettingsPanel } from "@/components/config";
-import type { PresetInfo } from "@/api/types";
 import type { CommandDefinition } from "@/types/commands";
 
 export function WelcomePage() {
@@ -25,13 +24,11 @@ export function WelcomePage() {
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [sessionParams, setSessionParams] = useState<Record<string, unknown>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activePreset, setActivePreset] = useState<string | null>(null);
-  const [isAnimating, setIsAnimating] = useState(false);
   const [autocompleteHasResults, setAutocompleteHasResults] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { data: modelsData, isLoading: modelsLoading } = useModels();
-  const { data: presetsData } = usePresets();
+  const { data: projectsData } = useProjects();
   const { data: config } = useConfig();
   const createSession = useCreateSession();
   const navigate = useNavigate();
@@ -104,43 +101,12 @@ export function WelcomePage() {
     }
   };
 
-  const handlePresetClick = (preset: PresetInfo) => {
-    const config = preset.config || {};
-
-    // Apply modules from preset
-    if (Array.isArray(config.modules)) {
-      setSelectedModules(config.modules as string[]);
-    }
-
-    // Apply model from preset
-    if (config.model) {
-      setSelectedModel(config.model as string);
-    }
-
-    // Build session params from preset config
-    const newParams: Record<string, unknown> = {};
-    const paramKeys = [
-      "temperature",
-      "context_window",
-      "reranker_model",
-      "reranker_top_n",
-      "confidence_cutoff",
-      "confidence_cutoff_hard",
-      "system_prompt",
-      "embedding_model",
-    ];
-    paramKeys.forEach((key) => {
-      if (config[key] !== undefined) newParams[key] = config[key];
-    });
-    setSessionParams(newParams);
-
-    // Track active preset & trigger animation
-    setActivePreset(preset.name);
-    setIsAnimating(true);
-    setTimeout(() => setIsAnimating(false), 800);
-  };
-
   const canSend = message.trim().length > 0 && !isSubmitting;
+
+  // Projects data
+  const projects = projectsData?.projects ?? [];
+  const recentProjects = projects.slice(0, 4);
+  const hasMoreProjects = projects.length > 4;
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-4 pb-[env(safe-area-inset-bottom)]">
@@ -160,12 +126,7 @@ export function WelcomePage() {
 
         {/* Chat Input */}
         <div className="space-y-4">
-          <div
-            className={cn(
-              "bg-muted/50 border-input relative overflow-visible rounded-2xl border shadow-sm transition-all duration-500",
-              isAnimating && "preset-glow"
-            )}
-          >
+          <div className="bg-muted/50 border-input relative overflow-visible rounded-2xl border shadow-sm transition-all duration-500">
             {/* Command Autocomplete */}
             <CommandAutocomplete
               input={message}
@@ -264,38 +225,70 @@ export function WelcomePage() {
           </p>
         </div>
 
-        {/* Presets */}
-        {presetsData && presetsData.presets.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-muted-foreground text-center text-sm">
-              Quick start with a preset
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {presetsData.presets.map((preset) => (
+        {/* Projects Quick Access */}
+        <div className="space-y-3">
+          {projects.length > 0 ? (
+            <>
+              <p className="text-muted-foreground text-center text-sm">Your projects</p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {recentProjects.map((project) => (
+                  <Button
+                    key={project.project_id}
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="gap-2 rounded-full"
+                  >
+                    <Link to={`/projects/${project.project_id}`}>
+                      <FolderKanban className="h-3.5 w-3.5" />
+                      {project.name}
+                    </Link>
+                  </Button>
+                ))}
                 <Button
-                  key={preset.name}
-                  variant={activePreset === preset.name ? "default" : "outline"}
+                  variant="outline"
                   size="sm"
-                  onClick={() => handlePresetClick(preset)}
-                  disabled={isSubmitting}
-                  className={cn(
-                    "gap-2 rounded-full transition-all duration-300",
-                    activePreset === preset.name && "ring-primary/50 scale-105 ring-2"
-                  )}
-                  title={preset.config?.description as string | undefined}
+                  asChild
+                  className="gap-2 rounded-full"
                 >
-                  <Sparkles
-                    className={cn(
-                      "h-3.5 w-3.5 transition-all",
-                      activePreset === preset.name && "text-yellow-400"
-                    )}
-                  />
-                  {preset.name}
+                  <Link to="/projects/new">
+                    <Plus className="h-3.5 w-3.5" />
+                    New Project
+                  </Link>
                 </Button>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
+              {hasMoreProjects && (
+                <p className="text-center">
+                  <Link
+                    to="/projects"
+                    className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-2 transition-colors"
+                  >
+                    View all projects
+                  </Link>
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-muted-foreground text-center text-sm">
+                Organize your work with Projects
+              </p>
+              <div className="flex justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  className="gap-2 rounded-full"
+                >
+                  <Link to="/projects/new">
+                    <Plus className="h-3.5 w-3.5" />
+                    New Project
+                  </Link>
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

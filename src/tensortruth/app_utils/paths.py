@@ -32,11 +32,6 @@ def get_sessions_file() -> Path:
     return get_user_data_dir() / "chat_sessions.json"
 
 
-def get_presets_file() -> Path:
-    """Get the path to the presets file."""
-    return get_user_data_dir() / "presets.json"
-
-
 def get_indexes_dir() -> Path:
     """Get the path to the indexes directory."""
     indexes_dir = get_user_data_dir() / "indexes"

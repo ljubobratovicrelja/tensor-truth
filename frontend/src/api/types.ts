@@ -319,15 +319,6 @@ export interface EmbeddingModelsResponse {
   current: string;
 }
 
-export interface PresetInfo {
-  name: string;
-  config: Record<string, unknown>;
-}
-
-export interface PresetsResponse {
-  presets: PresetInfo[];
-}
-
 // Reindex types
 export interface ReindexResponse {
   success: boolean;

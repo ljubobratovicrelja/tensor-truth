@@ -6,8 +6,6 @@ export const QUERY_KEYS = {
   models: ["models"] as const,
   embeddingModels: ["embedding-models"] as const,
   rerankers: ["rerankers"] as const,
-  presets: ["presets"] as const,
-  favoritePresets: ["presets", "favorites"] as const,
   config: ["config"] as const,
   documents: (scopeType: string, scopeId: string) =>
     [scopeType, scopeId, "documents"] as const,

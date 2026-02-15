@@ -419,39 +419,6 @@
     animation: shimmer 2s infinite;
   }
 
-  /* Preset application animations */
-  @keyframes preset-glow {
-    0% {
-      box-shadow: 0 0 0 0 oklch(0.7 0.15 250 / 0.6);
-    }
-    30% {
-      box-shadow: 0 0 20px 4px oklch(0.7 0.15 250 / 0.4);
-    }
-    100% {
-      box-shadow: 0 0 0 0 oklch(0.7 0.15 250 / 0);
-    }
-  }
-
-  @keyframes preset-ripple {
-    0% {
-      transform: scale(0.95);
-      opacity: 1;
-    }
-    50% {
-      transform: scale(1.02);
-    }
-    100% {
-      transform: scale(1);
-      opacity: 1;
-    }
-  }
-
-  .preset-glow {
-    animation:
-      preset-glow 0.8s ease-out,
-      preset-ripple 0.5s ease-out;
-  }
-
   /* Streaming text transition animations */
   @keyframes fade-out {
     from {
