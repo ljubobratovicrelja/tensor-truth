@@ -9,7 +9,8 @@ export const QUERY_KEYS = {
   presets: ["presets"] as const,
   favoritePresets: ["presets", "favorites"] as const,
   config: ["config"] as const,
-  pdfs: (sessionId: string) => ["sessions", sessionId, "pdfs"] as const,
+  documents: (scopeType: string, scopeId: string) =>
+    [scopeType, scopeId, "documents"] as const,
   startup: ["startup"] as const,
   projects: ["projects"] as const,
   project: (id: string) => ["projects", id] as const,

@@ -328,24 +328,58 @@ export interface PresetsResponse {
   presets: PresetInfo[];
 }
 
-// PDF types
-export interface PDFMetadata {
-  pdf_id: string;
-  filename: string;
-  path: string;
-  file_size: number;
-  page_count: number;
-}
-
-export interface PDFListResponse {
-  pdfs: PDFMetadata[];
-  has_index: boolean;
-}
-
+// Reindex types
 export interface ReindexResponse {
   success: boolean;
   message: string;
   pdf_count: number;
+}
+
+// Document types (unified, scope-agnostic)
+export type ScopeType = "session" | "project";
+
+export interface DocumentListItem {
+  doc_id: string;
+  filename: string;
+  file_size: number;
+  page_count: number;
+}
+
+export interface DocumentListResponse {
+  documents: DocumentListItem[];
+  has_index: boolean;
+}
+
+export interface DocumentUploadResponse {
+  doc_id: string;
+  filename: string;
+  file_size: number;
+  page_count: number;
+}
+
+export interface TextUploadRequest {
+  content: string;
+  filename: string;
+}
+
+export interface UrlUploadRequest {
+  url: string;
+  context?: string;
+}
+
+export interface CatalogModuleAddRequest {
+  module_name: string;
+}
+
+export interface CatalogModuleAddResponse {
+  task_id: string;
+  module_name: string;
+  status: string;
+}
+
+export interface CatalogModuleRemoveResponse {
+  module_name: string;
+  status: string;
 }
 
 // Startup types

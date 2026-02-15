@@ -7,13 +7,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { PdfList } from "./PdfList";
+import type { ScopeType } from "@/api/types";
+import { DocumentPanel } from "./DocumentPanel";
 
-interface PdfDialogProps {
-  sessionId: string;
+interface DocumentDialogProps {
+  scopeId: string;
+  scopeType: ScopeType;
 }
 
-export function PdfDialog({ sessionId }: PdfDialogProps) {
+export function DocumentDialog({ scopeId, scopeType }: DocumentDialogProps) {
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -26,7 +28,7 @@ export function PdfDialog({ sessionId }: PdfDialogProps) {
         <DialogHeader>
           <DialogTitle>Manage Documents</DialogTitle>
         </DialogHeader>
-        <PdfList sessionId={sessionId} />
+        <DocumentPanel scopeId={scopeId} scopeType={scopeType} />
       </DialogContent>
     </Dialog>
   );

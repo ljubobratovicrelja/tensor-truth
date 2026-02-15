@@ -11,7 +11,7 @@ import {
   useProject,
 } from "@/hooks";
 import { cn } from "@/lib/utils";
-import { PdfDialog } from "@/components/pdfs";
+import { DocumentDialog } from "@/components/documents";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 
@@ -184,7 +184,7 @@ export function ChatContainer() {
         <h2 className="text-muted-foreground text-sm font-medium">
           {sessionData?.title ?? "Chat"}
         </h2>
-        <PdfDialog sessionId={urlSessionId} />
+        <DocumentDialog scopeId={urlSessionId} scopeType="session" />
       </div>
       <MessageList
         sessionId={urlSessionId}
