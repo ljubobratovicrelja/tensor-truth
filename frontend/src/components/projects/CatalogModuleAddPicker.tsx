@@ -30,7 +30,6 @@ export function CatalogModuleAddPicker({
     try {
       await addModule.mutateAsync({ projectId, moduleName });
       toast.success(`Adding module: ${generateDisplayName(moduleName)}`);
-      setOpen(false);
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Add failed";
       toast.error(`Failed to add module: ${msg}`);
