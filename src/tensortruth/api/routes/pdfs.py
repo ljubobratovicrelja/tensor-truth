@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from tensortruth.api.deps import SessionServiceDep, get_pdf_service
+from tensortruth.api.deps import SessionServiceDep, get_document_service
 from tensortruth.api.schemas import (
     PDFListResponse,
     PDFMetadataResponse,
@@ -21,7 +21,7 @@ async def list_pdfs(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    with get_pdf_service(session_id) as pdf_service:
+    with get_document_service(session_id, "session") as pdf_service:
         pdf_files = pdf_service.get_all_pdf_files()
         has_index = pdf_service.index_exists()
 
@@ -70,7 +70,7 @@ async def upload_pdf(
 
     content = await file.read()
 
-    with get_pdf_service(session_id) as pdf_service:
+    with get_document_service(session_id, "session") as pdf_service:
         metadata = pdf_service.upload(content, file.filename)
 
         return PDFMetadataResponse(
@@ -91,7 +91,7 @@ async def delete_pdf(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    with get_pdf_service(session_id) as pdf_service:
+    with get_document_service(session_id, "session") as pdf_service:
         # Check if PDF exists before deleting
         pdf_files = pdf_service.get_all_pdf_files()
         if not any(f.stem.startswith(pdf_id) for f in pdf_files):
@@ -108,7 +108,7 @@ async def reindex_pdfs(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    with get_pdf_service(session_id) as pdf_service:
+    with get_document_service(session_id, "session") as pdf_service:
         pdf_count = pdf_service.get_pdf_count()
 
         if pdf_count == 0:

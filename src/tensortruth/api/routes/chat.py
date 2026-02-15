@@ -15,7 +15,7 @@ from tensortruth.api.deps import (
     ProjectServiceDep,
     SessionServiceDep,
     get_chat_service,
-    get_pdf_service,
+    get_document_service,
     get_project_service,
     get_session_service,
 )
@@ -172,7 +172,7 @@ async def chat(
         raise HTTPException(status_code=404, detail="Session not found")
 
     # 2. Build context
-    with get_pdf_service(session_id) as pdf_service:
+    with get_document_service(session_id, "session") as pdf_service:
         context = ChatContext.from_session(
             session_id,
             body.prompt,
@@ -372,7 +372,7 @@ async def websocket_chat(
                 break
 
             # Build context (resolves project modules + index paths)
-            with get_pdf_service(session_id) as pdf_service:
+            with get_document_service(session_id, "session") as pdf_service:
                 context = ChatContext.from_session(
                     session_id,
                     prompt,

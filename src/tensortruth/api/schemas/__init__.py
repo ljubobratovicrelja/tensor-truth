@@ -22,6 +22,16 @@ from .config import (
     UIConfigSchema,
     WebSearchConfigSchema,
 )
+from .document import (
+    CatalogModuleAddRequest,
+    CatalogModuleAddResponse,
+    CatalogModuleRemoveResponse,
+    DocumentListItem,
+    DocumentListResponse,
+    DocumentUploadResponse,
+    TextUploadRequest,
+    UrlUploadRequest,
+)
 from .pdf import PDFListResponse, PDFMetadataResponse, ReindexResponse
 from .project import (
     CatalogModuleStatus,
@@ -98,6 +108,15 @@ __all__ = [
     "PDFMetadataResponse",
     "PDFListResponse",
     "ReindexResponse",
+    # Document
+    "DocumentUploadResponse",
+    "DocumentListItem",
+    "DocumentListResponse",
+    "UrlUploadRequest",
+    "TextUploadRequest",
+    "CatalogModuleAddRequest",
+    "CatalogModuleAddResponse",
+    "CatalogModuleRemoveResponse",
     # Startup
     "StartupStatusResponse",
     "IndexesStatusSchema",

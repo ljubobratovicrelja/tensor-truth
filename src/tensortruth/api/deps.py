@@ -10,6 +10,7 @@ from fastapi import Depends
 
 from tensortruth.app_utils.paths import (
     get_indexes_dir,
+    get_project_dir,
     get_projects_data_dir,
     get_session_dir,
     get_sessions_data_dir,
@@ -105,13 +106,32 @@ def get_intent_service() -> IntentService:
     )
 
 
-def get_pdf_service(session_id: str) -> DocumentService:
-    """Get DocumentService for a session (name kept for backwards compat)."""
+def get_document_service(scope_id: str, scope_type: str = "session") -> DocumentService:
+    """Get DocumentService for a scope (session or project).
+
+    Args:
+        scope_id: Session or project identifier.
+        scope_type: Either "session" or "project".
+
+    Returns:
+        Configured DocumentService instance.
+    """
+    if scope_type == "project":
+        return DocumentService(
+            scope_id=scope_id,
+            scope_dir=get_project_dir(scope_id),
+            scope_type="project",
+        )
     return DocumentService(
-        scope_id=session_id,
-        scope_dir=get_session_dir(session_id),
+        scope_id=scope_id,
+        scope_dir=get_session_dir(scope_id),
         scope_type="session",
     )
+
+
+def get_pdf_service(session_id: str) -> DocumentService:
+    """Get DocumentService for a session (backwards-compatible alias)."""
+    return get_document_service(session_id, "session")
 
 
 # ToolService singleton - loaded at startup
