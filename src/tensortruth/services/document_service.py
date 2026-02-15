@@ -4,12 +4,15 @@ This service wraps the PDFHandler and DocumentIndexBuilder with a unified
 interface for document upload, conversion, indexing, and cleanup.
 """
 
+import re
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Union
+from urllib.parse import urlparse
 
 from tensortruth.document_index import DocumentIndexBuilder
 from tensortruth.pdf_handler import PDFHandler
+from tensortruth.scrapers.url_fetcher import fetch_url_as_markdown
 
 from .models import PDFMetadata
 
@@ -260,6 +263,70 @@ class DocumentService:
             filename=filename,
             path=str(md_path),
             file_size=len(content),
+            page_count=0,
+        )
+
+    def upload_url(self, url: str, context: str = "") -> PDFMetadata:
+        """Upload content from a URL.
+
+        Fetches the URL, converts HTML to markdown, and writes it to
+        the markdown directory with a metadata header.
+
+        Args:
+            url: The URL to fetch (must be http or https).
+            context: Optional user-provided context to prepend to the content.
+
+        Returns:
+            PDFMetadata with document info.
+
+        Raises:
+            ValueError: If URL format is invalid or content is unusable.
+            ConnectionError: If the URL cannot be fetched.
+        """
+        markdown_content, page_title = fetch_url_as_markdown(url)
+
+        doc_id = f"url_{uuid.uuid4().hex[:8]}"
+
+        # Create sanitized filename from URL domain+path
+        parsed = urlparse(url)
+        domain_part = re.sub(r"[^a-zA-Z0-9]", "_", parsed.netloc)
+        path_part = re.sub(r"[^a-zA-Z0-9]", "_", parsed.path.strip("/"))
+        if path_part:
+            sanitized = f"{domain_part}_{path_part}"
+        else:
+            sanitized = domain_part
+        # Truncate to avoid extremely long filenames
+        sanitized = sanitized[:80]
+        md_filename = f"{doc_id}_{sanitized}.md"
+
+        markdown_dir = self.scope_dir / "markdown"
+        markdown_dir.mkdir(parents=True, exist_ok=True)
+        md_path = markdown_dir / md_filename
+
+        scope_label = (
+            "Project Upload" if self.scope_type == "project" else "Session Upload"
+        )
+        header = (
+            f"# Document: {page_title}\n"
+            f"# Source: {scope_label}\n"
+            f"# URL: {url}\n"
+            f"\n---\n\n"
+        )
+
+        body = markdown_content
+        if context:
+            body = f"{context}\n\n---\n\n{markdown_content}"
+
+        full_content = header + body
+        md_path.write_text(full_content, encoding="utf-8")
+
+        display_name = page_title or parsed.netloc
+
+        return PDFMetadata(
+            pdf_id=doc_id,
+            filename=display_name,
+            path=str(md_path),
+            file_size=len(full_content),
             page_count=0,
         )
 

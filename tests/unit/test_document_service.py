@@ -117,6 +117,110 @@ class TestUploadDocument:
             session_service.upload_document(b"bytes", "file.docx")
 
 
+class TestUploadUrl:
+    """Test URL document upload."""
+
+    @patch("tensortruth.services.document_service.fetch_url_as_markdown")
+    def test_upload_url_creates_markdown_file(
+        self, mock_fetch, session_service, temp_scope_dir
+    ):
+        """Should create a markdown file in the markdown directory."""
+        mock_fetch.return_value = (
+            "# Hello\n\nSome markdown content here.",
+            "Test Page",
+        )
+
+        result = session_service.upload_url("https://example.com/docs")
+
+        md_path = Path(result.path)
+        assert md_path.exists()
+        assert md_path.parent == temp_scope_dir / "markdown"
+        assert md_path.suffix == ".md"
+
+        file_content = md_path.read_text()
+        assert "Some markdown content here." in file_content
+
+    @patch("tensortruth.services.document_service.fetch_url_as_markdown")
+    def test_upload_url_header_contains_url(self, mock_fetch, session_service):
+        """Should include the source URL in the file header."""
+        mock_fetch.return_value = ("# Content\n\nBody text.", "Page Title")
+
+        result = session_service.upload_url("https://pytorch.org/docs/stable")
+
+        file_content = Path(result.path).read_text()
+        assert "# URL: https://pytorch.org/docs/stable" in file_content
+        assert "# Document: Page Title" in file_content
+
+    @patch("tensortruth.services.document_service.fetch_url_as_markdown")
+    def test_upload_url_includes_context(self, mock_fetch, session_service):
+        """Should prepend context before fetched content when provided."""
+        mock_fetch.return_value = ("# Fetched\n\nFetched body.", "Title")
+
+        result = session_service.upload_url(
+            "https://example.com/page", context="Focus on section 3"
+        )
+
+        file_content = Path(result.path).read_text()
+        assert "Focus on section 3" in file_content
+        assert "Fetched body." in file_content
+        # Context should appear before fetched content
+        context_pos = file_content.index("Focus on section 3")
+        body_pos = file_content.index("Fetched body.")
+        assert context_pos < body_pos
+
+    @patch("tensortruth.services.document_service.fetch_url_as_markdown")
+    def test_upload_url_returns_metadata(self, mock_fetch, session_service):
+        """Should return proper PDFMetadata fields."""
+        mock_fetch.return_value = ("# Content\n\nBody.", "My Page Title")
+
+        result = session_service.upload_url("https://example.com/page")
+
+        assert result.pdf_id.startswith("url_")
+        assert result.filename == "My Page Title"
+        assert result.page_count == 0
+        assert result.file_size > 0
+        assert Path(result.path).exists()
+
+    @patch("tensortruth.services.document_service.fetch_url_as_markdown")
+    def test_upload_url_returns_domain_as_filename_when_no_title(
+        self, mock_fetch, session_service
+    ):
+        """Should use domain as filename when page has no title."""
+        mock_fetch.return_value = ("# Content\n\nBody.", "")
+
+        result = session_service.upload_url("https://example.com/page")
+
+        assert result.filename == "example.com"
+
+    @patch("tensortruth.services.document_service.fetch_url_as_markdown")
+    def test_upload_url_propagates_fetch_error(self, mock_fetch, session_service):
+        """Should propagate ConnectionError from fetch_url_as_markdown."""
+        mock_fetch.side_effect = ConnectionError("HTTP 404 fetching URL")
+
+        with pytest.raises(ConnectionError, match="HTTP 404"):
+            session_service.upload_url("https://example.com/missing")
+
+    @patch("tensortruth.services.document_service.fetch_url_as_markdown")
+    def test_upload_url_scope_labels_session(self, mock_fetch, session_service):
+        """Should use 'Session Upload' label for session scope."""
+        mock_fetch.return_value = ("# Content\n\nBody.", "Title")
+
+        result = session_service.upload_url("https://example.com")
+
+        file_content = Path(result.path).read_text()
+        assert "# Source: Session Upload" in file_content
+
+    @patch("tensortruth.services.document_service.fetch_url_as_markdown")
+    def test_upload_url_scope_labels_project(self, mock_fetch, project_service):
+        """Should use 'Project Upload' label for project scope."""
+        mock_fetch.return_value = ("# Content\n\nBody.", "Title")
+
+        result = project_service.upload_url("https://example.com")
+
+        file_content = Path(result.path).read_text()
+        assert "# Source: Project Upload" in file_content
+
+
 class TestGetIndexBuilder:
     """Test index builder creation."""
 
