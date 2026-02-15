@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
+import { RightSidebar } from "./RightSidebar";
 import { useUIStore } from "@/stores";
 import { useIsMobile } from "@/hooks";
 import { cn } from "@/lib/utils";
@@ -8,9 +9,10 @@ import { cn } from "@/lib/utils";
 interface AppLayoutProps {
   sidebar: ReactNode;
   children: ReactNode;
+  rightSidebar?: ReactNode;
 }
 
-export function AppLayout({ sidebar, children }: AppLayoutProps) {
+export function AppLayout({ sidebar, children, rightSidebar }: AppLayoutProps) {
   const sidebarOpen = useUIStore((state) => state.sidebarOpen);
   const setSidebarOpen = useUIStore((state) => state.setSidebarOpen);
   const headerHidden = useUIStore((state) => state.headerHidden);
@@ -41,6 +43,8 @@ export function AppLayout({ sidebar, children }: AppLayoutProps) {
         )}
 
         <main className="flex-1 overflow-hidden">{children}</main>
+
+        {rightSidebar && <RightSidebar>{rightSidebar}</RightSidebar>}
       </div>
     </div>
   );

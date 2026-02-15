@@ -8,6 +8,7 @@ import {
   useUpdateSession,
   useWebSocketChat,
   useIsMobile,
+  useProject,
 } from "@/hooks";
 import { cn } from "@/lib/utils";
 import { PdfDialog } from "@/components/pdfs";
@@ -83,6 +84,10 @@ export function ChatContainer() {
   // This prevents showing stale cached messages from a different session
   const showMessagesLoading = messagesLoading || (messagesFetching && !messagesData);
   const updateSession = useUpdateSession();
+
+  // Load project data if session belongs to a project
+  const sessionProjectId = sessionData?.project_id ?? null;
+  const { data: projectData } = useProject(sessionProjectId);
 
   // Redirect to home (or project view) if session doesn't exist
   useEffect(() => {
@@ -221,6 +226,10 @@ export function ChatContainer() {
             onModelChange={handleModelChange}
             sessionId={urlSessionId}
             sessionParams={sessionData?.params ?? {}}
+            lockedModules={
+              projectData ? Object.keys(projectData.catalog_modules) : undefined
+            }
+            projectDocuments={projectData?.documents}
           />
         </div>
       </div>

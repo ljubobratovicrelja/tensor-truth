@@ -8,6 +8,7 @@ import { ModuleSelector } from "./ModuleSelector";
 import { SessionSettingsPanel } from "@/components/config";
 import { CommandAutocomplete } from "./CommandAutocomplete";
 import type { CommandDefinition } from "@/types/commands";
+import type { DocumentInfo } from "@/api/types";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -20,6 +21,10 @@ interface ChatInputProps {
   onModelChange?: (model: string | null) => void;
   sessionId?: string;
   sessionParams?: Record<string, unknown>;
+  /** Module names locked by the project (shown as non-toggleable). */
+  lockedModules?: string[];
+  /** Documents attached to the project (shown in module selector). */
+  projectDocuments?: DocumentInfo[];
 }
 
 export function ChatInput({
@@ -33,6 +38,8 @@ export function ChatInput({
   onModelChange,
   sessionId,
   sessionParams = {},
+  lockedModules,
+  projectDocuments,
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const [autocompleteHasResults, setAutocompleteHasResults] = useState(false);
@@ -160,6 +167,8 @@ export function ChatInput({
                 onModulesChange={onModulesChange}
                 disabled={isStreaming}
                 embeddingModel={sessionParams.embedding_model as string | undefined}
+                lockedModules={lockedModules}
+                projectDocuments={projectDocuments}
               />
             )}
             {sessionId && (

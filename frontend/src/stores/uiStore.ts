@@ -5,6 +5,7 @@ interface UIStore {
   // Persisted state
   sidebarOpen: boolean;
   sidebarWidth: number;
+  rightSidebarOpen: boolean;
   theme: "light" | "dark" | "system";
   // Transient state (not persisted)
   headerHidden: boolean;
@@ -13,6 +14,8 @@ interface UIStore {
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setSidebarWidth: (width: number) => void;
+  setRightSidebarOpen: (open: boolean) => void;
+  toggleRightSidebar: () => void;
   setTheme: (theme: "light" | "dark" | "system") => void;
   setHeaderHidden: (hidden: boolean) => void;
   setInputHidden: (hidden: boolean) => void;
@@ -23,6 +26,7 @@ export const useUIStore = create<UIStore>()(
     (set) => ({
       sidebarOpen: true,
       sidebarWidth: 256,
+      rightSidebarOpen: true,
       theme: "system",
       headerHidden: false,
       inputHidden: false,
@@ -30,6 +34,9 @@ export const useUIStore = create<UIStore>()(
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       setSidebarWidth: (width) => set({ sidebarWidth: width }),
+      setRightSidebarOpen: (open) => set({ rightSidebarOpen: open }),
+      toggleRightSidebar: () =>
+        set((state) => ({ rightSidebarOpen: !state.rightSidebarOpen })),
       setTheme: (theme) => set({ theme }),
       setHeaderHidden: (hidden) => set({ headerHidden: hidden }),
       setInputHidden: (hidden) => set({ inputHidden: hidden }),
@@ -40,6 +47,7 @@ export const useUIStore = create<UIStore>()(
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         sidebarWidth: state.sidebarWidth,
+        rightSidebarOpen: state.rightSidebarOpen,
         theme: state.theme,
       }),
     }

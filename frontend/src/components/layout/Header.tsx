@@ -1,5 +1,12 @@
 import { useLocation, Link } from "react-router-dom";
-import { PanelLeftClose, PanelLeft, Menu, X } from "lucide-react";
+import {
+  PanelLeftClose,
+  PanelLeft,
+  PanelRight,
+  PanelRightClose,
+  Menu,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/stores";
 import { useIsMobile } from "@/hooks";
@@ -10,9 +17,16 @@ import { cn } from "@/lib/utils";
 
 export function Header() {
   const location = useLocation();
-  const { sidebarOpen, toggleSidebar, headerHidden } = useUIStore();
+  const {
+    sidebarOpen,
+    toggleSidebar,
+    rightSidebarOpen,
+    toggleRightSidebar,
+    headerHidden,
+  } = useUIStore();
   const isMobile = useIsMobile();
   const isInChat = location.pathname.includes("/chat/");
+  const isInProject = location.pathname.startsWith("/projects/");
 
   // Choose icon based on mobile state and sidebar state
   const getIcon = () => {
@@ -50,6 +64,21 @@ export function Header() {
       <SystemStatusPanel />
       <ThemeToggle />
       {!isInChat && <ConfigPanel />}
+      {isInProject && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleRightSidebar}
+          className="shrink-0"
+          title={rightSidebarOpen ? "Close project panel" : "Open project panel"}
+        >
+          {rightSidebarOpen ? (
+            <PanelRightClose className="h-5 w-5" />
+          ) : (
+            <PanelRight className="h-5 w-5" />
+          )}
+        </Button>
+      )}
     </header>
   );
 }

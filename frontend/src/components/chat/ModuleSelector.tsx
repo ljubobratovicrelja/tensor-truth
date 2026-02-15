@@ -1,11 +1,20 @@
 import { useState, useEffect, useMemo } from "react";
-import { Database, Check, Book, FileText, Package, Folder } from "lucide-react";
+import {
+  Database,
+  Check,
+  Book,
+  FileText,
+  Package,
+  Folder,
+  Link,
+  Lock,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useModules, useConfig, useEmbeddingModels } from "@/hooks";
-import type { ModuleInfo } from "@/api/types";
+import type { ModuleInfo, DocumentInfo } from "@/api/types";
 
 /** Extract short model ID from full model name (e.g., "BAAI/bge-m3" -> "bge-m3") */
 function getShortModelId(modelName: string | undefined): string {
@@ -46,6 +55,10 @@ interface ModuleSelectorProps {
   disabled?: boolean;
   /** Embedding model to filter modules by. If provided, only modules indexed with this model are shown. */
   embeddingModel?: string;
+  /** Module names that are locked (from project catalog). Shown as checked + greyed out. */
+  lockedModules?: string[];
+  /** Documents attached to the project. Shown as a flat read-only list. */
+  projectDocuments?: DocumentInfo[];
 }
 
 export function ModuleSelector({
@@ -53,6 +66,8 @@ export function ModuleSelector({
   onModulesChange,
   disabled = false,
   embeddingModel,
+  lockedModules,
+  projectDocuments,
 }: ModuleSelectorProps) {
   const [open, setOpen] = useState(false);
   const [localSelection, setLocalSelection] = useState<string[]>(selectedModules);
@@ -206,6 +221,39 @@ export function ModuleSelector({
   // Order for displaying groups
   const typeOrder = ["book", "paper", "library_doc", "unknown"];
 
+  // Project context: determine which modules are locked vs additional
+  const isProjectContext = !!lockedModules;
+  const lockedModuleSet = useMemo(() => new Set(lockedModules ?? []), [lockedModules]);
+  const additionalModules = useMemo(() => {
+    if (!isProjectContext) return filteredModules;
+    return filteredModules.filter((m) => !lockedModuleSet.has(m.name));
+  }, [isProjectContext, filteredModules, lockedModuleSet]);
+
+  // Locked modules with display info
+  const lockedModuleInfos = useMemo(() => {
+    if (!isProjectContext || !lockedModules) return [];
+    const moduleInfoMap = new Map<string, ModuleInfo>();
+    for (const m of modulesData?.modules ?? []) {
+      moduleInfoMap.set(m.name, m);
+    }
+    return lockedModules.map((name) => {
+      const existing = moduleInfoMap.get(name);
+      if (existing) return existing;
+      const { doc_type, sort_order } = inferDocType(name);
+      return {
+        name,
+        display_name: generateDisplayName(name),
+        doc_type,
+        sort_order,
+      };
+    });
+  }, [isProjectContext, lockedModules, modulesData?.modules]);
+
+  // Total effective count for display (locked + user-selected)
+  const totalSelectedCount = isProjectContext
+    ? (lockedModules?.length ?? 0) + localSelection.length
+    : localSelection.length;
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -215,13 +263,13 @@ export function ModuleSelector({
           disabled={disabled}
           className={cn(
             "h-8 w-8",
-            selectedModules.length > 0
+            totalSelectedCount > 0
               ? "text-primary"
               : "text-muted-foreground hover:text-foreground"
           )}
           title={
-            selectedModules.length > 0
-              ? `${selectedModules.length} module${selectedModules.length !== 1 ? "s" : ""} selected`
+            totalSelectedCount > 0
+              ? `${totalSelectedCount} module${totalSelectedCount !== 1 ? "s" : ""} selected`
               : "Select knowledge modules"
           }
         >
@@ -272,6 +320,108 @@ export function ModuleSelector({
               <div className="text-muted-foreground py-4 text-center text-sm">
                 Loading modules...
               </div>
+            ) : isProjectContext ? (
+              /* Project context: 3 sections */
+              <div className="space-y-3">
+                {/* 1. Project Knowledge (documents) */}
+                {projectDocuments && projectDocuments.length > 0 && (
+                  <div>
+                    <div className="text-muted-foreground mb-1 flex items-center gap-1.5 px-2 text-xs font-medium">
+                      <FileText className="h-3 w-3" />
+                      <span>Project Knowledge</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {projectDocuments.map((doc) => (
+                        <div
+                          key={doc.doc_id}
+                          className="flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left"
+                        >
+                          {doc.type === "url" ? (
+                            <Link className="text-muted-foreground h-4 w-4 shrink-0" />
+                          ) : (
+                            <FileText className="text-muted-foreground h-4 w-4 shrink-0" />
+                          )}
+                          <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm">
+                            {doc.filename || doc.url || doc.doc_id}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Project Modules (locked) */}
+                {lockedModuleInfos.length > 0 && (
+                  <div>
+                    <div className="text-muted-foreground mb-1 flex items-center gap-1.5 px-2 text-xs font-medium">
+                      <Lock className="h-3 w-3" />
+                      <span>Project Modules</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {lockedModuleInfos.map((module) => (
+                        <div
+                          key={module.name}
+                          className="bg-muted/30 flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left opacity-70"
+                        >
+                          <Checkbox
+                            checked={true}
+                            disabled
+                            className="pointer-events-none"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm">
+                            {module.display_name || module.name}
+                          </span>
+                          <span className="text-muted-foreground shrink-0 text-xs">
+                            (locked)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Additional Modules (toggleable) */}
+                {additionalModules.length > 0 && (
+                  <div>
+                    <div className="text-muted-foreground mb-1 flex items-center gap-1.5 px-2 text-xs font-medium">
+                      <Database className="h-3 w-3" />
+                      <span>Additional Modules</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {additionalModules.map((module) => {
+                        const isSelected = localSelection.includes(module.name);
+                        return (
+                          <button
+                            key={module.name}
+                            onClick={() => handleToggle(module.name)}
+                            className={cn(
+                              "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors",
+                              "hover:bg-muted/50",
+                              isSelected && "bg-primary/10"
+                            )}
+                          >
+                            <Checkbox
+                              checked={isSelected}
+                              className="pointer-events-none"
+                            />
+                            <span className="min-w-0 flex-1 truncate text-sm">
+                              {module.display_name || module.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {lockedModuleInfos.length === 0 &&
+                  additionalModules.length === 0 &&
+                  (!projectDocuments || projectDocuments.length === 0) && (
+                    <div className="text-muted-foreground py-4 text-center text-sm">
+                      No knowledge sources configured.
+                    </div>
+                  )}
+              </div>
             ) : modules.length === 0 ? (
               <div className="text-muted-foreground py-4 text-center text-sm">
                 No modules available.
@@ -281,6 +431,7 @@ export function ModuleSelector({
                 </span>
               </div>
             ) : (
+              /* Default (non-project) view: grouped by type */
               <div className="space-y-3">
                 {typeOrder.map((type) => {
                   const group = groupedModules[type];
@@ -332,9 +483,11 @@ export function ModuleSelector({
         {/* Footer */}
         <div className="flex flex-shrink-0 items-center justify-between border-t px-3 py-2">
           <span className="text-muted-foreground text-xs">
-            {selectedCount === 0
+            {totalSelectedCount === 0
               ? "No modules selected (LLM only)"
-              : `${selectedCount} module${selectedCount !== 1 ? "s" : ""} selected`}
+              : isProjectContext
+                ? `${lockedModules?.length ?? 0} locked + ${selectedCount} additional`
+                : `${selectedCount} module${selectedCount !== 1 ? "s" : ""} selected`}
           </span>
           <div className="flex items-center gap-2">
             <Button
