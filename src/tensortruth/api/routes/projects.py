@@ -8,7 +8,7 @@ from tensortruth.api.deps import (
     SessionServiceDep,
     get_document_service,
 )
-from tensortruth.api.routes.documents import get_display_name
+from tensortruth.api.routes.documents import extract_doc_id, get_display_name
 from tensortruth.api.routes.sessions import _session_to_response
 from tensortruth.api.schemas import (
     CatalogModuleStatus,
@@ -40,8 +40,10 @@ def _project_to_response(project_id: str, project: dict) -> ProjectResponse:
     documents = []
     try:
         with get_document_service(project_id, "project") as doc_service:
+            pdf_doc_ids: set[str] = set()
             for pdf_path in doc_service.get_all_pdf_files():
-                doc_id = pdf_path.stem
+                doc_id = extract_doc_id(pdf_path.stem)
+                pdf_doc_ids.add(doc_id)
                 doc_type = "pdf" if doc_id.startswith("pdf_") else "text"
                 documents.append(
                     DocumentInfo(
@@ -51,8 +53,11 @@ def _project_to_response(project_id: str, project: dict) -> ProjectResponse:
                         status="uploaded",
                     )
                 )
+            # Add standalone markdown files, skip PDF conversion artifacts
             for md_path in doc_service.get_all_markdown_files():
-                doc_id = md_path.stem
+                doc_id = extract_doc_id(md_path.stem)
+                if doc_id in pdf_doc_ids:
+                    continue
                 if doc_id.startswith("url_"):
                     doc_type = "url"
                 elif doc_id.startswith("doc_"):
