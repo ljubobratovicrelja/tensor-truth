@@ -68,7 +68,7 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
   const uploadFileUrlMutation = useUploadFileUrl();
 
   // Files tab state
-  const [stagedFile, setStagedFile] = useState<File | null>(null);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const [fileUrlInput, setFileUrlInput] = useState("");
   const debouncedFileUrl = useDebounce(fileUrlInput.trim(), 500);
   const fileUrlInfo = useFileUrlInfo(debouncedFileUrl);
@@ -82,20 +82,48 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
   const debouncedArxivId = useDebounce(arxivInput.trim(), 500);
   const arxivLookup = useArxivLookup(debouncedArxivId);
 
-  const isFileUploading =
-    uploadDoc.isPending || uploadText.isPending || uploadFileUrlMutation.isPending;
+  const isFileUploading = uploadingCount > 0 || uploadFileUrlMutation.isPending;
 
-  // Determine what's staged for preview
-  const hasLocalStaged = stagedFile !== null;
-  const hasUrlStaged = !hasLocalStaged && fileUrlInfo.data?.supported === true;
-  const hasStaged = hasLocalStaged || hasUrlStaged;
+  // Determine what's staged for preview (URL files only)
+  const hasUrlStaged = fileUrlInfo.data?.supported === true;
+  const hasStaged = hasUrlStaged;
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      setStagedFile(acceptedFiles[0]);
+  const onDrop = useCallback(
+    async (acceptedFiles: File[]) => {
+      if (acceptedFiles.length === 0) return;
       setFileUrlInput("");
-    }
-  }, []);
+      setUploadingCount((c) => c + acceptedFiles.length);
+
+      const results = await Promise.allSettled(
+        acceptedFiles.map(async (file) => {
+          if (isTextFile(file.name)) {
+            const text = await file.text();
+            await uploadText.mutateAsync({
+              scopeId,
+              scopeType,
+              data: { content: text, filename: file.name },
+            });
+          } else {
+            await uploadDoc.mutateAsync({ scopeId, scopeType, file });
+          }
+        })
+      );
+
+      setUploadingCount((c) => c - acceptedFiles.length);
+
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected");
+
+      if (succeeded > 0) {
+        toast.success(`${succeeded} file${succeeded === 1 ? "" : "s"} added`);
+      }
+      for (const f of failed) {
+        const msg = f.reason instanceof Error ? f.reason.message : "Upload failed";
+        toast.error(msg);
+      }
+    },
+    [scopeId, scopeType, uploadDoc, uploadText]
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -104,39 +132,20 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
       "text/plain": [".txt"],
       "text/markdown": [".md", ".markdown"],
     },
-    multiple: false,
+    multiple: true,
+    disabled: uploadingCount > 0,
   });
 
   const handleFileUrlChange = (value: string) => {
     setFileUrlInput(value);
-    setStagedFile(null);
   };
 
   const clearStaged = () => {
-    setStagedFile(null);
     setFileUrlInput("");
   };
 
   const handleAddFile = async () => {
-    if (hasLocalStaged && stagedFile) {
-      try {
-        if (isTextFile(stagedFile.name)) {
-          const text = await stagedFile.text();
-          await uploadText.mutateAsync({
-            scopeId,
-            scopeType,
-            data: { content: text, filename: stagedFile.name },
-          });
-        } else {
-          await uploadDoc.mutateAsync({ scopeId, scopeType, file: stagedFile });
-        }
-        clearStaged();
-        toast.success("File added");
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : "Upload failed";
-        toast.error(msg);
-      }
-    } else if (hasUrlStaged && fileUrlInfo.data) {
+    if (hasUrlStaged && fileUrlInfo.data) {
       try {
         await uploadFileUrlMutation.mutateAsync({
           scopeId,
@@ -195,9 +204,8 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
     arxivInput.trim().length >= 4;
 
   // File URL error states
-  const showFileUrlError =
-    !hasLocalStaged && fileUrlInfo.isError && /^https?:\/\/.+/.test(debouncedFileUrl);
-  const showFileUrlUnsupported = !hasLocalStaged && fileUrlInfo.data?.supported === false;
+  const showFileUrlError = fileUrlInfo.isError && /^https?:\/\/.+/.test(debouncedFileUrl);
+  const showFileUrlUnsupported = fileUrlInfo.data?.supported === false;
 
   return (
     <Tabs defaultValue="files" className="w-full">
@@ -223,17 +231,27 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
           <div
             {...getRootProps()}
             className={cn(
-              "flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-3 transition-colors",
+              "flex items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-3 transition-colors",
+              uploadingCount > 0
+                ? "border-muted-foreground/25 pointer-events-none opacity-60"
+                : "cursor-pointer",
               isDragActive
                 ? "border-primary bg-primary/5"
                 : "border-muted-foreground/25 hover:border-primary/50"
             )}
           >
             <input {...getInputProps()} />
-            {isDragActive ? (
+            {uploadingCount > 0 ? (
+              <>
+                <Loader2 className="text-muted-foreground h-4 w-4 shrink-0 animate-spin" />
+                <p className="text-muted-foreground text-sm">
+                  Uploading {uploadingCount} file{uploadingCount === 1 ? "" : "s"}...
+                </p>
+              </>
+            ) : isDragActive ? (
               <>
                 <FileIcon className="text-primary h-4 w-4 shrink-0" />
-                <p className="text-primary text-sm">Drop file here</p>
+                <p className="text-primary text-sm">Drop files here</p>
               </>
             ) : (
               <>
@@ -278,36 +296,30 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
             </p>
           )}
 
-          {/* Preview card */}
-          {hasStaged && (
+          {/* Preview card (URL files only) */}
+          {hasUrlStaged && fileUrlInfo.data && (
             <div className="bg-muted/50 flex items-start gap-3 rounded-md border p-3">
               <FileIcon className="text-muted-foreground mt-0.5 h-5 w-5 shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate text-sm font-medium">
-                    {hasLocalStaged ? stagedFile!.name : fileUrlInfo.data!.filename}
+                    {fileUrlInfo.data.filename}
                   </p>
                   <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">
-                    {hasLocalStaged
-                      ? getTypeBadge(stagedFile!.name)
-                      : getTypeBadge(
-                          fileUrlInfo.data!.filename,
-                          fileUrlInfo.data!.content_type
-                        )}
+                    {getTypeBadge(
+                      fileUrlInfo.data.filename,
+                      fileUrlInfo.data.content_type
+                    )}
                   </Badge>
                 </div>
                 <p className="text-muted-foreground mt-0.5 text-xs">
-                  {hasLocalStaged && stagedFile
-                    ? formatFileSize(stagedFile.size)
-                    : fileUrlInfo.data?.file_size != null
-                      ? formatFileSize(fileUrlInfo.data.file_size)
-                      : "Size unknown"}
+                  {fileUrlInfo.data.file_size != null
+                    ? formatFileSize(fileUrlInfo.data.file_size)
+                    : "Size unknown"}
                 </p>
-                {hasUrlStaged && fileUrlInfo.data && (
-                  <p className="text-muted-foreground mt-0.5 truncate text-xs">
-                    {fileUrlInfo.data.url}
-                  </p>
-                )}
+                <p className="text-muted-foreground mt-0.5 truncate text-xs">
+                  {fileUrlInfo.data.url}
+                </p>
               </div>
               <button
                 onClick={clearStaged}
@@ -322,6 +334,7 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
           <Button
             variant="outline"
             size="sm"
+            className="w-full"
             onClick={handleAddFile}
             disabled={!hasStaged || isFileUploading}
           >
@@ -357,6 +370,7 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
           <Button
             variant="outline"
             size="sm"
+            className="w-full"
             onClick={handleUrlSubmit}
             disabled={!urlValue.trim() || uploadUrlMutation.isPending}
           >
@@ -415,6 +429,7 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
           <Button
             variant="outline"
             size="sm"
+            className="w-full"
             onClick={handleArxivSubmit}
             disabled={!arxivLookup.data || uploadArxivMutation.isPending}
           >

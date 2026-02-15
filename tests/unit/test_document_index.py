@@ -122,7 +122,10 @@ class TestBuildIndex:
         """Should load all markdown files."""
 
         # Mock document loading
-        mock_docs = [Mock(text=f"doc {i}") for i in range(len(sample_markdown_files))]
+        mock_docs = [
+            Mock(text=f"doc {i}", metadata={"file_path": f"/tmp/doc{i}.md"})
+            for i in range(len(sample_markdown_files))
+        ]
         mock_reader.return_value.load_data.return_value = mock_docs
 
         # Mock node parsing
@@ -162,7 +165,9 @@ class TestBuildIndex:
         sample_markdown_files,
     ):
         """Should use HierarchicalNodeParser with correct chunk sizes."""
-        mock_reader.return_value.load_data.return_value = [Mock(text="content")]
+        mock_reader.return_value.load_data.return_value = [
+            Mock(text="content", metadata={"file_path": "/tmp/doc.md"})
+        ]
         mock_parser_instance = Mock()
         mock_parser_instance.get_nodes_from_documents.return_value = [Mock()]
         mock_parser.from_defaults.return_value = mock_parser_instance
@@ -196,7 +201,9 @@ class TestBuildIndex:
         temp_session_dirs,
     ):
         """Should create ChromaDB in index directory."""
-        mock_reader.return_value.load_data.return_value = [Mock(text="content")]
+        mock_reader.return_value.load_data.return_value = [
+            Mock(text="content", metadata={"file_path": "/tmp/doc.md"})
+        ]
 
         # Mock node parsing
         mock_parser_instance = Mock()
@@ -237,7 +244,9 @@ class TestBuildIndex:
         sample_markdown_files,
     ):
         """Should remove old index before building new one."""
-        mock_reader.return_value.load_data.return_value = [Mock(text="content")]
+        mock_reader.return_value.load_data.return_value = [
+            Mock(text="content", metadata={"file_path": "/tmp/doc.md"})
+        ]
 
         # Mock node parsing
         mock_parser_instance = Mock()
@@ -269,7 +278,9 @@ class TestBuildIndex:
             patch("tensortruth.document_index.get_embed_model"),
             patch("tensortruth.document_index.chromadb.PersistentClient"),
         ):
-            mock_reader.return_value.load_data.return_value = [Mock(text="content")]
+            mock_reader.return_value.load_data.return_value = [
+                Mock(text="content", metadata={"file_path": "/tmp/doc.md"})
+            ]
             mock_parser_instance = Mock()
             mock_parser_instance.get_nodes_from_documents.return_value = [Mock()]
             mock_parser.from_defaults.return_value = mock_parser_instance
