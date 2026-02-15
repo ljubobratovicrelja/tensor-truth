@@ -17,6 +17,7 @@ from tensortruth.api.deps import (
     ConfigServiceDep,
     ProjectServiceDep,
     SessionServiceDep,
+    TaskRunnerDep,
     get_document_service,
 )
 from tensortruth.api.schemas import (
@@ -29,13 +30,15 @@ from tensortruth.api.schemas import (
     DocumentUploadResponse,
     FileUrlInfoResponse,
     FileUrlUploadRequest,
-    ReindexResponse,
+    IndexingConfig,
+    IndexingConfigUpdate,
+    ReindexTaskResponse,
     TextUploadRequest,
     UrlUploadRequest,
 )
 from tensortruth.app_utils.paths import get_indexes_dir
 from tensortruth.indexing.metadata import sanitize_model_id
-from tensortruth.services import ProjectService
+from tensortruth.services import ProjectService, TaskRunner
 from tensortruth.utils.validation import validate_arxiv_id
 
 logger = logging.getLogger(__name__)
@@ -121,6 +124,8 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
         md_files = doc_service.get_all_markdown_files()
         has_index = doc_service.index_exists()
         index_dir = doc_service.get_index_path()
+        builder = doc_service._get_index_builder()
+        indexed_doc_ids = builder.get_indexed_doc_ids() if has_index else set()
 
     # Compute index mtime if an index exists
     index_updated_at: Optional[str] = None
@@ -130,8 +135,10 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
             index_updated_at = _mtime_iso(chroma_file)
 
     documents: List[DocumentListItem] = []
+    unindexed_count = 0
 
-    # Add PDF files
+    # Add PDF files and collect their doc_ids
+    pdf_doc_ids: set[str] = set()
     for pdf_path in pdf_files:
         import fitz  # PyMuPDF
 
@@ -142,25 +149,39 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
         except Exception:
             page_count = 0
 
+        doc_id = extract_doc_id(pdf_path.stem)
+        pdf_doc_ids.add(doc_id)
+        is_indexed = doc_id in indexed_doc_ids
+        if not is_indexed:
+            unindexed_count += 1
         documents.append(
             DocumentListItem(
-                doc_id=extract_doc_id(pdf_path.stem),
+                doc_id=doc_id,
                 filename=get_display_name(pdf_path),
                 file_size=pdf_path.stat().st_size if pdf_path.exists() else 0,
                 page_count=page_count,
                 uploaded_at=_mtime_iso(pdf_path),
+                is_indexed=is_indexed,
             )
         )
 
-    # Add markdown files (text/url uploads)
+    # Add markdown files (text/url uploads), excluding conversion artifacts
     for md_path in md_files:
+        md_doc_id = extract_doc_id(md_path.stem)
+        # Skip markdown files that are conversion artifacts of existing PDFs
+        if md_doc_id in pdf_doc_ids:
+            continue
+        is_indexed = md_doc_id in indexed_doc_ids
+        if not is_indexed:
+            unindexed_count += 1
         documents.append(
             DocumentListItem(
-                doc_id=extract_doc_id(md_path.stem),
+                doc_id=md_doc_id,
                 filename=get_display_name(md_path),
                 file_size=md_path.stat().st_size if md_path.exists() else 0,
                 page_count=0,
                 uploaded_at=_mtime_iso(md_path),
+                is_indexed=is_indexed,
             )
         )
 
@@ -168,6 +189,7 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
         documents=documents,
         has_index=has_index,
         index_updated_at=index_updated_at,
+        unindexed_count=unindexed_count,
     )
 
 
@@ -253,7 +275,25 @@ async def _upload_arxiv(
         raise HTTPException(status_code=404, detail="Paper not found on arXiv")
 
     filename = f"{title}.pdf"
-    return _upload_pdf(scope_id, scope_type, pdf_bytes, filename)
+    result = _upload_pdf(scope_id, scope_type, pdf_bytes, filename)
+
+    # Persist arXiv metadata so the indexer skips LLM extraction
+    from tensortruth.utils.metadata import format_authors as _fmt_authors
+
+    authors_str = ", ".join(a.name for a in paper.authors)
+    formatted = _fmt_authors(authors_str)
+    display = f"{paper.title}, {formatted}" if formatted else paper.title
+    arxiv_metadata = {
+        "title": paper.title,
+        "authors": authors_str,
+        "display_name": display,
+        "source_url": f"https://arxiv.org/abs/{normalized}",
+        "doc_type": "arxiv_paper",
+    }
+    with get_document_service(scope_id, scope_type) as doc_service:
+        doc_service.set_metadata(result.doc_id, arxiv_metadata)
+
+    return result
 
 
 def _delete_document(scope_id: str, scope_type: str, doc_id: str) -> None:
@@ -272,30 +312,55 @@ def _delete_document(scope_id: str, scope_type: str, doc_id: str) -> None:
         doc_service.delete(doc_id)
 
 
-def _reindex_documents(scope_id: str, scope_type: str) -> ReindexResponse:
-    """Rebuild the vector index for a scope."""
+def _get_indexing_config(
+    scope_id: str,
+    scope_type: str,
+    project_service: Optional[ProjectService] = None,
+) -> IndexingConfig:
+    """Read indexing config from project config or return defaults."""
+    if scope_type == "project" and project_service is not None:
+        data = project_service.load()
+        project = project_service.get_project(scope_id, data)
+        if project is not None:
+            cfg = project.get("config", {}).get("indexing", {})
+            return IndexingConfig(**cfg)
+    return IndexingConfig()
+
+
+async def _build_index(
+    scope_id: str,
+    scope_type: str,
+    task_runner: TaskRunner,
+    project_service: Optional[ProjectService] = None,
+) -> ReindexTaskResponse:
+    """Submit an incremental build-index job to the TaskRunner."""
     with get_document_service(scope_id, scope_type) as doc_service:
         pdf_count = doc_service.get_pdf_count()
+        md_count = len(doc_service.get_all_markdown_files())
+        unindexed = doc_service.get_unindexed_doc_ids()
 
-        if pdf_count == 0:
-            return ReindexResponse(
-                success=False,
-                message="No documents to index",
-                pdf_count=0,
+    if pdf_count == 0 and md_count == 0:
+        raise HTTPException(status_code=400, detail="No documents to index")
+
+    if not unindexed:
+        raise HTTPException(status_code=400, detail="All documents already indexed")
+
+    indexing_cfg = _get_indexing_config(scope_id, scope_type, project_service)
+
+    def _do_build(progress_callback):
+        with get_document_service(scope_id, scope_type) as doc_service:
+            doc_service.build_index(
+                chunk_sizes=indexing_cfg.chunk_sizes,
+                progress_callback=progress_callback,
+                conversion_method=indexing_cfg.conversion_method,
             )
 
-        try:
-            doc_service.rebuild_index()
-            return ReindexResponse(
-                success=True,
-                message=f"Successfully indexed {pdf_count} documents",
-                pdf_count=pdf_count,
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to rebuild index: {str(e)}",
-            )
+    task_id = await task_runner.submit(
+        "build-index",
+        _do_build,
+        metadata={"scope_id": scope_id, "scope_type": scope_type},
+    )
+    return ReindexTaskResponse(task_id=task_id, pdf_count=len(unindexed))
 
 
 _SUPPORTED_FILE_TYPES = {
@@ -571,23 +636,24 @@ async def delete_session_document(
 
 
 @router.post(
-    "/sessions/{session_id}/documents/reindex",
-    response_model=ReindexResponse,
+    "/sessions/{session_id}/documents/build-index",
+    response_model=ReindexTaskResponse,
 )
-async def reindex_session_documents(
+async def build_session_index(
     session_id: str,
     session_service: SessionServiceDep,
-) -> ReindexResponse:
-    """Rebuild the vector index for session documents."""
+    task_runner: TaskRunnerDep,
+) -> ReindexTaskResponse:
+    """Build the vector index for session documents (incremental)."""
     data = session_service.load()
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return _reindex_documents(session_id, "session")
+    return await _build_index(session_id, "session", task_runner)
 
 
 # ---------------------------------------------------------------------------
-# Project document routes
+# Project helpers
 # ---------------------------------------------------------------------------
 
 
@@ -598,6 +664,79 @@ def _get_project_or_404(project_id: str, project_service: ProjectService) -> dic
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+# ---------------------------------------------------------------------------
+# Project indexing config
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/projects/{project_id}/indexing-config",
+    response_model=IndexingConfig,
+)
+async def get_project_indexing_config(
+    project_id: str,
+    project_service: ProjectServiceDep,
+) -> IndexingConfig:
+    """Get the indexing configuration for a project."""
+    _get_project_or_404(project_id, project_service)
+    return _get_indexing_config(project_id, "project", project_service)
+
+
+@router.patch(
+    "/projects/{project_id}/indexing-config",
+    response_model=IndexingConfig,
+)
+async def update_project_indexing_config(
+    project_id: str,
+    body: IndexingConfigUpdate,
+    project_service: ProjectServiceDep,
+) -> IndexingConfig:
+    """Update the indexing configuration for a project."""
+    data = project_service.load()
+    project = project_service.get_project(project_id, data)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    config = project.setdefault("config", {})
+    indexing = config.setdefault("indexing", {})
+
+    old_chunk_sizes = indexing.get("chunk_sizes")
+    old_conversion = indexing.get("conversion_method")
+
+    if body.chunk_sizes is not None:
+        indexing["chunk_sizes"] = body.chunk_sizes
+    if body.conversion_method is not None:
+        if body.conversion_method not in ("marker", "direct"):
+            raise HTTPException(
+                status_code=400, detail="conversion_method must be 'marker' or 'direct'"
+            )
+        indexing["conversion_method"] = body.conversion_method
+
+    project_service.save(data)
+
+    # If settings actually changed and index exists, delete it so next build
+    # does a full rebuild
+    settings_changed = (
+        indexing.get("chunk_sizes") != old_chunk_sizes
+        or indexing.get("conversion_method") != old_conversion
+    )
+    if settings_changed:
+        with get_document_service(project_id, "project") as doc_service:
+            if doc_service.index_exists():
+                logger.info(
+                    f"Indexing settings changed for project {project_id}, "
+                    "deleting index"
+                )
+                doc_service.delete_index()
+
+    return IndexingConfig(**indexing)
+
+
+# ---------------------------------------------------------------------------
+# Project document routes
+# ---------------------------------------------------------------------------
 
 
 @router.get("/projects/{project_id}/documents", response_model=DocumentListResponse)
@@ -706,16 +845,17 @@ async def delete_project_document(
 
 
 @router.post(
-    "/projects/{project_id}/documents/reindex",
-    response_model=ReindexResponse,
+    "/projects/{project_id}/documents/build-index",
+    response_model=ReindexTaskResponse,
 )
-async def reindex_project_documents(
+async def build_project_index(
     project_id: str,
     project_service: ProjectServiceDep,
-) -> ReindexResponse:
-    """Rebuild the vector index for project documents."""
+    task_runner: TaskRunnerDep,
+) -> ReindexTaskResponse:
+    """Build the vector index for project documents (incremental)."""
     _get_project_or_404(project_id, project_service)
-    return _reindex_documents(project_id, "project")
+    return await _build_index(project_id, "project", task_runner, project_service)
 
 
 # ---------------------------------------------------------------------------

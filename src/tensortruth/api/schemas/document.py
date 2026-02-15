@@ -22,6 +22,7 @@ class DocumentListItem(BaseModel):
     file_size: int
     page_count: int
     uploaded_at: Optional[str] = None
+    is_indexed: bool = False
 
 
 class DocumentListResponse(BaseModel):
@@ -30,6 +31,7 @@ class DocumentListResponse(BaseModel):
     documents: List[DocumentListItem]
     has_index: bool = False
     index_updated_at: Optional[str] = None
+    unindexed_count: int = 0
 
 
 class UrlUploadRequest(BaseModel):
@@ -99,3 +101,17 @@ class CatalogModuleRemoveResponse(BaseModel):
 
     module_name: str
     status: str
+
+
+class IndexingConfig(BaseModel):
+    """Per-scope indexing configuration."""
+
+    chunk_sizes: List[int] = [2048, 512, 256]
+    conversion_method: str = "marker"  # "marker" | "direct"
+
+
+class IndexingConfigUpdate(BaseModel):
+    """Partial update for indexing configuration."""
+
+    chunk_sizes: Optional[List[int]] = None
+    conversion_method: Optional[str] = None

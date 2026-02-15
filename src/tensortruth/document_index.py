@@ -1,12 +1,19 @@
 """Builds and manages vector indexes for uploaded documents."""
 
+import hashlib
 import logging
+import re
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Set
 
 import chromadb
-from llama_index.core import SimpleDirectoryReader, StorageContext, VectorStoreIndex
+from llama_index.core import (
+    SimpleDirectoryReader,
+    StorageContext,
+    VectorStoreIndex,
+    load_index_from_storage,
+)
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
@@ -42,9 +49,22 @@ class DocumentIndexBuilder:
         self.metadata_cache = metadata_cache or {}
         self._chroma_client: Optional[chromadb.ClientAPI] = None
 
-    def _extract_pdf_id_from_filename(self, filename: str) -> str:
-        """Extract PDF ID from markdown filename (e.g., 'pdf_abc123.md' -> 'pdf_abc123')."""
-        return Path(filename).stem
+    _DOC_PREFIX_RE = re.compile(r"^(pdf|doc|url)_[a-f0-9]{7,8}_")
+
+    def _extract_doc_id_from_filename(self, filename: str) -> str:
+        """Extract the short doc ID prefix from a filename.
+
+        Examples:
+            pdf_abc123_My_Paper.pdf -> pdf_abc123
+            doc_abcd1234_notes.md   -> doc_abcd1234
+            url_12345678_slug.md    -> url_12345678
+            simple.md               -> simple
+        """
+        stem = Path(filename).stem
+        m = self._DOC_PREFIX_RE.match(stem)
+        if m:
+            return m.group(0).rstrip("_")
+        return stem
 
     def _get_cached_metadata(self, pdf_id: str) -> Optional[Dict]:
         """Get cached metadata for a PDF from the cache."""
@@ -58,6 +78,60 @@ class DocumentIndexBuilder:
         """Get the complete metadata cache (for saving to scope JSON)."""
         return self.metadata_cache
 
+    def _get_chroma_client(self) -> chromadb.ClientAPI:
+        """Get or create the shared ChromaDB PersistentClient.
+
+        Handles ChromaDB's internal singleton cache: if the index directory
+        was deleted and recreated since the last client was cached, the stale
+        singleton causes a 'different settings' ValueError.  We catch that,
+        evict the stale entry, and retry.
+        """
+        if self._chroma_client is None:
+            try:
+                self._chroma_client = chromadb.PersistentClient(
+                    path=str(self.index_dir)
+                )
+            except ValueError:
+                logger.debug("Clearing stale ChromaDB singleton cache and retrying")
+                self._evict_chroma_cache()
+                self._chroma_client = chromadb.PersistentClient(
+                    path=str(self.index_dir)
+                )
+        return self._chroma_client
+
+    @staticmethod
+    def _evict_chroma_cache() -> None:
+        """Clear ChromaDB's internal SharedSystemClient singleton cache.
+
+        ChromaDB caches PersistentClient instances by path.  When the index
+        directory is deleted and recreated, the stale singleton conflicts with
+        a new client for the same path.  This is the only way to recover
+        without restarting the process.
+        """
+        try:
+            from chromadb.api.client import SharedSystemClient
+
+            # Attribute name varies across chromadb versions (typo was fixed)
+            cache = getattr(
+                SharedSystemClient,
+                "_identifier_to_system",
+                getattr(SharedSystemClient, "_identifer_to_system", None),
+            )
+            if cache is not None:
+                cache.clear()
+        except (ImportError, AttributeError):
+            pass
+
+    def _release_chroma_client(self) -> None:
+        """Release the cached ChromaDB client and evict singleton cache.
+
+        Must be called before deleting / recreating the index directory.
+        """
+        if self._chroma_client is not None:
+            del self._chroma_client
+            self._chroma_client = None
+        self._evict_chroma_cache()
+
     def index_exists(self) -> bool:
         """Check if a valid ChromaDB index exists."""
         chroma_db = self.index_dir / "chroma.sqlite3"
@@ -65,7 +139,10 @@ class DocumentIndexBuilder:
         return chroma_db.exists() and docstore.exists()
 
     def build_index_from_pdfs(
-        self, pdf_files: List[Path], chunk_sizes: List[int] | None = None
+        self,
+        pdf_files: List[Path],
+        chunk_sizes: List[int] | None = None,
+        progress_callback: Optional[Callable] = None,
     ) -> None:
         """
         Build ChromaDB vector index directly from PDF files (fast path).
@@ -73,6 +150,7 @@ class DocumentIndexBuilder:
         Args:
             pdf_files: List of PDF file paths
             chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256])
+            progress_callback: Optional callback(stage, current, total) for progress
 
         Raises:
             ValueError: If no PDF files provided
@@ -84,6 +162,8 @@ class DocumentIndexBuilder:
         if not pdf_files:
             raise ValueError("No PDF files provided")
 
+        cb = progress_callback or (lambda *a: None)
+
         logger.info(
             f"Building index from {len(pdf_files)} PDFs (direct mode, no markdown)"
         )
@@ -92,10 +172,12 @@ class DocumentIndexBuilder:
             # Clean existing index if present
             if self.index_dir.exists():
                 logger.info(f"Removing old index: {self.index_dir}")
+                self._release_chroma_client()
                 shutil.rmtree(self.index_dir)
             self.index_dir.mkdir(parents=True, exist_ok=True)
 
-            # Load PDFs directly
+            # Stage 1: Loading PDFs (10%)
+            cb("Loading PDFs", 10, 100)
             from llama_index.readers.file import PDFReader
 
             reader = PDFReader()
@@ -117,11 +199,24 @@ class DocumentIndexBuilder:
 
             logger.info(f"Loaded {len(documents)} documents from PDFs")
 
-            # Extract metadata (same as markdown path)
+            # Set doc_id on each document so ref_doc_id is tracked in docstore
+            for doc in documents:
+                file_path_str = doc.metadata.get("file_path", "")
+                if file_path_str:
+                    doc.doc_id = self._extract_doc_id_from_filename(
+                        Path(file_path_str).name
+                    )
+
+            # Stage 2: Extracting metadata (40%)
+            cb("Extracting metadata", 40, 100)
             self._extract_and_inject_metadata(documents)
 
-            # Build index (same as markdown path)
+            # Stage 3: Embedding documents (70%)
+            cb("Embedding documents", 70, 100)
             self._build_vector_index(documents, chunk_sizes)
+
+            # Stage 4: Complete
+            cb("Complete", 100, 100)
 
         except Exception as e:
             logger.error(f"Failed to build index from PDFs: {e}")
@@ -150,7 +245,7 @@ class DocumentIndexBuilder:
                         continue
 
                     file_path = Path(file_path_str)
-                    pdf_id = self._extract_pdf_id_from_filename(file_path.name)
+                    pdf_id = self._extract_doc_id_from_filename(file_path.name)
 
                     # Check cache first
                     cached_metadata = self._get_cached_metadata(pdf_id)
@@ -208,8 +303,8 @@ class DocumentIndexBuilder:
         logger.info(f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves)")
 
         # Create ChromaDB vector store
-        self._chroma_client = chromadb.PersistentClient(path=str(self.index_dir))
-        collection = self._chroma_client.get_or_create_collection("data")
+        chroma_client = self._get_chroma_client()
+        collection = chroma_client.get_or_create_collection("data")
         vector_store = ChromaVectorStore(chroma_collection=collection)
 
         # Build index
@@ -235,6 +330,7 @@ class DocumentIndexBuilder:
         self,
         markdown_files: Optional[List[Path]] = None,
         chunk_sizes: List[int] | None = None,
+        progress_callback: Optional[Callable] = None,
     ) -> None:
         """
         Build ChromaDB vector index from markdown files.
@@ -242,6 +338,7 @@ class DocumentIndexBuilder:
         Args:
             markdown_files: List of markdown file paths (if None, uses all in markdown dir)
             chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256])
+            progress_callback: Optional callback(stage, current, total) for progress
 
         Raises:
             ValueError: If no markdown files found
@@ -249,6 +346,8 @@ class DocumentIndexBuilder:
         """
         if chunk_sizes is None:
             chunk_sizes = [2048, 512, 256]
+
+        cb = progress_callback or (lambda *a: None)
 
         # Get markdown files
         if markdown_files is None:
@@ -265,10 +364,12 @@ class DocumentIndexBuilder:
             # Clean existing index if present
             if self.index_dir.exists():
                 logger.info(f"Removing old index: {self.index_dir}")
+                self._release_chroma_client()
                 shutil.rmtree(self.index_dir)
             self.index_dir.mkdir(parents=True, exist_ok=True)
 
-            # Load documents
+            # Stage 1: Loading documents (10%)
+            cb("Loading documents", 10, 100)
             documents = []
             for md_file in markdown_files:
                 logger.info(f"Loading: {md_file.name}")
@@ -281,11 +382,24 @@ class DocumentIndexBuilder:
 
             logger.info(f"Loaded {len(documents)} documents")
 
-            # Extract and inject metadata
+            # Set doc_id on each document so ref_doc_id is tracked in docstore
+            for doc in documents:
+                file_path_str = doc.metadata.get("file_path", "")
+                if file_path_str:
+                    doc.doc_id = self._extract_doc_id_from_filename(
+                        Path(file_path_str).name
+                    )
+
+            # Stage 2: Extracting metadata (40%)
+            cb("Extracting metadata", 40, 100)
             self._extract_and_inject_metadata(documents)
 
-            # Build vector index
+            # Stage 3: Embedding documents (70%)
+            cb("Embedding documents", 70, 100)
             self._build_vector_index(documents, chunk_sizes)
+
+            # Stage 4: Complete
+            cb("Complete", 100, 100)
 
         except Exception as e:
             logger.error(f"Failed to build document index: {e}")
@@ -303,6 +417,7 @@ class DocumentIndexBuilder:
 
     def delete_index(self) -> None:
         """Remove the index directory and all its contents."""
+        self._release_chroma_client()
         if self.index_dir.exists():
             logger.info(f"Deleting index: {self.index_dir}")
             shutil.rmtree(self.index_dir)
@@ -334,22 +449,187 @@ class DocumentIndexBuilder:
         """
         return len(list(self.markdown_dir.glob("*.md")))
 
+    def get_indexed_doc_ids(self) -> Set[str]:
+        """Get doc_ids tracked in the existing index's docstore.
+
+        Returns:
+            Set of doc_ids (e.g. {"pdf_abc123", "doc_def456"}), or empty set
+            if no index exists or index lacks ref_doc tracking.
+        """
+        if not self.index_exists():
+            return set()
+
+        try:
+            chroma_client = self._get_chroma_client()
+            collection = chroma_client.get_or_create_collection("data")
+            vector_store = ChromaVectorStore(chroma_collection=collection)
+            storage_context = StorageContext.from_defaults(
+                persist_dir=str(self.index_dir),
+                vector_store=vector_store,
+            )
+            ref_doc_info = storage_context.docstore.get_all_ref_doc_info()
+            if ref_doc_info is None:
+                return set()
+            return set(ref_doc_info.keys())
+        except Exception as e:
+            logger.warning(f"Could not read indexed doc_ids: {e}")
+            return set()
+
+    def add_documents(
+        self,
+        documents: List,
+        doc_ids: List[str],
+        chunk_sizes: List[int],
+        progress_callback: Optional[Callable] = None,
+    ) -> None:
+        """Incrementally add documents to an existing index.
+
+        Args:
+            documents: LlamaIndex Document objects to add.
+            doc_ids: Corresponding doc_id for each document.
+            chunk_sizes: Hierarchical chunk sizes.
+            progress_callback: Optional callback(stage, current, total).
+        """
+        cb = progress_callback or (lambda *a: None)
+
+        # Set doc_id on each document
+        for doc, doc_id in zip(documents, doc_ids):
+            doc.doc_id = doc_id
+
+        logger.info(f"Incrementally adding {len(documents)} documents to index")
+
+        # Extract metadata
+        cb("Extracting metadata", 30, 100)
+        self._extract_and_inject_metadata(documents)
+
+        # Load existing index
+        cb("Loading existing index", 50, 100)
+        chroma_client = self._get_chroma_client()
+        collection = chroma_client.get_or_create_collection("data")
+        vector_store = ChromaVectorStore(chroma_collection=collection)
+        storage_context = StorageContext.from_defaults(
+            persist_dir=str(self.index_dir),
+            vector_store=vector_store,
+        )
+
+        embed_model = get_embed_model(device="cpu")
+        index = load_index_from_storage(storage_context, embed_model=embed_model)
+
+        # Parse nodes
+        cb("Embedding documents", 70, 100)
+        node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
+        nodes = node_parser.get_nodes_from_documents(documents)
+        leaf_nodes = get_leaf_nodes(nodes)
+        logger.info(f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves)")
+
+        # Add ALL nodes to docstore (for hierarchy), insert leaves into vector index
+        storage_context.docstore.add_documents(nodes)
+        index.insert_nodes(leaf_nodes)
+
+        # Persist
+        storage_context.persist(persist_dir=str(self.index_dir))
+        self._save_settings_hash(chunk_sizes)
+
+        cb("Complete", 100, 100)
+        logger.info(f"Incremental add complete: {len(documents)} documents added")
+
+    def remove_document(self, doc_id: str) -> bool:
+        """Remove a single document's nodes from the index.
+
+        Args:
+            doc_id: The document ID to remove (e.g. "pdf_abc123").
+
+        Returns:
+            True if document was found and removed, False otherwise.
+        """
+        if not self.index_exists():
+            return False
+
+        try:
+            chroma_client = self._get_chroma_client()
+            collection = chroma_client.get_or_create_collection("data")
+            vector_store = ChromaVectorStore(chroma_collection=collection)
+            storage_context = StorageContext.from_defaults(
+                persist_dir=str(self.index_dir),
+                vector_store=vector_store,
+            )
+
+            # Check if doc_id exists in the docstore
+            all_ref_info = storage_context.docstore.get_all_ref_doc_info()
+            if all_ref_info is None or doc_id not in all_ref_info:
+                return False
+
+            # Get all node_ids for this ref_doc
+            ref_info = all_ref_info[doc_id]
+            node_ids = list(ref_info.node_ids)
+
+            if node_ids:
+                # Delete from ChromaDB
+                collection.delete(ids=node_ids)
+                logger.info(f"Removed {len(node_ids)} nodes from ChromaDB for {doc_id}")
+
+            # Delete from docstore
+            storage_context.docstore.delete_ref_doc(doc_id)
+
+            # Persist
+            storage_context.persist(persist_dir=str(self.index_dir))
+            logger.info(f"Removed document {doc_id} from index")
+            return True
+
+        except Exception as e:
+            logger.warning(f"Failed to remove document {doc_id} from index: {e}")
+            return False
+
+    def is_settings_current(
+        self,
+        chunk_sizes: List[int],
+        conversion_method: str = "marker",
+    ) -> bool:
+        """Check if the index was built with the same settings.
+
+        Args:
+            chunk_sizes: Current chunk sizes to compare.
+            conversion_method: Current conversion method to compare.
+
+        Returns:
+            True if settings match, False if stale or no hash file exists.
+        """
+        hash_file = self.index_dir / "settings_hash"
+        if not hash_file.exists():
+            return False
+        stored = hash_file.read_text().strip()
+        current = self._compute_settings_hash(chunk_sizes, conversion_method)
+        return stored == current
+
+    def _save_settings_hash(
+        self,
+        chunk_sizes: List[int],
+        conversion_method: str = "marker",
+    ) -> None:
+        """Write a settings hash to the index directory."""
+        hash_file = self.index_dir / "settings_hash"
+        hash_file.write_text(
+            self._compute_settings_hash(chunk_sizes, conversion_method)
+        )
+
+    @staticmethod
+    def _compute_settings_hash(
+        chunk_sizes: List[int],
+        conversion_method: str = "marker",
+    ) -> str:
+        """Compute a deterministic hash of indexing settings."""
+        content = f"{chunk_sizes}:{conversion_method}"
+        return hashlib.sha256(content.encode()).hexdigest()
+
     def close(self) -> None:
         """
         Explicitly close ChromaDB client connections.
 
-        This is important on Windows where SQLite file handles may remain
-        open, preventing directory deletion.
+        Releases the cached client reference and evicts ChromaDB's internal
+        singleton cache so the next builder for the same path can create a
+        fresh client without 'different settings' errors.
         """
-        if self._chroma_client is not None:
-            try:
-                # ChromaDB doesn't have an explicit close() method,
-                # but deleting the reference and forcing GC helps
-                del self._chroma_client
-                self._chroma_client = None
-                logger.debug("ChromaDB client reference released")
-            except Exception as e:
-                logger.warning(f"Error closing ChromaDB client: {e}")
+        self._release_chroma_client()
 
     def __enter__(self):
         """Context manager entry."""

@@ -33,10 +33,17 @@ from .document import (
     DocumentUploadResponse,
     FileUrlInfoResponse,
     FileUrlUploadRequest,
+    IndexingConfig,
+    IndexingConfigUpdate,
     TextUploadRequest,
     UrlUploadRequest,
 )
-from .pdf import PDFListResponse, PDFMetadataResponse, ReindexResponse
+from .pdf import (
+    PDFListResponse,
+    PDFMetadataResponse,
+    ReindexResponse,
+    ReindexTaskResponse,
+)
 from .project import (
     CatalogModuleStatus,
     DocumentInfo,
@@ -112,6 +119,7 @@ __all__ = [
     "PDFMetadataResponse",
     "PDFListResponse",
     "ReindexResponse",
+    "ReindexTaskResponse",
     # Document
     "ArxivLookupResponse",
     "ArxivUploadRequest",
@@ -125,6 +133,8 @@ __all__ = [
     "CatalogModuleRemoveResponse",
     "FileUrlInfoResponse",
     "FileUrlUploadRequest",
+    "IndexingConfig",
+    "IndexingConfigUpdate",
     # Startup
     "StartupStatusResponse",
     "IndexesStatusSchema",
