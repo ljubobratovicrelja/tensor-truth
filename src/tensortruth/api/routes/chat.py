@@ -422,6 +422,7 @@ async def websocket_chat(
             full_thinking = ""
             sources: List[Dict[str, Any]] = []
             metrics_dict = None
+            confidence_level = "normal"
 
             # Use ChatService for query routing (handles engine loading internally)
             query_generator = chat_service.query(
@@ -444,6 +445,7 @@ async def websocket_chat(
                         # Use ChatService to extract sources (contains foreign type handling)
                         sources = chat_service.extract_sources(chunk.source_nodes)
                         metrics_dict = chunk.metrics
+                        confidence_level = chunk.confidence_level
                         break
                     elif chunk.status:
                         # Send pipeline status update immediately
@@ -489,7 +491,7 @@ async def websocket_chat(
                 {
                     "type": "done",
                     "content": full_response,
-                    "confidence_level": "normal",
+                    "confidence_level": confidence_level,
                     "title_pending": needs_title,
                 }
             )
@@ -503,6 +505,8 @@ async def websocket_chat(
                 assistant_message["sources"] = sources
             if metrics_dict:
                 assistant_message["metrics"] = metrics_dict
+            if confidence_level != "normal":
+                assistant_message["confidence_level"] = confidence_level
             data = session_service.load()
             data = session_service.add_message(session_id, assistant_message, data)
             session_service.save(data)

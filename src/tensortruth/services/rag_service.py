@@ -341,6 +341,7 @@ class RAGService:
             metrics_dict = metrics.to_dict()
 
         # Phase 3: Prompt selection
+        is_low_confidence = False
         if retriever is None:
             # No retriever — LLM-only mode with system prompt
             messages = [
@@ -369,6 +370,7 @@ class RAGService:
                     default=0.0,
                 )
                 if best_score < confidence_threshold:
+                    is_low_confidence = True
                     formatted_prompt = CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE.format(
                         context_str=context_str,
                         chat_history=chat_history_str,
@@ -422,7 +424,10 @@ class RAGService:
 
         # Yield final complete chunk with sources and metrics
         yield RAGChunk(
-            source_nodes=source_nodes, is_complete=True, metrics=metrics_dict
+            source_nodes=source_nodes,
+            is_complete=True,
+            metrics=metrics_dict,
+            confidence_level="low" if is_low_confidence else "normal",
         )
 
         return RAGResponse(

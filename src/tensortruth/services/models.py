@@ -151,6 +151,7 @@ class RAGChunk:
         Literal["loading_models", "retrieving", "reranking", "thinking", "generating"]
     ] = None
     metrics: Optional[Dict[str, Any]] = None
+    confidence_level: str = "normal"
 
 
 @dataclass

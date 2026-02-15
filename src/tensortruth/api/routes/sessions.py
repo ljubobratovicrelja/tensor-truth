@@ -159,6 +159,7 @@ async def get_messages(
                 thinking=msg.get("thinking"),
                 metrics=msg.get("metrics"),
                 tool_steps=msg.get("tool_steps"),
+                confidence_level=msg.get("confidence_level"),
             )
             for msg in messages
         ]

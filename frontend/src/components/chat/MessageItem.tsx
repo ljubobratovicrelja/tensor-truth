@@ -17,6 +17,8 @@ interface MessageItemProps {
   thinking?: string;
   /** Tool steps to display (used during streaming or from saved message) */
   toolSteps?: ToolStepWithStatus[];
+  /** Confidence level for RAG sources */
+  confidenceLevel?: string;
   /** Whether this message is currently being streamed */
   isStreaming?: boolean;
 }
@@ -27,6 +29,7 @@ function MessageItemComponent({
   metrics,
   thinking,
   toolSteps,
+  confidenceLevel,
   isStreaming,
 }: MessageItemProps) {
   const isUser = message.role === "user";
@@ -169,7 +172,11 @@ function MessageItemComponent({
             </div>
           )}
           {!isUser && (messageSources?.length || messageMetrics) && (
-            <SourcesList sources={messageSources ?? []} metrics={messageMetrics} />
+            <SourcesList
+              sources={messageSources ?? []}
+              metrics={messageMetrics}
+              confidenceLevel={confidenceLevel ?? message.confidence_level ?? "normal"}
+            />
           )}
           {!isUser && !isStreaming && messageToolSteps.length > 0 && (
             <ToolSteps steps={messageToolSteps} defaultOpen={isStreaming} />
@@ -192,6 +199,7 @@ export const MessageItem = memo(MessageItemComponent, (prev, next) => {
     prev.thinking === next.thinking &&
     prev.sources === next.sources &&
     prev.metrics === next.metrics &&
-    prev.toolSteps === next.toolSteps
+    prev.toolSteps === next.toolSteps &&
+    prev.confidenceLevel === next.confidenceLevel
   );
 });

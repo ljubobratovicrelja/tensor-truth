@@ -60,6 +60,7 @@ class MessageResponse(BaseModel):
     thinking: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
     tool_steps: Optional[List[Dict[str, Any]]] = None
+    confidence_level: Optional[str] = None
 
 
 class MessagesResponse(BaseModel):

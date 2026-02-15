@@ -655,9 +655,10 @@ function MetricsPanel({ metrics }: { metrics: RetrievalMetrics }) {
 interface SourcesListProps {
   sources: SourceNode[];
   metrics?: RetrievalMetrics | null;
+  confidenceLevel?: string;
 }
 
-export function SourcesList({ sources, metrics }: SourcesListProps) {
+export function SourcesList({ sources, metrics, confidenceLevel }: SourcesListProps) {
   const [collapsed, setCollapsed] = useState(true);
 
   // If no sources and no metrics, nothing to show (no RAG was attempted)
@@ -739,6 +740,17 @@ export function SourcesList({ sources, metrics }: SourcesListProps) {
           <span className="font-medium tracking-wide uppercase">
             Sources ({sources.length})
           </span>
+          {confidenceLevel === "low" && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-yellow-500" />
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                Low confidence in retrieved sources — response may rely on general
+                knowledge.
+              </TooltipContent>
+            </Tooltip>
+          )}
           {webStats ? (
             <span className="text-muted-foreground/70 font-normal tracking-normal normal-case">
               | {webStats.fetched} fetched

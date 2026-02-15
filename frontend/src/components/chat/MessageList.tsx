@@ -31,6 +31,7 @@ interface MessageListProps {
   isStreaming?: boolean;
   pipelineStatus?: PipelineStatus;
   agentProgress?: StreamAgentProgress | null;
+  confidenceLevel?: string | null;
 }
 
 export function MessageList({
@@ -46,6 +47,7 @@ export function MessageList({
   isStreaming,
   pipelineStatus,
   agentProgress,
+  confidenceLevel,
 }: MessageListProps) {
   // Use state for container so effects re-run when it's set
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
@@ -213,6 +215,7 @@ export function MessageList({
                   metrics={streamingMetrics}
                   thinking={streamingThinking}
                   toolSteps={streamingToolSteps}
+                  confidenceLevel={confidenceLevel ?? undefined}
                   isStreaming
                 />
               </>

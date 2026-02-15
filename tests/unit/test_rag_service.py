@@ -295,7 +295,7 @@ def test_prompt_selection_low_confidence():
     assert "LOW CONFIDENCE MATCH" in prompt_content
     assert "DATA INTEGRITY WARNING" in prompt_content
     assert "RETRIEVED CONTEXT (LOW RELEVANCE)" in prompt_content
-    assert "MANDATORY PREFACE" in prompt_content
+    assert "INTEGRITY CHECK" in prompt_content
     # Verify context is still included
     assert "Some irrelevant content" in prompt_content
 

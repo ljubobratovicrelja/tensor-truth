@@ -38,6 +38,7 @@ export interface MessageResponse {
   thinking?: string | null;
   metrics?: RetrievalMetrics | null;
   tool_steps?: ToolStep[] | null;
+  confidence_level?: string | null;
 }
 
 export interface MessagesResponse {
