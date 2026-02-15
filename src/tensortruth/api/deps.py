@@ -29,6 +29,7 @@ from tensortruth.services import (
     TaskRunner,
     ToolService,
 )
+from tensortruth.services.metadata_store import MetadataStore
 from tensortruth.services.startup_service import StartupService
 
 
@@ -116,16 +117,19 @@ def get_document_service(scope_id: str, scope_type: str = "session") -> Document
     Returns:
         Configured DocumentService instance.
     """
-    if scope_type == "project":
-        return DocumentService(
-            scope_id=scope_id,
-            scope_dir=get_project_dir(scope_id),
-            scope_type="project",
-        )
+    scope_dir = (
+        get_project_dir(scope_id)
+        if scope_type == "project"
+        else get_session_dir(scope_id)
+    )
+    store = MetadataStore(scope_dir)
+    store.load()
     return DocumentService(
         scope_id=scope_id,
-        scope_dir=get_session_dir(scope_id),
-        scope_type="session",
+        scope_dir=scope_dir,
+        scope_type=scope_type,
+        metadata_cache=store._data,
+        metadata_store=store,
     )
 
 

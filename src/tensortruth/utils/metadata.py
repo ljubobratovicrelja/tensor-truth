@@ -693,4 +693,3 @@ def extract_uploaded_pdf_metadata(
     metadata["source_url"] = file_path.as_uri()
 
     return metadata
-    return metadata

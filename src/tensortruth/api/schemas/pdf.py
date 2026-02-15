@@ -28,3 +28,10 @@ class ReindexResponse(BaseModel):
     success: bool
     message: str
     pdf_count: int
+
+
+class ReindexTaskResponse(BaseModel):
+    """Response for async reindex operation (returns a task ID)."""
+
+    task_id: str
+    pdf_count: int
