@@ -1,6 +1,6 @@
 """Integration tests for document management API endpoints."""
 
-import asyncio
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -117,6 +117,7 @@ class TestSessionDocumentsCRUD:
         data = response.json()
         assert data["documents"] == []
         assert data["has_index"] is False
+        assert data["index_updated_at"] is None
 
     @pytest.mark.asyncio
     async def test_upload_pdf_invalid_file(self, client, mock_session_paths):
@@ -212,6 +213,35 @@ class TestSessionDocumentsCRUD:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_list_documents_returns_short_doc_id_and_timestamps(
+        self, client, mock_session_paths
+    ):
+        """Test that listed documents have short doc_ids and uploaded_at."""
+        sessions_file, sessions_dir = mock_session_paths
+        session_id = await _create_session(client)
+
+        session_dir = sessions_dir / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        # Upload a text doc
+        await client.post(
+            f"/api/sessions/{session_id}/documents/upload-text",
+            json={"content": "Hello world", "filename": "notes.txt"},
+        )
+
+        # List documents
+        list_response = await client.get(f"/api/sessions/{session_id}/documents")
+        data = list_response.json()
+        assert len(data["documents"]) == 1
+
+        doc = data["documents"][0]
+        # doc_id should be the short form (e.g. "doc_abcdef12"), not the full stem
+        assert doc["doc_id"].startswith("doc_")
+        assert "_" not in doc["doc_id"][4:]  # no underscore after the hash
+        assert doc["uploaded_at"] is not None
+        assert data["index_updated_at"] is None  # no index yet
+
+    @pytest.mark.asyncio
     async def test_delete_text_document(self, client, mock_session_paths):
         """Test uploading then deleting a text document."""
         sessions_file, sessions_dir = mock_session_paths
@@ -231,11 +261,15 @@ class TestSessionDocumentsCRUD:
         list_response = await client.get(f"/api/sessions/{session_id}/documents")
         assert len(list_response.json()["documents"]) == 1
 
-        # Delete
+        # Delete — the short doc_id from upload should work
         delete_response = await client.delete(
             f"/api/sessions/{session_id}/documents/{doc_id}"
         )
         assert delete_response.status_code == 204
+
+        # Verify it's gone
+        list_response = await client.get(f"/api/sessions/{session_id}/documents")
+        assert len(list_response.json()["documents"]) == 0
 
     @pytest.mark.asyncio
     async def test_reindex_no_documents(self, client, mock_session_paths):
@@ -348,6 +382,10 @@ class TestProjectDocumentsCRUD:
             f"/api/projects/{project_id}/documents/{doc_id}"
         )
         assert delete_response.status_code == 204
+
+        # Verify it's gone
+        list_response = await client.get(f"/api/projects/{project_id}/documents")
+        assert len(list_response.json()["documents"]) == 0
 
     @pytest.mark.asyncio
     async def test_reindex_no_documents(self, client, mock_project_paths):
@@ -535,3 +573,118 @@ class TestCatalogModuleRemove:
         # Verify it's gone from project
         project_response = await client.get(f"/api/projects/{project_id}")
         assert "pytorch" not in project_response.json()["catalog_modules"]
+
+
+def _make_mock_paper(arxiv_id="2301.12345", title="Attention Is All You Need"):
+    """Create a mock arxiv paper result."""
+    paper = MagicMock()
+    paper.title = title
+    paper.authors = [MagicMock(name="Author One"), MagicMock(name="Author Two")]
+    # Make author .name return a string (MagicMock's name kwarg is special)
+    paper.authors[0].name = "Author One"
+    paper.authors[1].name = "Author Two"
+    paper.published = datetime(2023, 1, 15, tzinfo=timezone.utc)
+    paper.categories = ["cs.CL", "cs.AI"]
+    paper.summary = "This is the abstract."
+    paper.pdf_url = f"https://arxiv.org/pdf/{arxiv_id}"
+    return paper
+
+
+class TestArxivEndpoints:
+    """Test arXiv lookup and upload endpoints."""
+
+    @pytest.mark.asyncio
+    @patch("tensortruth.api.routes.arxiv.arxiv.Search")
+    async def test_lookup_valid_id(self, mock_search, client, mock_session_paths):
+        """Test arXiv metadata lookup with a valid ID."""
+        paper = _make_mock_paper()
+        mock_search.return_value.results.return_value = iter([paper])
+
+        response = await client.get("/api/arxiv/2301.12345")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["arxiv_id"] == "2301.12345"
+        assert data["title"] == "Attention Is All You Need"
+        assert data["authors"] == ["Author One", "Author Two"]
+        assert data["published"] == "2023-01-15"
+        assert data["categories"] == ["cs.CL", "cs.AI"]
+        assert data["abstract"] == "This is the abstract."
+        assert "arxiv.org/pdf" in data["pdf_url"]
+
+    @pytest.mark.asyncio
+    async def test_lookup_invalid_id(self, client, mock_session_paths):
+        """Test arXiv lookup with an invalid ID returns 400."""
+        response = await client.get("/api/arxiv/not-a-valid-id")
+        assert response.status_code == 400
+        assert "Invalid" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    @patch("tensortruth.api.routes.arxiv.arxiv.Search")
+    async def test_lookup_not_found(self, mock_search, client, mock_session_paths):
+        """Test arXiv lookup when paper doesn't exist returns 404."""
+        mock_search.return_value.results.return_value = iter([])
+
+        response = await client.get("/api/arxiv/2301.99999")
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    @patch("tensortruth.api.routes.documents.arxiv.Search")
+    async def test_upload_arxiv_session(self, mock_search, client, mock_session_paths):
+        """Test uploading an arXiv paper to a session."""
+        sessions_file, sessions_dir = mock_session_paths
+        session_id = await _create_session(client)
+
+        session_dir = sessions_dir / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        paper = _make_mock_paper()
+
+        # Make download_pdf write a minimal PDF
+        def fake_download(dirpath, filename):
+            pdf_bytes = b"%PDF-1.4 fake pdf content"
+            (
+                dirpath / filename
+                if hasattr(dirpath, "__truediv__")
+                else __import__("pathlib").Path(dirpath) / filename
+            ).write_bytes(pdf_bytes)
+
+        paper.download_pdf = fake_download
+        mock_search.return_value.results.return_value = iter([paper])
+
+        response = await client.post(
+            f"/api/sessions/{session_id}/documents/upload-arxiv",
+            json={"arxiv_id": "2301.12345"},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["doc_id"].startswith("pdf_")
+        assert "Attention Is All You Need" in data["filename"]
+
+    @pytest.mark.asyncio
+    @patch("tensortruth.api.routes.documents.arxiv.Search")
+    async def test_upload_arxiv_project(self, mock_search, client, mock_project_paths):
+        """Test uploading an arXiv paper to a project."""
+        project_id = await _create_project(client)
+
+        paper = _make_mock_paper()
+
+        def fake_download(dirpath, filename):
+            pdf_bytes = b"%PDF-1.4 fake pdf content"
+            (
+                dirpath / filename
+                if hasattr(dirpath, "__truediv__")
+                else __import__("pathlib").Path(dirpath) / filename
+            ).write_bytes(pdf_bytes)
+
+        paper.download_pdf = fake_download
+        mock_search.return_value.results.return_value = iter([paper])
+
+        response = await client.post(
+            f"/api/projects/{project_id}/documents/upload-arxiv",
+            json={"arxiv_id": "2301.12345"},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["doc_id"].startswith("pdf_")
+        assert "Attention Is All You Need" in data["filename"]

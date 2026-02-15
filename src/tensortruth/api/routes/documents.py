@@ -1,10 +1,14 @@
 """Document management endpoints for session and project scopes."""
 
+import asyncio
 import logging
 import re
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
+import arxiv
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from tensortruth.api.deps import (
@@ -12,9 +16,9 @@ from tensortruth.api.deps import (
     ProjectServiceDep,
     SessionServiceDep,
     get_document_service,
-    get_project_service,
 )
 from tensortruth.api.schemas import (
+    ArxivUploadRequest,
     CatalogModuleAddRequest,
     CatalogModuleAddResponse,
     CatalogModuleRemoveResponse,
@@ -28,6 +32,7 @@ from tensortruth.api.schemas import (
 from tensortruth.app_utils.paths import get_indexes_dir
 from tensortruth.indexing.metadata import sanitize_model_id
 from tensortruth.services import ProjectService
+from tensortruth.utils.validation import validate_arxiv_id
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +46,23 @@ router = APIRouter()
 
 _DOC_PREFIX_RE = re.compile(r"^(pdf|doc|url)_[a-f0-9]{7,8}_")
 _MD_HEADER_RE = re.compile(r"^# Document:\s*(.+)")
+
+
+def extract_doc_id(stem: str) -> str:
+    """Extract the short doc ID prefix from a full file stem.
+
+    Examples:
+        pdf_544414c_my_paper -> pdf_544414c
+        doc_abcd1234_notes   -> doc_abcd1234
+        url_12345678_slug    -> url_12345678
+
+    Returns the original stem unchanged if no prefix pattern matches.
+    """
+    m = _DOC_PREFIX_RE.match(stem)
+    if m:
+        # m.group(0) includes the trailing underscore, strip it
+        return m.group(0).rstrip("_")
+    return stem
 
 
 def strip_doc_prefix(filename: str) -> str:
@@ -79,12 +101,29 @@ def get_display_name(file_path: Path) -> str:
     return strip_doc_prefix(file_path.name)
 
 
+def _mtime_iso(path: Path) -> Optional[str]:
+    """Return file mtime as ISO-8601 UTC string, or None on error."""
+    try:
+        ts = path.stat().st_mtime
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    except OSError:
+        return None
+
+
 def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
     """List all documents in a scope."""
     with get_document_service(scope_id, scope_type) as doc_service:
         pdf_files = doc_service.get_all_pdf_files()
         md_files = doc_service.get_all_markdown_files()
         has_index = doc_service.index_exists()
+        index_dir = doc_service.get_index_path()
+
+    # Compute index mtime if an index exists
+    index_updated_at: Optional[str] = None
+    if has_index and index_dir is not None:
+        chroma_file = index_dir / "chroma.sqlite3"
+        if chroma_file.exists():
+            index_updated_at = _mtime_iso(chroma_file)
 
     documents: List[DocumentListItem] = []
 
@@ -101,10 +140,11 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
 
         documents.append(
             DocumentListItem(
-                doc_id=pdf_path.stem,
+                doc_id=extract_doc_id(pdf_path.stem),
                 filename=get_display_name(pdf_path),
                 file_size=pdf_path.stat().st_size if pdf_path.exists() else 0,
                 page_count=page_count,
+                uploaded_at=_mtime_iso(pdf_path),
             )
         )
 
@@ -112,14 +152,19 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
     for md_path in md_files:
         documents.append(
             DocumentListItem(
-                doc_id=md_path.stem,
+                doc_id=extract_doc_id(md_path.stem),
                 filename=get_display_name(md_path),
                 file_size=md_path.stat().st_size if md_path.exists() else 0,
                 page_count=0,
+                uploaded_at=_mtime_iso(md_path),
             )
         )
 
-    return DocumentListResponse(documents=documents, has_index=has_index)
+    return DocumentListResponse(
+        documents=documents,
+        has_index=has_index,
+        index_updated_at=index_updated_at,
+    )
 
 
 def _upload_pdf(
@@ -165,6 +210,46 @@ def _upload_url(
         file_size=metadata.file_size,
         page_count=metadata.page_count,
     )
+
+
+async def _upload_arxiv(
+    scope_id: str, scope_type: str, arxiv_id: str
+) -> DocumentUploadResponse:
+    """Download an arXiv paper PDF and upload it to a scope."""
+    normalized = validate_arxiv_id(arxiv_id)
+    if normalized is None:
+        raise HTTPException(status_code=400, detail="Invalid arXiv ID")
+
+    def _fetch_and_download():
+        search = arxiv.Search(id_list=[normalized])
+        try:
+            paper = next(search.results())
+        except StopIteration:
+            return None, None, None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paper.download_pdf(dirpath=tmpdir, filename="paper.pdf")
+            pdf_bytes = Path(tmpdir, "paper.pdf").read_bytes()
+
+        return paper.title, pdf_bytes, paper
+
+    try:
+        loop = asyncio.get_event_loop()
+        title, pdf_bytes, paper = await asyncio.wait_for(
+            loop.run_in_executor(None, _fetch_and_download),
+            timeout=60,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="arXiv download timeout")
+    except Exception as e:
+        logger.error(f"arXiv download failed for {arxiv_id}: {e}")
+        raise HTTPException(status_code=502, detail="arXiv download error")
+
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Paper not found on arXiv")
+
+    filename = f"{title}.pdf"
+    return _upload_pdf(scope_id, scope_type, pdf_bytes, filename)
 
 
 def _delete_document(scope_id: str, scope_type: str, doc_id: str) -> None:
@@ -288,6 +373,24 @@ async def upload_session_url(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post(
+    "/sessions/{session_id}/documents/upload-arxiv",
+    response_model=DocumentUploadResponse,
+    status_code=201,
+)
+async def upload_session_arxiv(
+    session_id: str,
+    body: ArxivUploadRequest,
+    session_service: SessionServiceDep,
+) -> DocumentUploadResponse:
+    """Download an arXiv paper and add it to a session."""
+    data = session_service.load()
+    if session_id not in data.sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return await _upload_arxiv(session_id, "session", body.arxiv_id)
+
+
 @router.delete("/sessions/{session_id}/documents/{doc_id}", status_code=204)
 async def delete_session_document(
     session_id: str,
@@ -394,6 +497,21 @@ async def upload_project_url(
         return _upload_url(project_id, "project", body.url, body.context)
     except (ValueError, ConnectionError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post(
+    "/projects/{project_id}/documents/upload-arxiv",
+    response_model=DocumentUploadResponse,
+    status_code=201,
+)
+async def upload_project_arxiv(
+    project_id: str,
+    body: ArxivUploadRequest,
+    project_service: ProjectServiceDep,
+) -> DocumentUploadResponse:
+    """Download an arXiv paper and add it to a project."""
+    _get_project_or_404(project_id, project_service)
+    return await _upload_arxiv(project_id, "project", body.arxiv_id)
 
 
 @router.delete("/projects/{project_id}/documents/{doc_id}", status_code=204)

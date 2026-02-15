@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "@/lib/constants";
 import {
   listDocuments,
+  lookupArxiv,
+  uploadArxiv,
   uploadDocument,
   uploadText,
   uploadUrl,
@@ -10,7 +12,12 @@ import {
   addCatalogModule,
   removeCatalogModule,
 } from "@/api/documents";
-import type { ScopeType, TextUploadRequest, UrlUploadRequest } from "@/api/types";
+import type {
+  ArxivUploadRequest,
+  ScopeType,
+  TextUploadRequest,
+  UrlUploadRequest,
+} from "@/api/types";
 
 export function useDocuments(scopeId: string | null, scopeType: ScopeType) {
   return useQuery({
@@ -90,6 +97,44 @@ export function useUploadUrl() {
       scopeType: ScopeType;
       data: UrlUploadRequest;
     }) => uploadUrl(scopeId, scopeType, data),
+    onSuccess: (_, { scopeId, scopeType }) => {
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.documents(scopeType, scopeId),
+      });
+      if (scopeType === "project") {
+        queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.project(scopeId),
+        });
+      }
+    },
+  });
+}
+
+const ARXIV_ID_RE = /^\d{4}\.\d{4,5}$/;
+
+export function useArxivLookup(debouncedId: string) {
+  return useQuery({
+    queryKey: ["arxiv", "lookup", debouncedId],
+    queryFn: () => lookupArxiv(debouncedId),
+    enabled: ARXIV_ID_RE.test(debouncedId),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUploadArxiv() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      scopeId,
+      scopeType,
+      data,
+    }: {
+      scopeId: string;
+      scopeType: ScopeType;
+      data: ArxivUploadRequest;
+    }) => uploadArxiv(scopeId, scopeType, data),
     onSuccess: (_, { scopeId, scopeType }) => {
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.documents(scopeType, scopeId),

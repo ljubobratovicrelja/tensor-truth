@@ -1,6 +1,8 @@
 import { apiGet, apiPost, apiDelete, apiPostFormData } from "./client";
 import type {
   ScopeType,
+  ArxivLookupResponse,
+  ArxivUploadRequest,
   DocumentListResponse,
   DocumentUploadResponse,
   TextUploadRequest,
@@ -68,6 +70,21 @@ export async function reindexDocuments(
   scopeType: ScopeType
 ): Promise<ReindexResponse> {
   return apiPost<ReindexResponse>(`${scopePrefix(scopeType, scopeId)}/reindex`);
+}
+
+export async function lookupArxiv(arxivId: string): Promise<ArxivLookupResponse> {
+  return apiGet<ArxivLookupResponse>(`/arxiv/${arxivId}`);
+}
+
+export async function uploadArxiv(
+  scopeId: string,
+  scopeType: ScopeType,
+  data: ArxivUploadRequest
+): Promise<DocumentUploadResponse> {
+  return apiPost<DocumentUploadResponse, ArxivUploadRequest>(
+    `${scopePrefix(scopeType, scopeId)}/upload-arxiv`,
+    data
+  );
 }
 
 export async function addCatalogModule(

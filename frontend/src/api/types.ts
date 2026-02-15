@@ -334,11 +334,13 @@ export interface DocumentListItem {
   filename: string;
   file_size: number;
   page_count: number;
+  uploaded_at?: string | null;
 }
 
 export interface DocumentListResponse {
   documents: DocumentListItem[];
   has_index: boolean;
+  index_updated_at?: string | null;
 }
 
 export interface DocumentUploadResponse {
@@ -356,6 +358,20 @@ export interface TextUploadRequest {
 export interface UrlUploadRequest {
   url: string;
   context?: string;
+}
+
+export interface ArxivLookupResponse {
+  arxiv_id: string;
+  title: string;
+  authors: string[];
+  published: string;
+  categories: string[];
+  abstract: string;
+  pdf_url: string;
+}
+
+export interface ArxivUploadRequest {
+  arxiv_id: string;
 }
 
 export interface CatalogModuleAddRequest {

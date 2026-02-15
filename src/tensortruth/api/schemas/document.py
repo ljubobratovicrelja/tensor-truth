@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class DocumentUploadResponse(BaseModel):
@@ -21,6 +21,7 @@ class DocumentListItem(BaseModel):
     filename: str
     file_size: int
     page_count: int
+    uploaded_at: Optional[str] = None
 
 
 class DocumentListResponse(BaseModel):
@@ -28,6 +29,7 @@ class DocumentListResponse(BaseModel):
 
     documents: List[DocumentListItem]
     has_index: bool = False
+    index_updated_at: Optional[str] = None
 
 
 class UrlUploadRequest(BaseModel):
@@ -56,6 +58,24 @@ class CatalogModuleAddResponse(BaseModel):
     task_id: Optional[str] = None
     module_name: str
     status: str
+
+
+class ArxivLookupResponse(BaseModel):
+    """Response for an arXiv metadata lookup."""
+
+    arxiv_id: str
+    title: str
+    authors: List[str]
+    published: str
+    categories: List[str]
+    abstract: str
+    pdf_url: str
+
+
+class ArxivUploadRequest(BaseModel):
+    """Request body for uploading an arXiv paper as PDF."""
+
+    arxiv_id: str
 
 
 class CatalogModuleRemoveResponse(BaseModel):

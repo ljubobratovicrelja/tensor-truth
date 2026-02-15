@@ -179,9 +179,10 @@ class PDFHandler:
             pdf_file.unlink()
             logger.info(f"Deleted PDF: {pdf_file}")
 
-        # Delete markdown file
-        md_file = self.markdown_dir / f"{pdf_id}.md"
-        if md_file.exists():
+        # Delete markdown file(s) — covers both converted PDFs ({id}.md)
+        # and text/url uploads ({id}_{stem}.md)
+        md_files = list(self.markdown_dir.glob(f"{pdf_id}*"))
+        for md_file in md_files:
             md_file.unlink()
             logger.info(f"Deleted markdown: {md_file}")
 

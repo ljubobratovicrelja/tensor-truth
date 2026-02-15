@@ -23,6 +23,8 @@ from .config import (
     WebSearchConfigSchema,
 )
 from .document import (
+    ArxivLookupResponse,
+    ArxivUploadRequest,
     CatalogModuleAddRequest,
     CatalogModuleAddResponse,
     CatalogModuleRemoveResponse,
@@ -109,6 +111,8 @@ __all__ = [
     "PDFListResponse",
     "ReindexResponse",
     # Document
+    "ArxivLookupResponse",
+    "ArxivUploadRequest",
     "DocumentUploadResponse",
     "DocumentListItem",
     "DocumentListResponse",

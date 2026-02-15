@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, Search, FolderKanban } from "lucide-react";
-import { useProjects } from "@/hooks";
+import { Plus, Search, FolderKanban, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { useProjects, useDeleteProject } from "@/hooks";
 import { formatRelativeTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,12 +13,45 @@ import {
   CardDescription,
   CardFooter,
 } from "@/components/ui/card";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function ProjectsListPage() {
   const { data, isLoading, error } = useProjects();
+  const deleteProject = useDeleteProject();
   const [search, setSearch] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const navigate = useNavigate();
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteProject.mutateAsync(deleteTarget.id);
+      toast.success(`Deleted project "${deleteTarget.name}"`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Delete failed";
+      toast.error(`Failed to delete project: ${msg}`);
+    }
+    setDeleteTarget(null);
+  };
 
   const filteredProjects = data?.projects.filter((project) => {
     const query = search.toLowerCase();
@@ -74,25 +108,43 @@ export function ProjectsListPage() {
         ) : filteredProjects && filteredProjects.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredProjects.map((project) => (
-              <Card
-                key={project.project_id}
-                className="hover:border-foreground/20 cursor-pointer transition-colors"
-                onClick={() => navigate(`/projects/${project.project_id}`)}
-              >
-                <CardHeader>
-                  <CardTitle className="truncate text-base">{project.name}</CardTitle>
-                  {project.description && (
-                    <CardDescription className="line-clamp-2">
-                      {project.description}
-                    </CardDescription>
-                  )}
-                </CardHeader>
-                <CardFooter>
-                  <span className="text-muted-foreground text-xs">
-                    Updated {formatRelativeTime(project.updated_at)}
-                  </span>
-                </CardFooter>
-              </Card>
+              <ContextMenu key={project.project_id}>
+                <ContextMenuTrigger asChild>
+                  <Card
+                    className="hover:border-foreground/20 cursor-pointer transition-colors"
+                    onClick={() => navigate(`/projects/${project.project_id}`)}
+                  >
+                    <CardHeader>
+                      <CardTitle className="truncate text-base">{project.name}</CardTitle>
+                      {project.description && (
+                        <CardDescription className="line-clamp-2">
+                          {project.description}
+                        </CardDescription>
+                      )}
+                    </CardHeader>
+                    <CardFooter>
+                      <span className="text-muted-foreground text-xs">
+                        Updated {formatRelativeTime(project.updated_at)}
+                      </span>
+                    </CardFooter>
+                  </Card>
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  <ContextMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteTarget({
+                        id: project.project_id,
+                        name: project.name,
+                      });
+                    }}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
             ))}
           </div>
         ) : (
@@ -109,6 +161,32 @@ export function ProjectsListPage() {
           </div>
         )}
       </div>
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Project</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteTarget?.name}"? This will also
+              delete all its sessions and documents. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

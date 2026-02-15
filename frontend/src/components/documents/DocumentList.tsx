@@ -18,13 +18,13 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function DocumentIcon({ filename }: { filename: string }) {
+function DocumentIcon({ docId, filename }: { docId: string; filename: string }) {
+  if (docId.startsWith("url_")) {
+    return <Link className="text-muted-foreground h-5 w-5 shrink-0" />;
+  }
   const lower = filename.toLowerCase();
   if (lower.endsWith(".md") || lower.endsWith(".markdown") || lower.endsWith(".txt")) {
     return <FileCode className="text-muted-foreground h-5 w-5 shrink-0" />;
-  }
-  if (lower.startsWith("url_")) {
-    return <Link className="text-muted-foreground h-5 w-5 shrink-0" />;
   }
   return <FileText className="text-muted-foreground h-5 w-5 shrink-0" />;
 }
@@ -94,32 +94,45 @@ export function DocumentList({ scopeId, scopeType }: DocumentListProps) {
           </p>
         ) : (
           <div className="space-y-2">
-            {data?.documents.map((doc) => (
-              <div
-                key={doc.doc_id}
-                className="flex items-center justify-between rounded-lg border p-3"
-              >
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <DocumentIcon filename={doc.filename} />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{doc.filename}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {doc.page_count > 0 && <>{doc.page_count} pages &middot; </>}
-                      {formatFileSize(doc.file_size)}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDelete(doc.doc_id)}
-                  disabled={deleteDoc.isPending}
-                  className="shrink-0"
+            {data?.documents.map((doc) => {
+              const isNew =
+                !data.index_updated_at ||
+                (doc.uploaded_at != null && doc.uploaded_at > data.index_updated_at);
+
+              return (
+                <div
+                  key={doc.doc_id}
+                  className="flex items-center justify-between rounded-lg border p-3"
                 >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <DocumentIcon docId={doc.doc_id} filename={doc.filename} />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium">{doc.filename}</p>
+                        {isNew && (
+                          <span className="bg-primary/10 text-primary shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium">
+                            New
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        {doc.page_count > 0 && <>{doc.page_count} pages &middot; </>}
+                        {formatFileSize(doc.file_size)}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDelete(doc.doc_id)}
+                    disabled={deleteDoc.isPending}
+                    className="shrink-0"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>

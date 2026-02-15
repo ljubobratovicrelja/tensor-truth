@@ -6,6 +6,7 @@ interface UIStore {
   sidebarOpen: boolean;
   sidebarWidth: number;
   rightSidebarOpen: boolean;
+  rightSidebarWidth: number;
   theme: "light" | "dark" | "system";
   // Transient state (not persisted)
   headerHidden: boolean;
@@ -16,6 +17,7 @@ interface UIStore {
   setSidebarWidth: (width: number) => void;
   setRightSidebarOpen: (open: boolean) => void;
   toggleRightSidebar: () => void;
+  setRightSidebarWidth: (width: number) => void;
   setTheme: (theme: "light" | "dark" | "system") => void;
   setHeaderHidden: (hidden: boolean) => void;
   setInputHidden: (hidden: boolean) => void;
@@ -27,6 +29,7 @@ export const useUIStore = create<UIStore>()(
       sidebarOpen: true,
       sidebarWidth: 256,
       rightSidebarOpen: true,
+      rightSidebarWidth: 320,
       theme: "system",
       headerHidden: false,
       inputHidden: false,
@@ -37,6 +40,7 @@ export const useUIStore = create<UIStore>()(
       setRightSidebarOpen: (open) => set({ rightSidebarOpen: open }),
       toggleRightSidebar: () =>
         set((state) => ({ rightSidebarOpen: !state.rightSidebarOpen })),
+      setRightSidebarWidth: (width) => set({ rightSidebarWidth: width }),
       setTheme: (theme) => set({ theme }),
       setHeaderHidden: (hidden) => set({ headerHidden: hidden }),
       setInputHidden: (hidden) => set({ inputHidden: hidden }),
@@ -48,6 +52,7 @@ export const useUIStore = create<UIStore>()(
         sidebarOpen: state.sidebarOpen,
         sidebarWidth: state.sidebarWidth,
         rightSidebarOpen: state.rightSidebarOpen,
+        rightSidebarWidth: state.rightSidebarWidth,
         theme: state.theme,
       }),
     }

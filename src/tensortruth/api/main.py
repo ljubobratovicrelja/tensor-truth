@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from tensortruth import __version__
 from tensortruth.api.routes import (
+    arxiv,
     chat,
     commands,
     config,
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
     app.include_router(modules.router, prefix="/api", tags=["modules"])
     app.include_router(pdfs.router, prefix="/api", tags=["pdfs"])
     app.include_router(documents.router, prefix="/api", tags=["documents"])
+    app.include_router(arxiv.router, prefix="/api", tags=["arxiv"])
     app.include_router(system.router, prefix="/api/system", tags=["system"])
     app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
     app.include_router(tools.router, prefix="/api", tags=["tools"])

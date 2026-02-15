@@ -402,10 +402,12 @@ export function SourceCard({ source, index }: SourceCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   // Extract metadata
-  const filename =
+  const rawFilename =
     (source.metadata?.filename as string) ||
     (source.metadata?.file_name as string) ||
     `Source ${index + 1}`;
+  // Strip internal doc ID prefix (e.g. "pdf_544414ce_elms-eye-tracking" → "elms-eye-tracking")
+  const filename = rawFilename.replace(/^(pdf|doc|url)_[a-f0-9]{7,8}_/, "");
   const displayName = (source.metadata?.display_name as string) || filename;
   const sourceUrl = source.metadata?.source_url as string | undefined;
   const authors = source.metadata?.authors as string | undefined;
