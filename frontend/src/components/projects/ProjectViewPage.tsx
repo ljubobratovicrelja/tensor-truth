@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { useProject, useModels, useConfig, useCreateProjectSession } from "@/hooks";
 import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
+import { SessionSettingsPanel } from "@/components/config/SessionSettingsPanel";
 
 export function ProjectViewPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -23,6 +24,7 @@ export function ProjectViewPage() {
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sessionParams, setSessionParams] = useState<Record<string, unknown>>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Derive effective model: user selection, project config, or system default
@@ -36,7 +38,7 @@ export function ProjectViewPage() {
 
     setIsSubmitting(true);
     try {
-      const params: Record<string, unknown> = { model: effectiveModel };
+      const params: Record<string, unknown> = { ...sessionParams, model: effectiveModel };
 
       const result = await createProjectSession.mutateAsync({
         projectId,
@@ -130,6 +132,13 @@ export function ProjectViewPage() {
                   disabled={isSubmitting}
                   lockedModules={lockedModules}
                   projectDocuments={project.documents}
+                />
+
+                {/* Session settings */}
+                <SessionSettingsPanel
+                  currentParams={sessionParams}
+                  disabled={isSubmitting}
+                  onChange={setSessionParams}
                 />
 
                 {/* Model selector */}
