@@ -321,8 +321,7 @@ export interface EmbeddingModelsResponse {
 
 // Reindex types
 export interface ReindexResponse {
-  success: boolean;
-  message: string;
+  task_id: string;
   pdf_count: number;
 }
 
@@ -335,12 +334,14 @@ export interface DocumentListItem {
   file_size: number;
   page_count: number;
   uploaded_at?: string | null;
+  is_indexed?: boolean;
 }
 
 export interface DocumentListResponse {
   documents: DocumentListItem[];
   has_index: boolean;
   index_updated_at?: string | null;
+  unindexed_count?: number;
 }
 
 export interface DocumentUploadResponse {
@@ -384,6 +385,17 @@ export interface FileUrlInfoResponse {
 
 export interface FileUrlUploadRequest {
   url: string;
+}
+
+// Indexing config types
+export interface IndexingConfig {
+  chunk_sizes: number[];
+  conversion_method: "marker" | "direct";
+}
+
+export interface IndexingConfigUpdate {
+  chunk_sizes?: number[];
+  conversion_method?: "marker" | "direct";
 }
 
 export interface CatalogModuleAddRequest {

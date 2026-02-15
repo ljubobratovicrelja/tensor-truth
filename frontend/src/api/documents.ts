@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiDelete, apiPostFormData } from "./client";
+import { apiGet, apiPost, apiPatch, apiDelete, apiPostFormData } from "./client";
 import type {
   ScopeType,
   ArxivLookupResponse,
@@ -7,6 +7,8 @@ import type {
   DocumentUploadResponse,
   FileUrlInfoResponse,
   FileUrlUploadRequest,
+  IndexingConfig,
+  IndexingConfigUpdate,
   TextUploadRequest,
   UrlUploadRequest,
   ReindexResponse,
@@ -67,11 +69,11 @@ export async function deleteDocument(
   return apiDelete(`${scopePrefix(scopeType, scopeId)}/${docId}`);
 }
 
-export async function reindexDocuments(
+export async function buildIndex(
   scopeId: string,
   scopeType: ScopeType
 ): Promise<ReindexResponse> {
-  return apiPost<ReindexResponse>(`${scopePrefix(scopeType, scopeId)}/reindex`);
+  return apiPost<ReindexResponse>(`${scopePrefix(scopeType, scopeId)}/build-index`);
 }
 
 export async function lookupArxiv(arxivId: string): Promise<ArxivLookupResponse> {
@@ -100,6 +102,20 @@ export async function uploadFileUrl(
 ): Promise<DocumentUploadResponse> {
   return apiPost<DocumentUploadResponse, FileUrlUploadRequest>(
     `${scopePrefix(scopeType, scopeId)}/upload-file-url`,
+    data
+  );
+}
+
+export async function getIndexingConfig(projectId: string): Promise<IndexingConfig> {
+  return apiGet<IndexingConfig>(`/projects/${projectId}/indexing-config`);
+}
+
+export async function updateIndexingConfig(
+  projectId: string,
+  data: IndexingConfigUpdate
+): Promise<IndexingConfig> {
+  return apiPatch<IndexingConfig, IndexingConfigUpdate>(
+    `/projects/${projectId}/indexing-config`,
     data
   );
 }

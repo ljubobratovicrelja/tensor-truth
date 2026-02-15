@@ -13,6 +13,8 @@ export const QUERY_KEYS = {
   projects: ["projects"] as const,
   project: (id: string) => ["projects", id] as const,
   projectSessions: (projectId: string) => ["projects", projectId, "sessions"] as const,
+  indexingConfig: (projectId: string) =>
+    ["projects", projectId, "indexing-config"] as const,
   task: (id: string) => ["tasks", id] as const,
   tasks: ["tasks"] as const,
 };

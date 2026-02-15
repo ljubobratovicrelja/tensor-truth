@@ -10,13 +10,16 @@ import {
   uploadText,
   uploadUrl,
   deleteDocument,
-  reindexDocuments,
+  buildIndex,
+  getIndexingConfig,
+  updateIndexingConfig,
   addCatalogModule,
   removeCatalogModule,
 } from "@/api/documents";
 import type {
   ArxivUploadRequest,
   FileUrlUploadRequest,
+  IndexingConfigUpdate,
   ScopeType,
   TextUploadRequest,
   UrlUploadRequest,
@@ -215,21 +218,38 @@ export function useDeleteDocument() {
   });
 }
 
-export function useReindexDocuments() {
+export function useBuildIndex() {
+  return useMutation({
+    mutationFn: ({ scopeId, scopeType }: { scopeId: string; scopeType: ScopeType }) =>
+      buildIndex(scopeId, scopeType),
+  });
+}
+
+export function useIndexingConfig(projectId: string | null) {
+  return useQuery({
+    queryKey: projectId
+      ? QUERY_KEYS.indexingConfig(projectId)
+      : ["indexing-config", "none"],
+    queryFn: () => (projectId ? getIndexingConfig(projectId) : Promise.reject()),
+    enabled: !!projectId,
+  });
+}
+
+export function useUpdateIndexingConfig() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ scopeId, scopeType }: { scopeId: string; scopeType: ScopeType }) =>
-      reindexDocuments(scopeId, scopeType),
-    onSuccess: (_, { scopeId, scopeType }) => {
+    mutationFn: ({
+      projectId,
+      data,
+    }: {
+      projectId: string;
+      data: IndexingConfigUpdate;
+    }) => updateIndexingConfig(projectId, data),
+    onSuccess: (_, { projectId }) => {
       queryClient.invalidateQueries({
-        queryKey: QUERY_KEYS.documents(scopeType, scopeId),
+        queryKey: QUERY_KEYS.indexingConfig(projectId),
       });
-      if (scopeType === "project") {
-        queryClient.invalidateQueries({
-          queryKey: QUERY_KEYS.project(scopeId),
-        });
-      }
     },
   });
 }
