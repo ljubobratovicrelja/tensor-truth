@@ -183,14 +183,17 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
       {/* URL tab */}
       <TabsContent value="url" className="mt-3">
         <div className="space-y-2">
+          <p className="text-muted-foreground text-xs">
+            Fetches a web page and converts its HTML content to text.
+          </p>
           <Input
-            placeholder="https://example.com/page"
+            placeholder="https://docs.example.com/guide"
             value={urlValue}
             onChange={(e) => setUrlValue(e.target.value)}
             className="text-sm"
           />
           <Textarea
-            placeholder="Optional: Describe what this URL is about..."
+            placeholder="Optional: Describe what this page is about..."
             value={urlContext}
             onChange={(e) => setUrlContext(e.target.value)}
             rows={2}
