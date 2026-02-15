@@ -7,9 +7,11 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import urlparse
 
 import arxiv
-from fastapi import APIRouter, File, HTTPException, UploadFile
+import requests
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from tensortruth.api.deps import (
     ConfigServiceDep,
@@ -25,6 +27,8 @@ from tensortruth.api.schemas import (
     DocumentListItem,
     DocumentListResponse,
     DocumentUploadResponse,
+    FileUrlInfoResponse,
+    FileUrlUploadRequest,
     ReindexResponse,
     TextUploadRequest,
     UrlUploadRequest,
@@ -294,6 +298,149 @@ def _reindex_documents(scope_id: str, scope_type: str) -> ReindexResponse:
             )
 
 
+_SUPPORTED_FILE_TYPES = {
+    "application/pdf",
+    "text/plain",
+    "text/markdown",
+}
+
+
+def _validate_url(url: str) -> None:
+    """Validate that a URL is http(s) with a non-empty netloc."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="Invalid URL")
+
+
+def _filename_from_response(resp: requests.Response, url: str) -> str:
+    """Extract a filename from Content-Disposition header, URL path, or fallback."""
+    cd = resp.headers.get("Content-Disposition", "")
+    if "filename=" in cd:
+        # Try to parse filename from Content-Disposition
+        for part in cd.split(";"):
+            part = part.strip()
+            if part.startswith("filename="):
+                name = part[len("filename=") :].strip().strip('"').strip("'")
+                if name:
+                    return name
+
+    # Fall back to URL path
+    path = urlparse(url).path
+    if path and "/" in path:
+        name = path.rsplit("/", 1)[-1]
+        if name:
+            return name
+
+    return "download"
+
+
+@router.get("/file-url-info", response_model=FileUrlInfoResponse)
+async def probe_file_url(
+    url: str = Query(..., description="URL to probe"),
+) -> FileUrlInfoResponse:
+    """Probe a file URL via HEAD to get metadata before downloading."""
+    _validate_url(url)
+
+    loop = asyncio.get_event_loop()
+
+    def _probe():
+        try:
+            resp = requests.head(url, allow_redirects=True, timeout=10)
+        except requests.RequestException:
+            # HEAD might be blocked; try ranged GET
+            try:
+                resp = requests.get(
+                    url,
+                    headers={"Range": "bytes=0-0"},
+                    allow_redirects=True,
+                    timeout=10,
+                )
+            except requests.RequestException as e:
+                raise ConnectionError(str(e))
+
+        if resp.status_code == 405:
+            # HEAD not allowed, try ranged GET
+            try:
+                resp = requests.get(
+                    url,
+                    headers={"Range": "bytes=0-0"},
+                    allow_redirects=True,
+                    timeout=10,
+                )
+            except requests.RequestException as e:
+                raise ConnectionError(str(e))
+
+        content_type = resp.headers.get("Content-Type", "application/octet-stream")
+        # Strip charset etc.
+        content_type = content_type.split(";")[0].strip().lower()
+
+        content_length = resp.headers.get("Content-Length")
+        file_size = int(content_length) if content_length else None
+
+        filename = _filename_from_response(resp, url)
+        supported = content_type in _SUPPORTED_FILE_TYPES
+
+        return FileUrlInfoResponse(
+            url=url,
+            filename=filename,
+            content_type=content_type,
+            file_size=file_size,
+            supported=supported,
+        )
+
+    try:
+        result = await loop.run_in_executor(None, _probe)
+    except ConnectionError as e:
+        raise HTTPException(status_code=400, detail=f"Could not reach URL: {e}")
+
+    return result
+
+
+async def _upload_file_url(
+    scope_id: str, scope_type: str, url: str
+) -> DocumentUploadResponse:
+    """Download a file from a URL and upload it to a scope."""
+    _validate_url(url)
+
+    loop = asyncio.get_event_loop()
+
+    def _download():
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+        return resp
+
+    try:
+        resp = await asyncio.wait_for(
+            loop.run_in_executor(None, _download),
+            timeout=60,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="File download timeout")
+    except Exception as e:
+        logger.error(f"File URL download failed for {url}: {e}")
+        raise HTTPException(status_code=502, detail="File download error")
+
+    content_type = resp.headers.get("Content-Type", "application/octet-stream")
+    content_type = content_type.split(";")[0].strip().lower()
+
+    filename = _filename_from_response(resp, url)
+
+    if content_type == "application/pdf":
+        return _upload_pdf(scope_id, scope_type, resp.content, filename)
+    elif content_type in ("text/plain", "text/markdown"):
+        return _upload_text(
+            scope_id,
+            scope_type,
+            resp.content.decode("utf-8", errors="replace"),
+            filename,
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {content_type}",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Session document routes
 # ---------------------------------------------------------------------------
@@ -389,6 +536,24 @@ async def upload_session_arxiv(
         raise HTTPException(status_code=404, detail="Session not found")
 
     return await _upload_arxiv(session_id, "session", body.arxiv_id)
+
+
+@router.post(
+    "/sessions/{session_id}/documents/upload-file-url",
+    response_model=DocumentUploadResponse,
+    status_code=201,
+)
+async def upload_session_file_url(
+    session_id: str,
+    body: FileUrlUploadRequest,
+    session_service: SessionServiceDep,
+) -> DocumentUploadResponse:
+    """Download a file from a URL and add it to a session."""
+    data = session_service.load()
+    if session_id not in data.sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return await _upload_file_url(session_id, "session", body.url)
 
 
 @router.delete("/sessions/{session_id}/documents/{doc_id}", status_code=204)
@@ -512,6 +677,21 @@ async def upload_project_arxiv(
     """Download an arXiv paper and add it to a project."""
     _get_project_or_404(project_id, project_service)
     return await _upload_arxiv(project_id, "project", body.arxiv_id)
+
+
+@router.post(
+    "/projects/{project_id}/documents/upload-file-url",
+    response_model=DocumentUploadResponse,
+    status_code=201,
+)
+async def upload_project_file_url(
+    project_id: str,
+    body: FileUrlUploadRequest,
+    project_service: ProjectServiceDep,
+) -> DocumentUploadResponse:
+    """Download a file from a URL and add it to a project."""
+    _get_project_or_404(project_id, project_service)
+    return await _upload_file_url(project_id, "project", body.url)
 
 
 @router.delete("/projects/{project_id}/documents/{doc_id}", status_code=204)

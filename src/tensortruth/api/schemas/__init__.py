@@ -31,6 +31,8 @@ from .document import (
     DocumentListItem,
     DocumentListResponse,
     DocumentUploadResponse,
+    FileUrlInfoResponse,
+    FileUrlUploadRequest,
     TextUploadRequest,
     UrlUploadRequest,
 )
@@ -121,6 +123,8 @@ __all__ = [
     "CatalogModuleAddRequest",
     "CatalogModuleAddResponse",
     "CatalogModuleRemoveResponse",
+    "FileUrlInfoResponse",
+    "FileUrlUploadRequest",
     # Startup
     "StartupStatusResponse",
     "IndexesStatusSchema",

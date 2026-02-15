@@ -3,8 +3,10 @@ import { QUERY_KEYS } from "@/lib/constants";
 import {
   listDocuments,
   lookupArxiv,
+  probeFileUrl,
   uploadArxiv,
   uploadDocument,
+  uploadFileUrl,
   uploadText,
   uploadUrl,
   deleteDocument,
@@ -14,6 +16,7 @@ import {
 } from "@/api/documents";
 import type {
   ArxivUploadRequest,
+  FileUrlUploadRequest,
   ScopeType,
   TextUploadRequest,
   UrlUploadRequest,
@@ -119,6 +122,44 @@ export function useArxivLookup(debouncedId: string) {
     enabled: ARXIV_ID_RE.test(debouncedId),
     retry: false,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+const FILE_URL_RE = /^https?:\/\/.+/;
+
+export function useFileUrlInfo(debouncedUrl: string) {
+  return useQuery({
+    queryKey: ["file-url-info", debouncedUrl],
+    queryFn: () => probeFileUrl(debouncedUrl),
+    enabled: FILE_URL_RE.test(debouncedUrl),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUploadFileUrl() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      scopeId,
+      scopeType,
+      data,
+    }: {
+      scopeId: string;
+      scopeType: ScopeType;
+      data: FileUrlUploadRequest;
+    }) => uploadFileUrl(scopeId, scopeType, data),
+    onSuccess: (_, { scopeId, scopeType }) => {
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.documents(scopeType, scopeId),
+      });
+      if (scopeType === "project") {
+        queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.project(scopeId),
+        });
+      }
+    },
   });
 }
 

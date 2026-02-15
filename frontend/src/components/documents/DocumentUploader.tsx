@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, File, Loader2, Link, BookOpen } from "lucide-react";
+import { Upload, File as FileIcon, Loader2, Link, BookOpen, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +14,8 @@ import {
   useUploadUrl,
   useArxivLookup,
   useUploadArxiv,
+  useFileUrlInfo,
+  useUploadFileUrl,
 } from "@/hooks";
 import type { ScopeType } from "@/api/types";
 
@@ -38,42 +41,61 @@ function useDebounce(value: string, delay: number): string {
   return debounced;
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getTypeBadge(filename: string, contentType?: string): string {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".pdf") || contentType === "application/pdf") return "PDF";
+  if (
+    lower.endsWith(".md") ||
+    lower.endsWith(".markdown") ||
+    contentType === "text/markdown"
+  )
+    return "MD";
+  if (lower.endsWith(".txt") || contentType === "text/plain") return "TXT";
+  return contentType?.split("/")[1]?.toUpperCase() || "FILE";
+}
+
 export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) {
   const uploadDoc = useUploadDocument();
   const uploadText = useUploadText();
   const uploadUrlMutation = useUploadUrl();
   const uploadArxivMutation = useUploadArxiv();
+  const uploadFileUrlMutation = useUploadFileUrl();
 
+  // Files tab state
+  const [stagedFile, setStagedFile] = useState<File | null>(null);
+  const [fileUrlInput, setFileUrlInput] = useState("");
+  const debouncedFileUrl = useDebounce(fileUrlInput.trim(), 500);
+  const fileUrlInfo = useFileUrlInfo(debouncedFileUrl);
+
+  // URL tab state
   const [urlValue, setUrlValue] = useState("");
   const [urlContext, setUrlContext] = useState("");
+
+  // arXiv tab state
   const [arxivInput, setArxivInput] = useState("");
   const debouncedArxivId = useDebounce(arxivInput.trim(), 500);
   const arxivLookup = useArxivLookup(debouncedArxivId);
 
-  const isUploading = uploadDoc.isPending || uploadText.isPending;
+  const isFileUploading =
+    uploadDoc.isPending || uploadText.isPending || uploadFileUrlMutation.isPending;
 
-  const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
-      for (const file of acceptedFiles) {
-        try {
-          if (isTextFile(file.name)) {
-            const text = await file.text();
-            await uploadText.mutateAsync({
-              scopeId,
-              scopeType,
-              data: { content: text, filename: file.name },
-            });
-          } else {
-            await uploadDoc.mutateAsync({ scopeId, scopeType, file });
-          }
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : "Upload failed";
-          toast.error(`Failed to upload ${file.name}: ${msg}`);
-        }
-      }
-    },
-    [scopeId, scopeType, uploadDoc, uploadText]
-  );
+  // Determine what's staged for preview
+  const hasLocalStaged = stagedFile !== null;
+  const hasUrlStaged = !hasLocalStaged && fileUrlInfo.data?.supported === true;
+  const hasStaged = hasLocalStaged || hasUrlStaged;
+
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    if (acceptedFiles.length > 0) {
+      setStagedFile(acceptedFiles[0]);
+      setFileUrlInput("");
+    }
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -82,8 +104,53 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
       "text/plain": [".txt"],
       "text/markdown": [".md", ".markdown"],
     },
-    multiple: true,
+    multiple: false,
   });
+
+  const handleFileUrlChange = (value: string) => {
+    setFileUrlInput(value);
+    setStagedFile(null);
+  };
+
+  const clearStaged = () => {
+    setStagedFile(null);
+    setFileUrlInput("");
+  };
+
+  const handleAddFile = async () => {
+    if (hasLocalStaged && stagedFile) {
+      try {
+        if (isTextFile(stagedFile.name)) {
+          const text = await stagedFile.text();
+          await uploadText.mutateAsync({
+            scopeId,
+            scopeType,
+            data: { content: text, filename: stagedFile.name },
+          });
+        } else {
+          await uploadDoc.mutateAsync({ scopeId, scopeType, file: stagedFile });
+        }
+        clearStaged();
+        toast.success("File added");
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Upload failed";
+        toast.error(msg);
+      }
+    } else if (hasUrlStaged && fileUrlInfo.data) {
+      try {
+        await uploadFileUrlMutation.mutateAsync({
+          scopeId,
+          scopeType,
+          data: { url: fileUrlInfo.data.url },
+        });
+        clearStaged();
+        toast.success("File added");
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Download failed";
+        toast.error(msg);
+      }
+    }
+  };
 
   const handleUrlSubmit = async () => {
     const trimmedUrl = urlValue.trim();
@@ -127,6 +194,11 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
     !ARXIV_ID_RE.test(arxivInput.trim()) &&
     arxivInput.trim().length >= 4;
 
+  // File URL error states
+  const showFileUrlError =
+    !hasLocalStaged && fileUrlInfo.isError && /^https?:\/\/.+/.test(debouncedFileUrl);
+  const showFileUrlUnsupported = !hasLocalStaged && fileUrlInfo.data?.supported === false;
+
   return (
     <Tabs defaultValue="files" className="w-full">
       <TabsList className="grid w-full grid-cols-3">
@@ -146,37 +218,120 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
 
       {/* Files tab */}
       <TabsContent value="files" className="mt-3">
-        <div
-          {...getRootProps()}
-          className={cn(
-            "flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors",
-            isDragActive
-              ? "border-primary bg-primary/5"
-              : "border-muted-foreground/25 hover:border-primary/50"
+        <div className="space-y-3">
+          {/* Drop zone — compact single row */}
+          <div
+            {...getRootProps()}
+            className={cn(
+              "flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-3 transition-colors",
+              isDragActive
+                ? "border-primary bg-primary/5"
+                : "border-muted-foreground/25 hover:border-primary/50"
+            )}
+          >
+            <input {...getInputProps()} />
+            {isDragActive ? (
+              <>
+                <FileIcon className="text-primary h-4 w-4 shrink-0" />
+                <p className="text-primary text-sm">Drop file here</p>
+              </>
+            ) : (
+              <>
+                <Upload className="text-muted-foreground h-4 w-4 shrink-0" />
+                <p className="text-muted-foreground text-sm">
+                  Drag & drop or click to browse
+                  <span className="text-muted-foreground/60 ml-1 text-xs">
+                    PDF, TXT, MD
+                  </span>
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="bg-border h-px flex-1" />
+            <span className="text-muted-foreground text-xs">or paste a file URL</span>
+            <div className="bg-border h-px flex-1" />
+          </div>
+
+          {/* URL input */}
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="https://example.com/paper.pdf"
+              value={fileUrlInput}
+              onChange={(e) => handleFileUrlChange(e.target.value)}
+              className="text-sm"
+            />
+            {fileUrlInfo.isFetching && (
+              <Loader2 className="text-muted-foreground h-4 w-4 shrink-0 animate-spin" />
+            )}
+          </div>
+
+          {/* Error states */}
+          {showFileUrlError && (
+            <p className="text-destructive text-xs">Could not reach file</p>
           )}
-        >
-          <input {...getInputProps()} />
-          {isUploading ? (
-            <>
-              <Loader2 className="text-muted-foreground mb-2 h-8 w-8 animate-spin" />
-              <p className="text-muted-foreground text-sm">Uploading...</p>
-            </>
-          ) : isDragActive ? (
-            <>
-              <File className="text-primary mb-2 h-8 w-8" />
-              <p className="text-primary text-sm">Drop files here</p>
-            </>
-          ) : (
-            <>
-              <Upload className="text-muted-foreground mb-2 h-8 w-8" />
-              <p className="text-muted-foreground text-center text-sm">
-                Drag & drop files here, or click to select
-              </p>
-              <p className="text-muted-foreground/60 mt-1 text-center text-xs">
-                PDF, TXT, MD files supported
-              </p>
-            </>
+          {showFileUrlUnsupported && fileUrlInfo.data && (
+            <p className="text-destructive text-xs">
+              Unsupported file type: {fileUrlInfo.data.content_type}
+            </p>
           )}
+
+          {/* Preview card */}
+          {hasStaged && (
+            <div className="bg-muted/50 flex items-start gap-3 rounded-md border p-3">
+              <FileIcon className="text-muted-foreground mt-0.5 h-5 w-5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-medium">
+                    {hasLocalStaged ? stagedFile!.name : fileUrlInfo.data!.filename}
+                  </p>
+                  <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">
+                    {hasLocalStaged
+                      ? getTypeBadge(stagedFile!.name)
+                      : getTypeBadge(
+                          fileUrlInfo.data!.filename,
+                          fileUrlInfo.data!.content_type
+                        )}
+                  </Badge>
+                </div>
+                <p className="text-muted-foreground mt-0.5 text-xs">
+                  {hasLocalStaged && stagedFile
+                    ? formatFileSize(stagedFile.size)
+                    : fileUrlInfo.data?.file_size != null
+                      ? formatFileSize(fileUrlInfo.data.file_size)
+                      : "Size unknown"}
+                </p>
+                {hasUrlStaged && fileUrlInfo.data && (
+                  <p className="text-muted-foreground mt-0.5 truncate text-xs">
+                    {fileUrlInfo.data.url}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={clearStaged}
+                className="text-muted-foreground hover:text-foreground shrink-0 p-0.5"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Add File button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleAddFile}
+            disabled={!hasStaged || isFileUploading}
+          >
+            {isFileUploading ? (
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="mr-1 h-4 w-4" />
+            )}
+            Add File
+          </Button>
         </div>
       </TabsContent>
 

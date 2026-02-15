@@ -78,6 +78,22 @@ class ArxivUploadRequest(BaseModel):
     arxiv_id: str
 
 
+class FileUrlInfoResponse(BaseModel):
+    """Response for probing a file URL (HEAD request)."""
+
+    url: str
+    filename: str
+    content_type: str
+    file_size: Optional[int] = None
+    supported: bool
+
+
+class FileUrlUploadRequest(BaseModel):
+    """Request body for downloading and uploading a file from a URL."""
+
+    url: str
+
+
 class CatalogModuleRemoveResponse(BaseModel):
     """Response for removing a catalog module."""
 

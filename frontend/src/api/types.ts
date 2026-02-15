@@ -374,6 +374,18 @@ export interface ArxivUploadRequest {
   arxiv_id: string;
 }
 
+export interface FileUrlInfoResponse {
+  url: string;
+  filename: string;
+  content_type: string;
+  file_size: number | null;
+  supported: boolean;
+}
+
+export interface FileUrlUploadRequest {
+  url: string;
+}
+
 export interface CatalogModuleAddRequest {
   module_name: string;
 }

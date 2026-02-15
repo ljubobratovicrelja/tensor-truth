@@ -5,6 +5,8 @@ import type {
   ArxivUploadRequest,
   DocumentListResponse,
   DocumentUploadResponse,
+  FileUrlInfoResponse,
+  FileUrlUploadRequest,
   TextUploadRequest,
   UrlUploadRequest,
   ReindexResponse,
@@ -83,6 +85,21 @@ export async function uploadArxiv(
 ): Promise<DocumentUploadResponse> {
   return apiPost<DocumentUploadResponse, ArxivUploadRequest>(
     `${scopePrefix(scopeType, scopeId)}/upload-arxiv`,
+    data
+  );
+}
+
+export async function probeFileUrl(url: string): Promise<FileUrlInfoResponse> {
+  return apiGet<FileUrlInfoResponse>(`/file-url-info?url=${encodeURIComponent(url)}`);
+}
+
+export async function uploadFileUrl(
+  scopeId: string,
+  scopeType: ScopeType,
+  data: FileUrlUploadRequest
+): Promise<DocumentUploadResponse> {
+  return apiPost<DocumentUploadResponse, FileUrlUploadRequest>(
+    `${scopePrefix(scopeType, scopeId)}/upload-file-url`,
     data
   );
 }

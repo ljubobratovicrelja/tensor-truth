@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 from httpx import ASGITransport, AsyncClient
 
 from tensortruth.api.main import create_app
@@ -573,6 +574,158 @@ class TestCatalogModuleRemove:
         # Verify it's gone from project
         project_response = await client.get(f"/api/projects/{project_id}")
         assert "pytorch" not in project_response.json()["catalog_modules"]
+
+
+class TestFileUrlEndpoints:
+    """Test file URL probe and upload endpoints."""
+
+    @pytest.mark.asyncio
+    @patch("tensortruth.api.routes.documents.requests.head")
+    async def test_probe_file_url_pdf(self, mock_head, client, mock_session_paths):
+        """Test probing a PDF file URL returns supported=True."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {
+            "Content-Type": "application/pdf",
+            "Content-Length": "2100000",
+        }
+        mock_head.return_value = mock_resp
+
+        response = await client.get(
+            "/api/file-url-info",
+            params={"url": "https://example.com/paper.pdf"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["filename"] == "paper.pdf"
+        assert data["content_type"] == "application/pdf"
+        assert data["file_size"] == 2100000
+        assert data["supported"] is True
+
+    @pytest.mark.asyncio
+    @patch("tensortruth.api.routes.documents.requests.head")
+    async def test_probe_file_url_unsupported(
+        self, mock_head, client, mock_session_paths
+    ):
+        """Test probing an unsupported file type returns supported=False."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {
+            "Content-Type": "image/png",
+            "Content-Length": "50000",
+        }
+        mock_head.return_value = mock_resp
+
+        response = await client.get(
+            "/api/file-url-info",
+            params={"url": "https://example.com/image.png"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["supported"] is False
+        assert data["content_type"] == "image/png"
+
+    @pytest.mark.asyncio
+    @patch("tensortruth.api.routes.documents.requests.get")
+    @patch("tensortruth.api.routes.documents.requests.head")
+    async def test_probe_file_url_unreachable(
+        self, mock_head, mock_get, client, mock_session_paths
+    ):
+        """Test probing an unreachable URL returns 400."""
+        mock_head.side_effect = requests.ConnectionError("Connection refused")
+        mock_get.side_effect = requests.ConnectionError("Connection refused")
+
+        response = await client.get(
+            "/api/file-url-info",
+            params={"url": "https://unreachable.example.com/file.pdf"},
+        )
+        assert response.status_code == 400
+        assert "Could not reach" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_probe_file_url_invalid(self, client, mock_session_paths):
+        """Test probing an invalid URL returns 400."""
+        response = await client.get(
+            "/api/file-url-info",
+            params={"url": "not-a-url"},
+        )
+        assert response.status_code == 400
+        assert "Invalid URL" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    @patch("tensortruth.api.routes.documents.requests.get")
+    async def test_upload_file_url_session(self, mock_get, client, mock_session_paths):
+        """Test downloading a PDF from URL and uploading to session."""
+        sessions_file, sessions_dir = mock_session_paths
+        session_id = await _create_session(client)
+
+        session_dir = sessions_dir / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b"%PDF-1.4 fake pdf content"
+        mock_resp.headers = {
+            "Content-Type": "application/pdf",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        response = await client.post(
+            f"/api/sessions/{session_id}/documents/upload-file-url",
+            json={"url": "https://example.com/paper.pdf"},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["doc_id"].startswith("pdf_")
+        assert "paper" in data["filename"].lower()
+
+    @pytest.mark.asyncio
+    @patch("tensortruth.api.routes.documents.requests.get")
+    async def test_upload_file_url_project(self, mock_get, client, mock_project_paths):
+        """Test downloading a PDF from URL and uploading to project."""
+        project_id = await _create_project(client)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b"%PDF-1.4 fake pdf content"
+        mock_resp.headers = {
+            "Content-Type": "application/pdf",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        response = await client.post(
+            f"/api/projects/{project_id}/documents/upload-file-url",
+            json={"url": "https://example.com/doc.pdf"},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["doc_id"].startswith("pdf_")
+
+    @pytest.mark.asyncio
+    @patch("tensortruth.api.routes.documents.requests.get")
+    async def test_upload_file_url_unsupported(
+        self, mock_get, client, mock_session_paths
+    ):
+        """Test uploading an unsupported file type returns 400."""
+        session_id = await _create_session(client)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b"\x89PNG fake image"
+        mock_resp.headers = {
+            "Content-Type": "image/png",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        response = await client.post(
+            f"/api/sessions/{session_id}/documents/upload-file-url",
+            json={"url": "https://example.com/image.png"},
+        )
+        assert response.status_code == 400
+        assert "Unsupported file type" in response.json()["detail"]
 
 
 def _make_mock_paper(arxiv_id="2301.12345", title="Attention Is All You Need"):
