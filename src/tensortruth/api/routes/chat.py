@@ -86,6 +86,8 @@ class ChatContext:
         # Resolve project context if session belongs to a project
         project_id = session.get("project_id")
         project_modules: List[str] = []
+        composed_system_prompt: Optional[str] = None
+        project: Optional[Dict[str, Any]] = None
         if project_id and project_service:
             project_data = project_service.load()
             project = project_service.get_project(project_id, project_data)
@@ -105,6 +107,25 @@ class ChatContext:
                 chroma_db_path = project_index_dir / "chroma.sqlite3"
                 if chroma_db_path.exists():
                     additional_index_paths.append(str(project_index_dir))
+
+                # Compose project context into system_prompt from
+                # project name, description, and custom instructions
+                parts: List[str] = []
+                project_name = (project.get("name") or "").strip()
+                project_desc = (project.get("description") or "").strip()
+                project_instructions = (
+                    (project.get("config") or {}).get("system_prompt") or ""
+                ).strip()
+
+                if project_name:
+                    parts.append(f"Project: {project_name}")
+                if project_desc:
+                    parts.append(project_desc)
+                if project_instructions:
+                    parts.append(project_instructions)
+
+                if parts:
+                    composed_system_prompt = "\n\n".join(parts)
             else:
                 logger.warning(
                     f"Project {project_id} not found for session {session_id}, "
@@ -119,11 +140,16 @@ class ChatContext:
         if session_index_path:
             additional_index_paths.append(str(session_index_path))
 
+        # Build params, overriding system_prompt for project sessions
+        params = dict(session.get("params", {}))
+        if project and composed_system_prompt:
+            params["system_prompt"] = composed_system_prompt
+
         return cls(
             session_id=session_id,
             prompt=prompt,
             modules=merged_modules,
-            params=session.get("params", {}),
+            params=params,
             session_messages=session.get("messages", []),
             additional_index_paths=additional_index_paths,
         )

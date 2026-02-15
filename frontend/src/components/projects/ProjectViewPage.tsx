@@ -139,6 +139,7 @@ export function ProjectViewPage() {
                   currentParams={sessionParams}
                   disabled={isSubmitting}
                   onChange={setSessionParams}
+                  hideSystemPrompt
                 />
 
                 {/* Model selector */}

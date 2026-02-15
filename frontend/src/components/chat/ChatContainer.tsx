@@ -230,6 +230,7 @@ export function ChatContainer() {
               projectData ? Object.keys(projectData.catalog_modules) : undefined
             }
             projectDocuments={projectData?.documents}
+            isProjectSession={!!sessionProjectId}
           />
         </div>
       </div>

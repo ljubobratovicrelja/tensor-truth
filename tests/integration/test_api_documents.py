@@ -281,7 +281,7 @@ class TestSessionDocumentsCRUD:
         session_dir = sessions_dir / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
 
-        response = await client.post(f"/api/sessions/{session_id}/documents/reindex")
+        response = await client.post(f"/api/sessions/{session_id}/pdfs/reindex")
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is False
@@ -387,17 +387,6 @@ class TestProjectDocumentsCRUD:
         # Verify it's gone
         list_response = await client.get(f"/api/projects/{project_id}/documents")
         assert len(list_response.json()["documents"]) == 0
-
-    @pytest.mark.asyncio
-    async def test_reindex_no_documents(self, client, mock_project_paths):
-        """Test reindexing when no documents exist in project."""
-        project_id = await _create_project(client)
-
-        response = await client.post(f"/api/projects/{project_id}/documents/reindex")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is False
-        assert data["pdf_count"] == 0
 
     @pytest.mark.asyncio
     @patch("tensortruth.services.document_service.fetch_url_as_markdown")

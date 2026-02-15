@@ -25,6 +25,8 @@ interface ChatInputProps {
   lockedModules?: string[];
   /** Documents attached to the project (shown in module selector). */
   projectDocuments?: DocumentInfo[];
+  /** Whether this is a project session (hides session-level system prompt). */
+  isProjectSession?: boolean;
 }
 
 export function ChatInput({
@@ -40,6 +42,7 @@ export function ChatInput({
   sessionParams = {},
   lockedModules,
   projectDocuments,
+  isProjectSession,
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const [autocompleteHasResults, setAutocompleteHasResults] = useState(false);
@@ -176,6 +179,7 @@ export function ChatInput({
                 sessionId={sessionId}
                 currentParams={sessionParams}
                 disabled={isStreaming}
+                hideSystemPrompt={isProjectSession}
               />
             )}
             {onModelChange && (

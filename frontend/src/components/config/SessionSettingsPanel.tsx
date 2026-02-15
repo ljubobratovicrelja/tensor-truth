@@ -54,6 +54,7 @@ interface SessionSettingsPanelProps {
   currentParams?: Record<string, unknown>;
   disabled?: boolean;
   onChange?: (params: Record<string, unknown>) => void;
+  hideSystemPrompt?: boolean;
 }
 
 export function SessionSettingsPanel({
@@ -61,6 +62,7 @@ export function SessionSettingsPanel({
   currentParams = {},
   disabled = false,
   onChange,
+  hideSystemPrompt = false,
 }: SessionSettingsPanelProps) {
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -194,8 +196,11 @@ export function SessionSettingsPanel({
       function_agent_model: functionAgentModel,
     };
 
-    // Only include system_prompt if non-empty
-    if (systemPrompt.trim()) {
+    // Only include system_prompt if non-empty and not hidden (project sessions
+    // get their system prompt composed on the backend from project metadata)
+    if (hideSystemPrompt) {
+      delete newParams.system_prompt;
+    } else if (systemPrompt.trim()) {
       newParams.system_prompt = systemPrompt.trim();
     } else {
       delete newParams.system_prompt;
@@ -640,19 +645,21 @@ export function SessionSettingsPanel({
 
           <Separator />
 
-          {/* System Prompt Section */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-medium">Custom Instructions</h3>
-            <div className="space-y-2">
-              <Label>System Prompt</Label>
-              <Textarea
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder="Add custom instructions for this chat session..."
-                className="min-h-[100px] resize-y"
-              />
+          {/* System Prompt Section (hidden for project sessions — project config is the source of truth) */}
+          {!hideSystemPrompt && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium">Custom Instructions</h3>
+              <div className="space-y-2">
+                <Label>System Prompt</Label>
+                <Textarea
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  placeholder="Add custom instructions for this chat session..."
+                  className="min-h-[100px] resize-y"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setOpen(false)}>
