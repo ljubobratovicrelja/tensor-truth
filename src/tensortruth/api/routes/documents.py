@@ -1,17 +1,18 @@
 """Document management endpoints for session and project scopes."""
 
 import logging
+import re
+from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from tensortruth.api.deps import (
+    ConfigServiceDep,
     ProjectServiceDep,
     SessionServiceDep,
-    TaskRunnerDep,
     get_document_service,
     get_project_service,
-    get_task_runner,
 )
 from tensortruth.api.schemas import (
     CatalogModuleAddRequest,
@@ -24,15 +25,9 @@ from tensortruth.api.schemas import (
     TextUploadRequest,
     UrlUploadRequest,
 )
-from tensortruth.app_utils.paths import (
-    get_base_indexes_dir,
-    get_library_docs_dir,
-    get_sources_config_path,
-)
-from tensortruth.indexing.builder import build_module
+from tensortruth.app_utils.paths import get_indexes_dir
+from tensortruth.indexing.metadata import sanitize_model_id
 from tensortruth.services import ProjectService
-from tensortruth.services.task_runner import TaskStatus
-from tensortruth.utils.sources_config import load_config as load_sources_config
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +37,46 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Shared helpers (avoid duplication between session/project routes)
 # ---------------------------------------------------------------------------
+
+
+_DOC_PREFIX_RE = re.compile(r"^(pdf|doc|url)_[a-f0-9]{7,8}_")
+_MD_HEADER_RE = re.compile(r"^# Document:\s*(.+)")
+
+
+def strip_doc_prefix(filename: str) -> str:
+    """Strip internal ID prefix from a document filename.
+
+    Works well for PDFs where the original name is preserved in the stem:
+        pdf_544414c_my_paper.pdf  -> my_paper.pdf
+
+    For markdown files, prefer get_display_name() which reads the stored header.
+    """
+    return _DOC_PREFIX_RE.sub("", filename)
+
+
+def get_display_name(file_path: Path) -> str:
+    """Extract the user-facing display name for a document.
+
+    - For PDFs: strips the internal ID prefix (original name is in the stem).
+    - For markdown files (text/url uploads): reads the ``# Document: ...``
+      header written at upload time, which contains the original filename
+      or page title.
+    - Falls back to prefix-stripping if the header can't be read.
+    """
+    if file_path.suffix == ".pdf":
+        return strip_doc_prefix(file_path.name)
+
+    # Markdown files — read the first line for the original name
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            first_line = f.readline()
+        m = _MD_HEADER_RE.match(first_line)
+        if m:
+            return m.group(1).strip()
+    except OSError:
+        pass
+
+    return strip_doc_prefix(file_path.name)
 
 
 def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
@@ -67,7 +102,7 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
         documents.append(
             DocumentListItem(
                 doc_id=pdf_path.stem,
-                filename=pdf_path.name,
+                filename=get_display_name(pdf_path),
                 file_size=pdf_path.stat().st_size if pdf_path.exists() else 0,
                 page_count=page_count,
             )
@@ -78,7 +113,7 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
         documents.append(
             DocumentListItem(
                 doc_id=md_path.stem,
-                filename=md_path.name,
+                filename=get_display_name(md_path),
                 file_size=md_path.stat().st_size if md_path.exists() else 0,
                 page_count=0,
             )
@@ -390,32 +425,6 @@ async def reindex_project_documents(
 # ---------------------------------------------------------------------------
 
 
-def _make_on_complete(
-    project_id: str,
-    module_name: str,
-    project_service: ProjectService,
-):
-    """Create an on_complete callback for module build tasks."""
-
-    def _on_complete(task_info):
-        data = project_service.load()
-        project = project_service.get_project(project_id, data)
-        if not project:
-            return
-
-        if task_info.status == TaskStatus.COMPLETED:
-            project["catalog_modules"][module_name] = {"status": "indexed"}
-        else:
-            project["catalog_modules"][module_name] = {
-                "status": "error",
-                "error": task_info.error,
-            }
-
-        project_service.save(data)
-
-    return _on_complete
-
-
 @router.post(
     "/projects/{project_id}/catalog-modules",
     response_model=CatalogModuleAddResponse,
@@ -425,9 +434,9 @@ async def add_catalog_module(
     project_id: str,
     body: CatalogModuleAddRequest,
     project_service: ProjectServiceDep,
-    task_runner: TaskRunnerDep,
+    config_service: ConfigServiceDep,
 ) -> CatalogModuleAddResponse:
-    """Add a catalog module to a project (triggers background build)."""
+    """Add an existing catalog module (built index) to a project."""
     data = project_service.load()
     project = project_service.get_project(project_id, data)
     if project is None:
@@ -435,20 +444,16 @@ async def add_catalog_module(
 
     module_name = body.module_name
 
-    # Validate module_name against available modules from sources config
-    sources_config_path = get_sources_config_path()
-    sources_config = load_sources_config(sources_config_path)
+    # Validate that the module exists as a built index on disk
+    config = config_service.load()
+    model_id = sanitize_model_id(config.rag.default_embedding_model)
+    indexes_dir = get_indexes_dir()
+    module_dir = indexes_dir / model_id / module_name
 
-    all_sources = {
-        **sources_config.get("libraries", {}),
-        **sources_config.get("papers", {}),
-        **sources_config.get("books", {}),
-    }
-
-    if module_name not in all_sources:
+    if not module_dir.exists() or not (module_dir / "chroma.sqlite3").exists():
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown module: {module_name}. Not found in sources config.",
+            detail=f"Module '{module_name}' not found. No built index exists.",
         )
 
     # Check current status of this module in the project
@@ -466,39 +471,15 @@ async def add_catalog_module(
                 detail=f"Module '{module_name}' is already indexed.",
             )
 
-    # Submit build task
-    library_docs_dir = get_library_docs_dir()
-    indexes_dir = get_base_indexes_dir()
-
-    def _build_fn(progress_callback):
-        return build_module(
-            module_name=module_name,
-            library_docs_dir=library_docs_dir,
-            indexes_dir=indexes_dir,
-            sources_config=sources_config,
-            progress_callback=progress_callback,
-        )
-
-    task_id = await task_runner.submit(
-        "build_module",
-        _build_fn,
-        on_complete=_make_on_complete(project_id, module_name, project_service),
-        metadata={"project_id": project_id, "module_name": module_name},
-    )
-
-    # Update project status to "building"
+    # Module already exists on disk — just reference it
     if "catalog_modules" not in project:
         project["catalog_modules"] = {}
-    project["catalog_modules"][module_name] = {
-        "status": "building",
-        "task_id": task_id,
-    }
+    project["catalog_modules"][module_name] = {"status": "indexed"}
     project_service.save(data)
 
     return CatalogModuleAddResponse(
-        task_id=task_id,
         module_name=module_name,
-        status="building",
+        status="indexed",
     )
 
 

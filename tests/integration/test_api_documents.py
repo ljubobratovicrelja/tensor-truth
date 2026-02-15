@@ -379,8 +379,29 @@ class TestProjectDocumentsCRUD:
 class TestCatalogModuleAdd:
     """Test catalog module add endpoint."""
 
+    @pytest.fixture
+    def mock_indexes(self, tmp_path, monkeypatch):
+        """Create a fake indexes dir with a built module."""
+        indexes_dir = tmp_path / "indexes"
+        model_dir = indexes_dir / "bge-m3"
+        # Create a built module "pytorch"
+        pytorch_dir = model_dir / "pytorch"
+        pytorch_dir.mkdir(parents=True)
+        (pytorch_dir / "chroma.sqlite3").touch()
+
+        monkeypatch.setattr(
+            "tensortruth.api.routes.documents.get_indexes_dir", lambda: indexes_dir
+        )
+        monkeypatch.setattr(
+            "tensortruth.api.routes.documents.sanitize_model_id",
+            lambda _model: "bge-m3",
+        )
+        return indexes_dir
+
     @pytest.mark.asyncio
-    async def test_add_module_project_not_found(self, client, mock_project_paths):
+    async def test_add_module_project_not_found(
+        self, client, mock_project_paths, mock_indexes
+    ):
         """Test adding module to non-existent project."""
         response = await client.post(
             "/api/projects/nonexistent/catalog-modules",
@@ -389,21 +410,8 @@ class TestCatalogModuleAdd:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    @patch("tensortruth.api.routes.documents.load_sources_config")
-    @patch("tensortruth.api.routes.documents.get_sources_config_path")
-    @patch("tensortruth.api.routes.documents.build_module")
-    async def test_add_module_unknown(
-        self,
-        mock_build,
-        mock_config_path,
-        mock_load_sources,
-        client,
-        mock_project_paths,
-    ):
-        """Test adding an unknown module."""
-        mock_config_path.return_value = "/fake/sources.json"
-        mock_load_sources.return_value = {"libraries": {}, "papers": {}, "books": {}}
-
+    async def test_add_module_not_found(self, client, mock_project_paths, mock_indexes):
+        """Test adding a module that has no built index."""
         project_id = await _create_project(client)
 
         response = await client.post(
@@ -411,35 +419,11 @@ class TestCatalogModuleAdd:
             json={"module_name": "nonexistent_module"},
         )
         assert response.status_code == 400
-        assert "Unknown module" in response.json()["detail"]
+        assert "not found" in response.json()["detail"]
 
     @pytest.mark.asyncio
-    @patch("tensortruth.api.routes.documents.build_module")
-    @patch("tensortruth.api.routes.documents.get_library_docs_dir")
-    @patch("tensortruth.api.routes.documents.get_base_indexes_dir")
-    @patch("tensortruth.api.routes.documents.load_sources_config")
-    @patch("tensortruth.api.routes.documents.get_sources_config_path")
-    async def test_add_module_success(
-        self,
-        mock_config_path,
-        mock_load_sources,
-        mock_indexes_dir,
-        mock_docs_dir,
-        mock_build,
-        client,
-        mock_project_paths,
-    ):
-        """Test successfully adding a catalog module."""
-        mock_config_path.return_value = "/fake/sources.json"
-        mock_load_sources.return_value = {
-            "libraries": {"pytorch": {"type": "sphinx", "version": "2.9"}},
-            "papers": {},
-            "books": {},
-        }
-        mock_docs_dir.return_value = "/fake/docs"
-        mock_indexes_dir.return_value = "/fake/indexes"
-        mock_build.return_value = True
-
+    async def test_add_module_success(self, client, mock_project_paths, mock_indexes):
+        """Test successfully adding a catalog module that exists on disk."""
         project_id = await _create_project(client)
 
         response = await client.post(
@@ -449,43 +433,19 @@ class TestCatalogModuleAdd:
         assert response.status_code == 201
         data = response.json()
         assert data["module_name"] == "pytorch"
-        assert data["status"] == "building"
-        assert "task_id" in data
+        assert data["status"] == "indexed"
 
-        # Verify project was updated with building status
+        # Verify project was updated
         project_response = await client.get(f"/api/projects/{project_id}")
         catalog = project_response.json()["catalog_modules"]
         assert "pytorch" in catalog
-        assert catalog["pytorch"]["status"] == "building"
-        assert catalog["pytorch"]["task_id"] == data["task_id"]
+        assert catalog["pytorch"]["status"] == "indexed"
 
     @pytest.mark.asyncio
-    @patch("tensortruth.api.routes.documents.build_module")
-    @patch("tensortruth.api.routes.documents.get_library_docs_dir")
-    @patch("tensortruth.api.routes.documents.get_base_indexes_dir")
-    @patch("tensortruth.api.routes.documents.load_sources_config")
-    @patch("tensortruth.api.routes.documents.get_sources_config_path")
-    async def test_add_module_already_building(
-        self,
-        mock_config_path,
-        mock_load_sources,
-        mock_indexes_dir,
-        mock_docs_dir,
-        mock_build,
-        client,
-        mock_project_paths,
+    async def test_add_module_already_indexed(
+        self, client, mock_project_paths, mock_indexes
     ):
-        """Test adding a module that is already being built."""
-        mock_config_path.return_value = "/fake/sources.json"
-        mock_load_sources.return_value = {
-            "libraries": {"pytorch": {"type": "sphinx", "version": "2.9"}},
-            "papers": {},
-            "books": {},
-        }
-        mock_docs_dir.return_value = "/fake/docs"
-        mock_indexes_dir.return_value = "/fake/indexes"
-        mock_build.return_value = True
-
+        """Test adding a module that is already indexed in the project."""
         project_id = await _create_project(client)
 
         # First add should succeed
@@ -501,7 +461,7 @@ class TestCatalogModuleAdd:
             json={"module_name": "pytorch"},
         )
         assert response2.status_code == 409
-        assert "already being built" in response2.json()["detail"]
+        assert "already indexed" in response2.json()["detail"]
 
 
 class TestCatalogModuleRemove:
@@ -527,39 +487,19 @@ class TestCatalogModuleRemove:
         assert "not found in project" in response.json()["detail"]
 
     @pytest.mark.asyncio
-    @patch("tensortruth.api.routes.documents.build_module")
-    @patch("tensortruth.api.routes.documents.get_library_docs_dir")
-    @patch("tensortruth.api.routes.documents.get_base_indexes_dir")
-    @patch("tensortruth.api.routes.documents.load_sources_config")
-    @patch("tensortruth.api.routes.documents.get_sources_config_path")
-    async def test_remove_module_while_building(
-        self,
-        mock_config_path,
-        mock_load_sources,
-        mock_indexes_dir,
-        mock_docs_dir,
-        mock_build,
-        client,
-        mock_project_paths,
-    ):
+    async def test_remove_module_while_building(self, client, mock_project_paths):
         """Test removing a module that is currently being built."""
-        mock_config_path.return_value = "/fake/sources.json"
-        mock_load_sources.return_value = {
-            "libraries": {"pytorch": {"type": "sphinx", "version": "2.9"}},
-            "papers": {},
-            "books": {},
-        }
-        mock_docs_dir.return_value = "/fake/docs"
-        mock_indexes_dir.return_value = "/fake/indexes"
-        mock_build.return_value = True
+        from tensortruth.api.deps import get_project_service
 
         project_id = await _create_project(client)
 
-        # Add the module (status=building)
-        await client.post(
-            f"/api/projects/{project_id}/catalog-modules",
-            json={"module_name": "pytorch"},
-        )
+        # Manually set a module as building
+        project_service = get_project_service()
+        data = project_service.load()
+        data.projects[project_id]["catalog_modules"] = {
+            "pytorch": {"status": "building", "task_id": "fake-task"}
+        }
+        project_service.save(data)
 
         # Try to remove while building
         response = await client.delete(

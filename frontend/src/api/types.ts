@@ -363,7 +363,7 @@ export interface CatalogModuleAddRequest {
 }
 
 export interface CatalogModuleAddResponse {
-  task_id: string;
+  task_id?: string | null;
   module_name: string;
   status: string;
 }

@@ -35,7 +35,8 @@ export async function deleteProject(projectId: string): Promise<void> {
 export async function listProjectSessions(
   projectId: string
 ): Promise<SessionListResponse> {
-  return apiGet<SessionListResponse>(`/projects/${projectId}/sessions`);
+  const sessions = await apiGet<SessionResponse[]>(`/projects/${projectId}/sessions`);
+  return { sessions };
 }
 
 export async function createProjectSession(

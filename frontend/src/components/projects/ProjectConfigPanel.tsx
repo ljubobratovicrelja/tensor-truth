@@ -30,7 +30,7 @@ export function ProjectConfigPanel({ project, onUpdate }: ProjectConfigPanelProp
 
   // Derive current values from project config with fallbacks
   const systemPrompt = (project.config.system_prompt as string) ?? "";
-  const model = (project.config.model as string) ?? "";
+  const serverModel = (project.config.model as string) ?? "";
   const temperature =
     (project.config.temperature as number) ?? config?.ui.default_temperature ?? 0.7;
   const contextWindow =
@@ -42,10 +42,18 @@ export function ProjectConfigPanel({ project, onUpdate }: ProjectConfigPanelProp
   const [localPrompt, setLocalPrompt] = useState(systemPrompt);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Local model state so selection is instant (not waiting for server roundtrip)
+  const [localModel, setLocalModel] = useState(serverModel);
+
   // Sync local prompt when project changes externally
   useEffect(() => {
     setLocalPrompt(systemPrompt);
   }, [systemPrompt]);
+
+  // Sync local model when server value changes
+  useEffect(() => {
+    setLocalModel(serverModel);
+  }, [serverModel]);
 
   const handlePromptChange = useCallback(
     (value: string) => {
@@ -96,7 +104,13 @@ export function ProjectConfigPanel({ project, onUpdate }: ProjectConfigPanelProp
       {/* Model */}
       <div className="space-y-2">
         <Label className="text-xs">Model</Label>
-        <Select value={model} onValueChange={(v) => handleImmediateChange("model", v)}>
+        <Select
+          value={localModel || undefined}
+          onValueChange={(v) => {
+            setLocalModel(v);
+            handleImmediateChange("model", v);
+          }}
+        >
           <SelectTrigger className="text-xs">
             <SelectValue placeholder="Select model" />
           </SelectTrigger>

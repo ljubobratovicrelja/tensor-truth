@@ -55,27 +55,28 @@ export function DocumentList({ scopeId, scopeType }: DocumentListProps) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center gap-2">
         <CardTitle className="text-lg">Documents</CardTitle>
         {data && data.documents.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
             {data.has_index ? (
               <Badge variant="secondary">Indexed</Badge>
             ) : (
               <Badge variant="outline">Not indexed</Badge>
             )}
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
               onClick={handleReindex}
               disabled={reindex.isPending || data.documents.length === 0}
+              title="Reindex documents"
             >
               {reindex.isPending ? (
-                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <RefreshCw className="mr-1 h-4 w-4" />
+                <RefreshCw className="h-3.5 w-3.5" />
               )}
-              Reindex
             </Button>
           </div>
         )}

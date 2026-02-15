@@ -95,7 +95,7 @@ export function ProjectRightSidebar({ projectId }: ProjectRightSidebarProps) {
               />
             </div>
             {moduleEntries.length > 0 ? (
-              <ul className="space-y-1">
+              <ul className="max-h-48 space-y-1 overflow-y-auto">
                 {moduleEntries.map(([name, info]) => (
                   <CatalogModuleItem
                     key={name}

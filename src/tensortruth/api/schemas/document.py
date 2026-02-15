@@ -53,7 +53,7 @@ class CatalogModuleAddRequest(BaseModel):
 class CatalogModuleAddResponse(BaseModel):
     """Response for adding a catalog module."""
 
-    task_id: str
+    task_id: Optional[str] = None
     module_name: str
     status: str
 

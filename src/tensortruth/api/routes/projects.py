@@ -6,7 +6,9 @@ from tensortruth.api.deps import (
     ConfigServiceDep,
     ProjectServiceDep,
     SessionServiceDep,
+    get_document_service,
 )
+from tensortruth.api.routes.documents import get_display_name
 from tensortruth.api.routes.sessions import _session_to_response
 from tensortruth.api.schemas import (
     CatalogModuleStatus,
@@ -34,9 +36,39 @@ def _project_to_response(project_id: str, project: dict) -> ProjectResponse:
         else:
             catalog_modules[mod_name] = CatalogModuleStatus(status=str(mod_data))
 
-    # Convert documents list to DocumentInfo
-    raw_docs = project.get("documents", [])
-    documents = [DocumentInfo(**doc) for doc in raw_docs if isinstance(doc, dict)]
+    # Scan disk for documents instead of reading from stored (always-empty) JSON
+    documents = []
+    try:
+        with get_document_service(project_id, "project") as doc_service:
+            for pdf_path in doc_service.get_all_pdf_files():
+                doc_id = pdf_path.stem
+                doc_type = "pdf" if doc_id.startswith("pdf_") else "text"
+                documents.append(
+                    DocumentInfo(
+                        doc_id=doc_id,
+                        type=doc_type,
+                        filename=get_display_name(pdf_path),
+                        status="uploaded",
+                    )
+                )
+            for md_path in doc_service.get_all_markdown_files():
+                doc_id = md_path.stem
+                if doc_id.startswith("url_"):
+                    doc_type = "url"
+                elif doc_id.startswith("doc_"):
+                    doc_type = "text"
+                else:
+                    doc_type = "text"
+                documents.append(
+                    DocumentInfo(
+                        doc_id=doc_id,
+                        type=doc_type,
+                        filename=get_display_name(md_path),
+                        status="uploaded",
+                    )
+                )
+    except Exception:
+        pass  # Project dir may not exist yet for newly created projects
 
     return ProjectResponse(
         project_id=project_id,
