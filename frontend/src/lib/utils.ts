@@ -51,6 +51,28 @@ export function convertLatexDelimiters(text: string | null | undefined): string 
 }
 
 /**
+ * Formats an ISO date string as a human-readable relative time string.
+ *
+ * Examples: "just now", "2 minutes ago", "3 hours ago", "5 days ago"
+ */
+export function formatRelativeTime(isoString: string): string {
+  const date = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSeconds = Math.floor(diffMs / 1000);
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSeconds < 60) return "just now";
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  if (diffDays < 30) return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  return `${diffMonths} month${diffMonths === 1 ? "" : "s"} ago`;
+}
+
+/**
  * Preprocesses markdown tables that contain fenced code blocks with `<br>` tags.
  *
  * GFM tables cannot contain fenced code blocks (``` becomes inline code delimiters).

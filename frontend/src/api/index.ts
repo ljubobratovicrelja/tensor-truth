@@ -9,3 +9,4 @@ export * from "./rerankers";
 export * from "./startup";
 export * from "./commands";
 export * from "./system";
+export * from "./projects";

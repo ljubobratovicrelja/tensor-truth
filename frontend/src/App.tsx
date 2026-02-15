@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { Routes, Route } from "react-router-dom";
-import { AppLayout } from "@/components/layout";
-import { SessionList } from "@/components/sessions/SessionList";
+import { GlobalLayout, ProjectLayout } from "@/components/layout";
 import { ChatContainer } from "@/components/chat/ChatContainer";
 import { WelcomePage } from "@/components/welcome";
+import {
+  ProjectsListPage,
+  ProjectsNewPage,
+  ProjectViewPage,
+} from "@/components/projects";
 import { StartupInitializer } from "@/components/startup";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -23,12 +27,21 @@ function App() {
   // Show main app once initialization is complete
   return (
     <>
-      <AppLayout sidebar={<SessionList />}>
-        <Routes>
+      <Routes>
+        {/* Global context: chats sidebar */}
+        <Route element={<GlobalLayout />}>
           <Route path="/" element={<WelcomePage />} />
           <Route path="/chat/:sessionId" element={<ChatContainer />} />
-        </Routes>
-      </AppLayout>
+          <Route path="/projects" element={<ProjectsListPage />} />
+          <Route path="/projects/new" element={<ProjectsNewPage />} />
+        </Route>
+
+        {/* Project context: project-scoped sidebar */}
+        <Route path="/projects/:projectId" element={<ProjectLayout />}>
+          <Route index element={<ProjectViewPage />} />
+          <Route path="chat/:sessionId" element={<ChatContainer />} />
+        </Route>
+      </Routes>
       <Toaster />
     </>
   );

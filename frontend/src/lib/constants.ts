@@ -11,4 +11,7 @@ export const QUERY_KEYS = {
   config: ["config"] as const,
   pdfs: (sessionId: string) => ["sessions", sessionId, "pdfs"] as const,
   startup: ["startup"] as const,
+  projects: ["projects"] as const,
+  project: (id: string) => ["projects", id] as const,
+  projectSessions: (projectId: string) => ["projects", projectId, "sessions"] as const,
 };

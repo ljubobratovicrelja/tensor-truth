@@ -15,7 +15,10 @@ import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 
 export function ChatContainer() {
-  const { sessionId: urlSessionId } = useParams<{ sessionId: string }>();
+  const { sessionId: urlSessionId, projectId } = useParams<{
+    sessionId: string;
+    projectId: string;
+  }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -81,13 +84,14 @@ export function ChatContainer() {
   const showMessagesLoading = messagesLoading || (messagesFetching && !messagesData);
   const updateSession = useUpdateSession();
 
-  // Redirect to home if session doesn't exist
+  // Redirect to home (or project view) if session doesn't exist
   useEffect(() => {
     if (sessionError && urlSessionId) {
       toast.error("Session not found");
-      navigate("/", { replace: true });
+      const fallback = projectId ? `/projects/${projectId}` : "/";
+      navigate(fallback, { replace: true });
     }
-  }, [sessionError, urlSessionId, navigate]);
+  }, [sessionError, urlSessionId, projectId, navigate]);
 
   // Scroll to hash anchor after messages load
   useEffect(() => {

@@ -12,7 +12,7 @@ export function Header() {
   const location = useLocation();
   const { sidebarOpen, toggleSidebar, headerHidden } = useUIStore();
   const isMobile = useIsMobile();
-  const isInChat = location.pathname.startsWith("/chat/");
+  const isInChat = location.pathname.includes("/chat/");
 
   // Choose icon based on mobile state and sidebar state
   const getIcon = () => {
