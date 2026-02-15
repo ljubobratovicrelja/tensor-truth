@@ -106,14 +106,6 @@ export function ProjectsListPage() {
                 ? "Try adjusting your search terms."
                 : "Create your first project to organize documents and chats."}
             </p>
-            {!search && (
-              <Button asChild className="mt-4">
-                <Link to="/projects/new">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Project
-                </Link>
-              </Button>
-            )}
           </div>
         )}
       </div>
