@@ -139,7 +139,6 @@ async def _generate_title_tool_mode(
         ],
         "tools": [_TITLE_TOOL],
         "stream": False,
-        "keep_alive": 0,
     }
 
     timeout = aiohttp.ClientTimeout(total=15)
@@ -188,7 +187,6 @@ async def _generate_title_prompt_mode(
         "prompt": prompt,
         "stream": False,
         "options": {"num_ctx": 512, "temperature": 0.8},
-        "keep_alive": 0,
     }
 
     timeout = aiohttp.ClientTimeout(total=10)
