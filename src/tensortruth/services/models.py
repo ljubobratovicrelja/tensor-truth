@@ -130,6 +130,26 @@ class PDFMetadata:
 
 
 @dataclass
+class ToolProgress:
+    """Progress report from a tool during execution.
+
+    Each tool defines its own phases and messages. This replaces hardcoded
+    pipeline status strings with an extensible, tool-aware progress API.
+
+    Attributes:
+        tool_id: Identifier for the tool ("rag", "web_search", "orchestrator", etc.).
+        phase: Current execution phase ("retrieving", "searching", "fetching", etc.).
+        message: Human-readable status message ("Searching your documents...").
+        metadata: Phase-specific data (e.g., {"pages_fetched": 3, "pages_target": 5}).
+    """
+
+    tool_id: str
+    phase: str
+    message: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class RAGChunk:
     """A chunk of RAG response with source information.
 
@@ -140,6 +160,9 @@ class RAGChunk:
         is_complete: Whether this is the final chunk with sources.
         status: Pipeline status indicator ('loading_models', 'retrieving',
             'reranking', 'thinking', 'generating', None).
+            Kept for backward compatibility; prefer using `progress`.
+        progress: Structured tool progress report (new extensible API).
+            When present, `status` is also set for backward compat.
         metrics: Retrieval quality metrics (only set when is_complete=True).
     """
 
@@ -150,8 +173,32 @@ class RAGChunk:
     status: Optional[
         Literal["loading_models", "retrieving", "reranking", "thinking", "generating"]
     ] = None
+    progress: Optional[ToolProgress] = None
     metrics: Optional[Dict[str, Any]] = None
     confidence_level: str = "normal"
+
+
+@dataclass
+class RAGRetrievalResult:
+    """Result of RAG retrieval without LLM synthesis.
+
+    Contains retrieved sources, confidence scoring, and metrics from the
+    retrieval + reranking pipeline. Used by the orchestrator's rag_query tool
+    to get retrieval results without generating a response.
+
+    Attributes:
+        source_nodes: Retrieved and reranked source documents (LlamaIndex NodeWithScore).
+        confidence_level: Confidence assessment ("normal", "low", "none").
+        metrics: Retrieval quality metrics dict (score distribution, diversity, etc.).
+        condensed_query: The query after history condensation (may differ from original).
+        num_sources: Number of sources returned after reranking.
+    """
+
+    source_nodes: List[Any] = field(default_factory=list)
+    confidence_level: str = "normal"
+    metrics: Optional[Dict[str, Any]] = None
+    condensed_query: str = ""
+    num_sources: int = 0
 
 
 @dataclass
