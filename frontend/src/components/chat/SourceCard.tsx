@@ -429,6 +429,9 @@ export function SourceCard({ source, index }: SourceCardProps) {
       if (fetchStatus === "skipped") {
         return { variant: "secondary", label: "Skipped" };
       }
+      if (fetchStatus === "found") {
+        return { variant: "outline", label: "Found" };
+      }
       if (fetchStatus === "success") {
         // For successful web fetches with relevance scores, show confidence level
         if (source.score !== null && source.score !== undefined) {
@@ -659,6 +662,7 @@ function MetricsPanel({ metrics }: { metrics: RetrievalMetrics }) {
 function computeWebStats(webSources: SourceNode[]) {
   return {
     fetched: webSources.filter((s) => s.metadata?.fetch_status === "success").length,
+    found: webSources.filter((s) => s.metadata?.fetch_status === "found").length,
     failed: webSources.filter(
       (s) =>
         s.metadata?.fetch_status === "failed" || s.metadata?.fetch_status === "skipped"
@@ -721,7 +725,12 @@ function SourceSection({
   const sortedSources = isWebSection ? sortByScoreDesc(sources) : sources;
   const webStats = isWebSection ? computeWebStats(sources) : null;
   const webScoreStats = isWebSection
-    ? computeScoreStats(sources.filter((s) => s.metadata?.fetch_status === "success"))
+    ? computeScoreStats(
+        sources.filter(
+          (s) =>
+            s.metadata?.fetch_status === "success" || s.metadata?.fetch_status === "found"
+        )
+      )
     : null;
 
   return (
@@ -734,6 +743,7 @@ function SourceSection({
         {webStats && (
           <span className="text-muted-foreground/70 font-normal">
             | {webStats.fetched} fetched
+            {webStats.found > 0 && <> | {webStats.found} found</>}
             {webStats.failed > 0 && <> | {webStats.failed} failed</>}
             {webStats.totalChars > 0 && (
               <> | ~{Math.round(webStats.totalChars / 4).toLocaleString()} tokens</>
@@ -805,9 +815,12 @@ export function SourcesList({ sources, metrics, confidenceLevel }: SourcesListPr
   // Calculate stats for the header summary line
   const webStats = isWebSearch ? computeWebStats(sources) : null;
 
-  // For score stats, use successfully fetched sources for web, all for RAG
+  // For score stats, use fetched/found sources for web, all for RAG
   const sourcesForStats = isWebSearch
-    ? sources.filter((s) => s.metadata?.fetch_status === "success")
+    ? sources.filter(
+        (s) =>
+          s.metadata?.fetch_status === "success" || s.metadata?.fetch_status === "found"
+      )
     : sources;
   const stats = computeScoreStats(sourcesForStats);
 
@@ -839,6 +852,7 @@ export function SourcesList({ sources, metrics, confidenceLevel }: SourcesListPr
           ) : webStats ? (
             <span className="text-muted-foreground/70 font-normal tracking-normal normal-case">
               | {webStats.fetched} fetched
+              {webStats.found > 0 && <> | {webStats.found} found</>}
               {webStats.failed > 0 && <> | {webStats.failed} failed</>}
               {webStats.totalChars > 0 && (
                 <> | ~{Math.round(webStats.totalChars / 4).toLocaleString()} tokens</>

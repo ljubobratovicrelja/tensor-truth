@@ -68,6 +68,20 @@ _WRAPPED_BUILTIN_TOOL_NAMES = frozenset(
 # Default maximum agentic iterations before the LLM's last response is used.
 DEFAULT_MAX_ITERATIONS = 10
 
+# Context-aware messages for the post-tool inference gap.
+_TOOL_ANALYZING_MESSAGES: Dict[str, str] = {
+    "web_search": "Analyzing search results...",
+    "fetch_page": "Analyzing page content...",
+    "fetch_pages_batch": "Analyzing fetched pages...",
+    "rag_query": "Analyzing knowledge base results...",
+}
+_DEFAULT_ANALYZING_MESSAGE = "Analyzing results..."
+
+
+def _analyzing_message(tool_name: str) -> str:
+    """Return a context-aware message for the post-tool inference phase."""
+    return _TOOL_ANALYZING_MESSAGES.get(tool_name, _DEFAULT_ANALYZING_MESSAGE)
+
 
 @dataclass
 class OrchestratorEvent:
@@ -167,6 +181,13 @@ class OrchestratorService:
         # Used by the stream translator for proper source extraction.
         self._last_rag_result: Optional[RAGRetrievalResult] = None
 
+        # Web source state — shared between web_search and fetch_pages_batch
+        # tools via closures. web_search stores query + results; fetch_pages_batch
+        # reads them for metadata and passes SourceNodes back via callback.
+        self._last_web_sources: Optional[List] = None
+        self._last_web_query: Optional[str] = None
+        self._last_web_search_results: Optional[List[Dict[str, Any]]] = None
+
     # ------------------------------------------------------------------
     # Tool assembly
     # ------------------------------------------------------------------
@@ -193,7 +214,40 @@ class OrchestratorService:
         def _rag_result_cb(result: RAGRetrievalResult) -> None:
             self._last_rag_result = result
 
-        # 1. Create wrapped built-in tools (RAG + web tools)
+        # Web source closures — shared state between web_search and
+        # fetch_pages_batch tools.
+        def _web_query_setter(q: str) -> None:
+            self._last_web_query = q
+
+        def _web_query_getter() -> Optional[str]:
+            return self._last_web_query
+
+        def _web_results_setter(r: List[Dict[str, Any]]) -> None:
+            self._last_web_search_results = r
+
+        def _web_results_getter() -> Optional[List[Dict[str, Any]]]:
+            return self._last_web_search_results
+
+        def _web_result_cb(nodes: list) -> None:
+            self._last_web_sources = nodes
+
+        # Resolve reranker config from session params
+        reranker_model = self._session_params.get("reranker_model")
+        reranker_device = str(self._session_params.get("rag_device", "cpu"))
+
+        # Load web search config for thresholds
+        try:
+            from tensortruth.api.deps import get_config_service
+
+            config = get_config_service().load()
+            ws_config = config.web_search
+            title_threshold = ws_config.rerank_title_threshold
+            content_threshold = ws_config.rerank_content_threshold
+        except Exception:
+            title_threshold = 0.1
+            content_threshold = 0.1
+
+        # 1. Create wrapped built-in tools (RAG + web tools with reranking)
         wrapped_tools = create_all_tool_wrappers(
             tool_service=self._tool_service,
             progress_emitter=progress_emitter,
@@ -201,6 +255,17 @@ class OrchestratorService:
             session_params=self._session_params,
             session_messages=self._session_messages,
             rag_result_callback=_rag_result_cb,
+            reranker_model=reranker_model,
+            reranker_device=reranker_device,
+            title_threshold=title_threshold,
+            content_threshold=content_threshold,
+            context_window=self._context_window,
+            custom_instructions=self._custom_instructions,
+            web_query_setter=_web_query_setter,
+            web_query_getter=_web_query_getter,
+            web_search_results_setter=_web_results_setter,
+            web_search_results_getter=_web_results_getter,
+            web_result_callback=_web_result_cb,
         )
 
         # 2. Collect MCP tools from ToolService, filtering out already-wrapped built-ins
@@ -438,6 +503,9 @@ class OrchestratorService:
         # Reset per-execution state
         self._pending_phases = []
         self._last_rag_result = None
+        self._last_web_sources = None
+        self._last_web_query = None
+        self._last_web_search_results = None
 
         # Build a progress emitter that both stores phases locally and
         # forwards to the external emitter (if provided).
@@ -481,7 +549,7 @@ class OrchestratorService:
 
         # Create FunctionAgent for this execution
         agent = LIFunctionAgent(
-            tools=tools,
+            tools=list(tools),  # type: ignore[arg-type]
             llm=self._llm,
             system_prompt=system_prompt,
         )
@@ -518,9 +586,11 @@ class OrchestratorService:
                     self._pending_phases = []
 
                 elif isinstance(event, ToolCallResult):
-                    output_text = extract_tool_text(event.tool_output)[:2000]
+                    full_output = extract_tool_text(event.tool_output)
+                    output_text = full_output[:2000]
                     is_error = event.tool_output.is_error
 
+                    # tool_steps (saved to DB): truncated for storage
                     tool_steps.append(
                         {
                             "tool": event.tool_name,
@@ -530,17 +600,20 @@ class OrchestratorService:
                         }
                     )
 
-                    # Collect tool results for synthesis context
+                    # Collect tool results for synthesis context (full output)
                     status = "ERROR" if is_error else "OK"
                     tool_results_context.append(
-                        f"[{event.tool_name} ({status})]\n{output_text}"
+                        f"[{event.tool_name} ({status})]\n{full_output}"
                     )
 
+                    # Include full_output for source extraction by stream
+                    # translator; strip before storing in tool_steps
                     yield OrchestratorEvent(
                         tool_call_result={
                             "tool": event.tool_name,
                             "params": event.tool_kwargs,
                             "output": output_text,
+                            "full_output": full_output,
                             "is_error": is_error,
                         }
                     )
@@ -549,6 +622,19 @@ class OrchestratorService:
                     for phase in self._pending_phases:
                         yield OrchestratorEvent(tool_phase=phase)
                     self._pending_phases = []
+
+                    # Emit transitional phase to cover the LLM inference
+                    # gap between tool completion and next action. Without
+                    # this, the last tool phase (e.g. "Fetching arxiv.org...")
+                    # stays displayed while the orchestrator LLM processes
+                    # the result — misleading because the fetch is already done.
+                    yield OrchestratorEvent(
+                        tool_phase=ToolProgress(
+                            tool_id="orchestrator",
+                            phase="analyzing",
+                            message=_analyzing_message(event.tool_name),
+                        )
+                    )
 
                 elif isinstance(event, AgentStream):
                     # Capture but do NOT stream the orchestrator's response.
@@ -586,6 +672,13 @@ class OrchestratorService:
         # comprehensive final answer (always two-phase when tools are called).
         from tensortruth.services.synthesis_service import get_synthesis_service
 
+        # Build structured source reference for citation guidance
+        source_reference = build_source_reference(
+            tool_results_context,
+            rag_result=self._last_rag_result,
+            web_sources=self._last_web_sources,
+        )
+
         synthesis = get_synthesis_service(
             self._model, self._base_url, self._context_window
         )
@@ -597,6 +690,7 @@ class OrchestratorService:
             custom_instructions=self._custom_instructions,
             project_metadata=self._project_metadata,
             progress_emitter=_combined_emitter,
+            source_reference=source_reference,
         ):
             yield synth_event
 
@@ -652,7 +746,7 @@ class OrchestratorService:
         Returns:
             Sorted list of tool name strings.
         """
-        return sorted(t.metadata.name for t in (self._tools or []))
+        return sorted(t.metadata.name for t in (self._tools or []) if t.metadata.name)
 
     @property
     def model(self) -> str:
@@ -667,6 +761,81 @@ class OrchestratorService:
         Used by the stream translator for proper source extraction.
         """
         return self._last_rag_result
+
+    @property
+    def last_web_sources(self) -> Optional[list]:
+        """Get the last web SourceNode list from fetch_pages_batch execution.
+
+        Available after execute() completes if fetch_pages_batch was called
+        with the reranking pipeline. Used by the stream translator for
+        proper web source extraction with real relevance scores.
+        """
+        return self._last_web_sources
+
+
+def build_source_reference(
+    tool_results_context: List[str],
+    rag_result: Optional["RAGRetrievalResult"] = None,
+    web_sources: Optional[list] = None,
+) -> str:
+    """Build a structured source reference block for the synthesis prompt.
+
+    Parses RAG and web tool outputs to create a numbered reference list
+    that the synthesis LLM can cite. Sources are numbered sequentially
+    across both RAG and web results.
+
+    Args:
+        tool_results_context: Formatted tool result strings (used as fallback).
+        rag_result: Optional RAGRetrievalResult for KB sources.
+        web_sources: Optional list of SourceNode objects from web pipeline.
+
+    Returns:
+        A formatted source reference string, or empty string if no sources.
+    """
+    lines: List[str] = []
+    idx = 1
+
+    # RAG sources (from RAGRetrievalResult)
+    if rag_result and rag_result.source_nodes:
+        for node in rag_result.source_nodes:
+            inner = getattr(node, "node", node)
+            metadata = {}
+            if hasattr(inner, "metadata") and inner.metadata:
+                metadata = inner.metadata
+            elif hasattr(node, "metadata") and node.metadata:
+                metadata = node.metadata
+
+            title = (
+                metadata.get("display_name")
+                or metadata.get("title")
+                or metadata.get("file_name")
+                or "Untitled"
+            )
+            score = node.score if hasattr(node, "score") and node.score else None
+            score_str = f", score: {score:.2f}" if score is not None else ""
+
+            lines.append(f'[{idx}] "{title}" (knowledge base{score_str})')
+            idx += 1
+
+    # Web sources (from SourceFetchPipeline SourceNode objects)
+    if web_sources:
+        from tensortruth.core.source import SourceStatus
+
+        for node in web_sources:
+            if node.status not in (SourceStatus.SUCCESS, SourceStatus.FILTERED):
+                continue
+            score_str = f", score: {node.score:.2f}" if node.score is not None else ""
+            lines.append(f'[{idx}] "{node.title}" (web{score_str}) - {node.url}')
+            idx += 1
+
+    if not lines:
+        return ""
+
+    return (
+        "--- Source Reference ---\n"
+        + "\n".join(lines)
+        + "\n--- End Source Reference ---"
+    )
 
 
 def load_module_descriptions(

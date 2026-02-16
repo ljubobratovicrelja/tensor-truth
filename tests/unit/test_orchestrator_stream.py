@@ -174,6 +174,7 @@ class TestStreamTranslator:
         assert len(result.sources) == 2
         assert result.sources[0]["metadata"]["source_url"] == "http://example.com/1"
         assert result.sources[0]["metadata"]["doc_type"] == "web"
+        assert result.sources[0]["metadata"]["fetch_status"] == "found"
 
     def test_rag_sources_via_injected_result(self):
         """Test RAG source extraction using an injected RAGRetrievalResult."""
@@ -456,6 +457,122 @@ class TestStreamTranslator:
         assert result.web_called is True
         assert result.web_count == 0  # No sources extracted from error output
 
+    def test_full_output_stripped_from_tool_steps(self):
+        """full_output should be stripped from tool_steps to keep storage lean."""
+        translator = OrchestratorStreamTranslator()
+
+        translator.process_event(
+            OrchestratorEvent(
+                tool_call_result={
+                    "tool": "web_search",
+                    "params": {"query": "test"},
+                    "output": "truncated",
+                    "full_output": "full output text that is much longer",
+                    "is_error": False,
+                }
+            )
+        )
+
+        result = translator.finalize()
+        assert len(result.tool_steps) == 1
+        assert "full_output" not in result.tool_steps[0]
+        assert result.tool_steps[0]["output"] == "truncated"
+
+    def test_extract_web_sources_prefers_full_output(self):
+        """_extract_web_sources should use full_output when available."""
+        translator = OrchestratorStreamTranslator()
+
+        full_json = json.dumps(
+            [
+                {
+                    "url": "http://example.com/full",
+                    "title": "Full",
+                    "snippet": "Full snippet",
+                },
+            ]
+        )
+        truncated = full_json[:10]  # Broken JSON
+
+        translator.process_event(
+            OrchestratorEvent(
+                tool_call_result={
+                    "tool": "web_search",
+                    "params": {"query": "test"},
+                    "output": truncated,
+                    "full_output": full_json,
+                    "is_error": False,
+                }
+            )
+        )
+
+        result = translator.finalize()
+        assert result.web_count == 1
+        assert result.sources[0]["metadata"]["source_url"] == "http://example.com/full"
+        assert result.sources[0]["metadata"]["fetch_status"] == "found"
+
+    def test_set_web_source_nodes(self):
+        """set_web_source_nodes should convert SourceNodes to API-compatible dicts."""
+        from tensortruth.core.source import SourceNode, SourceStatus, SourceType
+
+        translator = OrchestratorStreamTranslator()
+
+        node = SourceNode(
+            id="s1",
+            title="Example Page",
+            source_type=SourceType.WEB,
+            url="https://example.com",
+            content="Full content",
+            snippet="A snippet",
+            score=0.87,
+            status=SourceStatus.SUCCESS,
+            content_chars=500,
+        )
+        translator.set_web_source_nodes([node])
+
+        result = translator.finalize()
+        assert result.web_called is True
+        assert result.web_count == 1
+        assert result.sources[0]["score"] == 0.87
+        assert result.sources[0]["metadata"]["source_url"] == "https://example.com"
+        assert result.sources[0]["metadata"]["display_name"] == "Example Page"
+        assert result.sources[0]["metadata"]["relevance_score"] == 0.87
+
+    def test_set_web_source_nodes_replaces_json_parsed_sources(self):
+        """set_web_source_nodes should replace any JSON-parsed web sources."""
+        from tensortruth.core.source import SourceNode, SourceStatus, SourceType
+
+        translator = OrchestratorStreamTranslator()
+
+        # First, process a web_search result (creates JSON-parsed sources)
+        web_json = json.dumps(
+            [{"url": "http://old.com", "title": "Old", "snippet": "old"}]
+        )
+        translator.process_event(
+            OrchestratorEvent(
+                tool_call_result={
+                    "tool": "web_search",
+                    "params": {"query": "test"},
+                    "output": web_json,
+                    "is_error": False,
+                }
+            )
+        )
+
+        # Then inject proper SourceNodes (should replace the old ones)
+        node = SourceNode(
+            id="s1",
+            title="New Page",
+            source_type=SourceType.WEB,
+            url="https://new.com",
+            score=0.9,
+            status=SourceStatus.SUCCESS,
+        )
+        translator.set_web_source_nodes([node])
+
+        result = translator.finalize()
+        assert result.web_count == 1
+        assert result.sources[0]["metadata"]["source_url"] == "https://new.com"
+
     def test_sources_message_with_mixed_types_includes_breakdown(self):
         """Mixed source types include type breakdown in sources message."""
         mock_chat_service = MagicMock()
@@ -508,3 +625,85 @@ class TestStreamTranslator:
         assert msg["source_types"] == ["rag", "web"]
         assert msg["rag_count"] == 1
         assert msg["web_count"] == 1
+
+    def test_promote_web_source_on_fetch_page(self):
+        """fetch_page result promotes a web source from 'found' to 'success'."""
+        translator = OrchestratorStreamTranslator()
+
+        # First, web_search creates sources with "found" status
+        web_json = json.dumps(
+            [
+                {"url": "http://example.com/1", "title": "Page 1", "snippet": "s1"},
+                {"url": "http://example.com/2", "title": "Page 2", "snippet": "s2"},
+            ]
+        )
+        translator.process_event(
+            OrchestratorEvent(
+                tool_call_result={
+                    "tool": "web_search",
+                    "params": {"query": "test"},
+                    "output": web_json,
+                    "is_error": False,
+                }
+            )
+        )
+
+        # Verify both start as "found"
+        assert translator._web_sources[0]["metadata"]["fetch_status"] == "found"
+        assert translator._web_sources[1]["metadata"]["fetch_status"] == "found"
+
+        # Then fetch_page completes for one URL
+        translator.process_event(
+            OrchestratorEvent(
+                tool_call_result={
+                    "tool": "fetch_page",
+                    "params": {"url": "http://example.com/1"},
+                    "output": "Full page content here",
+                    "is_error": False,
+                }
+            )
+        )
+
+        result = translator.finalize()
+        # First source promoted to "success" with updated content_chars
+        assert result.sources[0]["metadata"]["fetch_status"] == "success"
+        assert result.sources[0]["metadata"]["content_chars"] == len(
+            "Full page content here"
+        )
+        # Second source remains "found"
+        assert result.sources[1]["metadata"]["fetch_status"] == "found"
+
+    def test_promote_web_source_on_fetch_page_error(self):
+        """fetch_page error marks a web source as 'failed'."""
+        translator = OrchestratorStreamTranslator()
+
+        web_json = json.dumps(
+            [
+                {"url": "http://example.com/1", "title": "Page 1", "snippet": "s1"},
+            ]
+        )
+        translator.process_event(
+            OrchestratorEvent(
+                tool_call_result={
+                    "tool": "web_search",
+                    "params": {"query": "test"},
+                    "output": web_json,
+                    "is_error": False,
+                }
+            )
+        )
+
+        # fetch_page fails
+        translator.process_event(
+            OrchestratorEvent(
+                tool_call_result={
+                    "tool": "fetch_page",
+                    "params": {"url": "http://example.com/1"},
+                    "output": "Error: timeout",
+                    "is_error": True,
+                }
+            )
+        )
+
+        result = translator.finalize()
+        assert result.sources[0]["metadata"]["fetch_status"] == "failed"

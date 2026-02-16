@@ -16,6 +16,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from tensortruth.core.source import SourceNode as CoreSourceNode
 from tensortruth.core.source_converter import SourceConverter
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
 
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Tool names whose results may contain extractable sources.
 _RAG_TOOL_NAME = "rag_query"
 _WEB_SEARCH_TOOL_NAME = "web_search"
+_FETCH_PAGE_TOOL_NAME = "fetch_page"
 
 
 @dataclass
@@ -177,6 +179,38 @@ class OrchestratorStreamTranslator:
         """
         self._rag_retrieval_result = result
 
+    def set_web_source_nodes(self, nodes: List[CoreSourceNode]) -> None:
+        """Inject web SourceNodes from the reranking pipeline.
+
+        Converts core SourceNode objects (from SourceFetchPipeline) to
+        API-compatible source dicts with real relevance scores. Replaces
+        any web sources that were extracted from raw JSON parsing.
+
+        Args:
+            nodes: List of SourceNode objects from fetch_pages_batch.
+        """
+        self._web_sources = []
+        for node in nodes:
+            if not node.url:
+                continue
+            source_dict: Dict[str, Any] = {
+                "text": node.snippet or node.content or "",
+                "score": node.effective_score,
+                "metadata": {
+                    "source_url": node.url,
+                    "display_name": node.title,
+                    "doc_type": "web",
+                    "fetch_status": node.status.value,
+                    "content_chars": node.content_chars,
+                    "url": node.url,
+                    "title": node.title,
+                    "snippet": node.snippet or "",
+                    "relevance_score": node.score,
+                },
+            }
+            self._web_sources.append(source_dict)
+        self._web_called = True
+
     def process_event(self, event: Any) -> Optional[Dict[str, Any]]:
         """Process a single OrchestratorEvent, accumulating state and
         returning the WebSocket message dict to send (if any).
@@ -200,8 +234,9 @@ class OrchestratorStreamTranslator:
             tcr = event.tool_call_result
             tool_name = tcr.get("tool", "")
 
-            # Store tool step
-            self._tool_steps.append(tcr)
+            # Store tool step (strip full_output to keep storage lean)
+            step = {k: v for k, v in tcr.items() if k != "full_output"}
+            self._tool_steps.append(step)
 
             # Track which tool types were called
             if tool_name == _RAG_TOOL_NAME:
@@ -210,6 +245,8 @@ class OrchestratorStreamTranslator:
             elif tool_name == _WEB_SEARCH_TOOL_NAME:
                 self._web_called = True
                 self._extract_web_sources(tcr)
+            elif tool_name == _FETCH_PAGE_TOOL_NAME:
+                self._promote_web_source(tcr)
 
         # Track tool calls (not results) for rag/web flags
         if event.tool_call is not None:
@@ -429,10 +466,15 @@ class OrchestratorStreamTranslator:
         We convert these into API-compatible source dicts matching the
         SourceNode schema (same format as RAG sources but with web doc_type).
 
+        Prefers ``full_output`` (untruncated) over ``output`` (truncated to
+        2000 chars) to avoid broken JSON parsing.
+
         Args:
             tool_call_result: The tool_call_result dict from the orchestrator event.
         """
-        output = tool_call_result.get("output", "")
+        output = tool_call_result.get("full_output") or tool_call_result.get(
+            "output", ""
+        )
         if not output:
             return
 
@@ -466,7 +508,7 @@ class OrchestratorStreamTranslator:
                     "source_url": url,
                     "display_name": title,
                     "doc_type": "web",
-                    "fetch_status": "success",
+                    "fetch_status": "found",  # Search result, not yet fetched
                     "content_chars": len(snippet),
                     "url": url,
                     "title": title,
@@ -475,6 +517,33 @@ class OrchestratorStreamTranslator:
                 },
             }
             self._web_sources.append(source_dict)
+
+    def _promote_web_source(self, tool_call_result: Dict[str, Any]) -> None:
+        """Update a web source's status after a fetch_page completes.
+
+        Finds the matching source in ``self._web_sources`` by URL and promotes
+        its ``fetch_status`` from ``"found"`` to ``"success"`` (or ``"failed"``
+        on error). Also updates ``content_chars`` from the fetched content.
+
+        Args:
+            tool_call_result: The tool_call_result dict from the fetch_page event.
+        """
+        url = (tool_call_result.get("params") or {}).get("url", "")
+        if not url:
+            return
+
+        is_error = tool_call_result.get("is_error", False)
+        output = tool_call_result.get("output", "")
+
+        for source in self._web_sources:
+            meta = source.get("metadata", {})
+            if meta.get("url") == url:
+                if is_error:
+                    meta["fetch_status"] = "failed"
+                else:
+                    meta["fetch_status"] = "success"
+                    meta["content_chars"] = len(output)
+                break
 
     def _derive_confidence(self) -> str:
         """Derive the overall confidence level for the response.

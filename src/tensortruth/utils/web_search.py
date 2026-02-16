@@ -68,10 +68,10 @@ def get_reranker_for_web(
 
 def rerank_search_results(
     query: str,
-    results: List[Dict[str, str]],
+    results: List[Dict[str, Any]],
     top_n: int,
     reranker: SentenceTransformerRerank,
-) -> List[Tuple[Dict[str, str], float]]:
+) -> List[Tuple[Dict[str, Any], float]]:
     """Rerank search results by title+snippet relevance.
 
     Creates TextNodes from title+snippet and uses the reranker to score them.

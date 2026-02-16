@@ -319,7 +319,7 @@ async def _run_orchestrator_path(
     orchestrator = OrchestratorService(
         tool_service=tool_service,
         rag_service=rag_service,
-        model=model_name,
+        model=model_name or "",
         base_url=base_url,
         context_window=context_window,
         session_params=params,
@@ -375,6 +375,10 @@ async def _run_orchestrator_path(
     # Inject RAG retrieval result for proper source extraction
     if orchestrator.last_rag_result:
         translator.set_rag_retrieval_result(orchestrator.last_rag_result)
+
+    # Inject web source nodes from reranking pipeline (with real scores)
+    if orchestrator.last_web_sources:
+        translator.set_web_source_nodes(orchestrator.last_web_sources)
 
     # Send sources message
     sources_msg = translator.build_sources_message()
