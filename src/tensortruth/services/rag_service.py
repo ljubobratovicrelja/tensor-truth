@@ -43,7 +43,7 @@ from tensortruth.utils.history_condenser import (
 )
 
 from .chat_history import ChatHistoryService
-from .models import RAGChunk, RAGResponse
+from .models import RAGChunk, RAGResponse, RAGRetrievalResult, ToolProgress
 from .retrieval_metrics import compute_retrieval_metrics
 
 logger = logging.getLogger(__name__)
@@ -266,7 +266,14 @@ class RAGService:
 
         if retriever is not None:
             # Phase 1: Retrieval
-            yield RAGChunk(status="retrieving")
+            yield RAGChunk(
+                status="retrieving",
+                progress=ToolProgress(
+                    tool_id="rag",
+                    phase="retrieving",
+                    message="Searching knowledge base...",
+                ),
+            )
 
             condenser = getattr(self._engine, "_condense_prompt_template", None)
             logger.info(f"Condenser value: {condenser}")
@@ -308,7 +315,14 @@ class RAGService:
                 hasattr(self._engine, "_node_postprocessors")
                 and self._engine._node_postprocessors
             ):
-                yield RAGChunk(status="reranking")
+                yield RAGChunk(
+                    status="reranking",
+                    progress=ToolProgress(
+                        tool_id="rag",
+                        phase="reranking",
+                        message="Ranking results...",
+                    ),
+                )
 
                 from llama_index.core.schema import QueryBundle
 
@@ -397,9 +411,23 @@ class RAGService:
         thinking_enabled = getattr(llm, "thinking", False)
 
         if thinking_enabled:
-            yield RAGChunk(status="thinking")
+            yield RAGChunk(
+                status="thinking",
+                progress=ToolProgress(
+                    tool_id="rag",
+                    phase="thinking",
+                    message="Thinking...",
+                ),
+            )
         else:
-            yield RAGChunk(status="generating")
+            yield RAGChunk(
+                status="generating",
+                progress=ToolProgress(
+                    tool_id="rag",
+                    phase="generating",
+                    message="Generating response...",
+                ),
+            )
 
         # Stream directly from LLM to access thinking tokens
         full_response = ""
@@ -414,7 +442,14 @@ class RAGService:
                 yield RAGChunk(thinking=thinking_delta)
             elif not sent_generating_status and thinking_enabled:
                 # Transition from thinking to generating
-                yield RAGChunk(status="generating")
+                yield RAGChunk(
+                    status="generating",
+                    progress=ToolProgress(
+                        tool_id="rag",
+                        phase="generating",
+                        message="Generating response...",
+                    ),
+                )
                 sent_generating_status = True
 
             # Extract content delta
@@ -432,6 +467,148 @@ class RAGService:
 
         return RAGResponse(
             text=full_response, source_nodes=source_nodes, metrics=metrics_dict
+        )
+
+    def retrieve(
+        self,
+        query: str,
+        params: Optional[Dict[str, Any]] = None,
+        session_messages: Optional[List[Dict[str, Any]]] = None,
+        progress_callback: Optional[Any] = None,
+    ) -> RAGRetrievalResult:
+        """Perform retrieval, reranking, and confidence scoring without LLM generation.
+
+        Extracts the retrieval pipeline from query() into a non-streaming method.
+        Returns sources and metrics without calling the LLM for synthesis.
+        Used by the orchestrator's rag_query tool.
+
+        Args:
+            query: User's query string.
+            params: Engine parameters. Used to resolve effective params when
+                engine params are not available.
+            session_messages: Chat history from session storage for query condensation.
+            progress_callback: Optional callable that accepts ToolProgress objects
+                for reporting phase progress.
+
+        Returns:
+            RAGRetrievalResult with source nodes, confidence level, and metrics.
+        """
+        if self._engine is None:
+            logger.warning("retrieve() called with no engine loaded")
+            return RAGRetrievalResult(confidence_level="none")
+
+        retriever = self._retriever
+        if retriever is None:
+            logger.warning("retrieve() called but no retriever available")
+            return RAGRetrievalResult(confidence_level="none")
+
+        llm = self._llm
+        effective_params = self._current_params or params or {}
+
+        logger.info(f"=== RAG Retrieve Start: '{query}' ===")
+
+        # Build chat history for query condensation
+        max_turns = effective_params.get("max_history_turns")
+        history = self.chat_history_service.build_history(
+            session_messages,
+            max_turns=max_turns,
+            apply_cleaning=self.config.history_cleaning.enabled,
+        )
+        chat_history_str = history.to_prompt_string()
+
+        # Phase 1: Retrieval
+        if progress_callback:
+            progress_callback(
+                ToolProgress(
+                    tool_id="rag",
+                    phase="retrieving",
+                    message="Searching knowledge base...",
+                )
+            )
+
+        # Condense query with chat history if condenser is available
+        condensed_question = query
+        condenser = getattr(self._engine, "_condense_prompt_template", None)
+        if condenser and not history.is_empty and llm is not None:
+            template_str = getattr(condenser, "template", str(condenser))
+            condenser_llm = create_condenser_llm(llm)
+            condensed_question = condense_query(
+                llm=condenser_llm,
+                chat_history=chat_history_str,
+                question=query,
+                prompt_template=template_str,
+                fallback_on_error=True,
+            )
+            logger.info(f"Condensed query: {condensed_question}")
+
+        # Retrieve context nodes
+        source_nodes = retriever.retrieve(condensed_question)
+        logger.info(f"Retrieved {len(source_nodes)} nodes before reranking")
+
+        # Phase 2: Reranking
+        assert self._engine is not None
+        if (
+            hasattr(self._engine, "_node_postprocessors")
+            and self._engine._node_postprocessors
+        ):
+            if progress_callback:
+                progress_callback(
+                    ToolProgress(
+                        tool_id="rag",
+                        phase="reranking",
+                        message="Ranking results...",
+                    )
+                )
+
+            from llama_index.core.schema import QueryBundle
+
+            query_bundle = QueryBundle(query_str=condensed_question)
+
+            try:
+                for postprocessor in self._engine._node_postprocessors:
+                    source_nodes = postprocessor.postprocess_nodes(
+                        source_nodes, query_bundle=query_bundle
+                    )
+            except Exception as e:
+                logger.warning(f"Postprocessor failed, using unprocessed nodes: {e}")
+
+        # Enforce reranker_top_n limit
+        reranker_top_n = effective_params.get("reranker_top_n")
+        if reranker_top_n and len(source_nodes) > reranker_top_n:
+            source_nodes = source_nodes[:reranker_top_n]
+
+        logger.info(f"After reranking: {len(source_nodes)} nodes")
+
+        # Compute retrieval metrics
+        metrics = compute_retrieval_metrics(source_nodes)
+        metrics.configured_top_n = effective_params.get("reranker_top_n")
+        metrics_dict = metrics.to_dict()
+
+        # Confidence scoring
+        confidence_level = "normal"
+        if not source_nodes:
+            confidence_level = "none"
+        else:
+            confidence_threshold = effective_params.get("confidence_cutoff", 0.0)
+            if confidence_threshold > 0:
+                best_score = max(
+                    (node.score for node in source_nodes if node.score is not None),
+                    default=0.0,
+                )
+                if best_score < confidence_threshold:
+                    confidence_level = "low"
+
+        logger.info(
+            f"=== RAG Retrieve Done: {len(source_nodes)} sources, "
+            f"confidence={confidence_level} ==="
+        )
+
+        return RAGRetrievalResult(
+            source_nodes=source_nodes,
+            confidence_level=confidence_level,
+            metrics=metrics_dict,
+            condensed_query=condensed_question,
+            num_sources=len(source_nodes),
         )
 
     def query_simple(

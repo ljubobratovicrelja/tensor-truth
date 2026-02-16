@@ -863,6 +863,163 @@ def test_condenser_error_handling():
         assert len(results) > 0
 
 
+# =============================================================================
+# Retrieve Method Tests (Story 3: RAG as a Retrieval Tool)
+# =============================================================================
+
+
+@pytest.mark.unit
+def test_retrieve_returns_result_with_sources():
+    """retrieve() should return RAGRetrievalResult with source nodes and metrics."""
+    from tensortruth.services.rag_service import RAGService
+
+    nodes = [
+        NodeWithScore(node=TextNode(text="Content about transformers"), score=0.85),
+        NodeWithScore(node=TextNode(text="More about attention"), score=0.75),
+    ]
+
+    engine = _create_mock_engine_with_nodes(nodes)
+    service = RAGService(_create_mock_config())
+    _set_mock_engine(service, engine)
+    service._current_params = {"confidence_cutoff": 0.5}
+
+    result = service.retrieve("What are transformers?")
+
+    assert result.num_sources == 2
+    assert result.confidence_level == "normal"
+    assert result.metrics is not None
+    assert result.source_nodes == nodes
+    assert result.condensed_query == "What are transformers?"
+
+
+@pytest.mark.unit
+def test_retrieve_low_confidence():
+    """retrieve() should report low confidence when best score is below threshold."""
+    from tensortruth.services.rag_service import RAGService
+
+    nodes = [
+        NodeWithScore(node=TextNode(text="Weak match"), score=0.3),
+    ]
+
+    engine = _create_mock_engine_with_nodes(nodes)
+    service = RAGService(_create_mock_config())
+    _set_mock_engine(service, engine)
+    service._current_params = {"confidence_cutoff": 0.5}
+
+    result = service.retrieve("Obscure topic")
+
+    assert result.confidence_level == "low"
+    assert result.num_sources == 1
+
+
+@pytest.mark.unit
+def test_retrieve_no_sources():
+    """retrieve() should report 'none' confidence when no sources returned."""
+    from tensortruth.services.rag_service import RAGService
+
+    engine = _create_mock_engine_with_nodes([])
+    service = RAGService(_create_mock_config())
+    _set_mock_engine(service, engine)
+    service._current_params = {}
+
+    result = service.retrieve("Nonexistent topic")
+
+    assert result.confidence_level == "none"
+    assert result.num_sources == 0
+    assert result.source_nodes == []
+
+
+@pytest.mark.unit
+def test_retrieve_no_engine():
+    """retrieve() should return empty result when no engine is loaded."""
+    from tensortruth.services.rag_service import RAGService
+
+    service = RAGService(_create_mock_config())
+
+    result = service.retrieve("Any query")
+
+    assert result.confidence_level == "none"
+    assert result.num_sources == 0
+    assert result.source_nodes == []
+
+
+@pytest.mark.unit
+def test_retrieve_applies_postprocessors():
+    """retrieve() should apply postprocessors (reranking)."""
+    from tensortruth.services.rag_service import RAGService
+
+    raw_nodes = [
+        NodeWithScore(node=TextNode(text=f"Node {i}"), score=0.9 - i * 0.05)
+        for i in range(10)
+    ]
+
+    reranked_nodes = [
+        NodeWithScore(node=TextNode(text=f"Reranked {i}"), score=0.95 - i * 0.05)
+        for i in range(5)
+    ]
+
+    engine = _create_mock_engine_with_nodes(raw_nodes)
+    reranker = Mock()
+    reranker.postprocess_nodes.return_value = reranked_nodes
+    engine._node_postprocessors = [reranker]
+
+    service = RAGService(_create_mock_config())
+    _set_mock_engine(service, engine)
+    service._current_params = {}
+
+    result = service.retrieve("Test reranking")
+
+    assert reranker.postprocess_nodes.called
+    assert result.num_sources == 5
+    assert result.source_nodes == reranked_nodes
+
+
+@pytest.mark.unit
+def test_retrieve_emits_progress():
+    """retrieve() should call progress_callback with ToolProgress objects."""
+    from tensortruth.services.rag_service import RAGService
+
+    nodes = [
+        NodeWithScore(node=TextNode(text="Content"), score=0.8),
+    ]
+
+    engine = _create_mock_engine_with_nodes(nodes)
+    engine._node_postprocessors = [Mock(postprocess_nodes=Mock(return_value=nodes))]
+
+    service = RAGService(_create_mock_config())
+    _set_mock_engine(service, engine)
+    service._current_params = {}
+
+    progress_reports = []
+    service.retrieve("Test", progress_callback=progress_reports.append)
+
+    # Should have at least "retrieving" and "reranking" phases
+    phases = [p.phase for p in progress_reports]
+    assert "retrieving" in phases
+    assert "reranking" in phases
+
+
+@pytest.mark.unit
+def test_retrieve_does_not_call_llm():
+    """retrieve() must NOT invoke the LLM (no stream_chat, no chat calls)."""
+    from tensortruth.services.rag_service import RAGService
+
+    nodes = [
+        NodeWithScore(node=TextNode(text="Content"), score=0.8),
+    ]
+
+    engine = _create_mock_engine_with_nodes(nodes)
+    service = RAGService(_create_mock_config())
+    _set_mock_engine(service, engine)
+    service._current_params = {}
+
+    service.retrieve("Should not call LLM")
+
+    engine._llm.stream_chat.assert_not_called()
+    if hasattr(engine._llm, "chat"):
+        engine._llm.chat.assert_not_called()
+
+
 @pytest.mark.unit
 def test_load_engine_caches_llm_and_retriever():
     """Verify load_engine caches LLM and retriever."""
