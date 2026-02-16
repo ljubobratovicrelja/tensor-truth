@@ -2,11 +2,20 @@
 
 import logging
 import os
-from typing import Any, Dict, List
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
 
+if TYPE_CHECKING:
+    from llama_index.llms.ollama import Ollama
+
 logger = logging.getLogger(__name__)
+
+# Module-level singleton for the orchestrator LLM instance.
+# Keyed by (model, base_url) so it is replaced when the session model changes.
+_orchestrator_llm_instance: Optional[Any] = None
+_orchestrator_llm_key: Optional[Tuple[str, str]] = None
 
 
 def get_ollama_url() -> str:
@@ -125,6 +134,7 @@ def stop_model(model_name: str) -> bool:
         return False
 
 
+@lru_cache(maxsize=32)
 def check_thinking_support(model_name: str) -> bool:
     """Check if a model supports thinking/reasoning tokens.
 
@@ -149,6 +159,90 @@ def check_thinking_support(model_name: str) -> bool:
         logger.warning(f"Failed to check thinking support for {model_name}: {e}")
 
     return False
+
+
+@lru_cache(maxsize=32)
+def check_tool_call_support(model_name: str) -> bool:
+    """Check if a model supports native tool-calling.
+
+    This queries the Ollama API for the model's capabilities and checks
+    if "tools" is in the capabilities list.
+
+    Args:
+        model_name: The name of the model to check
+
+    Returns:
+        True if the model supports tool-calling, False otherwise
+    """
+    try:
+        response = requests.post(
+            f"{get_api_base()}/show", json={"model": model_name}, timeout=2
+        )
+        if response.status_code == 200:
+            data = response.json()
+            capabilities = data.get("capabilities", [])
+            return "tools" in capabilities
+    except Exception as e:
+        logger.warning(f"Failed to check tool call support for {model_name}: {e}")
+
+    return False
+
+
+def get_orchestrator_llm(
+    model: str,
+    base_url: str,
+    context_window: int = 16384,
+) -> "Ollama":
+    """Get or create a cached Ollama LLM instance for orchestrator use.
+
+    Returns an Ollama instance with thinking disabled, intended for fast
+    tool-calling decisions in the orchestrator agent. The instance is cached
+    as a module-level singleton keyed by (model, base_url). If the session
+    model changes, the old instance is discarded and a new one is created.
+
+    Ollama itself manages GPU memory -- multiple LlamaIndex Ollama instances
+    pointing to the same model share the single loaded model in VRAM.
+
+    Args:
+        model: Ollama model name (e.g., "qwen3:32b").
+        base_url: Ollama server base URL.
+        context_window: Context window size for the model.
+
+    Returns:
+        Cached Ollama LLM instance with thinking=False.
+    """
+    global _orchestrator_llm_instance, _orchestrator_llm_key
+
+    key = (model, base_url)
+
+    if _orchestrator_llm_instance is not None and _orchestrator_llm_key == key:
+        return _orchestrator_llm_instance
+
+    from llama_index.llms.ollama import Ollama
+
+    logger.info(
+        "Creating orchestrator LLM singleton: model=%s, base_url=%s, "
+        "context_window=%d",
+        model,
+        base_url,
+        context_window,
+    )
+
+    _orchestrator_llm_instance = Ollama(
+        model=model,
+        base_url=base_url,
+        temperature=0.2,
+        context_window=context_window,
+        thinking=False,
+        request_timeout=120.0,
+        additional_kwargs={
+            "num_ctx": context_window,
+            "options": {"num_predict": -1},
+        },
+    )
+    _orchestrator_llm_key = key
+
+    return _orchestrator_llm_instance
 
 
 def get_model_info(model_name: str) -> Dict[str, Any]:
