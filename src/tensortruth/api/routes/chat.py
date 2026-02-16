@@ -415,7 +415,9 @@ async def _run_orchestrator_path(
     # Generate title if needed
     if needs_title and result.full_response:
         try:
-            title = await generate_smart_title_async(result.full_response, model_name)
+            title = await generate_smart_title_async(
+                result.full_response, model_name, context_window
+            )
             fresh_data = session_service.load()
             fresh_data = session_service.update_title(
                 context.session_id, title, fresh_data
@@ -606,8 +608,9 @@ async def websocket_chat(
                     if needs_title and full_response:
                         try:
                             cmd_model = session.get("params", {}).get("model")
+                            cmd_ctx = context.params.get("context_window", 16384)
                             title = await generate_smart_title_async(
-                                full_response, cmd_model
+                                full_response, cmd_model, cmd_ctx
                             )
                             fresh_data = session_service.load()
                             fresh_data = session_service.update_title(
@@ -802,7 +805,9 @@ async def websocket_chat(
                 if needs_title:
                     try:
                         title = await generate_smart_title_async(
-                            full_response, model_name
+                            full_response,
+                            model_name,
+                            context.params.get("context_window", 16384),
                         )
                         fresh_data = session_service.load()
                         fresh_data = session_service.update_title(

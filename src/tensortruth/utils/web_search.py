@@ -294,6 +294,7 @@ async def generate_no_sources_explanation(
     content_threshold: float,
     model_name: str,
     ollama_url: str,
+    context_window: int = 16384,
 ) -> AsyncGenerator[str, None]:
     """Generate LLM explanation when no sources pass thresholds.
 
@@ -364,6 +365,7 @@ Keep it concise and actionable. Don't apologize excessively."""
             request_timeout=60.0,
             temperature=0.5,
             thinking=thinking_enabled,
+            additional_kwargs={"num_ctx": context_window},
         )
 
         async for chunk in await llm.astream_complete(prompt):
@@ -1052,10 +1054,10 @@ Begin your response:"""
             model=model_name,
             base_url=ollama_url,
             request_timeout=120.0,
-            temperature=0.5,  # Moderate temperature for balanced summarization
+            temperature=0.5,
             context_window=context_window,
-            num_ctx=context_window,  # Ollama-specific parameter
             thinking=thinking_enabled,
+            additional_kwargs={"num_ctx": context_window},
         )
 
         # Generate summary
@@ -1372,6 +1374,7 @@ async def web_search_stream(
             content_threshold=rerank_content_threshold,
             model_name=model_name,
             ollama_url=ollama_url,
+            context_window=context_window or 16384,
         ):
             yield WebSearchChunk(token=token)
 
@@ -1429,8 +1432,8 @@ async def web_search_stream(
         request_timeout=120.0,
         temperature=0.3,
         context_window=context_window,
-        num_ctx=context_window,
         thinking=thinking_enabled,
+        additional_kwargs={"num_ctx": context_window},
     )
 
     # Use core synthesis engine

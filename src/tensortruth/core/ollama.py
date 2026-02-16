@@ -12,10 +12,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Module-level singleton for the orchestrator LLM instance.
-# Keyed by (model, base_url) so it is replaced when the session model changes.
+# Module-level singletons for LLM instances.
+# Keyed by (model, base_url, context_window) so they are replaced when
+# session configuration changes.  All instances always set num_ctx in
+# additional_kwargs to prevent Ollama from reloading the model when the
+# context size differs between calls.
 _orchestrator_llm_instance: Optional[Any] = None
-_orchestrator_llm_key: Optional[Tuple[str, str]] = None
+_orchestrator_llm_key: Optional[Tuple[str, str, int]] = None
+
+_tool_llm_instance: Optional[Any] = None
+_tool_llm_key: Optional[Tuple[str, str, int]] = None
 
 
 def get_ollama_url() -> str:
@@ -196,12 +202,13 @@ def get_orchestrator_llm(
     """Get or create a cached Ollama LLM instance for orchestrator use.
 
     Returns an Ollama instance with thinking disabled, intended for fast
-    tool-calling decisions in the orchestrator agent. The instance is cached
-    as a module-level singleton keyed by (model, base_url). If the session
-    model changes, the old instance is discarded and a new one is created.
+    tool-calling decisions in the orchestrator agent.  Also suitable for
+    query condensation and other low-temperature auxiliary tasks.
 
-    Ollama itself manages GPU memory -- multiple LlamaIndex Ollama instances
-    pointing to the same model share the single loaded model in VRAM.
+    The instance is cached as a module-level singleton keyed by
+    ``(model, base_url, context_window)``.  ``num_ctx`` is always set in
+    ``additional_kwargs`` so that Ollama never sees a context-size change
+    between requests (which would trigger a costly model reload).
 
     Args:
         model: Ollama model name (e.g., "qwen3:32b").
@@ -213,7 +220,7 @@ def get_orchestrator_llm(
     """
     global _orchestrator_llm_instance, _orchestrator_llm_key
 
-    key = (model, base_url)
+    key = (model, base_url, context_window)
 
     if _orchestrator_llm_instance is not None and _orchestrator_llm_key == key:
         return _orchestrator_llm_instance
@@ -235,11 +242,65 @@ def get_orchestrator_llm(
         context_window=context_window,
         thinking=False,
         request_timeout=120.0,
-        additional_kwargs={"num_predict": -1},
+        additional_kwargs={"num_ctx": context_window, "num_predict": -1},
     )
     _orchestrator_llm_key = key
 
     return _orchestrator_llm_instance
+
+
+def get_tool_llm(
+    model: str,
+    base_url: str,
+    context_window: int = 16384,
+) -> "Ollama":
+    """Get or create a cached thinking-enabled Ollama LLM for tool/synthesis use.
+
+    Returns an Ollama instance with thinking enabled (when the model supports
+    it), intended for synthesis, RAG generation, and other content-producing
+    calls.  Shares the same ``num_ctx`` as the orchestrator LLM so Ollama
+    keeps the model loaded without reloading.
+
+    Args:
+        model: Ollama model name.
+        base_url: Ollama server base URL.
+        context_window: Context window size for the model.
+
+    Returns:
+        Cached Ollama LLM instance with thinking enabled (if supported).
+    """
+    global _tool_llm_instance, _tool_llm_key
+
+    key = (model, base_url, context_window)
+
+    if _tool_llm_instance is not None and _tool_llm_key == key:
+        return _tool_llm_instance
+
+    from llama_index.llms.ollama import Ollama
+
+    thinking_supported = check_thinking_support(model)
+
+    logger.info(
+        "Creating tool LLM singleton: model=%s, base_url=%s, "
+        "context_window=%d, thinking=%s",
+        model,
+        base_url,
+        context_window,
+        thinking_supported,
+    )
+
+    _tool_llm_instance = Ollama(
+        model=model,
+        base_url=base_url,
+        temperature=0.7,
+        context_window=context_window,
+        thinking=thinking_supported,
+        request_timeout=120.0,
+        additional_kwargs={"num_ctx": context_window, "num_predict": -1},
+    )
+    _tool_llm_key = key
+
+    return _tool_llm_instance
 
 
 def get_model_info(model_name: str) -> Dict[str, Any]:

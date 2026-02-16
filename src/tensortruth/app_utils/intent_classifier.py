@@ -303,6 +303,7 @@ def detect_and_classify(
             base_url=ollama_url,
             temperature=0.0,
             request_timeout=30.0,
+            additional_kwargs={"num_ctx": 16384},
         )
 
     # Classify with LLM (reused or created)

@@ -21,7 +21,7 @@ from typing import (
 
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
-from tensortruth.core.ollama import check_thinking_support
+from tensortruth.core.ollama import check_thinking_support, get_tool_llm
 from tensortruth.services.models import ToolProgress
 from tensortruth.services.orchestrator_service import (
     ModuleDescription,
@@ -117,18 +117,8 @@ class SynthesisService:
     # ------------------------------------------------------------------
 
     def _create_llm(self) -> "Ollama":
-        """Create the Ollama LLM instance for synthesis."""
-        from llama_index.llms.ollama import Ollama as OllamaLLM
-
-        return OllamaLLM(
-            model=self._model,
-            base_url=self._base_url,
-            temperature=0.7,
-            context_window=self._context_window,
-            thinking=self._thinking_supported,
-            request_timeout=120.0,
-            additional_kwargs={"num_predict": -1},
-        )
+        """Get the shared tool LLM singleton for synthesis."""
+        return get_tool_llm(self._model, self._base_url, self._context_window)
 
     # ------------------------------------------------------------------
     # System prompt

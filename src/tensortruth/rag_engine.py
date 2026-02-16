@@ -219,8 +219,10 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
     user_system_prompt = params.get("system_prompt", "").strip()
     device_mode = params.get("llm_device", "gpu")  # 'gpu' or 'cpu'
 
-    # Ollama specific options
-    ollama_options = {}
+    # Ollama specific options — always set num_ctx to match context_window
+    # so Ollama never reloads the model due to a context-size change.
+    ctx_window = params.get("context_window", 16384)
+    ollama_options: dict = {"num_ctx": ctx_window}
 
     # Force CPU if requested
     if device_mode == "cpu":
@@ -245,7 +247,7 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
         base_url=get_ollama_url(),
         request_timeout=300.0,
         temperature=params.get("temperature", 0.3),
-        context_window=params.get("context_window", 16384),
+        context_window=ctx_window,
         thinking=thinking_enabled,
         additional_kwargs=ollama_options,
         system_prompt=user_system_prompt,

@@ -351,8 +351,8 @@ class BrowseAgent(RouterAgent):
             request_timeout=120.0,
             temperature=0.5,
             context_window=context_window,
-            num_ctx=context_window,
             thinking=thinking_enabled,
+            additional_kwargs={"num_ctx": context_window},
         )
 
         full_answer = ""

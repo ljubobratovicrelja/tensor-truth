@@ -24,38 +24,28 @@ def create_condenser_llm(
     thinking: bool = False,
     timeout: float = 30.0,
 ) -> Ollama:
-    """
-    Create an Ollama LLM instance optimized for query condensation.
+    """Return the shared orchestrator LLM singleton for query condensation.
 
-    This creates a new Ollama instance that reuses the same model and base_url
-    as the provided base_llm, but with settings optimized for fast, deterministic
-    condensation. The same model is used server-side (no extra VRAM required).
+    Reuses the cached non-thinking LLM so that Ollama never sees a
+    ``num_ctx`` change (which would trigger a model reload).  The
+    singleton's temperature (0.2) is close enough to 0.0 for condensation.
 
     Args:
-        base_llm: The base Ollama LLM to derive configuration from
-        temperature: Temperature for generation (0.0 = deterministic)
-        thinking: Whether to enable extended thinking (False = faster)
-        timeout: Request timeout in seconds
+        base_llm: The base Ollama LLM to derive model/url/context_window from.
+        temperature: Ignored (kept for API compatibility).
+        thinking: Ignored (kept for API compatibility).
+        timeout: Ignored (kept for API compatibility).
 
     Returns:
-        Configured Ollama instance for condensation
-
-    Example:
-        >>> main_llm = Ollama(model="llama3.1:8b")
-        >>> condenser = create_condenser_llm(main_llm)
-        >>> # condenser uses same model/url but optimized settings
+        The shared orchestrator Ollama instance.
     """
-    # Access Ollama-specific attributes via getattr for type safety
+    from tensortruth.core.ollama import get_orchestrator_llm
+
     model = getattr(base_llm, "model", DEFAULT_AGENT_REASONING_MODEL)
     base_url = getattr(base_llm, "base_url", DEFAULT_OLLAMA_BASE_URL)
+    context_window = getattr(base_llm, "context_window", 16384)
 
-    return Ollama(
-        model=model,
-        base_url=base_url,
-        temperature=temperature,
-        thinking=thinking,
-        request_timeout=timeout,
-    )
+    return get_orchestrator_llm(model, base_url, context_window)
 
 
 def condense_query(

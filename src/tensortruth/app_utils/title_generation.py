@@ -122,7 +122,7 @@ _TITLE_TOOL = {
 
 
 async def _generate_title_tool_mode(
-    text: str, model_name: str, base_url: str
+    text: str, model_name: str, base_url: str, context_window: int
 ) -> Optional[str]:
     """Generate a title by asking the model to call the ``set_title`` tool."""
     payload = {
@@ -139,6 +139,7 @@ async def _generate_title_tool_mode(
         ],
         "tools": [_TITLE_TOOL],
         "stream": False,
+        "options": {"num_ctx": context_window},
     }
 
     timeout = aiohttp.ClientTimeout(total=15)
@@ -173,7 +174,7 @@ async def _generate_title_tool_mode(
 
 
 async def _generate_title_prompt_mode(
-    text: str, model_name: str, base_url: str
+    text: str, model_name: str, base_url: str, context_window: int
 ) -> Optional[str]:
     """Generate a title via a plain prompt on ``/api/generate``."""
     prompt = (
@@ -186,7 +187,7 @@ async def _generate_title_prompt_mode(
         "model": model_name,
         "prompt": prompt,
         "stream": False,
-        "options": {"num_ctx": 512, "temperature": 0.8},
+        "options": {"num_ctx": context_window, "temperature": 0.8},
     }
 
     timeout = aiohttp.ClientTimeout(total=10)
@@ -207,6 +208,7 @@ async def _generate_title_prompt_mode(
 async def generate_smart_title_async(
     text: str,
     model_name: Optional[str] = None,
+    context_window: int = 16384,
 ) -> str:
     """Generate a concise title using the session's model.
 
@@ -217,6 +219,8 @@ async def generate_smart_title_async(
         text: The assistant response to derive a title from.
         model_name: Ollama model name (from the session).  When *None* only
             the text-truncation fallback is used.
+        context_window: Context window size — passed as ``num_ctx`` to Ollama
+            so the model is not reloaded with a different context size.
     """
     if not model_name:
         return _make_fallback_title(text)
@@ -230,10 +234,14 @@ async def generate_smart_title_async(
 
         if supports_tools:
             logger.debug("Using tool mode for title generation with %s", model_name)
-            title = await _generate_title_tool_mode(text, model_name, base_url)
+            title = await _generate_title_tool_mode(
+                text, model_name, base_url, context_window
+            )
         else:
             logger.debug("Using prompt mode for title generation with %s", model_name)
-            title = await _generate_title_prompt_mode(text, model_name, base_url)
+            title = await _generate_title_prompt_mode(
+                text, model_name, base_url, context_window
+            )
 
         if title:
             logger.debug("Title generation success: '%s'", title)
