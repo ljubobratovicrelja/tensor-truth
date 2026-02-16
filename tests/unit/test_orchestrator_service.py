@@ -940,6 +940,39 @@ class TestBuildSourceReference:
         assert "[1]" in result
         assert "[2]" not in result  # Only one source should be listed
 
+    def test_fallback_from_search_results(self):
+        """When no web_sources exist, should fall back to web_search_results."""
+        search_results = [
+            {"title": "Page A", "url": "https://a.com", "snippet": "..."},
+            {"title": "Page B", "url": "https://b.com", "snippet": "..."},
+        ]
+        result = build_source_reference([], web_search_results=search_results)
+        assert "[1]" in result
+        assert "[2]" in result
+        assert "Page A" in result
+        assert "snippet only" in result
+
+    def test_prefers_web_sources_over_search_results(self):
+        """When web_sources exist, should use them instead of search_results fallback."""
+        from tensortruth.core.source import SourceNode, SourceStatus, SourceType
+
+        web_node = SourceNode(
+            id="w1",
+            title="Fetched Page",
+            source_type=SourceType.WEB,
+            url="https://fetched.com",
+            score=0.9,
+            status=SourceStatus.SUCCESS,
+        )
+        search_results = [
+            {"title": "Search Result", "url": "https://search.com"},
+        ]
+        result = build_source_reference(
+            [], web_sources=[web_node], web_search_results=search_results
+        )
+        assert "Fetched Page" in result
+        assert "Search Result" not in result  # fallback not used
+
 
 class TestLoadModuleDescriptions:
     """Tests for load_module_descriptions()."""
@@ -1107,7 +1140,10 @@ class TestMaxIterationsHandling:
         assert "budget" in prompt.lower()
         assert "15" in prompt
         assert "iterations" in prompt.lower()
-        assert "fetch_pages_batch" in prompt
+        assert "1-2" in prompt  # Specific allocation guidance
+        # Old prescriptive recipes should be gone
+        assert "standard web research pattern" not in prompt
+        assert "2-3 tool calls" not in prompt
 
     def test_default_budget_value_in_prompt(self, tool_service, rag_service_not_loaded):
         """Default max_iterations (10) should appear in the system prompt."""
@@ -1116,3 +1152,59 @@ class TestMaxIterationsHandling:
         prompt = svc._build_system_prompt(tools)
 
         assert "budget of 10 iterations" in prompt
+
+    def test_tool_routing_is_not_prescriptive(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """Tool routing guidance should be generic, not prescribe tool chains."""
+        svc = _create_service(tool_service, rag_service_not_loaded)
+        tools = svc._build_tools(MagicMock())
+        prompt = svc._build_system_prompt(tools)
+
+        # Old prescriptive directives should be gone
+        assert "Do NOT skip fetching" not in prompt
+        assert "standard web research pattern" not in prompt
+        assert "then call fetch_pages_batch" not in prompt
+        # General routing guidance still present
+        assert "knowledge base" in prompt.lower()
+        assert "current events" in prompt.lower()
+        # Snippet warning and fetch instruction present
+        assert "snippet" in prompt.lower()
+        assert "fetch" in prompt.lower()
+
+    def test_orchestrator_llm_no_nested_options(self):
+        """Orchestrator LLM additional_kwargs must not nest options inside 'options'."""
+        import tensortruth.core.ollama as ollama_mod
+        from tensortruth.core.ollama import get_orchestrator_llm
+
+        ollama_mod._orchestrator_llm_instance = None
+        ollama_mod._orchestrator_llm_key = None
+
+        with patch("llama_index.llms.ollama.Ollama") as MockOllama:
+            MockOllama.return_value = MagicMock()
+            get_orchestrator_llm("test-model", "http://localhost:11434")
+
+            kwargs = MockOllama.call_args[1]
+            assert "options" not in kwargs["additional_kwargs"]
+            assert "num_predict" in kwargs["additional_kwargs"]
+
+        ollama_mod._orchestrator_llm_instance = None
+        ollama_mod._orchestrator_llm_key = None
+
+    def test_orchestrator_llm_no_redundant_num_ctx(self):
+        """Orchestrator LLM additional_kwargs must not contain num_ctx."""
+        import tensortruth.core.ollama as ollama_mod
+        from tensortruth.core.ollama import get_orchestrator_llm
+
+        ollama_mod._orchestrator_llm_instance = None
+        ollama_mod._orchestrator_llm_key = None
+
+        with patch("llama_index.llms.ollama.Ollama") as MockOllama:
+            MockOllama.return_value = MagicMock()
+            get_orchestrator_llm("test-model", "http://localhost:11434")
+
+            kwargs = MockOllama.call_args[1]
+            assert "num_ctx" not in kwargs["additional_kwargs"]
+
+        ollama_mod._orchestrator_llm_instance = None
+        ollama_mod._orchestrator_llm_key = None

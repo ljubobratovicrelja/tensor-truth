@@ -247,10 +247,7 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
         temperature=params.get("temperature", 0.3),
         context_window=params.get("context_window", 16384),
         thinking=thinking_enabled,
-        additional_kwargs={
-            "num_ctx": params.get("context_window", 16384),
-            "options": ollama_options,
-        },
+        additional_kwargs=ollama_options,
         system_prompt=user_system_prompt,
     )
 

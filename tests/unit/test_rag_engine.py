@@ -373,7 +373,7 @@ class TestGetLLM:
 
         # Should set num_gpu to 0 for CPU mode
         call_kwargs = mock_ollama_class.call_args[1]
-        assert call_kwargs["additional_kwargs"]["options"]["num_gpu"] == 0
+        assert call_kwargs["additional_kwargs"]["num_gpu"] == 0
 
 
 # ============================================================================

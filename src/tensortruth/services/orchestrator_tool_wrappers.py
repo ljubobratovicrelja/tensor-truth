@@ -129,11 +129,9 @@ def create_rag_tool(
     async def rag_query(query: str) -> str:
         """Search the indexed knowledge base for information relevant to the query.
 
-        Use this tool when the user's question likely relates to topics covered
-        by the loaded document modules (papers, documentation, books, uploaded
-        PDFs). Returns source excerpts with relevance scores and confidence
-        assessment. Does NOT generate a response — you must synthesize the
-        answer from the returned sources yourself.
+        Returns source excerpts with relevance scores and confidence assessment
+        for topics covered by the loaded document modules (papers, documentation,
+        books, uploaded PDFs).
         """
         # Progress is emitted via RAGService.retrieve()'s progress_callback,
         # but we also emit a top-level phase for the orchestrator
@@ -173,9 +171,8 @@ def create_rag_tool(
             "Search the indexed knowledge base (documents, papers, books, "
             "uploaded PDFs) for information relevant to a query. Returns "
             "source excerpts with relevance scores and a confidence level. "
-            "Use this when the question relates to topics covered by the "
-            "loaded modules. For current events or live information, use "
-            "web_search instead."
+            "Best for questions about topics covered by the loaded document "
+            "modules. Not suitable for current events or live information."
         ),
         fn_schema=RAGQueryInput,
     )
@@ -389,10 +386,11 @@ def create_web_search_tool(
         async_fn=web_search,
         name="web_search",
         description=(
-            "Search the web for current information, recent events, or topics "
-            "not in the indexed knowledge base. Returns JSON search results "
-            "with titles, URLs, and snippets, ranked by relevance. Use this "
-            "before fetch_pages_batch to find relevant URLs."
+            "Search the web using DuckDuckGo for current information, recent "
+            "events, or topics not in the indexed knowledge base. Returns a "
+            "JSON array of search results, each containing a title, URL, and "
+            "short snippet. Output contains only metadata and snippets — not "
+            "full page content."
         ),
         fn_schema=WebSearchInput,
     )
@@ -415,11 +413,11 @@ def create_fetch_page_tool(
     """
 
     async def fetch_page(url: str) -> str:
-        """Fetch a web page and convert it to clean markdown.
+        """Fetch a single web page by URL and extract its content as markdown.
 
-        Use this tool to read the full content of a web page. Works with
-        Wikipedia, GitHub, arXiv, YouTube, and general websites. Pass a URL
-        obtained from web_search results or provided by the user.
+        Accepts one URL. Returns the full page content as clean markdown text,
+        or an error message on failure. Supports Wikipedia, GitHub, arXiv,
+        YouTube, and general websites.
         """
         domain = urlparse(url).netloc
         await _emit(
@@ -445,10 +443,10 @@ def create_fetch_page_tool(
         async_fn=fetch_page,
         name="fetch_page",
         description=(
-            "Fetch a single web page and convert it to clean markdown text. "
-            "Supports Wikipedia, GitHub, arXiv, YouTube, and general sites. "
-            "Returns the page content as markdown, or an error message on "
-            "failure. For multiple pages, use fetch_pages_batch instead."
+            "Fetch a single web page by URL and extract its content as clean "
+            "markdown text. Accepts one URL. Returns the full page content as "
+            "markdown, or an error message on failure. Supports Wikipedia, "
+            "GitHub, arXiv, YouTube, and general websites."
         ),
         fn_schema=FetchPageInput,
     )
@@ -513,12 +511,12 @@ def create_fetch_pages_batch_tool(
         return results
 
     async def fetch_pages_batch(urls: List[str]) -> str:
-        """Fetch multiple web pages in parallel for efficient research.
+        """Fetch multiple web pages in parallel given a list of URLs.
 
-        Use this tool instead of calling fetch_page multiple times. Pages
-        are fetched, ranked by content relevance, filtered, and fitted to
-        the context window. Returns formatted page content ready for
-        synthesis. Recommended: pass 3-5 URLs at a time.
+        Pages are fetched simultaneously, ranked by content relevance to the
+        current query, and fitted to the context window. Accepts a list of
+        URLs (recommended 3-5). Returns full page content as formatted
+        markdown sections ready for synthesis.
         """
         total = len(urls)
         domains = list(dict.fromkeys(urlparse(u).netloc for u in urls))
@@ -602,10 +600,11 @@ def create_fetch_pages_batch_tool(
         async_fn=fetch_pages_batch,
         name="fetch_pages_batch",
         description=(
-            "Fetch multiple web pages in parallel (much faster than calling "
-            "fetch_page multiple times). Pages are fetched, ranked by content "
-            "relevance, and fitted to context. Returns formatted page content "
-            "for synthesis. Recommended for research tasks requiring 3-5 pages."
+            "Fetch multiple web pages in parallel given a list of URLs. Pages "
+            "are fetched simultaneously, ranked by content relevance to the "
+            "current query, and fitted to the context window. Accepts a list "
+            "of URLs (recommended 3-5). Returns full page content as formatted "
+            "markdown sections ready for synthesis."
         ),
         fn_schema=FetchPagesBatchInput,
     )

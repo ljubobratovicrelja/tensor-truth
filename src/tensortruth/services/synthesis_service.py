@@ -127,10 +127,7 @@ class SynthesisService:
             context_window=self._context_window,
             thinking=self._thinking_supported,
             request_timeout=120.0,
-            additional_kwargs={
-                "num_ctx": self._context_window,
-                "options": {"num_predict": -1},
-            },
+            additional_kwargs={"num_predict": -1},
         )
 
     # ------------------------------------------------------------------

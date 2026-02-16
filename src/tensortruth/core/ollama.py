@@ -235,10 +235,7 @@ def get_orchestrator_llm(
         context_window=context_window,
         thinking=False,
         request_timeout=120.0,
-        additional_kwargs={
-            "num_ctx": context_window,
-            "options": {"num_predict": -1},
-        },
+        additional_kwargs={"num_predict": -1},
     )
     _orchestrator_llm_key = key
 

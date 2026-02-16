@@ -346,28 +346,28 @@ class OrchestratorService:
 
         # --- Tool routing guidance ---
         sections.append(
-            "Tool usage guidance:\n"
-            "- For questions about topics covered by the indexed modules above, "
-            "use rag_query to search the knowledge base.\n"
+            "Tool routing:\n"
+            "- For questions about topics covered by the indexed modules, "
+            "search the knowledge base.\n"
             "- For current events, recent developments, or topics NOT in the "
-            "indexed modules, use web_search followed by fetch_page if needed.\n"
+            "indexed modules, search the web. IMPORTANT: web search returns "
+            "only titles, URLs, and short snippets — NOT full page content. "
+            "After searching, always fetch the full content of relevant pages "
+            "before answering. Search snippets alone are not enough for a "
+            "comprehensive answer.\n"
             "- For simple conversational messages (greetings, clarifications, "
             "opinions), respond directly without using any tools.\n"
-            "- You may call multiple tools in sequence to gather comprehensive "
-            "information before responding.\n"
             "- If a tool returns an error, analyze the cause: if the input was "
-            "wrong, correct it and retry; if it is an internal error, report the "
-            "issue and continue with other tools if possible."
+            "wrong, correct it and retry; if it is an internal error, report "
+            "the issue and continue with other tools if possible."
         )
 
         # --- Iteration budget ---
         sections.append(
-            f"IMPORTANT: You have a budget of {self._max_iterations} iterations for this request. "
-            "Each tool call or response counts as one iteration. Plan your research efficiently:\n"
-            "- Prefer fetch_pages_batch over multiple sequential fetch_page calls.\n"
-            "- After gathering information from 2-3 tool calls, stop and provide your summary "
-            "unless you have clear reason to continue.\n"
-            "- Do NOT exhaustively search every angle — focus on the most relevant sources."
+            f"IMPORTANT: You have a budget of {self._max_iterations} iterations "
+            "for this request. Each tool call or response counts as one iteration. "
+            "Plan your research efficiently: limit web searches to 1-2 focused "
+            "queries, then use remaining iterations to fetch and read page content."
         )
 
         # --- Synthesis handoff ---
@@ -704,6 +704,7 @@ class OrchestratorService:
             tool_results_context,
             rag_result=self._last_rag_result,
             web_sources=self._last_web_sources,
+            web_search_results=self._last_web_search_results,
         )
 
         synthesis = get_synthesis_service(
@@ -804,6 +805,7 @@ def build_source_reference(
     tool_results_context: List[str],
     rag_result: Optional["RAGRetrievalResult"] = None,
     web_sources: Optional[list] = None,
+    web_search_results: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Build a structured source reference block for the synthesis prompt.
 
@@ -853,6 +855,14 @@ def build_source_reference(
                 continue
             score_str = f", score: {node.score:.2f}" if node.score is not None else ""
             lines.append(f'[{idx}] "{node.title}" (web{score_str}) - {node.url}')
+            idx += 1
+
+    # Fallback: use raw search results when no pages were fetched
+    if not web_sources and web_search_results:
+        for result in web_search_results:
+            title = result.get("title", "Untitled")
+            url = result.get("url", "")
+            lines.append(f'[{idx}] "{title}" (web, snippet only) - {url}')
             idx += 1
 
     if not lines:

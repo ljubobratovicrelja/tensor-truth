@@ -208,6 +208,49 @@ class TestSynthesisSingleton:
         mod._synthesis_service = None
         mod._synthesis_service_key = None
 
+    def test_synthesis_llm_no_nested_options(self):
+        """Synthesis LLM additional_kwargs must not nest options inside 'options'."""
+        with (
+            patch(
+                "tensortruth.services.synthesis_service.check_thinking_support",
+                return_value=False,
+            ),
+            patch("llama_index.llms.ollama.Ollama") as MockOllama,
+        ):
+            MockOllama.return_value = MagicMock()
+            from tensortruth.services.synthesis_service import SynthesisService
+
+            SynthesisService(
+                model="test-model",
+                base_url="http://localhost:11434",
+                context_window=8192,
+            )
+
+            kwargs = MockOllama.call_args[1]
+            assert "options" not in kwargs["additional_kwargs"]
+            assert "num_predict" in kwargs["additional_kwargs"]
+
+    def test_synthesis_llm_no_redundant_num_ctx(self):
+        """Synthesis LLM additional_kwargs must not contain num_ctx."""
+        with (
+            patch(
+                "tensortruth.services.synthesis_service.check_thinking_support",
+                return_value=False,
+            ),
+            patch("llama_index.llms.ollama.Ollama") as MockOllama,
+        ):
+            MockOllama.return_value = MagicMock()
+            from tensortruth.services.synthesis_service import SynthesisService
+
+            SynthesisService(
+                model="test-model",
+                base_url="http://localhost:11434",
+                context_window=8192,
+            )
+
+            kwargs = MockOllama.call_args[1]
+            assert "num_ctx" not in kwargs["additional_kwargs"]
+
     def test_creates_new_instance_on_context_window_change(self):
         """context_window is part of the cache key — changing it rebuilds."""
         import tensortruth.services.synthesis_service as mod
