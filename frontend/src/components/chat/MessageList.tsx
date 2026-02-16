@@ -4,7 +4,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { MessageItem } from "./MessageItem";
 import { StreamingIndicator } from "./StreamingIndicator";
-import { ThinkingBox } from "./ThinkingBox";
 import { AgentProgress } from "./AgentProgress";
 import { useScrollDirection, useIsMobile } from "@/hooks";
 import { useUIStore } from "@/stores";
@@ -32,6 +31,7 @@ interface MessageListProps {
   pipelineStatus?: PipelineStatus;
   agentProgress?: StreamAgentProgress | null;
   confidenceLevel?: string | null;
+  streamingReasoning?: string;
 }
 
 export function MessageList({
@@ -48,6 +48,7 @@ export function MessageList({
   pipelineStatus,
   agentProgress,
   confidenceLevel,
+  streamingReasoning,
 }: MessageListProps) {
   // Use state for container so effects re-run when it's set
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
@@ -147,6 +148,7 @@ export function MessageList({
     pendingUserMessage,
     streamingContent,
     streamingThinking,
+    streamingReasoning,
   ]);
 
   const scrollToBottom = useCallback(() => {
@@ -190,10 +192,11 @@ export function MessageList({
               ) && (
                 <MessageItem message={{ role: "user", content: pendingUserMessage }} />
               )}
-            {/* Streaming: show status indicator and thinking before content appears */}
+            {/* Streaming: show unified activity box before content appears.
+                Thinking is displayed inside ToolPhaseIndicator (via StreamingIndicator)
+                alongside reasoning — no separate ThinkingBox needed here. */}
             {isStreaming && !streamingContent && (
               <>
-                {streamingThinking && <ThinkingBox content={streamingThinking} />}
                 {agentProgress ? (
                   <AgentProgress progress={agentProgress} />
                 ) : (

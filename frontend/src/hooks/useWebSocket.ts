@@ -29,6 +29,8 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
     addToolStep,
     setAgentProgress,
     setToolPhase,
+    appendReasoning,
+    clearReasoning,
   } = useChatStore();
 
   // Cleanup on unmount or session change
@@ -65,6 +67,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       let fullContent = "";
       let confidenceLevel = "normal";
       let didFetchUserMessage = false;
+      let didReceiveThinking = false;
 
       ws.onopen = () => {
         // Send the prompt
@@ -81,15 +84,27 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               break;
 
             case "thinking":
+              // On first thinking event, clear Phase 1 reasoning so the
+              // unified box transitions cleanly to showing synthesis thinking.
+              if (!didReceiveThinking) {
+                didReceiveThinking = true;
+                clearReasoning();
+              }
               appendThinking(data.content);
               break;
 
+            case "reasoning":
+              appendReasoning(data.content);
+              break;
+
             case "token":
-              // On first token, fetch messages (backend has saved user message)
+              // On first token, clear agent reasoning (response generation starting)
+              // and fetch messages (backend has saved user message).
               // Don't clear pendingUserMessage here - let MessageList deduplicate
               // to avoid flash when query is refetching
               if (!didFetchUserMessage) {
                 didFetchUserMessage = true;
+                clearReasoning();
                 queryClient.invalidateQueries({
                   queryKey: QUERY_KEYS.messages(sessionId),
                 });
@@ -142,6 +157,10 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               break;
 
             case "tool_progress":
+              // New tool starting — clear stale reasoning from previous gap
+              if (data.action === "calling") {
+                clearReasoning();
+              }
               addToolStep(data);
               break;
 
@@ -186,6 +205,8 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       addToolStep,
       setAgentProgress,
       setToolPhase,
+      appendReasoning,
+      clearReasoning,
     ]
   );
 

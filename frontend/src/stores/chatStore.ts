@@ -32,6 +32,7 @@ interface ChatStore {
   streamingToolSteps: (ToolStep & { status: "calling" | "completed" | "failed" })[];
   agentProgress: StreamAgentProgress | null;
   toolPhase: StreamToolPhase | null;
+  streamingReasoning: string;
 
   startStreaming: (userMessage: string) => void;
   appendToken: (token: string) => void;
@@ -49,6 +50,8 @@ interface ChatStore {
   addToolStep: (progress: StreamToolProgress) => void;
   setAgentProgress: (progress: StreamAgentProgress | null) => void;
   setToolPhase: (phase: StreamToolPhase | null) => void;
+  appendReasoning: (reasoning: string) => void;
+  clearReasoning: () => void;
 }
 
 export const useChatStore = create<ChatStore>((set) => ({
@@ -65,12 +68,14 @@ export const useChatStore = create<ChatStore>((set) => ({
   streamingToolSteps: [],
   agentProgress: null,
   toolPhase: null,
+  streamingReasoning: "",
 
   startStreaming: (userMessage: string) =>
     set({
       isStreaming: true,
       streamingContent: "",
       streamingThinking: "",
+      streamingReasoning: "",
       streamingSources: [],
       streamingMetrics: null,
       streamingSourceTypes: null,
@@ -107,6 +112,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       confidenceLevel,
       pipelineStatus: null,
       toolPhase: null,
+      streamingReasoning: "",
       pendingUserMessage: null,
     }),
 
@@ -120,6 +126,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       error,
       pipelineStatus: null,
       toolPhase: null,
+      streamingReasoning: "",
       pendingUserMessage: null,
     }),
 
@@ -128,6 +135,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       isStreaming: false,
       streamingContent: "",
       streamingThinking: "",
+      streamingReasoning: "",
       streamingSources: [],
       streamingMetrics: null,
       streamingSourceTypes: null,
@@ -174,4 +182,9 @@ export const useChatStore = create<ChatStore>((set) => ({
     }),
   setAgentProgress: (progress) => set({ agentProgress: progress }),
   setToolPhase: (phase) => set({ toolPhase: phase }),
+  appendReasoning: (reasoning) =>
+    set((state) => ({
+      streamingReasoning: state.streamingReasoning + reasoning,
+    })),
+  clearReasoning: () => set({ streamingReasoning: "" }),
 }));

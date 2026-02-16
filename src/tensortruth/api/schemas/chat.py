@@ -80,6 +80,17 @@ class StreamThinking(BaseModel):
     content: str
 
 
+class StreamReasoning(BaseModel):
+    """WebSocket message for agent intermediate reasoning deltas.
+
+    Emitted between tool calls when the FunctionAgent's LLM is reasoning
+    about results. Ephemeral — not accumulated or stored.
+    """
+
+    type: Literal["reasoning"] = "reasoning"
+    content: str
+
+
 class StreamStatus(BaseModel):
     """WebSocket message for pipeline status updates."""
 

@@ -129,6 +129,11 @@ export interface StreamThinking {
   content: string;
 }
 
+export interface StreamReasoning {
+  type: "reasoning";
+  content: string;
+}
+
 export interface StreamStatus {
   type: "status";
   status: "loading_models" | "retrieving" | "reranking" | "thinking" | "generating";
@@ -210,6 +215,7 @@ export type StreamMessage =
   | StreamError
   | StreamTitle
   | StreamThinking
+  | StreamReasoning
   | StreamStatus
   | StreamToolProgress
   | StreamToolPhase

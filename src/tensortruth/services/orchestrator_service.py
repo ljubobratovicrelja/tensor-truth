@@ -106,6 +106,9 @@ class OrchestratorEvent:
     # Tool call completed
     tool_call_result: Optional[Dict[str, Any]] = None
 
+    # Intermediate reasoning delta from the FunctionAgent between tool calls
+    reasoning: Optional[str] = None
+
     # Phase-level progress from a tool wrapper (ToolProgress)
     tool_phase: Optional[ToolProgress] = None
 
@@ -525,14 +528,17 @@ class OrchestratorService:
             if progress_emitter:
                 progress_emitter(tp)
 
-        # Emit orchestrator start phase
-        _combined_emitter(
-            ToolProgress(
-                tool_id="orchestrator",
-                phase="thinking",
-                message="Analyzing your request...",
-            )
+        # Emit orchestrator start phase directly (not deferred via
+        # _pending_phases) so it arrives at the frontend before any
+        # reasoning events from the FunctionAgent's initial thinking.
+        initial_phase = ToolProgress(
+            tool_id="orchestrator",
+            phase="thinking",
+            message="Analyzing your request...",
         )
+        yield OrchestratorEvent(tool_phase=initial_phase)
+        if progress_emitter:
+            progress_emitter(initial_phase)
 
         # --- Build tools and agent ---
         tools = self._build_tools(_combined_emitter)
@@ -652,6 +658,7 @@ class OrchestratorService:
                     # Synthesis will be done separately with the thinking LLM.
                     if event.delta:
                         agent_final_response += event.delta
+                        yield OrchestratorEvent(reasoning=event.delta)
 
             # Await the agent handler to completion
             response = await handler

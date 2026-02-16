@@ -83,6 +83,10 @@ def translate_event(event: Any) -> Optional[Dict[str, Any]]:
     if getattr(event, "thinking", None) is not None:
         return {"type": "thinking", "content": event.thinking}
 
+    # Agent intermediate reasoning delta (ephemeral, not accumulated)
+    if getattr(event, "reasoning", None) is not None:
+        return {"type": "reasoning", "content": event.reasoning}
+
     # Token delta
     if event.token is not None:
         return {"type": "token", "content": event.token}

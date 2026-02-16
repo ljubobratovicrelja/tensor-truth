@@ -37,6 +37,7 @@ export function ChatContainer() {
     agentProgress,
     streamingToolSteps,
     confidenceLevel,
+    streamingReasoning,
   } = useChatStore();
   const autoSendTriggered = useRef(false);
   const prevSessionIdRef = useRef<string | undefined>(undefined);
@@ -203,6 +204,7 @@ export function ChatContainer() {
         pipelineStatus={pipelineStatus}
         agentProgress={agentProgress}
         confidenceLevel={confidenceLevel}
+        streamingReasoning={streamingReasoning || undefined}
       />
       {error && (
         <div className="border-destructive bg-destructive/10 text-destructive border-t py-2 text-sm">
