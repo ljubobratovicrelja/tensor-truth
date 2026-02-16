@@ -544,6 +544,37 @@ nn.InstanceNorm3d(num_features)
     });
   });
 
+  describe("Indented Display Math (List Items)", () => {
+    test("indented display math detected as math_display", () => {
+      const state = parseMarkdownBlocks(
+        initialParserState,
+        "     \\[\n     x = y\n     \\]\n"
+      );
+      const final = finalizeState(state);
+      expect(final.completedBlocks[0].type).toBe("math_display");
+    });
+
+    test("list item followed by indented math produces both block types", () => {
+      const content =
+        "   - For a generic layer:\n     \\[\n     \\frac{a}{b}\n     \\]\n";
+      const state = streamAndFinalize(content, "char");
+      const types = state.completedBlocks.map((b) => b.type);
+      expect(types).toContain("list_item");
+      expect(types).toContain("math_display");
+      expect(getAllContent(state)).toBe(content);
+    });
+
+    test("indented math block content integrity across chunk sizes", () => {
+      const content = "     \\[\n     x = y\n     \\]\n";
+      for (const chunkSize of [1, 2, 3, 5, 7, 10, 20]) {
+        const state = streamAndFinalize(content, chunkSize);
+        expect(getAllContent(state)).toBe(content);
+        const mathBlocks = state.completedBlocks.filter((b) => b.type === "math_display");
+        expect(mathBlocks).toHaveLength(1);
+      }
+    });
+  });
+
   describe("Complex Documents", () => {
     test("full document with all block types", () => {
       const doc = `# Main Title

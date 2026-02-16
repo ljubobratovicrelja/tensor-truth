@@ -93,8 +93,8 @@ export function parseMarkdownBlocks(state: ParserState, newToken: string): Parse
       break;
     }
 
-    // 2. Display math block start \[
-    if (buffer.startsWith("\\[")) {
+    // 2. Display math block start \[ (possibly indented inside list items)
+    if (buffer.trimStart().startsWith("\\[")) {
       const result = tryCompleteMathBlock(buffer);
       if (result.block && result.block.isComplete) {
         completedBlocks.push(result.block);
@@ -178,7 +178,7 @@ function detectBlockType(
   if (inCodeBlock) return "code_block";
   if (inMathBlock) return "math_display";
   if (buffer.startsWith("```")) return "code_block";
-  if (buffer.startsWith("\\[")) return "math_display";
+  if (buffer.trimStart().startsWith("\\[")) return "math_display";
   if (buffer.match(/^#{1,6}\s/)) return "header";
   if (buffer.match(/^[\s]*[-*+]\s/) || buffer.match(/^[\s]*\d+\.\s/)) {
     return "list_item";
@@ -271,8 +271,8 @@ function tryCompleteMathBlock(buffer: string): {
   block: MarkdownBlock | null;
   remaining: string;
 } {
-  // Must start with \[
-  if (!buffer.startsWith("\\[")) {
+  // Must start with \[ (possibly indented inside list items)
+  if (!buffer.trimStart().startsWith("\\[")) {
     return { block: null, remaining: buffer };
   }
 
@@ -342,7 +342,7 @@ function tryCompleteParagraph(buffer: string): {
     if (
       !afterNewline.startsWith("\n") &&
       (afterNewline.startsWith("```") ||
-        afterNewline.startsWith("\\[") ||
+        afterNewline.trimStart().startsWith("\\[") ||
         afterNewline.match(/^#{1,6}\s/) ||
         afterNewline.match(/^[\s]*[-*+]\s/) ||
         afterNewline.match(/^[\s]*\d+\.\s/))

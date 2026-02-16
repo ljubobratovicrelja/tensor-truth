@@ -95,6 +95,34 @@ describe("convertLatexDelimiters", () => {
     });
   });
 
+  describe("Indented display math (list items)", () => {
+    test("display math indented inside list item - strips indentation from $$", () => {
+      const input = "   - For a generic layer:\n     \\[\n     \\frac{a}{b}\n     \\]";
+      const output = convertLatexDelimiters(input);
+      // $$ must NOT be indented (would trigger CommonMark indented code block)
+      expect(output).toContain("\n$$\n");
+      expect(output).not.toMatch(/^[ \t]+\$\$/m);
+    });
+
+    test("preserves non-delimiter indented content between $$", () => {
+      const input = "     \\[\n     \\frac{a}{b}\n     \\]";
+      const output = convertLatexDelimiters(input);
+      // The math content between $$ markers can stay indented (KaTeX ignores whitespace)
+      expect(output).toContain("\\frac{a}{b}");
+      // But $$ delimiters themselves must be at column 0
+      expect(output).toMatch(/^\$\$/m);
+    });
+
+    test("multiple indented display math blocks in list", () => {
+      const input = "- Item 1:\n  \\[\n  a = b\n  \\]\n- Item 2:\n  \\[\n  c = d\n  \\]";
+      const output = convertLatexDelimiters(input);
+      // Both $$ pairs should be de-indented
+      const dollarLines = output.split("\n").filter((l) => l.trim() === "$$");
+      expect(dollarLines).toHaveLength(4);
+      dollarLines.forEach((l) => expect(l).toBe("$$"));
+    });
+  });
+
   describe("Edge cases", () => {
     test("empty input", () => {
       expect(convertLatexDelimiters("")).toBe("");
