@@ -231,7 +231,7 @@ def test_chat_history_to_llama_messages_system_role():
 def _create_mock_config(max_history_turns=3, cleaning_enabled=False):
     """Create a mock TensorTruthConfig for testing."""
     config = Mock()
-    config.rag.max_history_turns = max_history_turns
+    config.conversation.max_history_turns = max_history_turns
     config.history_cleaning.enabled = cleaning_enabled
     config.history_cleaning.remove_emojis = True
     config.history_cleaning.remove_filler_phrases = True

@@ -44,14 +44,14 @@ class TestConfigAPI:
 
         # Check structure
         assert "ollama" in data
-        assert "ui" in data
+        assert "llm" in data
         assert "rag" in data
-        assert "models" in data
+        assert "conversation" in data
         assert "agent" in data
 
         # Check some default values
         assert "base_url" in data["ollama"]
-        assert "default_temperature" in data["ui"]
+        assert "default_temperature" in data["llm"]
 
     @pytest.mark.asyncio
     async def test_get_default_config(self, client):
@@ -62,7 +62,7 @@ class TestConfigAPI:
 
         # Check default values
         assert data["ollama"]["base_url"] == "http://localhost:11434"
-        assert data["ui"]["default_temperature"] == 0.7
+        assert data["llm"]["default_temperature"] == 0.7
         assert data["agent"]["max_iterations"] == 10
 
     @pytest.mark.asyncio
@@ -143,7 +143,7 @@ class TestConfigAPI:
         # Verify reranker is in rag section (not ui)
         assert "default_reranker" in data["rag"]
         assert data["rag"]["default_reranker"] == "BAAI/bge-reranker-v2-m3"
-        assert "default_reranker" not in data["ui"]
+        assert "default_reranker" not in data.get("ui", {})
 
     @pytest.mark.asyncio
     async def test_update_config_rag_reranker(self, client, tmp_path, monkeypatch):

@@ -11,7 +11,7 @@ import logging
 from llama_index.llms.ollama import Ollama
 
 from tensortruth.core.constants import (
-    DEFAULT_AGENT_REASONING_MODEL,
+    DEFAULT_MODEL,
     DEFAULT_OLLAMA_BASE_URL,
 )
 
@@ -41,7 +41,7 @@ def create_condenser_llm(
     """
     from tensortruth.core.ollama import get_orchestrator_llm
 
-    model = getattr(base_llm, "model", DEFAULT_AGENT_REASONING_MODEL)
+    model = getattr(base_llm, "model", DEFAULT_MODEL)
     base_url = getattr(base_llm, "base_url", DEFAULT_OLLAMA_BASE_URL)
     context_window = getattr(base_llm, "context_window", 16384)
 

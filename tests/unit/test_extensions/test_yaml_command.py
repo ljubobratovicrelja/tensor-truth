@@ -214,9 +214,9 @@ class TestYamlAgentCommand:
     @pytest.fixture
     def mock_config_service(self):
         config = MagicMock()
-        config.models.default_agent_reasoning_model = "llama3.2:3b"
+        config.llm.default_model = "llama3.2:3b"
         config.ollama.base_url = "http://localhost:11434"
-        config.ui.default_context_window = 4096
+        config.llm.default_context_window = 4096
         svc = MagicMock()
         svc.load.return_value = config
         return svc

@@ -28,18 +28,19 @@ def mock_config_service():
     mock = MagicMock()
     config = MagicMock()
 
-    # Set up config defaults
-    config.ui.default_temperature = 0.7
-    config.ui.default_context_window = 4096
-    config.ui.default_max_tokens = 2048
-    config.ui.default_top_n = 5
-    config.ui.default_confidence_threshold = 0.3
-    config.ui.default_confidence_cutoff_hard = 0.1
+    # Set up config defaults (new structure)
+    config.llm.default_temperature = 0.7
+    config.llm.default_context_window = 4096
+    config.llm.default_max_tokens = 2048
+    config.rag.default_top_n = 5
+    config.rag.default_confidence_threshold = 0.3
+    config.rag.default_confidence_cutoff_hard = 0.1
     config.rag.default_reranker = "global-reranker"
     config.rag.default_device = "cpu"
     config.rag.default_balance_strategy = "balanced"
     config.rag.default_embedding_model = "BAAI/bge-m3"
     config.agent.router_model = "global-router"
+    config.agent.orchestrator_enabled = True
 
     mock.load.return_value = config
     return mock

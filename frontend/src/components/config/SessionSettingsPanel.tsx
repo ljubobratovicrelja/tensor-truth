@@ -145,25 +145,25 @@ export function SessionSettingsPanel({
   useEffect(() => {
     if (open && config) {
       setTemperature(
-        (currentParams.temperature as number) ?? config.ui.default_temperature
+        (currentParams.temperature as number) ?? config.llm.default_temperature
       );
       setContextWindow(
-        (currentParams.context_window as number) ?? config.ui.default_context_window
+        (currentParams.context_window as number) ?? config.llm.default_context_window
       );
-      setMaxTokens((currentParams.max_tokens as number) ?? config.ui.default_max_tokens);
+      setMaxTokens((currentParams.max_tokens as number) ?? config.llm.default_max_tokens);
       setRerankerModel(
         (currentParams.reranker_model as string) ?? config.rag.default_reranker
       );
       setRerankerTopN(
-        (currentParams.reranker_top_n as number) ?? config.ui.default_top_n
+        (currentParams.reranker_top_n as number) ?? config.rag.default_top_n
       );
       setConfidenceCutoff(
         (currentParams.confidence_cutoff as number) ??
-          config.ui.default_confidence_threshold
+          config.rag.default_confidence_threshold
       );
       setConfidenceCutoffHard(
         (currentParams.confidence_cutoff_hard as number) ??
-          config.ui.default_confidence_cutoff_hard
+          config.rag.default_confidence_cutoff_hard
       );
       setSystemPrompt((currentParams.system_prompt as string) ?? "");
       setRagDevice((currentParams.rag_device as string) ?? config.rag.default_device);
@@ -172,10 +172,12 @@ export function SessionSettingsPanel({
         (currentParams.embedding_model as string) ?? config.rag.default_embedding_model
       );
       setMaxHistoryTurns(
-        (currentParams.max_history_turns as number) ?? config.rag.max_history_turns
+        (currentParams.max_history_turns as number) ??
+          config.conversation.max_history_turns
       );
       setMemoryTokenLimit(
-        (currentParams.memory_token_limit as number) ?? config.rag.memory_token_limit
+        (currentParams.memory_token_limit as number) ??
+          config.conversation.memory_token_limit
       );
       setRouterModel((currentParams.router_model as string) ?? config.agent.router_model);
       setFunctionAgentModel(

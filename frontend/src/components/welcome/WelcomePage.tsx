@@ -42,7 +42,7 @@ export function WelcomePage() {
   const showAutocomplete = detection.hasCommand && !hasSpaceAfterCommand;
 
   // Derive effective model: user selection or config default
-  const effectiveModel = selectedModel || config?.models.default_rag_model || "";
+  const effectiveModel = selectedModel || config?.llm.default_model || "";
 
   const handleSubmit = async (promptText?: string) => {
     const text = promptText ?? message.trim();

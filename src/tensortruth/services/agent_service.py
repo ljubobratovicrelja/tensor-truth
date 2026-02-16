@@ -51,77 +51,16 @@ class AgentService:
         # Import factories to trigger self-registration
         self._import_factories()
 
-        # Load built-in agents
-        self._load_builtin_agents()
-
     def _import_factories(self) -> None:
         """Import agent factories to trigger self-registration."""
         try:
-            # Import router agent factory (BrowseAgent)
-            # Import function agent factory
             from tensortruth.agents.function import (  # noqa: F401
                 factory as function_factory,
-            )
-            from tensortruth.agents.router.browse import (  # noqa: F401
-                factory as browse_factory,
             )
 
             logger.info("Agent factories imported and registered")
         except ImportError as e:
             logger.warning(f"Failed to import agent factories: {e}")
-
-    def _load_builtin_agents(self) -> None:
-        """Register built-in agents (router-based by default).
-
-        Registers the browse and research agents using the router pattern.
-        FunctionAgent is available via factory registry but not registered
-        as a built-in (users can create custom function agents).
-        """
-        # Get agent configuration section
-        agent_cfg = self._config.get("agent", {})
-        max_iterations = agent_cfg.get("max_iterations", 10)
-        min_pages_required = agent_cfg.get("min_pages_required", 3)
-
-        # Browse agent (router-based - default and recommended)
-        browse_config = AgentConfig(
-            name="browse",
-            description=(
-                "Router-based web research agent (fast, deterministic) - "
-                "searches and synthesizes information from multiple sources"
-            ),
-            tools=["search_web", "fetch_pages_batch", "search_focused"],
-            system_prompt="",  # Not used by router agent
-            agent_type="router",
-            model=None,  # Uses session model for synthesis
-            max_iterations=max_iterations,
-            factory_params={"min_pages_required": min_pages_required},
-        )
-
-        research_config = AgentConfig(
-            name="research",
-            description=(
-                "Alias for browse agent - router-based web research "
-                "with multi-source synthesis"
-            ),
-            tools=["search_web", "fetch_pages_batch", "search_focused"],
-            system_prompt="",
-            agent_type="router",
-            model=None,
-            max_iterations=max_iterations,
-            factory_params={"min_pages_required": min_pages_required},
-        )
-
-        self.register_agent(browse_config)
-        self.register_agent(research_config)
-
-        logger.info(
-            f"Registered router-based browse agent: "
-            f"max_iterations={max_iterations}, min_pages={min_pages_required}"
-        )
-
-        # Note: FunctionAgent is available via factory registry but not registered
-        # as a built-in. Users can register custom agents with agent_type="function"
-        # to use LlamaIndex's native tool-calling.
 
     def _get_live_config(self) -> Dict[str, Any]:
         """Get fresh config from ConfigService, falling back to init snapshot."""

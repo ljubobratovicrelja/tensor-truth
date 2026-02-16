@@ -210,11 +210,11 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
     if model_name is None:
         try:
             config = load_config()
-            model_name = config.models.default_rag_model
+            model_name = config.llm.default_model
         except Exception:
-            from tensortruth.core.constants import DEFAULT_RAG_MODEL
+            from tensortruth.core.constants import DEFAULT_MODEL
 
-            model_name = DEFAULT_RAG_MODEL  # Fallback default
+            model_name = DEFAULT_MODEL  # Fallback default
 
     user_system_prompt = params.get("system_prompt", "").strip()
     device_mode = params.get("llm_device", "gpu")  # 'gpu' or 'cpu'
@@ -693,7 +693,7 @@ def load_engine_for_modules(
         try:
             if config is None:
                 config = load_config()
-            memory_token_limit = config.rag.memory_token_limit
+            memory_token_limit = config.conversation.memory_token_limit
         except (ImportError, Exception):
             memory_token_limit = 4000
     memory = ChatMemoryBuffer.from_defaults(token_limit=memory_token_limit)

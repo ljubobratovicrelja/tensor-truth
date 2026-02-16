@@ -11,8 +11,8 @@ def _create_mock_config():
     config = Mock()
     # Configure history_cleaning to be disabled so tests work without actual cleaning
     config.history_cleaning.enabled = False
-    # Add max_history_turns for ChatHistoryService (renamed from max_history_messages)
-    config.rag.max_history_turns = 3
+    # Add max_history_turns for ChatHistoryService
+    config.conversation.max_history_turns = 3
     return config
 
 

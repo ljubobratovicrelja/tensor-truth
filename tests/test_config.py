@@ -15,16 +15,13 @@ from tensortruth.app_utils.config import (
 )
 from tensortruth.app_utils.config_schema import (
     AgentConfig,
-    ModelsConfig,
+    ConversationConfig,
+    LLMConfig,
     OllamaConfig,
     RAGConfig,
     TensorTruthConfig,
-    UIConfig,
 )
-from tensortruth.core.constants import (
-    DEFAULT_AGENT_REASONING_MODEL,
-    DEFAULT_RAG_MODEL,
-)
+from tensortruth.core.constants import DEFAULT_MODEL
 
 
 @pytest.fixture
@@ -48,19 +45,27 @@ class TestConfigSchema:
         assert config.base_url == "http://localhost:11434"
         assert config.timeout == 300
 
-    def test_ui_config_defaults(self):
-        """Test UIConfig default values."""
-        config = UIConfig()
+    def test_llm_config_defaults(self):
+        """Test LLMConfig default values."""
+        config = LLMConfig()
+        assert config.default_model == DEFAULT_MODEL
         assert config.default_temperature == 0.7
         assert config.default_context_window == 8192
-        assert config.default_top_n == 5
-        assert config.default_confidence_threshold == 0.35
+        assert config.default_max_tokens == 4096
 
     def test_rag_config_defaults(self):
         """Test RAGConfig default values."""
         config = RAGConfig()
         assert config.default_device == "cpu"
         assert config.default_reranker == "BAAI/bge-reranker-v2-m3"
+        assert config.default_top_n == 5
+        assert config.default_confidence_threshold == 0.35
+
+    def test_conversation_config_defaults(self):
+        """Test ConversationConfig default values."""
+        config = ConversationConfig()
+        assert config.max_history_turns == 3
+        assert config.memory_token_limit == 4000
 
     def test_agent_config_defaults(self):
         """Test AgentConfig default values."""
@@ -79,12 +84,6 @@ class TestConfigSchema:
         with pytest.raises(ValueError, match="max_iterations must be positive"):
             AgentConfig(max_iterations=-5)
 
-    def test_models_config_defaults(self):
-        """Test ModelsConfig has correct default values."""
-        config = ModelsConfig()
-        assert config.default_rag_model == DEFAULT_RAG_MODEL
-        assert config.default_agent_reasoning_model == DEFAULT_AGENT_REASONING_MODEL
-
     def test_config_to_dict(self):
         """Test TensorTruthConfig serialization to dict."""
         from tensortruth.app_utils.config_schema import (
@@ -94,9 +93,9 @@ class TestConfigSchema:
 
         config = TensorTruthConfig(
             ollama=OllamaConfig(),
-            ui=UIConfig(),
+            llm=LLMConfig(),
             rag=RAGConfig(default_device="cuda"),
-            models=ModelsConfig(),
+            conversation=ConversationConfig(),
             agent=AgentConfig(),
             history_cleaning=HistoryCleaningConfig(),
             web_search=WebSearchConfig(),
@@ -104,48 +103,175 @@ class TestConfigSchema:
         data = config.to_dict()
 
         assert data["ollama"]["base_url"] == "http://localhost:11434"
-        assert data["ui"]["default_temperature"] == 0.7
+        assert data["llm"]["default_temperature"] == 0.7
+        assert data["llm"]["default_model"] == DEFAULT_MODEL
         assert data["rag"]["default_device"] == "cuda"
+        assert data["conversation"]["max_history_turns"] == 3
         assert data["agent"]["max_iterations"] == 10
 
     def test_config_from_dict(self):
         """Test TensorTruthConfig deserialization from dict."""
         data = {
             "ollama": {"base_url": "http://192.168.1.100:11434", "timeout": 600},
-            "ui": {
+            "llm": {
+                "default_model": "custom:8b",
                 "default_temperature": 0.5,
                 "default_context_window": 8192,
-                "default_top_n": 5,
-                "default_confidence_threshold": 0.4,
             },
             "rag": {
                 "default_device": "mps",
                 "default_reranker": "BAAI/bge-reranker-base",
+                "default_top_n": 10,
+                "default_confidence_threshold": 0.4,
+            },
+            "conversation": {
+                "max_history_turns": 5,
             },
         }
         config = TensorTruthConfig.from_dict(data)
 
         assert config.ollama.base_url == "http://192.168.1.100:11434"
         assert config.ollama.timeout == 600
-        assert config.ui.default_temperature == 0.5
-        assert config.ui.default_context_window == 8192
+        assert config.llm.default_temperature == 0.5
+        assert config.llm.default_context_window == 8192
+        assert config.llm.default_model == "custom:8b"
         assert config.rag.default_device == "mps"
         assert config.rag.default_reranker == "BAAI/bge-reranker-base"
+        assert config.rag.default_top_n == 10
+        assert config.conversation.max_history_turns == 5
 
     def test_config_from_dict_with_missing_keys(self):
         """Test TensorTruthConfig handles missing keys gracefully."""
         data = {
             "ollama": {"base_url": "http://custom:11434"},
             # Missing timeout, should use default
-            "ui": {},  # All missing, should use defaults
+            "llm": {},  # All missing, should use defaults
             "rag": {},  # Missing, should use default
         }
         config = TensorTruthConfig.from_dict(data)
 
         assert config.ollama.base_url == "http://custom:11434"
         assert config.ollama.timeout == 300  # Default
-        assert config.ui.default_temperature == 0.7  # Default
+        assert config.llm.default_temperature == 0.7  # Default
         assert config.rag.default_device == "cpu"  # Default
+
+
+class TestConfigMigration:
+    """Test migration of old config format to new format."""
+
+    def test_migrate_ui_to_llm(self):
+        """Old ui.default_temperature → llm.default_temperature."""
+        data = {
+            "ui": {
+                "default_temperature": 0.5,
+                "default_context_window": 16384,
+                "default_max_tokens": 8192,
+            },
+        }
+        config = TensorTruthConfig.from_dict(data)
+
+        assert config.llm.default_temperature == 0.5
+        assert config.llm.default_context_window == 16384
+        assert config.llm.default_max_tokens == 8192
+
+    def test_migrate_ui_to_rag(self):
+        """Old ui.default_top_n → rag.default_top_n."""
+        data = {
+            "ui": {
+                "default_top_n": 10,
+                "default_confidence_threshold": 0.5,
+                "default_confidence_cutoff_hard": 0.2,
+            },
+        }
+        config = TensorTruthConfig.from_dict(data)
+
+        assert config.rag.default_top_n == 10
+        assert config.rag.default_confidence_threshold == 0.5
+        assert config.rag.default_confidence_cutoff_hard == 0.2
+
+    def test_migrate_models_default_rag_model_to_llm(self):
+        """Old models.default_rag_model → llm.default_model."""
+        data = {
+            "models": {"default_rag_model": "custom-model:14b"},
+        }
+        config = TensorTruthConfig.from_dict(data)
+
+        assert config.llm.default_model == "custom-model:14b"
+
+    def test_migrate_rag_conversation_fields(self):
+        """Old rag.max_history_turns → conversation.max_history_turns."""
+        data = {
+            "rag": {
+                "default_device": "mps",
+                "max_history_turns": 5,
+                "memory_token_limit": 8000,
+            },
+        }
+        config = TensorTruthConfig.from_dict(data)
+
+        assert config.conversation.max_history_turns == 5
+        assert config.conversation.memory_token_limit == 8000
+        # Should NOT be in rag anymore (it gets popped)
+        assert config.rag.default_device == "mps"
+
+    def test_migrate_full_old_config(self):
+        """Full old-format config migrates correctly."""
+        data = {
+            "ollama": {"base_url": "http://custom:11434"},
+            "ui": {
+                "default_temperature": 0.3,
+                "default_context_window": 16384,
+                "default_max_tokens": 2048,
+                "default_top_n": 8,
+                "default_confidence_threshold": 0.4,
+                "default_confidence_cutoff_hard": 0.1,
+            },
+            "models": {"default_rag_model": "llama3:8b"},
+            "rag": {
+                "default_device": "cuda",
+                "max_history_turns": 5,
+                "memory_token_limit": 6000,
+            },
+            "agent": {"max_iterations": 15},
+        }
+        config = TensorTruthConfig.from_dict(data)
+
+        assert config.ollama.base_url == "http://custom:11434"
+        assert config.llm.default_model == "llama3:8b"
+        assert config.llm.default_temperature == 0.3
+        assert config.llm.default_context_window == 16384
+        assert config.llm.default_max_tokens == 2048
+        assert config.rag.default_device == "cuda"
+        assert config.rag.default_top_n == 8
+        assert config.rag.default_confidence_threshold == 0.4
+        assert config.rag.default_confidence_cutoff_hard == 0.1
+        assert config.conversation.max_history_turns == 5
+        assert config.conversation.memory_token_limit == 6000
+        assert config.agent.max_iterations == 15
+
+    def test_new_format_not_affected_by_migration(self):
+        """New-format config is not corrupted by migration logic."""
+        data = {
+            "llm": {"default_model": "new-model:8b", "default_temperature": 0.9},
+            "rag": {"default_device": "mps", "default_top_n": 3},
+            "conversation": {"max_history_turns": 10},
+        }
+        config = TensorTruthConfig.from_dict(data)
+
+        assert config.llm.default_model == "new-model:8b"
+        assert config.llm.default_temperature == 0.9
+        assert config.rag.default_top_n == 3
+        assert config.conversation.max_history_turns == 10
+
+    def test_new_format_takes_precedence_over_old(self):
+        """If both old and new keys exist, new takes precedence."""
+        data = {
+            "ui": {"default_temperature": 0.3},  # old
+            "llm": {"default_temperature": 0.9},  # new - should win
+        }
+        config = TensorTruthConfig.from_dict(data)
+
+        assert config.llm.default_temperature == 0.9
 
 
 class TestDeviceDetection:
@@ -153,14 +279,11 @@ class TestDeviceDetection:
 
     def test_detect_mps_device(self):
         """Test detection of MPS device on Apple Silicon."""
-        # Mock torch module inside the function where it's imported
         with patch("builtins.__import__") as mock_import:
-            # Create mock torch module
             mock_torch = Mock()
             mock_torch.backends.mps.is_available.return_value = True
             mock_torch.cuda.is_available.return_value = False
 
-            # Make __import__ return our mock when importing torch
             def import_side_effect(name, *args, **kwargs):
                 if name == "torch":
                     return mock_torch
@@ -263,7 +386,7 @@ class TestConfigFileOperations:
 
         # Verify config has expected defaults
         assert config.ollama.base_url == "http://localhost:11434"
-        assert config.ui.default_temperature == 0.7
+        assert config.llm.default_temperature == 0.7
 
     def test_default_config_with_mps(self, temp_config_dir):
         """Test that default config detects MPS and saves it to file."""
@@ -333,9 +456,9 @@ class TestConfigFileOperations:
         # Create custom config
         config = TensorTruthConfig(
             ollama=OllamaConfig(base_url="http://custom:11434", timeout=600),
-            ui=UIConfig(default_temperature=0.7, default_top_n=5),
-            rag=RAGConfig(default_device="cuda"),
-            models=ModelsConfig(),
+            llm=LLMConfig(default_temperature=0.7),
+            rag=RAGConfig(default_device="cuda", default_top_n=5),
+            conversation=ConversationConfig(),
             agent=AgentConfig(max_iterations=15),
             history_cleaning=HistoryCleaningConfig(),
             web_search=WebSearchConfig(),
@@ -350,8 +473,8 @@ class TestConfigFileOperations:
         # Verify all values match
         assert loaded_config.ollama.base_url == "http://custom:11434"
         assert loaded_config.ollama.timeout == 600
-        assert loaded_config.ui.default_temperature == 0.7
-        assert loaded_config.ui.default_top_n == 5
+        assert loaded_config.llm.default_temperature == 0.7
+        assert loaded_config.rag.default_top_n == 5
         assert loaded_config.rag.default_device == "cuda"
         assert loaded_config.agent.max_iterations == 15
 
@@ -368,23 +491,21 @@ class TestConfigFileOperations:
         assert config.ollama.base_url == "http://192.168.1.50:11434"
         assert config.ollama.timeout == 900
 
-    def test_update_config_ui(self, temp_config_dir):
-        """Test updating UI config values."""
+    def test_update_config_llm(self, temp_config_dir):
+        """Test updating LLM config values."""
         # Create initial config
         load_config()
 
-        # Update UI values
+        # Update LLM values
         update_config(
-            ui_default_temperature=0.8,
-            ui_default_top_n=10,
-            ui_default_context_window=8192,
+            llm_default_temperature=0.8,
+            llm_default_context_window=8192,
         )
 
         # Load and verify
         config = load_config()
-        assert config.ui.default_temperature == 0.8
-        assert config.ui.default_top_n == 10
-        assert config.ui.default_context_window == 8192
+        assert config.llm.default_temperature == 0.8
+        assert config.llm.default_context_window == 8192
 
     def test_update_config_rag(self, temp_config_dir):
         """Test updating RAG config values."""
@@ -392,11 +513,25 @@ class TestConfigFileOperations:
         load_config()
 
         # Update RAG values
-        update_config(rag_default_device="cuda")
+        update_config(rag_default_device="cuda", rag_default_top_n=10)
 
         # Load and verify
         config = load_config()
         assert config.rag.default_device == "cuda"
+        assert config.rag.default_top_n == 10
+
+    def test_update_config_conversation(self, temp_config_dir):
+        """Test updating conversation config values."""
+        load_config()
+
+        update_config(
+            conversation_max_history_turns=5,
+            conversation_memory_token_limit=8000,
+        )
+
+        config = load_config()
+        assert config.conversation.max_history_turns == 5
+        assert config.conversation.memory_token_limit == 8000
 
     def test_update_config_mixed(self, temp_config_dir):
         """Test updating multiple config sections at once."""
@@ -405,31 +540,23 @@ class TestConfigFileOperations:
         # Update across sections
         update_config(
             ollama_base_url="http://custom:11434",
-            ui_default_temperature=0.5,
+            llm_default_temperature=0.5,
             rag_default_device="mps",
         )
 
         # Load and verify
         config = load_config()
         assert config.ollama.base_url == "http://custom:11434"
-        assert config.ui.default_temperature == 0.5
+        assert config.llm.default_temperature == 0.5
         assert config.rag.default_device == "mps"
 
-    def test_update_config_models(self):
-        """Test updating models config section."""
-        update_config(
-            models_default_rag_model="llama3:8b",
-            models_default_agent_reasoning_model="llama3.1:8b",
-        )
-        config = load_config()
-        assert config.models.default_rag_model == "llama3:8b"
-        assert config.models.default_agent_reasoning_model == "llama3.1:8b"
+    def test_update_config_llm_default_model(self, temp_config_dir):
+        """Test updating LLM default model."""
+        load_config()
 
-        # Restore original values
-        update_config(
-            models_default_rag_model="deepseek-r1:14b",
-            models_default_agent_reasoning_model="llama3.1:8b",
-        )
+        update_config(llm_default_model="llama3:8b")
+        config = load_config()
+        assert config.llm.default_model == "llama3:8b"
 
     def test_update_config_ignores_invalid_keys(self, temp_config_dir):
         """Test that update_config ignores invalid keys gracefully."""
@@ -476,14 +603,16 @@ class TestConfigFileOperations:
 
         # Verify top-level sections exist
         assert "ollama" in data
-        assert "ui" in data
+        assert "llm" in data
         assert "rag" in data
+        assert "conversation" in data
 
         # Verify nested structure
         assert "base_url" in data["ollama"]
         assert "timeout" in data["ollama"]
-        assert "default_temperature" in data["ui"]
+        assert "default_temperature" in data["llm"]
         assert "default_device" in data["rag"]
+        assert "max_history_turns" in data["conversation"]
 
 
 class TestConfigHash:
@@ -572,7 +701,7 @@ class TestConfigAPIRoutes:
     """Test configuration API routes and schema consistency."""
 
     def test_config_to_response_uses_max_history_turns(self):
-        """Config API should use max_history_turns (not max_history_messages)."""
+        """Config API should use max_history_turns from conversation config."""
         from tensortruth.api.routes.config import _config_to_response
         from tensortruth.app_utils.config_schema import TensorTruthConfig
 
@@ -581,16 +710,18 @@ class TestConfigAPIRoutes:
         # This should not raise AttributeError
         response = _config_to_response(config)
 
-        # Verify the response has max_history_turns
-        assert hasattr(response.rag, "max_history_turns")
-        assert response.rag.max_history_turns == config.rag.max_history_turns
+        # Verify the response has max_history_turns in conversation
+        assert hasattr(response.conversation, "max_history_turns")
+        assert (
+            response.conversation.max_history_turns
+            == config.conversation.max_history_turns
+        )
 
-    def test_rag_config_schema_has_max_history_turns(self):
-        """RAGConfigSchema should have max_history_turns field."""
-        from tensortruth.api.schemas.config import RAGConfigSchema
+    def test_conversation_config_schema_has_max_history_turns(self):
+        """ConversationConfigSchema should have max_history_turns field."""
+        from tensortruth.api.schemas.config import ConversationConfigSchema
 
-        schema = RAGConfigSchema()
+        schema = ConversationConfigSchema()
 
-        # Should have max_history_turns, not max_history_messages
         assert hasattr(schema, "max_history_turns")
-        assert not hasattr(schema, "max_history_messages")
+        assert hasattr(schema, "memory_token_limit")

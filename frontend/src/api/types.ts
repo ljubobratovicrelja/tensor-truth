@@ -240,13 +240,11 @@ export interface OllamaConfig {
   timeout: number;
 }
 
-export interface UIConfig {
+export interface LLMConfig {
+  default_model: string;
   default_temperature: number;
   default_context_window: number;
   default_max_tokens: number;
-  default_top_n: number;
-  default_confidence_threshold: number;
-  default_confidence_cutoff_hard: number;
 }
 
 export interface RAGConfig {
@@ -254,14 +252,14 @@ export interface RAGConfig {
   default_balance_strategy: string;
   default_embedding_model: string;
   default_reranker: string;
-  // Max conversation turns (1 turn = user query + assistant response)
-  max_history_turns: number;
-  memory_token_limit: number;
+  default_top_n: number;
+  default_confidence_threshold: number;
+  default_confidence_cutoff_hard: number;
 }
 
-export interface ModelsConfig {
-  default_rag_model: string;
-  default_agent_reasoning_model: string;
+export interface ConversationConfig {
+  max_history_turns: number;
+  memory_token_limit: number;
 }
 
 export interface AgentConfig {
@@ -298,9 +296,9 @@ export interface WebSearchConfig {
 
 export interface ConfigResponse {
   ollama: OllamaConfig;
-  ui: UIConfig;
+  llm: LLMConfig;
   rag: RAGConfig;
-  models: ModelsConfig;
+  conversation: ConversationConfig;
   agent: AgentConfig;
   history_cleaning: HistoryCleaningConfig;
   web_search: WebSearchConfig;

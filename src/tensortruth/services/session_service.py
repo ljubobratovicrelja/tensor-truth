@@ -66,17 +66,17 @@ class SessionService:
 
             # Define defaults from config
             defaults = {
-                "temperature": config.ui.default_temperature,
-                "context_window": config.ui.default_context_window,
-                "max_tokens": config.ui.default_max_tokens,
+                "temperature": config.llm.default_temperature,
+                "context_window": config.llm.default_context_window,
+                "max_tokens": config.llm.default_max_tokens,
                 "reranker_model": config.rag.default_reranker,
-                "reranker_top_n": config.ui.default_top_n,
-                "confidence_cutoff": config.ui.default_confidence_threshold,
-                "confidence_cutoff_hard": config.ui.default_confidence_cutoff_hard,
+                "reranker_top_n": config.rag.default_top_n,
+                "confidence_cutoff": config.rag.default_confidence_threshold,
+                "confidence_cutoff_hard": config.rag.default_confidence_cutoff_hard,
                 "rag_device": config.rag.default_device,
                 "balance_strategy": config.rag.default_balance_strategy,
                 "embedding_model": config.rag.default_embedding_model,
-                "llm_device": "gpu",  # Reasonable default
+                "llm_device": "gpu",
                 "router_model": config.agent.router_model,
                 "orchestrator_enabled": config.agent.orchestrator_enabled,
             }

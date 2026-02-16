@@ -10,11 +10,11 @@ from tensortruth.api.schemas import (
     AgentConfigSchema,
     ConfigResponse,
     ConfigUpdateRequest,
+    ConversationConfigSchema,
     HistoryCleaningConfigSchema,
-    ModelsConfigSchema,
+    LLMConfigSchema,
     OllamaConfigSchema,
     RAGConfigSchema,
-    UIConfigSchema,
     WebSearchConfigSchema,
 )
 
@@ -28,24 +28,23 @@ def _config_to_response(config) -> ConfigResponse:
             base_url=config.ollama.base_url,
             timeout=config.ollama.timeout,
         ),
-        ui=UIConfigSchema(
-            default_temperature=config.ui.default_temperature,
-            default_context_window=config.ui.default_context_window,
-            default_max_tokens=config.ui.default_max_tokens,
-            default_top_n=config.ui.default_top_n,
-            default_confidence_threshold=config.ui.default_confidence_threshold,
-            default_confidence_cutoff_hard=config.ui.default_confidence_cutoff_hard,
+        llm=LLMConfigSchema(
+            default_model=config.llm.default_model,
+            default_temperature=config.llm.default_temperature,
+            default_context_window=config.llm.default_context_window,
+            default_max_tokens=config.llm.default_max_tokens,
         ),
         rag=RAGConfigSchema(
             default_device=config.rag.default_device,
             default_embedding_model=config.rag.default_embedding_model,
             default_reranker=config.rag.default_reranker,
-            max_history_turns=config.rag.max_history_turns,
-            memory_token_limit=config.rag.memory_token_limit,
+            default_top_n=config.rag.default_top_n,
+            default_confidence_threshold=config.rag.default_confidence_threshold,
+            default_confidence_cutoff_hard=config.rag.default_confidence_cutoff_hard,
         ),
-        models=ModelsConfigSchema(
-            default_rag_model=config.models.default_rag_model,
-            default_agent_reasoning_model=config.models.default_agent_reasoning_model,
+        conversation=ConversationConfigSchema(
+            max_history_turns=config.conversation.max_history_turns,
+            memory_token_limit=config.conversation.memory_token_limit,
         ),
         agent=AgentConfigSchema(
             max_iterations=config.agent.max_iterations,
@@ -89,10 +88,10 @@ async def update_config(
 
     Supports nested updates using prefixed keys:
     - ollama_*: Updates ollama config (e.g., ollama_base_url)
-    - ui_*: Updates UI config (e.g., ui_default_temperature)
+    - llm_*: Updates LLM config (e.g., llm_default_temperature)
     - rag_*: Updates RAG config (e.g., rag_default_device)
+    - conversation_*: Updates conversation config (e.g., conversation_max_history_turns)
     - agent_*: Updates agent config (e.g., agent_max_iterations)
-    - models_*: Updates models config (e.g., models_default_rag_model)
     - history_cleaning_*: Updates history cleaning config (e.g., history_cleaning_enabled)
     - web_search_*: Updates web search config (e.g., web_search_ddg_max_results)
     """

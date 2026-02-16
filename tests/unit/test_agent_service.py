@@ -72,9 +72,8 @@ class TestAgentConfig:
 class TestAgentServiceInit:
     """Test AgentService initialization."""
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    def test_init_with_tool_service(self, mock_import, mock_load):
+    def test_init_with_tool_service(self, mock_import):
         """Should initialize with tool service and config."""
         mock_tool_service = MagicMock()
         config = {"ollama_url": "http://localhost:11434"}
@@ -85,102 +84,30 @@ class TestAgentServiceInit:
         assert service._config == config
         assert service._factory_registry is not None
         mock_import.assert_called_once()
-        mock_load.assert_called_once()
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    def test_init_imports_factories(self, mock_import, mock_load):
+    def test_init_imports_factories(self, mock_import):
         """Should import factories on init."""
         mock_tool_service = MagicMock()
         _ = AgentService(tool_service=mock_tool_service, config={})
 
         mock_import.assert_called_once()
 
-
-class TestLoadBuiltinAgents:
-    """Test AgentService._load_builtin_agents()."""
-
     @patch.object(AgentService, "_import_factories")
-    def test_load_builtin_agents_registers_browse(self, mock_import):
-        """Should register browse agent with router type."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        assert "browse" in service._agent_configs
-        browse_config = service._agent_configs["browse"]
-        assert browse_config.name == "browse"
-        assert browse_config.tools == [
-            "search_web",
-            "fetch_pages_batch",
-            "search_focused",
-        ]
-        assert browse_config.agent_type == "router"
-        assert browse_config.model is None
-
-    @patch.object(AgentService, "_import_factories")
-    def test_load_builtin_agents_registers_research_alias(self, mock_import):
-        """Should register research as alias for browse."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        assert "research" in service._agent_configs
-        research_config = service._agent_configs["research"]
-        assert research_config.name == "research"
-        assert research_config.agent_type == "router"
-
-    @patch.object(AgentService, "_import_factories")
-    def test_load_builtin_agents_uses_config_values(self, mock_import):
-        """Should use config values for max_iterations and min_pages."""
-        mock_tool_service = MagicMock()
-        config = {"agent": {"max_iterations": 20, "min_pages_required": 7}}
-        service = AgentService(tool_service=mock_tool_service, config=config)
-
-        browse_config = service._agent_configs["browse"]
-        assert browse_config.max_iterations == 20
-        assert browse_config.factory_params["min_pages_required"] == 7
-
-    @patch.object(AgentService, "_import_factories")
-    def test_load_builtin_agents_uses_defaults_when_no_config(self, mock_import):
-        """Should use default values when config section missing."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        browse_config = service._agent_configs["browse"]
-        assert browse_config.max_iterations == 10
-        assert browse_config.factory_params["min_pages_required"] == 3
-
-    @patch.object(AgentService, "_import_factories")
-    def test_list_agents_includes_builtin_agents(self, mock_import):
-        """Should list browse and research agents after initialization."""
+    def test_init_no_builtin_agents(self, mock_import):
+        """Should start with no agents registered (builtins removed)."""
         mock_tool_service = MagicMock()
         service = AgentService(tool_service=mock_tool_service, config={})
 
         agents = service.list_agents()
-        agent_names = [agent["name"] for agent in agents]
-
-        assert "browse" in agent_names
-        assert "research" in agent_names
-        assert len(agents) == 2
-
-    @patch.object(AgentService, "_import_factories")
-    def test_list_agents_includes_agent_type(self, mock_import):
-        """Should include agent_type in list_agents output."""
-        mock_tool_service = MagicMock()
-        service = AgentService(tool_service=mock_tool_service, config={})
-
-        agents = service.list_agents()
-        browse_agent = next(a for a in agents if a["name"] == "browse")
-
-        assert "agent_type" in browse_agent
-        assert browse_agent["agent_type"] == "router"
+        assert len(agents) == 0
 
 
 class TestAgentServiceRegisterAgent:
     """Test AgentService.register_agent()."""
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    def test_register_agent_adds_config(self, mock_import, mock_load):
+    def test_register_agent_adds_config(self, mock_import):
         """Should add agent config to registry."""
         mock_tool_service = MagicMock()
         service = AgentService(tool_service=mock_tool_service, config={})
@@ -201,9 +128,8 @@ class TestAgentServiceRegisterAgent:
 class TestAgentServiceRun:
     """Test AgentService.run() with factory pattern."""
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    async def test_run_unknown_agent_returns_error(self, mock_import, mock_load):
+    async def test_run_unknown_agent_returns_error(self, mock_import):
         """Should return error for unknown agent."""
         mock_tool_service = MagicMock()
         service = AgentService(tool_service=mock_tool_service, config={})
@@ -218,9 +144,8 @@ class TestAgentServiceRun:
         assert result.error == "Unknown agent: nonexistent"
         assert result.final_answer == ""
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    async def test_run_missing_tools_returns_error(self, mock_import, mock_load):
+    async def test_run_missing_tools_returns_error(self, mock_import):
         """Should return error when tools are missing."""
         mock_tool_service = MagicMock()
         mock_tool_service.get_tools_by_names.return_value = []
@@ -243,9 +168,8 @@ class TestAgentServiceRun:
         assert "Missing tools" in result.error
         assert "tool1" in result.error or "tool2" in result.error
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    async def test_run_creates_agent_via_factory(self, mock_import, mock_load):
+    async def test_run_creates_agent_via_factory(self, mock_import):
         """Should create agent via factory registry."""
         from llama_index.core.tools import FunctionTool
 
@@ -284,11 +208,8 @@ class TestAgentServiceRun:
         assert mock_agent.run_query == "test query"
         assert result.final_answer == "Answer from test"
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    async def test_run_function_agent_uses_function_agent_model(
-        self, mock_import, mock_load
-    ):
+    async def test_run_function_agent_uses_function_agent_model(self, mock_import):
         """Function agents should use function_agent_model when config.model is None."""
         from llama_index.core.tools import FunctionTool
 
@@ -329,11 +250,8 @@ class TestAgentServiceRun:
 
         assert created_llm_model == "qwen2.5:7b"
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    async def test_run_function_agent_with_none_session_param(
-        self, mock_import, mock_load
-    ):
+    async def test_run_function_agent_with_none_session_param(self, mock_import):
         """Should fall back to config when session param is explicitly None.
 
         This mirrors the real-world case where yaml_command.py passes
@@ -378,9 +296,8 @@ class TestAgentServiceRun:
 
         assert created_llm_model == "qwen2.5:7b"
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    async def test_run_function_agent_session_override(self, mock_import, mock_load):
+    async def test_run_function_agent_session_override(self, mock_import):
         """Session params should override global function_agent_model."""
         from llama_index.core.tools import FunctionTool
 
@@ -421,9 +338,8 @@ class TestAgentServiceRun:
 
         assert created_llm_model == "mistral:7b"
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    async def test_run_passes_factory_params(self, mock_import, mock_load):
+    async def test_run_passes_factory_params(self, mock_import):
         """Should pass factory_params to factory."""
         from llama_index.core.tools import FunctionTool
 
@@ -467,9 +383,8 @@ class TestAgentServiceRun:
         assert received_params["custom_param"] == "custom_value"
         assert received_params["context_window"] == 8192
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    async def test_run_handles_exceptions(self, mock_import, mock_load):
+    async def test_run_handles_exceptions(self, mock_import):
         """Should handle exceptions and return error."""
         from llama_index.core.tools import FunctionTool
 
@@ -523,9 +438,8 @@ class TestAgentServiceLLMCreation:
         assert llm.base_url == "http://localhost:11434"
         assert llm.context_window == 16384
 
-    @patch.object(AgentService, "_load_builtin_agents")
     @patch.object(AgentService, "_import_factories")
-    def test_create_llm_instance_method(self, mock_import, mock_load):
+    def test_create_llm_instance_method(self, mock_import):
         """Should create LLM using instance method."""
         mock_tool_service = MagicMock()
         config = {"ollama_url": "http://custom:11434"}

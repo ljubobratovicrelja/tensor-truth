@@ -281,10 +281,10 @@ class YamlAgentCommand(ToolCommand):
         config = config_service.load()
         params = session.get("params", {})
         session_params = {
-            "model": params.get("model", config.models.default_agent_reasoning_model),
+            "model": params.get("model", config.llm.default_model),
             "ollama_url": params.get("ollama_url", config.ollama.base_url),
             "context_window": params.get(
-                "context_window", config.ui.default_context_window
+                "context_window", config.llm.default_context_window
             ),
             "router_model": params.get("router_model", config.agent.router_model),
             "function_agent_model": params.get(

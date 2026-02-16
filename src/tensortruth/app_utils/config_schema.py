@@ -4,9 +4,8 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Dict, List, Optional
 
 from tensortruth.core.constants import (
-    DEFAULT_AGENT_REASONING_MODEL,
     DEFAULT_FUNCTION_AGENT_MODEL,
-    DEFAULT_RAG_MODEL,
+    DEFAULT_MODEL,
     DEFAULT_ROUTER_MODEL,
 )
 
@@ -20,15 +19,13 @@ class OllamaConfig:
 
 
 @dataclass
-class UIConfig:
-    """User interface preferences."""
+class LLMConfig:
+    """LLM generation defaults."""
 
+    default_model: str = DEFAULT_MODEL
     default_temperature: float = 0.7
     default_context_window: int = 8192
     default_max_tokens: int = 4096
-    default_top_n: int = 5
-    default_confidence_threshold: float = 0.35
-    default_confidence_cutoff_hard: float = 0.05
 
 
 @dataclass
@@ -89,14 +86,9 @@ class RAGConfig:
     default_balance_strategy: str = "top_k_per_index"  # Multi-index balancing
     default_embedding_model: str = "BAAI/bge-m3"  # HuggingFace embedding model
     default_reranker: str = "BAAI/bge-reranker-v2-m3"  # Default reranker model
-
-    # Number of recent conversation turns to include in prompt (limits context size)
-    # A turn = one user query + one assistant response (2 messages)
-    max_history_turns: int = 3
-
-    # Token limit for chat memory buffer (safety backstop)
-    # With 8k context, 5 retrievals (~1.5k), system prompt (~1k), this leaves ~5k for history
-    memory_token_limit: int = 4000
+    default_top_n: int = 5
+    default_confidence_threshold: float = 0.35
+    default_confidence_cutoff_hard: float = 0.05
 
     # Per-model configurations (model_name -> config dict)
     # On first run, this is populated from DEFAULT_EMBEDDING_MODEL_CONFIGS
@@ -140,14 +132,16 @@ class RAGConfig:
 
 
 @dataclass
-class ModelsConfig:
-    """Default model configurations."""
+class ConversationConfig:
+    """Conversation history settings."""
 
-    # Default model for RAG engine
-    default_rag_model: str = DEFAULT_RAG_MODEL
+    # Number of recent conversation turns to include in prompt (limits context size)
+    # A turn = one user query + one assistant response (2 messages)
+    max_history_turns: int = 3
 
-    # Default agent reasoning model (used in browse commands and autonomous agents)
-    default_agent_reasoning_model: str = DEFAULT_AGENT_REASONING_MODEL
+    # Token limit for chat memory buffer (safety backstop)
+    # With 8k context, 5 retrievals (~1.5k), system prompt (~1k), this leaves ~5k for history
+    memory_token_limit: int = 4000
 
 
 @dataclass
@@ -265,9 +259,9 @@ class TensorTruthConfig:
     """Main configuration for Tensor-Truth application."""
 
     ollama: OllamaConfig
-    ui: UIConfig
+    llm: LLMConfig
     rag: RAGConfig
-    models: ModelsConfig
+    conversation: ConversationConfig
     agent: AgentConfig
     history_cleaning: HistoryCleaningConfig
     web_search: WebSearchConfig
@@ -276,21 +270,67 @@ class TensorTruthConfig:
         """Convert config to dictionary for YAML serialization."""
         return {
             "ollama": asdict(self.ollama),
-            "ui": asdict(self.ui),
+            "llm": asdict(self.llm),
             "rag": asdict(self.rag),
-            "models": asdict(self.models),
+            "conversation": asdict(self.conversation),
             "agent": asdict(self.agent),
             "history_cleaning": asdict(self.history_cleaning),
             "web_search": asdict(self.web_search),
         }
 
+    @staticmethod
+    def _migrate_config_data(data: dict) -> dict:
+        """Migrate old config format to new.
+
+        Handles the transition from ui/models groups to llm/rag/conversation.
+        """
+        ui = data.pop("ui", {})
+        models = data.pop("models", {})
+
+        # ui → llm (temperature, context_window, max_tokens)
+        llm = data.get("llm", {})
+        for key in [
+            "default_temperature",
+            "default_context_window",
+            "default_max_tokens",
+        ]:
+            if key in ui and key not in llm:
+                llm[key] = ui[key]
+
+        # models.default_rag_model → llm.default_model
+        if "default_rag_model" in models and "default_model" not in llm:
+            llm["default_model"] = models["default_rag_model"]
+        data["llm"] = llm
+
+        # ui → rag (top_n, confidence thresholds)
+        rag = data.get("rag", {})
+        for key in [
+            "default_top_n",
+            "default_confidence_threshold",
+            "default_confidence_cutoff_hard",
+        ]:
+            if key in ui and key not in rag:
+                rag[key] = ui[key]
+
+        # rag → conversation (max_history_turns, memory_token_limit)
+        conversation = data.get("conversation", {})
+        for key in ["max_history_turns", "memory_token_limit"]:
+            if key in rag and key not in conversation:
+                conversation[key] = rag.pop(key)
+        data["rag"] = rag
+        data["conversation"] = conversation
+
+        return data
+
     @classmethod
     def from_dict(cls, data: dict) -> "TensorTruthConfig":
         """Create config from dictionary (loaded from YAML)."""
+        data = cls._migrate_config_data(data)
+
         ollama_data = data.get("ollama", {})
-        ui_data = data.get("ui", {})
+        llm_data = data.get("llm", {})
         rag_data = data.get("rag", {})
-        models_data = data.get("models", {})
+        conversation_data = data.get("conversation", {})
         agent_data = data.get("agent", {})
         history_cleaning_data = data.get("history_cleaning", {})
         web_search_data = data.get("web_search", {})
@@ -302,9 +342,11 @@ class TensorTruthConfig:
 
         return cls(
             ollama=OllamaConfig(**_filter(OllamaConfig, ollama_data)),
-            ui=UIConfig(**_filter(UIConfig, ui_data)),
+            llm=LLMConfig(**_filter(LLMConfig, llm_data)),
             rag=RAGConfig(**_filter(RAGConfig, rag_data)),
-            models=ModelsConfig(**_filter(ModelsConfig, models_data)),
+            conversation=ConversationConfig(
+                **_filter(ConversationConfig, conversation_data)
+            ),
             agent=AgentConfig(**_filter(AgentConfig, agent_data)),
             history_cleaning=HistoryCleaningConfig(
                 **_filter(HistoryCleaningConfig, history_cleaning_data)
@@ -320,7 +362,7 @@ class TensorTruthConfig:
 
         return cls(
             ollama=OllamaConfig(),
-            ui=UIConfig(),
+            llm=LLMConfig(),
             rag=RAGConfig(
                 default_device=default_device,
                 # Populate with default embedding model configs
@@ -328,7 +370,7 @@ class TensorTruthConfig:
                 # Populate with default reranker models
                 reranker_models=list(DEFAULT_RERANKER_MODELS),
             ),
-            models=ModelsConfig(),
+            conversation=ConversationConfig(),
             agent=AgentConfig(),
             history_cleaning=HistoryCleaningConfig(),
             web_search=WebSearchConfig(),

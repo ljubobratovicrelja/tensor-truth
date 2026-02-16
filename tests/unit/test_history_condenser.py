@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tensortruth.core.constants import (
-    DEFAULT_AGENT_REASONING_MODEL,
+    DEFAULT_MODEL,
     DEFAULT_OLLAMA_BASE_URL,
 )
 from tensortruth.utils.history_condenser import condense_query, create_condenser_llm
@@ -19,7 +19,7 @@ from tensortruth.utils.history_condenser import condense_query, create_condenser
 def mock_base_llm():
     """Mock base Ollama LLM instance."""
     llm = MagicMock()
-    llm.model = DEFAULT_AGENT_REASONING_MODEL
+    llm.model = DEFAULT_MODEL
     llm.base_url = DEFAULT_OLLAMA_BASE_URL
     llm.context_window = 16384
     return llm
@@ -59,7 +59,7 @@ def test_create_condenser_llm_defaults(mock_base_llm):
         create_condenser_llm(mock_base_llm)
 
         mock_get_llm.assert_called_once_with(
-            DEFAULT_AGENT_REASONING_MODEL,
+            DEFAULT_MODEL,
             DEFAULT_OLLAMA_BASE_URL,
             16384,
         )
@@ -78,7 +78,7 @@ def test_create_condenser_llm_custom_params(mock_base_llm):
 
         # temperature, thinking, timeout are ignored — always delegates to singleton
         mock_get_llm.assert_called_once_with(
-            DEFAULT_AGENT_REASONING_MODEL,
+            DEFAULT_MODEL,
             DEFAULT_OLLAMA_BASE_URL,
             16384,
         )
@@ -112,7 +112,7 @@ def test_create_condenser_llm_fallback_on_missing_attrs():
 
         # Should use default values
         mock_get_llm.assert_called_once_with(
-            DEFAULT_AGENT_REASONING_MODEL,
+            DEFAULT_MODEL,
             DEFAULT_OLLAMA_BASE_URL,
             16384,
         )

@@ -12,15 +12,13 @@ class OllamaConfigSchema(BaseModel):
     timeout: int = 300
 
 
-class UIConfigSchema(BaseModel):
-    """User interface preferences."""
+class LLMConfigSchema(BaseModel):
+    """LLM generation defaults."""
 
-    default_temperature: float = 0.1
-    default_context_window: int = 16384
+    default_model: str = "deepseek-r1:8b"
+    default_temperature: float = 0.7
+    default_context_window: int = 8192
     default_max_tokens: int = 4096
-    default_top_n: int = 5
-    default_confidence_threshold: float = 0.4
-    default_confidence_cutoff_hard: float = 0.1
 
 
 class RAGConfigSchema(BaseModel):
@@ -30,16 +28,16 @@ class RAGConfigSchema(BaseModel):
     default_balance_strategy: str = "top_k_per_index"
     default_embedding_model: str = "BAAI/bge-m3"
     default_reranker: str = "BAAI/bge-reranker-v2-m3"
-    # Max conversation turns to include in history (1 turn = user query + assistant response)
+    default_top_n: int = 5
+    default_confidence_threshold: float = 0.35
+    default_confidence_cutoff_hard: float = 0.05
+
+
+class ConversationConfigSchema(BaseModel):
+    """Conversation history settings."""
+
     max_history_turns: int = 3
     memory_token_limit: int = 4000
-
-
-class ModelsConfigSchema(BaseModel):
-    """Default model configurations."""
-
-    default_rag_model: str = "deepseek-r1:14b"
-    default_agent_reasoning_model: str = "llama3.1:8b"
 
 
 class AgentConfigSchema(BaseModel):
@@ -80,9 +78,9 @@ class ConfigResponse(BaseModel):
     """Full configuration response."""
 
     ollama: OllamaConfigSchema
-    ui: UIConfigSchema
+    llm: LLMConfigSchema
     rag: RAGConfigSchema
-    models: ModelsConfigSchema
+    conversation: ConversationConfigSchema
     agent: AgentConfigSchema
     history_cleaning: HistoryCleaningConfigSchema
     web_search: WebSearchConfigSchema
@@ -93,10 +91,10 @@ class ConfigUpdateRequest(BaseModel):
 
     Supports nested updates using prefixed keys:
     - ollama_*: Updates ollama config
-    - ui_*: Updates UI config
+    - llm_*: Updates LLM config
     - rag_*: Updates RAG config
+    - conversation_*: Updates conversation config
     - agent_*: Updates agent config
-    - models_*: Updates models config
     - history_cleaning_*: Updates history cleaning config
     - web_search_*: Updates web search config
     """

@@ -426,8 +426,7 @@ def ensure_required_models_available() -> List[str]:
         # Get required models from config
         config = load_config()
         required_models = [
-            config.models.default_rag_model,
-            config.models.default_agent_reasoning_model,
+            config.llm.default_model,
         ]
 
         # Remove duplicates while preserving order
