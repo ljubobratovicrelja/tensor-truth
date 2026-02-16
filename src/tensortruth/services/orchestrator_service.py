@@ -28,6 +28,7 @@ from llama_index.core.agent.workflow.function_agent import (
 )
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
 from llama_index.core.tools import FunctionTool
+from llama_index.core.workflow.errors import WorkflowRuntimeError
 
 from tensortruth.agents.tool_output import extract_tool_text
 from tensortruth.core.ollama import get_orchestrator_llm
@@ -359,6 +360,16 @@ class OrchestratorService:
             "issue and continue with other tools if possible."
         )
 
+        # --- Iteration budget ---
+        sections.append(
+            f"IMPORTANT: You have a budget of {self._max_iterations} iterations for this request. "
+            "Each tool call or response counts as one iteration. Plan your research efficiently:\n"
+            "- Prefer fetch_pages_batch over multiple sequential fetch_page calls.\n"
+            "- After gathering information from 2-3 tool calls, stop and provide your summary "
+            "unless you have clear reason to continue.\n"
+            "- Do NOT exhaustively search every angle — focus on the most relevant sources."
+        )
+
         # --- Synthesis handoff ---
         # When tools are called, a separate synthesis service generates the
         # final answer.  Instruct the orchestrator to keep its post-tool
@@ -647,13 +658,29 @@ class OrchestratorService:
             if not agent_final_response:
                 agent_final_response = str(response)
 
+        except WorkflowRuntimeError:
+            # Max iterations reached — agent was cut off mid-loop.
+            # All tool results from prior iterations are already in
+            # tool_results_context. If we have any, fall through to synthesis.
+            if tool_results_context:
+                logger.warning(
+                    "Max iterations reached after %d tool calls; "
+                    "proceeding to synthesis with available results",
+                    len(tools_called),
+                )
+                # Fall through to Phase 2 (synthesis) below
+            else:
+                logger.error("Max iterations reached with no tool results")
+                yield OrchestratorEvent(
+                    token="I was unable to complete the research within the "
+                    "iteration limit. Please try a more specific question."
+                )
+                return
+
         except Exception as e:
             logger.error("Orchestrator execution failed: %s", e, exc_info=True)
-            error_msg = f"I encountered an error while processing your request: {e}"
-            yield OrchestratorEvent(token=error_msg)
-            logger.info(
-                "Orchestrator execution failed after %d tools called",
-                len(tools_called),
+            yield OrchestratorEvent(
+                token=f"I encountered an error while processing your request: {e}"
             )
             return
 

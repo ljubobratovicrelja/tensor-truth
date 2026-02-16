@@ -979,3 +979,140 @@ class TestLoadModuleDescriptions:
         assert len(result) == 1
         assert result[0].name == "module_a"
         assert result[0].doc_type == "unknown"
+
+
+# ---------------------------------------------------------------
+# Graceful max-iterations handling
+# ---------------------------------------------------------------
+
+
+class TestMaxIterationsHandling:
+    """Tests for graceful handling when max_iterations is reached."""
+
+    @pytest.mark.asyncio
+    async def test_max_iterations_with_results_proceeds_to_synthesis(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """When max_iterations is hit but tool results exist, synthesis should run."""
+        from llama_index.core.agent.workflow import ToolCall as LIToolCall
+        from llama_index.core.agent.workflow import ToolCallResult as LIToolCallResult
+        from llama_index.core.tools.types import ToolOutput
+        from llama_index.core.workflow.errors import WorkflowRuntimeError
+
+        svc = _create_service(tool_service, rag_service_not_loaded)
+
+        tool_output = ToolOutput(
+            tool_name="web_search",
+            content="search results about AI",
+            raw_input={"query": "AI"},
+            raw_output="search results about AI",
+            is_error=False,
+        )
+        tc = LIToolCall(
+            tool_name="web_search",
+            tool_kwargs={"query": "AI"},
+            tool_id="tc_1",
+        )
+        tcr = LIToolCallResult(
+            tool_name="web_search",
+            tool_kwargs={"query": "AI"},
+            tool_id="tc_1",
+            tool_output=tool_output,
+            return_direct=False,
+        )
+
+        async def stream_events():
+            yield tc
+            yield tcr
+            raise WorkflowRuntimeError("Max iterations of 10 reached!")
+
+        handler = _make_awaitable_handler(stream_events)
+
+        # Mock synthesis service to return a known token
+        mock_synth = MagicMock()
+
+        async def fake_synthesize(**kwargs):
+            yield OrchestratorEvent(token="Synthesized answer from tool results.")
+
+        mock_synth.synthesize = MagicMock(side_effect=fake_synthesize)
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_service.LIFunctionAgent",
+                return_value=MagicMock(run=MagicMock(return_value=handler)),
+            ),
+            patch(
+                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "tensortruth.services.synthesis_service.get_synthesis_service",
+                return_value=mock_synth,
+            ),
+        ):
+            events = []
+            async for event in svc.execute("Tell me about AI"):
+                events.append(event)
+
+        # Should get synthesis tokens, not error tokens
+        token_events = [e for e in events if e.token is not None]
+        token_text = "".join(e.token for e in token_events)
+        assert "Synthesized answer" in token_text
+        assert "error" not in token_text.lower()
+
+    @pytest.mark.asyncio
+    async def test_max_iterations_without_results_yields_friendly_message(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """When max_iterations is hit with no tool results, show a friendly message."""
+        from llama_index.core.workflow.errors import WorkflowRuntimeError
+
+        svc = _create_service(tool_service, rag_service_not_loaded)
+
+        async def stream_events():
+            raise WorkflowRuntimeError("Max iterations of 10 reached!")
+            yield  # pragma: no cover
+
+        handler = _make_awaitable_handler(stream_events)
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_service.LIFunctionAgent",
+                return_value=MagicMock(run=MagicMock(return_value=handler)),
+            ),
+            patch(
+                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                return_value=MagicMock(),
+            ),
+        ):
+            events = []
+            async for event in svc.execute("Something"):
+                events.append(event)
+
+        token_events = [e for e in events if e.token is not None]
+        assert len(token_events) >= 1
+        token_text = "".join(e.token for e in token_events)
+        assert "iteration limit" in token_text
+        # Should NOT contain the raw LlamaIndex error
+        assert "Max iterations of 10 reached" not in token_text
+
+    def test_budget_guidance_in_system_prompt(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """System prompt should contain budget guidance with max_iterations value."""
+        svc = _create_service(tool_service, rag_service_not_loaded, max_iterations=15)
+        tools = svc._build_tools(MagicMock())
+        prompt = svc._build_system_prompt(tools)
+
+        assert "budget" in prompt.lower()
+        assert "15" in prompt
+        assert "iterations" in prompt.lower()
+        assert "fetch_pages_batch" in prompt
+
+    def test_default_budget_value_in_prompt(self, tool_service, rag_service_not_loaded):
+        """Default max_iterations (10) should appear in the system prompt."""
+        svc = _create_service(tool_service, rag_service_not_loaded)
+        tools = svc._build_tools(MagicMock())
+        prompt = svc._build_system_prompt(tools)
+
+        assert "budget of 10 iterations" in prompt
