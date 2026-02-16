@@ -78,6 +78,7 @@ class SessionService:
                 "embedding_model": config.rag.default_embedding_model,
                 "llm_device": "gpu",  # Reasonable default
                 "router_model": config.agent.router_model,
+                "orchestrator_enabled": config.agent.orchestrator_enabled,
             }
 
             # User params override defaults

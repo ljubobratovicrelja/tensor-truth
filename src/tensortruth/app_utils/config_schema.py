@@ -173,6 +173,12 @@ class AgentConfig:
     # Model for intent classification (should be fast, small model)
     intent_classifier_model: str = "llama3.2:3b"
 
+    # Orchestrator (agentic chat) — when enabled, messages are routed through
+    # the orchestrator agent which can call tools (RAG, web search, etc.).
+    # Session-level setting overrides this global default.
+    # Hard-disabled if the active model lacks tool-calling capability.
+    orchestrator_enabled: bool = True
+
     def __post_init__(self):
         """Validate configuration values."""
         if self.max_iterations <= 0:

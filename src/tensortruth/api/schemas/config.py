@@ -51,6 +51,7 @@ class AgentConfigSchema(BaseModel):
     function_agent_model: str = "llama3.1:8b"
     enable_natural_language_agents: bool = True
     intent_classifier_model: str = "llama3.2:3b"
+    orchestrator_enabled: bool = True
 
 
 class HistoryCleaningConfigSchema(BaseModel):

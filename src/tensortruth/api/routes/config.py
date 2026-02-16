@@ -1,6 +1,9 @@
 """Configuration endpoints."""
 
-from fastapi import APIRouter
+from typing import Optional
+
+from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
 from tensortruth.api.deps import ConfigServiceDep
 from tensortruth.api.schemas import (
@@ -51,6 +54,7 @@ def _config_to_response(config) -> ConfigResponse:
             function_agent_model=config.agent.function_agent_model,
             enable_natural_language_agents=config.agent.enable_natural_language_agents,
             intent_classifier_model=config.agent.intent_classifier_model,
+            orchestrator_enabled=config.agent.orchestrator_enabled,
         ),
         history_cleaning=HistoryCleaningConfigSchema(
             enabled=config.history_cleaning.enabled,
@@ -112,3 +116,35 @@ async def get_available_devices() -> dict:
 
     devices = get_system_devices()
     return {"devices": devices}
+
+
+class ModelCapabilitiesResponse(BaseModel):
+    """Response for model capabilities check."""
+
+    model: Optional[str] = None
+    orchestrator_available: bool = False
+
+
+@router.get("/model-capabilities", response_model=ModelCapabilitiesResponse)
+async def get_model_capabilities(
+    model: Optional[str] = Query(
+        None, description="Model name to check capabilities for"
+    ),
+) -> ModelCapabilitiesResponse:
+    """Check model capabilities relevant to configuration.
+
+    Returns whether the orchestrator (agentic mode) is available for the
+    given model, based on the model's native tool-calling support.
+
+    If no model is specified, returns orchestrator_available=False.
+    """
+    if not model:
+        return ModelCapabilitiesResponse()
+
+    from tensortruth.core.ollama import check_tool_call_support
+
+    has_tools = check_tool_call_support(model)
+    return ModelCapabilitiesResponse(
+        model=model,
+        orchestrator_available=has_tools,
+    )
