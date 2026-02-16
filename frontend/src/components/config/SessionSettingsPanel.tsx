@@ -18,6 +18,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ import {
   useRerankers,
   useAddReranker,
   useRestartEngine,
+  useModelCapabilities,
 } from "@/hooks";
 import { toast } from "sonner";
 
@@ -74,6 +76,11 @@ export function SessionSettingsPanel({
   const updateSession = useUpdateSession();
   const restartEngine = useRestartEngine();
 
+  // Query model capabilities to determine if agentic mode is available
+  const sessionModel = currentParams.model as string | undefined;
+  const { data: modelCapabilities } = useModelCapabilities(sessionModel ?? null);
+  const orchestratorAvailable = modelCapabilities?.orchestrator_available ?? false;
+
   // Add reranker dialog state
   const [addRerankerOpen, setAddRerankerOpen] = useState(false);
   const [newRerankerModel, setNewRerankerModel] = useState("");
@@ -95,6 +102,7 @@ export function SessionSettingsPanel({
   const [memoryTokenLimit, setMemoryTokenLimit] = useState<number>(4000);
   const [routerModel, setRouterModel] = useState<string>("");
   const [functionAgentModel, setFunctionAgentModel] = useState<string>("");
+  const [orchestratorEnabled, setOrchestratorEnabled] = useState<boolean>(true);
 
   // Fetch available devices from backend
   useEffect(() => {
@@ -174,6 +182,10 @@ export function SessionSettingsPanel({
         (currentParams.function_agent_model as string) ??
           config.agent.function_agent_model
       );
+      setOrchestratorEnabled(
+        (currentParams.orchestrator_enabled as boolean) ??
+          config.agent.orchestrator_enabled
+      );
     }
   }, [open, config, currentParams]);
 
@@ -194,6 +206,7 @@ export function SessionSettingsPanel({
       memory_token_limit: memoryTokenLimit,
       router_model: routerModel,
       function_agent_model: functionAgentModel,
+      orchestrator_enabled: orchestratorEnabled,
     };
 
     // Only include system_prompt if non-empty and not hidden (project sessions
@@ -532,6 +545,29 @@ export function SessionSettingsPanel({
           {/* Agent Section */}
           <div className="space-y-4">
             <h3 className="text-sm font-medium">Agent</h3>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="orchestrator-toggle">Agentic mode</Label>
+                    <HelpTooltip text="When enabled, messages are routed through an orchestrator agent that can autonomously call tools (RAG search, web search, page fetching). Requires a model with tool-calling support." />
+                  </div>
+                  <Switch
+                    id="orchestrator-toggle"
+                    checked={orchestratorEnabled}
+                    onCheckedChange={setOrchestratorEnabled}
+                    disabled={!orchestratorAvailable}
+                  />
+                </div>
+              </TooltipTrigger>
+              {!orchestratorAvailable && (
+                <TooltipContent side="top" className="max-w-xs">
+                  {sessionModel
+                    ? `Model "${sessionModel}" does not support tool-calling. Agentic mode is unavailable.`
+                    : "No model selected. Select a model to check agentic mode availability."}
+                </TooltipContent>
+              )}
+            </Tooltip>
             <div className="space-y-2">
               <Label>
                 Reasoning Model

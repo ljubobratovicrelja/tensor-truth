@@ -3,6 +3,7 @@ import type {
   RetrievalMetrics,
   SourceNode,
   StreamToolProgress,
+  StreamToolPhase,
   StreamAgentProgress,
   ToolStep,
 } from "@/api/types";
@@ -21,6 +22,7 @@ interface ChatStore {
   streamingThinking: string;
   streamingSources: SourceNode[];
   streamingMetrics: RetrievalMetrics | null;
+  streamingSourceTypes: string[] | null;
   confidenceLevel: string | null;
   pipelineStatus: PipelineStatus;
   error: string | null;
@@ -29,12 +31,13 @@ interface ChatStore {
   // Agent/tool progress
   streamingToolSteps: (ToolStep & { status: "calling" | "completed" | "failed" })[];
   agentProgress: StreamAgentProgress | null;
+  toolPhase: StreamToolPhase | null;
 
   startStreaming: (userMessage: string) => void;
   appendToken: (token: string) => void;
   appendThinking: (thinking: string) => void;
   setStatus: (status: PipelineStatus) => void;
-  setSources: (sources: SourceNode[]) => void;
+  setSources: (sources: SourceNode[], sourceTypes?: string[]) => void;
   setMetrics: (metrics: RetrievalMetrics | null) => void;
   finishStreaming: (content: string, confidenceLevel: string) => void;
   setPendingUserMessage: (message: string | null) => void;
@@ -45,6 +48,7 @@ interface ChatStore {
   // Agent/tool progress setters
   addToolStep: (progress: StreamToolProgress) => void;
   setAgentProgress: (progress: StreamAgentProgress | null) => void;
+  setToolPhase: (phase: StreamToolPhase | null) => void;
 }
 
 export const useChatStore = create<ChatStore>((set) => ({
@@ -53,12 +57,14 @@ export const useChatStore = create<ChatStore>((set) => ({
   streamingThinking: "",
   streamingSources: [],
   streamingMetrics: null,
+  streamingSourceTypes: null,
   confidenceLevel: null,
   pipelineStatus: null,
   error: null,
   pendingUserMessage: null,
   streamingToolSteps: [],
   agentProgress: null,
+  toolPhase: null,
 
   startStreaming: (userMessage: string) =>
     set({
@@ -67,12 +73,14 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingThinking: "",
       streamingSources: [],
       streamingMetrics: null,
+      streamingSourceTypes: null,
       confidenceLevel: null,
       pipelineStatus: null,
       error: null,
       pendingUserMessage: userMessage,
       streamingToolSteps: [],
       agentProgress: null,
+      toolPhase: null,
     }),
 
   appendToken: (token) =>
@@ -87,7 +95,8 @@ export const useChatStore = create<ChatStore>((set) => ({
 
   setStatus: (status) => set({ pipelineStatus: status }),
 
-  setSources: (sources) => set({ streamingSources: sources }),
+  setSources: (sources, sourceTypes) =>
+    set({ streamingSources: sources, streamingSourceTypes: sourceTypes ?? null }),
 
   setMetrics: (metrics) => set({ streamingMetrics: metrics }),
 
@@ -97,6 +106,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingContent: content,
       confidenceLevel,
       pipelineStatus: null,
+      toolPhase: null,
       pendingUserMessage: null,
     }),
 
@@ -109,6 +119,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       isStreaming: false,
       error,
       pipelineStatus: null,
+      toolPhase: null,
       pendingUserMessage: null,
     }),
 
@@ -119,11 +130,13 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingThinking: "",
       streamingSources: [],
       streamingMetrics: null,
+      streamingSourceTypes: null,
       confidenceLevel: null,
       pipelineStatus: null,
       error: null,
       streamingToolSteps: [],
       agentProgress: null,
+      toolPhase: null,
       // Note: pendingUserMessage is NOT cleared here - it's needed for auto-send
       // from welcome page. It's cleared by finishStreaming, setError, or explicitly.
     }),
@@ -160,4 +173,5 @@ export const useChatStore = create<ChatStore>((set) => ({
       return { streamingToolSteps: steps };
     }),
   setAgentProgress: (progress) => set({ agentProgress: progress }),
+  setToolPhase: (phase) => set({ toolPhase: phase }),
 }));

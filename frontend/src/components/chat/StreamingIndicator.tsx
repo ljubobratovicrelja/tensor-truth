@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { Search, Brain, Sparkles, Loader2, Scale } from "lucide-react";
+import { useChatStore } from "@/stores";
+import { ToolPhaseIndicator } from "./ToolPhaseIndicator";
 import type { PipelineStatus } from "@/stores/chatStore";
 
 interface StreamingIndicatorProps {
@@ -73,6 +75,8 @@ function pickRandom<T>(array: readonly T[]): T {
 }
 
 export function StreamingIndicator({ status }: StreamingIndicatorProps) {
+  const toolPhase = useChatStore((state) => state.toolPhase);
+
   // Pick a random label when status changes, but keep it stable while status is the same
   const label = useMemo(() => {
     if (!status) return "Processing...";
@@ -80,6 +84,12 @@ export function StreamingIndicator({ status }: StreamingIndicatorProps) {
     return config ? pickRandom(config.labels) : "Processing...";
   }, [status]);
 
+  // When toolPhase is present, delegate to ToolPhaseIndicator
+  if (toolPhase) {
+    return <ToolPhaseIndicator phase={toolPhase} />;
+  }
+
+  // Legacy status rendering (backward compat with old pipeline status messages)
   const config = status ? STATUS_CONFIG[status] : null;
   const Icon = config?.icon;
 

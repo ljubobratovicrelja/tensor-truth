@@ -652,6 +652,114 @@ function MetricsPanel({ metrics }: { metrics: RetrievalMetrics }) {
   );
 }
 
+// ============================================================================
+// Helper: compute web search stats for a set of web sources
+// ============================================================================
+
+function computeWebStats(webSources: SourceNode[]) {
+  return {
+    fetched: webSources.filter((s) => s.metadata?.fetch_status === "success").length,
+    failed: webSources.filter(
+      (s) =>
+        s.metadata?.fetch_status === "failed" || s.metadata?.fetch_status === "skipped"
+    ).length,
+    totalChars: webSources.reduce(
+      (sum, s) => sum + ((s.metadata?.content_chars as number) || 0),
+      0
+    ),
+  };
+}
+
+// ============================================================================
+// Helper: compute score stats for a set of sources
+// ============================================================================
+
+function computeScoreStats(sources: SourceNode[]) {
+  const scores = sources
+    .map((s) => s.score)
+    .filter((score): score is number => score !== null && score !== undefined);
+
+  if (scores.length === 0) return null;
+  return {
+    max: Math.max(...scores),
+    min: Math.min(...scores),
+    mean: scores.reduce((a, b) => a + b, 0) / scores.length,
+  };
+}
+
+// ============================================================================
+// Helper: sort web sources by score descending
+// ============================================================================
+
+function sortByScoreDesc(sources: SourceNode[]) {
+  return [...sources].sort((a, b) => {
+    const scoreA = a.score ?? -1;
+    const scoreB = b.score ?? -1;
+    return scoreB - scoreA;
+  });
+}
+
+// ============================================================================
+// SourceSection: renders a group of source cards with an optional header
+// ============================================================================
+
+interface SourceSectionProps {
+  icon: React.ReactNode;
+  title: string;
+  sources: SourceNode[];
+  metrics?: RetrievalMetrics | null;
+  isWebSection?: boolean;
+}
+
+function SourceSection({
+  icon,
+  title,
+  sources,
+  metrics,
+  isWebSection,
+}: SourceSectionProps) {
+  const sortedSources = isWebSection ? sortByScoreDesc(sources) : sources;
+  const webStats = isWebSection ? computeWebStats(sources) : null;
+  const webScoreStats = isWebSection
+    ? computeScoreStats(sources.filter((s) => s.metadata?.fetch_status === "success"))
+    : null;
+
+  return (
+    <div className="mb-3 last:mb-0">
+      <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs">
+        {icon}
+        <span className="font-medium">
+          {title} ({sources.length})
+        </span>
+        {webStats && (
+          <span className="text-muted-foreground/70 font-normal">
+            | {webStats.fetched} fetched
+            {webStats.failed > 0 && <> | {webStats.failed} failed</>}
+            {webStats.totalChars > 0 && (
+              <> | ~{Math.round(webStats.totalChars / 4).toLocaleString()} tokens</>
+            )}
+            {webScoreStats && (
+              <>
+                {" "}
+                | Relevance: {(webScoreStats.min * 100).toFixed(0)}%-
+                {(webScoreStats.max * 100).toFixed(0)}%
+              </>
+            )}
+          </span>
+        )}
+      </div>
+      {metrics && <MetricsPanel metrics={metrics} />}
+      {sortedSources.map((source, index) => (
+        <SourceCard key={index} source={source} index={index} />
+      ))}
+    </div>
+  );
+}
+
+// ============================================================================
+// SourcesList Component
+// ============================================================================
+
 interface SourcesListProps {
   sources: SourceNode[];
   metrics?: RetrievalMetrics | null;
@@ -683,52 +791,25 @@ export function SourcesList({ sources, metrics, confidenceLevel }: SourcesListPr
     );
   }
 
-  // Detect if these are web search sources
-  const isWebSearch = sources.length > 0 && sources[0]?.metadata?.doc_type === "web";
+  // Partition sources into RAG and web groups
+  const ragSources = sources.filter((s) => s.metadata?.doc_type !== "web");
+  const webSources = sources.filter((s) => s.metadata?.doc_type === "web");
+  const isMixed = ragSources.length > 0 && webSources.length > 0;
 
-  // Sort sources by score (highest first) for web search sources with relevance scores
-  const sortedSources = isWebSearch
-    ? [...sources].sort((a, b) => {
-        // Sort by score descending, putting null/undefined scores last
-        const scoreA = a.score ?? -1;
-        const scoreB = b.score ?? -1;
-        return scoreB - scoreA;
-      })
-    : sources;
+  // For single-type rendering, detect if all sources are web
+  const isWebSearch = !isMixed && webSources.length > 0;
 
-  // Calculate web search stats
-  const webStats = isWebSearch
-    ? {
-        fetched: sources.filter((s) => s.metadata?.fetch_status === "success").length,
-        failed: sources.filter(
-          (s) =>
-            s.metadata?.fetch_status === "failed" ||
-            s.metadata?.fetch_status === "skipped"
-        ).length,
-        totalChars: sources.reduce(
-          (sum, s) => sum + ((s.metadata?.content_chars as number) || 0),
-          0
-        ),
-      }
-    : null;
+  // Sort web-only sources by score (for single-type web rendering)
+  const sortedSources = isWebSearch ? sortByScoreDesc(sources) : sources;
 
-  // Calculate confidence statistics (only for successfully fetched sources in web search)
+  // Calculate stats for the header summary line
+  const webStats = isWebSearch ? computeWebStats(sources) : null;
+
+  // For score stats, use successfully fetched sources for web, all for RAG
   const sourcesForStats = isWebSearch
     ? sources.filter((s) => s.metadata?.fetch_status === "success")
     : sources;
-
-  const scores = sourcesForStats
-    .map((s) => s.score)
-    .filter((score): score is number => score !== null && score !== undefined);
-
-  const stats =
-    scores.length > 0
-      ? {
-          max: Math.max(...scores),
-          min: Math.min(...scores),
-          mean: scores.reduce((a, b) => a + b, 0) / scores.length,
-        }
-      : null;
+  const stats = computeScoreStats(sourcesForStats);
 
   return (
     <div className="mt-2 border-t pt-2">
@@ -751,14 +832,17 @@ export function SourcesList({ sources, metrics, confidenceLevel }: SourcesListPr
               </TooltipContent>
             </Tooltip>
           )}
-          {webStats ? (
+          {isMixed ? (
+            <span className="text-muted-foreground/70 font-normal tracking-normal normal-case">
+              | {ragSources.length} knowledge base, {webSources.length} web
+            </span>
+          ) : webStats ? (
             <span className="text-muted-foreground/70 font-normal tracking-normal normal-case">
               | {webStats.fetched} fetched
               {webStats.failed > 0 && <> | {webStats.failed} failed</>}
               {webStats.totalChars > 0 && (
                 <> | ~{Math.round(webStats.totalChars / 4).toLocaleString()} tokens</>
               )}
-              {/* Show relevance range for web sources with scores */}
               {stats && (
                 <>
                   {" "}
@@ -797,13 +881,32 @@ export function SourcesList({ sources, metrics, confidenceLevel }: SourcesListPr
           collapsed ? "max-h-0" : "max-h-[2000px]"
         )}
       >
-        {/* Expanded metrics panel (only for RAG sources, not web search) */}
-        {metrics && !isWebSearch && <MetricsPanel metrics={metrics} />}
+        {isMixed ? (
+          <>
+            <SourceSection
+              icon={<BookOpen className="h-3.5 w-3.5" />}
+              title="Knowledge Base Results"
+              sources={ragSources}
+              metrics={metrics}
+            />
+            <SourceSection
+              icon={<Globe className="h-3.5 w-3.5" />}
+              title="Web Results"
+              sources={webSources}
+              isWebSection
+            />
+          </>
+        ) : (
+          <>
+            {/* Single-type: metrics panel for RAG only */}
+            {metrics && !isWebSearch && <MetricsPanel metrics={metrics} />}
 
-        {/* Source cards */}
-        {sortedSources.map((source, index) => (
-          <SourceCard key={index} source={source} index={index} />
-        ))}
+            {/* Source cards */}
+            {sortedSources.map((source, index) => (
+              <SourceCard key={index} source={source} index={index} />
+            ))}
+          </>
+        )}
       </div>
     </div>
   );

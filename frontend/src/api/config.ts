@@ -1,5 +1,9 @@
 import { apiGet, apiPatch } from "./client";
-import type { ConfigResponse, ConfigUpdateRequest } from "./types";
+import type {
+  ConfigResponse,
+  ConfigUpdateRequest,
+  ModelCapabilitiesResponse,
+} from "./types";
 
 export async function getConfig(): Promise<ConfigResponse> {
   return apiGet<ConfigResponse>("/config");
@@ -18,4 +22,12 @@ export async function getConfigDefaults(): Promise<ConfigResponse> {
 export async function getAvailableDevices(): Promise<string[]> {
   const response = await apiGet<{ devices: string[] }>("/config/devices");
   return response.devices;
+}
+
+export async function getModelCapabilities(
+  model: string
+): Promise<ModelCapabilitiesResponse> {
+  return apiGet<ModelCapabilitiesResponse>(
+    `/config/model-capabilities?model=${encodeURIComponent(model)}`
+  );
 }

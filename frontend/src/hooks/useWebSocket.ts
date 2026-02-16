@@ -28,6 +28,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
     isStreaming,
     addToolStep,
     setAgentProgress,
+    setToolPhase,
   } = useChatStore();
 
   // Cleanup on unmount or session change
@@ -98,7 +99,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               break;
 
             case "sources":
-              setSources(data.data);
+              setSources(data.data, data.source_types);
               if (data.metrics) {
                 setMetrics(data.metrics);
               }
@@ -144,6 +145,10 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               addToolStep(data);
               break;
 
+            case "tool_phase":
+              setToolPhase(data);
+              break;
+
             case "agent_progress":
               setAgentProgress(data);
               break;
@@ -180,6 +185,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       onError,
       addToolStep,
       setAgentProgress,
+      setToolPhase,
     ]
   );
 

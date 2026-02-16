@@ -102,6 +102,9 @@ export interface StreamSources {
   type: "sources";
   data: SourceNode[];
   metrics?: RetrievalMetrics | null;
+  source_types?: string[];
+  rag_count?: number;
+  web_count?: number;
 }
 
 export interface StreamDone {
@@ -138,6 +141,14 @@ export interface StreamToolProgress {
   params: Record<string, unknown>;
   output?: string;
   is_error?: boolean;
+}
+
+export interface StreamToolPhase {
+  type: "tool_phase";
+  tool_id: string;
+  phase: string;
+  message: string;
+  metadata: Record<string, unknown>;
 }
 
 export interface ToolStep {
@@ -201,6 +212,7 @@ export type StreamMessage =
   | StreamThinking
   | StreamStatus
   | StreamToolProgress
+  | StreamToolPhase
   | StreamAgentProgress
   | StreamWebSearchSources;
 
@@ -253,6 +265,12 @@ export interface AgentConfig {
   function_agent_model: string;
   enable_natural_language_agents: boolean;
   intent_classifier_model: string;
+  orchestrator_enabled: boolean;
+}
+
+export interface ModelCapabilitiesResponse {
+  model: string | null;
+  orchestrator_available: boolean;
 }
 
 export interface HistoryCleaningConfig {
