@@ -21,6 +21,7 @@ def mock_base_llm():
     llm = MagicMock()
     llm.model = DEFAULT_AGENT_REASONING_MODEL
     llm.base_url = DEFAULT_OLLAMA_BASE_URL
+    llm.context_window = 16384
     return llm
 
 
@@ -52,22 +53,22 @@ def sample_prompt_template():
 
 
 def test_create_condenser_llm_defaults(mock_base_llm):
-    """Test create_condenser_llm with default parameters."""
-    with patch("tensortruth.utils.history_condenser.Ollama") as mock_ollama:
+    """Test create_condenser_llm delegates to get_orchestrator_llm with correct params."""
+    with patch("tensortruth.core.ollama.get_orchestrator_llm") as mock_get_llm:
+        mock_get_llm.return_value = MagicMock()
         create_condenser_llm(mock_base_llm)
 
-        mock_ollama.assert_called_once_with(
-            model=DEFAULT_AGENT_REASONING_MODEL,
-            base_url=DEFAULT_OLLAMA_BASE_URL,
-            temperature=0.0,
-            thinking=False,
-            request_timeout=30.0,
+        mock_get_llm.assert_called_once_with(
+            DEFAULT_AGENT_REASONING_MODEL,
+            DEFAULT_OLLAMA_BASE_URL,
+            16384,
         )
 
 
 def test_create_condenser_llm_custom_params(mock_base_llm):
-    """Test create_condenser_llm with custom parameters."""
-    with patch("tensortruth.utils.history_condenser.Ollama") as mock_ollama:
+    """Test create_condenser_llm ignores custom params (delegates to singleton)."""
+    with patch("tensortruth.core.ollama.get_orchestrator_llm") as mock_get_llm:
+        mock_get_llm.return_value = MagicMock()
         create_condenser_llm(
             mock_base_llm,
             temperature=0.5,
@@ -75,47 +76,45 @@ def test_create_condenser_llm_custom_params(mock_base_llm):
             timeout=60.0,
         )
 
-        mock_ollama.assert_called_once_with(
-            model=DEFAULT_AGENT_REASONING_MODEL,
-            base_url="http://localhost:11434",
-            temperature=0.5,
-            thinking=True,
-            request_timeout=60.0,
+        # temperature, thinking, timeout are ignored — always delegates to singleton
+        mock_get_llm.assert_called_once_with(
+            DEFAULT_AGENT_REASONING_MODEL,
+            DEFAULT_OLLAMA_BASE_URL,
+            16384,
         )
 
 
 def test_create_condenser_llm_derives_from_base(mock_base_llm):
-    """Test that condenser LLM derives model and base_url from base LLM."""
+    """Test that condenser LLM derives model, base_url, context_window from base LLM."""
     mock_base_llm.model = "custom-model:7b"
     mock_base_llm.base_url = "http://custom:8080"
+    mock_base_llm.context_window = 32768
 
-    with patch("tensortruth.utils.history_condenser.Ollama") as mock_ollama:
+    with patch("tensortruth.core.ollama.get_orchestrator_llm") as mock_get_llm:
+        mock_get_llm.return_value = MagicMock()
         create_condenser_llm(mock_base_llm)
 
-        mock_ollama.assert_called_once_with(
-            model="custom-model:7b",
-            base_url="http://custom:8080",
-            temperature=0.0,
-            thinking=False,
-            request_timeout=30.0,
+        mock_get_llm.assert_called_once_with(
+            "custom-model:7b",
+            "http://custom:8080",
+            32768,
         )
 
 
 def test_create_condenser_llm_fallback_on_missing_attrs():
     """Test create_condenser_llm falls back to defaults if attributes missing."""
-    # Create LLM without model/base_url attributes
+    # Create LLM without model/base_url/context_window attributes
     llm = MagicMock(spec=[])
 
-    with patch("tensortruth.utils.history_condenser.Ollama") as mock_ollama:
+    with patch("tensortruth.core.ollama.get_orchestrator_llm") as mock_get_llm:
+        mock_get_llm.return_value = MagicMock()
         create_condenser_llm(llm)
 
         # Should use default values
-        mock_ollama.assert_called_once_with(
-            model=DEFAULT_AGENT_REASONING_MODEL,
-            base_url=DEFAULT_OLLAMA_BASE_URL,
-            temperature=0.0,
-            thinking=False,
-            request_timeout=30.0,
+        mock_get_llm.assert_called_once_with(
+            DEFAULT_AGENT_REASONING_MODEL,
+            DEFAULT_OLLAMA_BASE_URL,
+            16384,
         )
 
 

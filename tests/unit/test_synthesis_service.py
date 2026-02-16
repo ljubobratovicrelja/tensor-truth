@@ -238,26 +238,38 @@ class TestSynthesisSingleton:
             assert "options" not in kwargs["additional_kwargs"]
             assert "num_predict" in kwargs["additional_kwargs"]
 
-    def test_synthesis_llm_no_redundant_num_ctx(self):
-        """Synthesis LLM additional_kwargs must not contain num_ctx."""
-        with (
-            patch(
-                "tensortruth.services.synthesis_service.check_thinking_support",
-                return_value=False,
-            ),
-            patch("llama_index.llms.ollama.Ollama") as MockOllama,
-        ):
-            MockOllama.return_value = MagicMock()
-            from tensortruth.services.synthesis_service import SynthesisService
+    def test_synthesis_llm_sets_num_ctx(self):
+        """Synthesis LLM additional_kwargs must contain num_ctx matching context_window."""
+        import tensortruth.core.ollama as ollama_mod
 
-            SynthesisService(
-                model="test-model",
-                base_url="http://localhost:11434",
-                context_window=8192,
-            )
+        # Reset tool LLM singleton so Ollama constructor is actually called
+        old_instance = ollama_mod._tool_llm_instance
+        old_key = ollama_mod._tool_llm_key
+        ollama_mod._tool_llm_instance = None
+        ollama_mod._tool_llm_key = None
 
-            kwargs = MockOllama.call_args[1]
-            assert "num_ctx" not in kwargs["additional_kwargs"]
+        try:
+            with (
+                patch(
+                    "tensortruth.services.synthesis_service.check_thinking_support",
+                    return_value=False,
+                ),
+                patch("llama_index.llms.ollama.Ollama") as MockOllama,
+            ):
+                MockOllama.return_value = MagicMock()
+                from tensortruth.services.synthesis_service import SynthesisService
+
+                SynthesisService(
+                    model="test-model-numctx",
+                    base_url="http://localhost:11434",
+                    context_window=8192,
+                )
+
+                kwargs = MockOllama.call_args[1]
+                assert kwargs["additional_kwargs"]["num_ctx"] == 8192
+        finally:
+            ollama_mod._tool_llm_instance = old_instance
+            ollama_mod._tool_llm_key = old_key
 
     def test_creates_new_instance_on_context_window_change(self):
         """context_window is part of the cache key — changing it rebuilds."""

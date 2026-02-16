@@ -421,6 +421,8 @@ def test_prompt_selection_filters_all_nodes():
 @pytest.mark.unit
 def test_prompt_includes_chat_history():
     """Test that chat history is included in the prompt when passed as session_messages."""
+    from unittest.mock import patch
+
     from tensortruth.services.rag_service import RAGService
 
     # Create good nodes
@@ -441,8 +443,12 @@ def test_prompt_includes_chat_history():
         {"role": "assistant", "content": "A CNN is a convolutional neural network."},
     ]
 
-    # Execute query with session_messages
-    list(service.query("Tell me more about them", session_messages=session_messages))
+    with patch("tensortruth.services.rag_service.create_condenser_llm") as mock_ccl:
+        mock_ccl.return_value = Mock()
+        # Execute query with session_messages
+        list(
+            service.query("Tell me more about them", session_messages=session_messages)
+        )
 
     # Verify LLM was called
     assert engine._llm.stream_chat.called
@@ -631,7 +637,9 @@ def test_needs_reload_with_additional_index_addition():
     service._current_modules = ["module_a"]
     service._current_params = {"model": "test-model"}
     service._current_config_hash = service._compute_config_hash(
-        ["module_a"], service._current_params, None  # No session index
+        ["module_a"],
+        service._current_params,
+        None,  # No session index
     )
 
     # Adding session index should trigger reload
@@ -760,7 +768,11 @@ def test_condenser_called_with_history():
         {"role": "assistant", "content": "First answer"},
     ]
 
-    with patch("tensortruth.services.rag_service.condense_query") as mock_condense:
+    with (
+        patch("tensortruth.services.rag_service.create_condenser_llm") as mock_ccl,
+        patch("tensortruth.services.rag_service.condense_query") as mock_condense,
+    ):
+        mock_ccl.return_value = Mock()
         mock_condense.return_value = "Condensed query"
 
         # Execute query with history
@@ -850,7 +862,11 @@ def test_condenser_error_handling():
         {"role": "assistant", "content": "Previous answer"},
     ]
 
-    with patch("tensortruth.services.rag_service.condense_query") as mock_condense:
+    with (
+        patch("tensortruth.services.rag_service.create_condenser_llm") as mock_ccl,
+        patch("tensortruth.services.rag_service.condense_query") as mock_condense,
+    ):
+        mock_ccl.return_value = Mock()
         # Make condense_query return the original question (fallback behavior)
         mock_condense.return_value = "Follow-up question"
 

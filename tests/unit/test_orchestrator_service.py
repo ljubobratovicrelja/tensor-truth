@@ -1215,8 +1215,8 @@ class TestMaxIterationsHandling:
         ollama_mod._orchestrator_llm_instance = None
         ollama_mod._orchestrator_llm_key = None
 
-    def test_orchestrator_llm_no_redundant_num_ctx(self):
-        """Orchestrator LLM additional_kwargs must not contain num_ctx."""
+    def test_orchestrator_llm_sets_num_ctx(self):
+        """Orchestrator LLM additional_kwargs must contain num_ctx matching context_window."""
         import tensortruth.core.ollama as ollama_mod
         from tensortruth.core.ollama import get_orchestrator_llm
 
@@ -1225,10 +1225,10 @@ class TestMaxIterationsHandling:
 
         with patch("llama_index.llms.ollama.Ollama") as MockOllama:
             MockOllama.return_value = MagicMock()
-            get_orchestrator_llm("test-model", "http://localhost:11434")
+            get_orchestrator_llm("test-model", "http://localhost:11434", 16384)
 
             kwargs = MockOllama.call_args[1]
-            assert "num_ctx" not in kwargs["additional_kwargs"]
+            assert kwargs["additional_kwargs"]["num_ctx"] == 16384
 
         ollama_mod._orchestrator_llm_instance = None
         ollama_mod._orchestrator_llm_key = None
