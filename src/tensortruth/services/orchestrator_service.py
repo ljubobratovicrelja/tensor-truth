@@ -875,11 +875,16 @@ def build_source_reference(
     if not lines:
         return ""
 
-    return (
-        "--- Source Reference ---\n"
-        + "\n".join(lines)
-        + "\n--- End Source Reference ---"
-    )
+    has_snippet_only = any("snippet only" in line for line in lines)
+
+    header = "--- Source Reference ---\n"
+    if has_snippet_only:
+        header += (
+            "Note: Sources marked '(snippet only)' were not fetched — "
+            "only search result snippets are available for these.\n"
+        )
+
+    return header + "\n".join(lines) + "\n--- End Source Reference ---"
 
 
 def load_module_descriptions(

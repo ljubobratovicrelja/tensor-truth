@@ -952,6 +952,30 @@ class TestBuildSourceReference:
         assert "Page A" in result
         assert "snippet only" in result
 
+    def test_snippet_only_preamble_when_unfetched(self):
+        """Source reference block should include a preamble when snippet-only sources exist."""
+        search_results = [
+            {"title": "Page A", "url": "https://a.com", "snippet": "..."},
+        ]
+        result = build_source_reference([], web_search_results=search_results)
+        assert "Note:" in result
+        assert "snippet only" in result.lower()
+
+    def test_no_snippet_preamble_for_fetched_sources(self):
+        """Should NOT include snippet preamble when all sources are fetched."""
+        from tensortruth.core.source import SourceNode, SourceStatus, SourceType
+
+        web_node = SourceNode(
+            id="w1",
+            title="Fetched Page",
+            source_type=SourceType.WEB,
+            url="https://fetched.com",
+            score=0.9,
+            status=SourceStatus.SUCCESS,
+        )
+        result = build_source_reference([], web_sources=[web_node])
+        assert "Note:" not in result
+
     def test_prefers_web_sources_over_search_results(self):
         """When web_sources exist, should use them instead of search_results fallback."""
         from tensortruth.core.source import SourceNode, SourceStatus, SourceType

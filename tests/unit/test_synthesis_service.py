@@ -124,6 +124,14 @@ class TestSynthesisSystemPrompt:
         assert "cite" in prompt.lower()
         assert "markdown" in prompt.lower()
 
+    def test_synthesis_prompt_includes_snippet_only_guidance(self):
+        """Synthesis prompt must instruct LLM about snippet-only source handling."""
+        svc = _make_synthesis_service()
+        prompt = svc._build_system_prompt()
+
+        assert "snippet only" in prompt.lower()
+        assert "not retrieved" in prompt.lower() or "not available" in prompt.lower()
+
     def test_synthesis_prompt_no_modules_when_empty(self):
         svc = _make_synthesis_service()
         prompt = svc._build_system_prompt(module_descriptions=[])

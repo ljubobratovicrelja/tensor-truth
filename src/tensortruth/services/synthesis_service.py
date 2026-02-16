@@ -186,14 +186,18 @@ class SynthesisService:
             "[Title](URL) [1]\n"
             "- For knowledge base sources, reference by name: "
             "according to the documentation [1]\n"
-            '- End with a "## Sources" section listing all cited references:\n'
-            "  [1] Source Title - URL (if web source)\n"
-            "  [2] Source Title (knowledge base)\n"
+            "- Do NOT add a Sources section at the end of your response. "
+            "Sources are displayed separately in the UI.\n"
             "- Only cite sources from the Source Reference list. "
             "Do not invent sources.\n"
             "- If sources conflict, note which source says what with citations.\n"
             "- If the tool results are insufficient to fully answer the "
-            "question, say so and provide what you can."
+            "question, say so and provide what you can.\n"
+            "- Sources marked '(snippet only)' were found via web search but their "
+            "full content was NOT retrieved. For these sources: only use information "
+            "that appears verbatim in the search snippets from the tool results, "
+            "do not extrapolate or infer details beyond what the snippets contain, "
+            "and note in your response that full page content was not available."
         )
 
         # --- Project metadata ---
