@@ -23,6 +23,7 @@ from tensortruth.services.orchestrator_service import (
     ModuleDescription,
     OrchestratorEvent,
     OrchestratorService,
+    build_source_reference,
 )
 
 # ---------------------------------------------------------------
@@ -592,6 +593,56 @@ class TestExecuteFlow:
         assert tcr_events[0].tool_call_result["is_error"] is False
 
     @pytest.mark.asyncio
+    async def test_yields_analyzing_phase_after_tool_call_result(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """After a ToolCallResult, an 'analyzing' phase should be emitted."""
+        from llama_index.core.agent.workflow import ToolCallResult as LIToolCallResult
+        from llama_index.core.tools.types import ToolOutput
+
+        svc = _create_service(tool_service, rag_service_not_loaded)
+
+        tool_output = ToolOutput(
+            tool_name="fetch_page",
+            content="page content",
+            raw_input={"url": "https://example.com"},
+            raw_output="page content",
+            is_error=False,
+        )
+        tcr = LIToolCallResult(
+            tool_name="fetch_page",
+            tool_kwargs={"url": "https://example.com"},
+            tool_id="tc_1",
+            tool_output=tool_output,
+            return_direct=False,
+        )
+
+        async def stream_events():
+            yield tcr
+
+        handler = _make_awaitable_handler(stream_events)
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_service.LIFunctionAgent",
+                return_value=MagicMock(run=MagicMock(return_value=handler)),
+            ),
+            patch(
+                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                return_value=MagicMock(),
+            ),
+        ):
+            events = []
+            async for event in svc.execute("Fetch the page"):
+                events.append(event)
+
+        # Find the analyzing phase event after the tool_call_result
+        phase_events = [e for e in events if e.tool_phase is not None]
+        analyzing = [e for e in phase_events if e.tool_phase.phase == "analyzing"]
+        assert len(analyzing) >= 1
+        assert "page content" in analyzing[0].tool_phase.message.lower()
+
+    @pytest.mark.asyncio
     async def test_error_handling_yields_error_token(
         self, tool_service, rag_service_not_loaded
     ):
@@ -724,6 +775,7 @@ class TestHelperMethods:
         assert svc.model == "test-model"
         assert svc.tools == []  # No tools built yet
         assert svc.last_rag_result is None
+        assert svc.last_web_sources is None
 
 
 # ---------------------------------------------------------------
@@ -776,6 +828,117 @@ class TestModuleDescription:
         assert md.name == "pytorch_docs"
         assert md.display_name == "PyTorch Documentation"
         assert md.doc_type == "library_doc"
+
+
+class TestBuildSourceReference:
+    """Tests for build_source_reference()."""
+
+    def test_empty_when_no_sources(self):
+        """Should return empty string when no sources available."""
+        result = build_source_reference([])
+        assert result == ""
+
+    def test_includes_rag_sources(self):
+        """Should include RAG sources with knowledge base label."""
+        from llama_index.core.schema import NodeWithScore, TextNode
+
+        node = NodeWithScore(
+            node=TextNode(text="Content", metadata={"display_name": "PyTorch Docs"}),
+            score=0.92,
+        )
+        rag_result = RAGRetrievalResult(
+            source_nodes=[node],
+            confidence_level="normal",
+            condensed_query="test",
+            num_sources=1,
+        )
+
+        result = build_source_reference([], rag_result=rag_result)
+        assert "[1]" in result
+        assert "PyTorch Docs" in result
+        assert "knowledge base" in result
+        assert "0.92" in result
+        assert "Source Reference" in result
+
+    def test_includes_web_sources(self):
+        """Should include web sources with URL."""
+        from tensortruth.core.source import SourceNode, SourceStatus, SourceType
+
+        web_node = SourceNode(
+            id="w1",
+            title="Example Page",
+            source_type=SourceType.WEB,
+            url="https://example.com",
+            score=0.87,
+            status=SourceStatus.SUCCESS,
+        )
+
+        result = build_source_reference([], web_sources=[web_node])
+        assert "[1]" in result
+        assert "Example Page" in result
+        assert "web" in result
+        assert "https://example.com" in result
+
+    def test_combined_rag_and_web_numbering(self):
+        """RAG and web sources should be numbered sequentially."""
+        from llama_index.core.schema import NodeWithScore, TextNode
+
+        from tensortruth.core.source import SourceNode, SourceStatus, SourceType
+
+        rag_node = NodeWithScore(
+            node=TextNode(text="Content", metadata={"display_name": "Docs"}),
+            score=0.9,
+        )
+        rag_result = RAGRetrievalResult(
+            source_nodes=[rag_node],
+            confidence_level="normal",
+            condensed_query="test",
+            num_sources=1,
+        )
+
+        web_node = SourceNode(
+            id="w1",
+            title="Web Page",
+            source_type=SourceType.WEB,
+            url="https://web.com",
+            score=0.8,
+            status=SourceStatus.SUCCESS,
+        )
+
+        result = build_source_reference(
+            [], rag_result=rag_result, web_sources=[web_node]
+        )
+        assert "[1]" in result  # RAG source
+        assert "[2]" in result  # Web source
+        assert "Docs" in result
+        assert "Web Page" in result
+
+    def test_skips_failed_web_sources(self):
+        """Should skip web sources with FAILED status."""
+        from tensortruth.core.source import SourceNode, SourceStatus, SourceType
+
+        failed = SourceNode(
+            id="w1",
+            title="Failed",
+            source_type=SourceType.WEB,
+            url="https://failed.com",
+            score=None,
+            status=SourceStatus.FAILED,
+        )
+        success = SourceNode(
+            id="w2",
+            title="Success",
+            source_type=SourceType.WEB,
+            url="https://success.com",
+            score=0.8,
+            status=SourceStatus.SUCCESS,
+        )
+
+        result = build_source_reference([], web_sources=[failed, success])
+        assert "Failed" not in result
+        assert "Success" in result
+        assert "[1]" in result
+        assert "[2]" not in result  # Only one source should be listed
 
 
 class TestLoadModuleDescriptions:

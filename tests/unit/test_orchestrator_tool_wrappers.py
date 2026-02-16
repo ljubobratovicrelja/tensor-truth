@@ -8,7 +8,7 @@ and a progress emitter via closure. Tests verify:
 - Error cases are handled gracefully
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from llama_index.core.schema import NodeWithScore, TextNode
@@ -157,34 +157,38 @@ class TestFetchPageTool:
 
 
 class TestFetchPagesBatchTool:
-    """Tests for create_fetch_pages_batch_tool."""
+    """Tests for create_fetch_pages_batch_tool.
+
+    The tool uses SourceFetchPipeline (core/source_pipeline.py) for fetching,
+    content-reranking, and context fitting. Tests mock the pipeline.
+    """
 
     @pytest.mark.asyncio
-    async def test_calls_fetch_pages_batch_via_tool_service(
+    async def test_fetches_pages_via_source_pipeline(
         self, tool_service, progress_emitter
     ):
-        """Should delegate to ToolService.execute_tool with 'fetch_pages_batch'."""
-        import json
-
-        batch_result = json.dumps(
-            {
-                "pages": [
-                    {"url": "https://a.com", "status": "success", "content": "A"},
-                    {"url": "https://b.com", "status": "success", "content": "B"},
+        """Should use SourceFetchPipeline to fetch, rerank, and fit pages."""
+        mock_pipeline = MagicMock()
+        mock_pipeline.execute = AsyncMock(
+            return_value=(
+                [
+                    ("https://a.com", "Page A", "Content A"),
+                    ("https://b.com", "Page B", "Content B"),
                 ],
-                "overflow": False,
-                "total_chars": 100,
-            }
+                [],  # source_nodes
+                {},  # allocations
+            )
         )
-        tool_service.execute_tool.return_value = {"success": True, "data": batch_result}
-        tool = create_fetch_pages_batch_tool(tool_service, progress_emitter)
 
-        urls = ["https://a.com", "https://b.com"]
-        result = await tool.acall(urls=urls)
+        with patch(
+            "tensortruth.core.source_pipeline.SourceFetchPipeline",
+            return_value=mock_pipeline,
+        ):
+            tool = create_fetch_pages_batch_tool(tool_service, progress_emitter)
+            result = await tool.acall(urls=["https://a.com", "https://b.com"])
 
-        tool_service.execute_tool.assert_awaited_once_with(
-            "fetch_pages_batch", {"urls": urls}
-        )
+        assert "Page A" in str(result)
+        assert "Content A" in str(result)
         assert "a.com" in str(result)
 
     @pytest.mark.asyncio
@@ -192,22 +196,21 @@ class TestFetchPagesBatchTool:
         self, tool_service, progress_emitter
     ):
         """Should emit 'fetching' progress initially and 'fetched' after completion."""
-        import json
-
-        batch_result = json.dumps(
-            {
-                "pages": [
-                    {"url": "https://a.com", "status": "success", "content": "A"},
-                    {"url": "https://b.com", "status": "failed", "error": "timeout"},
-                ],
-                "overflow": False,
-                "total_chars": 50,
-            }
+        mock_pipeline = MagicMock()
+        mock_pipeline.execute = AsyncMock(
+            return_value=(
+                [("https://a.com", "Page A", "Content A")],
+                [],
+                {},
+            )
         )
-        tool_service.execute_tool.return_value = {"success": True, "data": batch_result}
-        tool = create_fetch_pages_batch_tool(tool_service, progress_emitter)
 
-        await tool.acall(urls=["https://a.com", "https://b.com"])
+        with patch(
+            "tensortruth.core.source_pipeline.SourceFetchPipeline",
+            return_value=mock_pipeline,
+        ):
+            tool = create_fetch_pages_batch_tool(tool_service, progress_emitter)
+            await tool.acall(urls=["https://a.com", "https://b.com"])
 
         assert progress_emitter.await_count == 2
 
@@ -221,22 +224,70 @@ class TestFetchPagesBatchTool:
         second: ToolProgress = progress_emitter.call_args_list[1][0][0]
         assert second.tool_id == "fetch_pages_batch"
         assert second.phase == "fetched"
-        assert second.metadata["success"] == 1
-        assert second.metadata["failed"] == 1
+        assert second.metadata["fitted"] == 1
+        assert second.metadata["total"] == 2
 
     @pytest.mark.asyncio
-    async def test_returns_error_on_failure(self, tool_service, progress_emitter):
-        """Should return an error string when batch fetch fails."""
-        tool_service.execute_tool.return_value = {
-            "success": False,
-            "error": "Batch fetch timeout",
-        }
-        tool = create_fetch_pages_batch_tool(tool_service, progress_emitter)
+    async def test_returns_no_pages_message_on_empty_result(
+        self, tool_service, progress_emitter
+    ):
+        """Should return a message when no pages could be fetched."""
+        mock_pipeline = MagicMock()
+        mock_pipeline.execute = AsyncMock(return_value=([], [], {}))
 
-        result = await tool.acall(urls=["https://example.com"])
+        with patch(
+            "tensortruth.core.source_pipeline.SourceFetchPipeline",
+            return_value=mock_pipeline,
+        ):
+            tool = create_fetch_pages_batch_tool(tool_service, progress_emitter)
+            result = await tool.acall(urls=["https://example.com"])
 
-        assert "Error:" in str(result)
-        assert "Batch fetch timeout" in str(result)
+        assert "No pages could be fetched" in str(result)
+
+    @pytest.mark.asyncio
+    async def test_emits_source_nodes_via_callback(
+        self, tool_service, progress_emitter
+    ):
+        """Should pass SourceNodes to the web_result_callback."""
+        from tensortruth.core.source import SourceNode, SourceStatus, SourceType
+
+        source_node = SourceNode(
+            id="s1",
+            title="Page A",
+            source_type=SourceType.WEB,
+            url="https://a.com",
+            content="Content A",
+            score=0.85,
+            status=SourceStatus.SUCCESS,
+            content_chars=100,
+        )
+        mock_pipeline = MagicMock()
+        mock_pipeline.execute = AsyncMock(
+            return_value=(
+                [("https://a.com", "Page A", "Content A")],
+                [source_node],
+                {},
+            )
+        )
+
+        captured_nodes = []
+
+        def callback(nodes):
+            captured_nodes.extend(nodes)
+
+        with patch(
+            "tensortruth.core.source_pipeline.SourceFetchPipeline",
+            return_value=mock_pipeline,
+        ):
+            tool = create_fetch_pages_batch_tool(
+                tool_service,
+                progress_emitter,
+                web_result_callback=callback,
+            )
+            await tool.acall(urls=["https://a.com"])
+
+        assert len(captured_nodes) == 1
+        assert captured_nodes[0].url == "https://a.com"
 
     def test_tool_metadata(self, tool_service, progress_emitter):
         """Should have correct name and description for LLM consumption."""

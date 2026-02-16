@@ -35,6 +35,8 @@ const PHASE_ICON_MAP: Record<string, PhaseConfig> = {
   thinking: { icon: Brain, animation: "animate-pulse" },
   generating: { icon: Sparkles, animation: "animate-pulse" },
   fetching: { icon: Download, animation: "animate-pulse" },
+  fetched: { icon: Download, animation: "" },
+  analyzing: { icon: Brain, animation: "animate-pulse" },
   web_search: { icon: Globe, animation: "animate-bounce" },
   indexing: { icon: Database, animation: "animate-pulse" },
   processing: { icon: Cpu, animation: "animate-pulse" },

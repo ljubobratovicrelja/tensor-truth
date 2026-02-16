@@ -420,3 +420,70 @@ class TestSynthesize:
         assert "Test Module" in system_content
         assert "Be concise." in system_content
         assert "Project: Test" in system_content
+
+    @pytest.mark.asyncio
+    async def test_synthesize_includes_source_reference_in_user_message(self):
+        """Source reference block should appear in the synthesis user message."""
+        svc = _make_synthesis_service(thinking=False)
+
+        captured_messages = []
+
+        async def _capture_gen(*_a, **_k):
+            return
+            yield  # pragma: no cover
+
+        async def _capture_and_return(messages):
+            captured_messages.extend(messages)
+            return _capture_gen()
+
+        svc._llm.astream_chat = _capture_and_return
+
+        source_ref = (
+            "--- Source Reference ---\n"
+            '[1] "Docs" (knowledge base, score: 0.92)\n'
+            "--- End Source Reference ---"
+        )
+
+        async for _ in svc.synthesize(
+            prompt="test",
+            chat_history=[],
+            tool_results=["[rag_query (OK)]\nResults"],
+            source_reference=source_ref,
+        ):
+            pass
+
+        # Find the user message (last one)
+        user_msgs = [m for m in captured_messages if str(m.role) == "MessageRole.USER"]
+        assert len(user_msgs) >= 1
+        user_content = str(user_msgs[-1].content)
+        assert "Source Reference" in user_content
+        assert '[1] "Docs"' in user_content
+
+    @pytest.mark.asyncio
+    async def test_synthesize_omits_source_reference_when_none(self):
+        """When no source_reference is provided, the block should not appear."""
+        svc = _make_synthesis_service(thinking=False)
+
+        captured_messages = []
+
+        async def _capture_gen(*_a, **_k):
+            return
+            yield  # pragma: no cover
+
+        async def _capture_and_return(messages):
+            captured_messages.extend(messages)
+            return _capture_gen()
+
+        svc._llm.astream_chat = _capture_and_return
+
+        async for _ in svc.synthesize(
+            prompt="test",
+            chat_history=[],
+            tool_results=["Some results"],
+        ):
+            pass
+
+        user_msgs = [m for m in captured_messages if str(m.role) == "MessageRole.USER"]
+        assert len(user_msgs) >= 1
+        user_content = str(user_msgs[-1].content)
+        assert "Source Reference ---" not in user_content

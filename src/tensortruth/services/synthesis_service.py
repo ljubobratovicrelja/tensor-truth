@@ -178,15 +178,23 @@ class SynthesisService:
                 "The following knowledge modules were available:\n" f"{modules_block}"
             )
 
-        # --- Synthesis guidance ---
+        # --- Response formatting rules ---
         sections.append(
-            "Synthesis guidance:\n"
-            "- Provide a comprehensive answer based on the tool results.\n"
-            "- Cite specific information from the sources when possible.\n"
-            "- Use markdown formatting for readability (headings, lists, "
-            "code blocks as appropriate).\n"
-            "- If sources contain conflicting information, acknowledge the "
-            "differences.\n"
+            "Response formatting rules:\n"
+            "- Write a comprehensive answer based on the tool results provided.\n"
+            "- Use markdown formatting (headings, lists, code blocks) for readability.\n"
+            "- ALWAYS cite sources using numbered references matching the "
+            "Source Reference list (e.g. [1], [2]).\n"
+            "- For web sources, include a clickable link on first mention: "
+            "[Title](URL) [1]\n"
+            "- For knowledge base sources, reference by name: "
+            "according to the documentation [1]\n"
+            '- End with a "## Sources" section listing all cited references:\n'
+            "  [1] Source Title - URL (if web source)\n"
+            "  [2] Source Title (knowledge base)\n"
+            "- Only cite sources from the Source Reference list. "
+            "Do not invent sources.\n"
+            "- If sources conflict, note which source says what with citations.\n"
             "- If the tool results are insufficient to fully answer the "
             "question, say so and provide what you can."
         )
@@ -216,6 +224,7 @@ class SynthesisService:
         custom_instructions: Optional[str] = None,
         project_metadata: Optional[str] = None,
         progress_emitter: Optional[ProgressEmitter] = None,
+        source_reference: Optional[str] = None,
     ) -> AsyncGenerator[OrchestratorEvent, None]:
         """Synthesize the final response from tool results.
 
@@ -230,6 +239,9 @@ class SynthesisService:
             custom_instructions: Session-level custom instructions.
             project_metadata: Project-level metadata string.
             progress_emitter: Optional callback for progress events.
+            source_reference: Optional structured source reference block for
+                citation guidance. When provided, appended to the user message
+                so the LLM can produce numbered citations.
 
         Yields:
             OrchestratorEvent instances (thinking and token events).
@@ -261,13 +273,16 @@ class SynthesisService:
 
         # Build synthesis user message with tool context
         tool_context = "\n\n".join(tool_results)
+        source_ref_block = f"\n\n{source_reference}\n" if source_reference else ""
         synthesis_user_content = (
             f"{prompt}\n\n"
             f"--- Tool Results ---\n"
             f"{tool_context}\n"
-            f"--- End Tool Results ---\n\n"
+            f"--- End Tool Results ---"
+            f"{source_ref_block}\n\n"
             f"Using the tool results above, provide a comprehensive answer "
-            f"to the user's question. Cite specific information from the sources."
+            f"to the user's question. Cite sources using [N] references "
+            f"matching the Source Reference list."
         )
 
         # Compose messages
