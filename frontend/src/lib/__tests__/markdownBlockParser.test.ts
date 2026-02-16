@@ -554,13 +554,13 @@ nn.InstanceNorm3d(num_features)
       expect(final.completedBlocks[0].type).toBe("math_display");
     });
 
-    test("list item followed by indented math produces both block types", () => {
+    test("list item followed by indented math grouped as single list block", () => {
       const content =
         "   - For a generic layer:\n     \\[\n     \\frac{a}{b}\n     \\]\n";
       const state = streamAndFinalize(content, "char");
-      const types = state.completedBlocks.map((b) => b.type);
-      expect(types).toContain("list_item");
-      expect(types).toContain("math_display");
+      expect(state.completedBlocks).toHaveLength(1);
+      expect(state.completedBlocks[0].type).toBe("list_item");
+      expect(state.completedBlocks[0].content).toBe(content);
       expect(getAllContent(state)).toBe(content);
     });
 
@@ -572,6 +572,115 @@ nn.InstanceNorm3d(num_features)
         const mathBlocks = state.completedBlocks.filter((b) => b.type === "math_display");
         expect(mathBlocks).toHaveLength(1);
       }
+    });
+  });
+
+  describe("List Grouping (Nested Items)", () => {
+    test("nested list with sub-items grouped into single block", () => {
+      const content = "3. Item\n   * Sub-item\n     * Sub-sub-item\n";
+      const state = streamAndFinalize(content, "char");
+      expect(state.completedBlocks).toHaveLength(1);
+      expect(state.completedBlocks[0].type).toBe("list_item");
+      expect(state.completedBlocks[0].content).toBe(content);
+    });
+
+    test("list with embedded display math grouped as single block", () => {
+      const content = "   * Text:\n     \\[\n     x = y\n     \\]\n     (note)\n";
+      const state = streamAndFinalize(content, "char");
+      expect(state.completedBlocks).toHaveLength(1);
+      expect(state.completedBlocks[0].type).toBe("list_item");
+      expect(state.completedBlocks[0].content).toBe(content);
+    });
+
+    test("list with inline math in sub-items - exact session content", () => {
+      const content =
+        "3. **Backward Pass (layer L → 1)**\n" +
+        "   * For each layer *l* (starting at the output and moving backward):\n" +
+        "     * **Gradient w.r.t. weights:** \\(\\displaystyle \\frac{a}{b}\\)\n" +
+        "     * **Gradient w.r.t. biases:** \\(\\displaystyle c\\)\n";
+      const state = streamAndFinalize(content, "char");
+      expect(state.completedBlocks).toHaveLength(1);
+      expect(state.completedBlocks[0].type).toBe("list_item");
+      expect(state.completedBlocks[0].content).toBe(content);
+    });
+
+    test("continuation text after display math stays in list block (item 2)", () => {
+      const content =
+        "2. **Initialize the Output Error**  \n" +
+        "   * Compute the derivative of the loss w.r.t. the final activation:  \n" +
+        "     \\[\n" +
+        "     \\delta^{L} = \\frac{\\partial L}{\\partial a^{L}} \\odot \\sigma'(z^{L})\n" +
+        "     \\]  \n" +
+        "     ( \u202f\u2299\u202f denotes element-wise product, \u03c3' is the activation derivative).  \n";
+      const state = streamAndFinalize(content, "char");
+      expect(state.completedBlocks).toHaveLength(1);
+      expect(state.completedBlocks[0].type).toBe("list_item");
+      expect(state.completedBlocks[0].content).toContain("denotes element-wise");
+      expect(getAllContent(state)).toBe(content);
+    });
+
+    test("continuation text after display math stays in list block (item 4)", () => {
+      const content =
+        "4. **Parameter Update**  \n" +
+        "   * Feed the gradients to an optimizer that updates each parameter:  \n" +
+        "     \\[\n" +
+        "     \\theta \\leftarrow \\theta - \\eta \\,\\frac{\\partial L}{\\partial \\theta}\n" +
+        "     \\]  \n" +
+        "     where \u03b7 is the learning rate.  \n";
+      const state = streamAndFinalize(content, "char");
+      expect(state.completedBlocks).toHaveLength(1);
+      expect(state.completedBlocks[0].type).toBe("list_item");
+      expect(state.completedBlocks[0].content).toContain(
+        "where \u03b7 is the learning rate"
+      );
+      expect(getAllContent(state)).toBe(content);
+    });
+
+    test("sibling top-level items remain separate blocks", () => {
+      const content = "1. First item\n2. Second item\n3. Third item\n";
+      const state = streamAndFinalize(content, "char");
+      expect(state.completedBlocks).toHaveLength(3);
+      expect(state.completedBlocks[0].type).toBe("list_item");
+      expect(state.completedBlocks[1].type).toBe("list_item");
+      expect(state.completedBlocks[2].type).toBe("list_item");
+    });
+
+    test("list ends at header", () => {
+      const content = "- Item\n  - Sub-item\n# Header\n";
+      const state = streamAndFinalize(content, "char");
+      expect(state.completedBlocks).toHaveLength(2);
+      expect(state.completedBlocks[0].type).toBe("list_item");
+      expect(state.completedBlocks[0].content).toBe("- Item\n  - Sub-item\n");
+      expect(state.completedBlocks[1].type).toBe("header");
+    });
+
+    test("list ends at code fence", () => {
+      const content = "- Item\n  - Sub-item\n```js\ncode\n```\n";
+      const state = streamAndFinalize(content, "char");
+      expect(state.completedBlocks).toHaveLength(2);
+      expect(state.completedBlocks[0].type).toBe("list_item");
+      expect(state.completedBlocks[1].type).toBe("code_block");
+    });
+
+    test("content integrity across chunk sizes for nested lists", () => {
+      const content =
+        "1. Top item\n   * Sub-item with \\(math\\)\n     * Deep sub\n2. Next item\n";
+      for (const chunkSize of [1, 2, 3, 5, 7, 10, 20]) {
+        const state = streamAndFinalize(content, chunkSize);
+        expect(getAllContent(state)).toBe(content);
+        expect(state.completedBlocks).toHaveLength(2);
+        expect(state.completedBlocks[0].type).toBe("list_item");
+        expect(state.completedBlocks[1].type).toBe("list_item");
+      }
+    });
+
+    test("two consecutive blank lines end list", () => {
+      const content = "- Item\n  - Sub\n\n\nParagraph after.\n\n";
+      const state = streamAndFinalize(content, "char");
+      expect(state.completedBlocks[0].type).toBe("list_item");
+      expect(state.completedBlocks[0].content).toContain("- Item\n  - Sub\n");
+      const lastBlock = state.completedBlocks[state.completedBlocks.length - 1];
+      expect(lastBlock.content).toContain("Paragraph after.");
     });
   });
 
