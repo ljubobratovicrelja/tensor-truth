@@ -1,5 +1,5 @@
 name: arxiv
-description: "Search arXiv for academic papers"
+description: "Search arXiv for academic papers by keyword, author, or topic"
 usage: "/arxiv <query>"
 aliases: [ax]
 

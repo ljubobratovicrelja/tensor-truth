@@ -178,8 +178,11 @@ function MessageItemComponent({
               confidenceLevel={confidenceLevel ?? message.confidence_level ?? "normal"}
             />
           )}
-          {!isUser && !isStreaming && messageToolSteps.length > 0 && (
-            <ToolSteps steps={messageToolSteps} defaultOpen={isStreaming} />
+          {!isUser && messageToolSteps.length > 0 && (
+            <ToolSteps
+              steps={messageToolSteps}
+              defaultOpen={isStreaming && !message.content}
+            />
           )}
         </div>
       </div>

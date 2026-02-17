@@ -14,6 +14,7 @@ import type {
   SourceNode,
   StreamAgentProgress,
 } from "@/api/types";
+import { ToolSteps } from "./ToolSteps";
 import type { ToolStepWithStatus } from "./ToolSteps";
 import type { PipelineStatus } from "@/stores/chatStore";
 
@@ -201,6 +202,11 @@ export function MessageList({
                   <AgentProgress progress={agentProgress} />
                 ) : (
                   <StreamingIndicator status={pipelineStatus} />
+                )}
+                {streamingToolSteps && streamingToolSteps.length > 0 && (
+                  <div className="mb-2 px-4">
+                    <ToolSteps steps={streamingToolSteps} defaultOpen />
+                  </div>
                 )}
               </>
             )}

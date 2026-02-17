@@ -1,5 +1,5 @@
 name: arxiv_paper
-description: "Get detailed info about a specific arXiv paper by ID"
+description: "Get detailed info about a specific arXiv paper by its ID (e.g. 2301.12345)"
 usage: "/arxiv_paper <paper_id>"
 aliases: [axp]
 

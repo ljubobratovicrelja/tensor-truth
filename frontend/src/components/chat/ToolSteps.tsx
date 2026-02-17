@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, Wrench, Check, X, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -88,6 +88,11 @@ interface ToolStepsProps {
 
 export function ToolSteps({ steps, defaultOpen = false }: ToolStepsProps) {
   const [collapsed, setCollapsed] = useState(!defaultOpen);
+
+  // Auto-collapse when defaultOpen transitions to false (e.g. synthesis starts)
+  useEffect(() => {
+    if (!defaultOpen) setCollapsed(true);
+  }, [defaultOpen]);
 
   if (steps.length === 0) return null;
 

@@ -30,7 +30,7 @@ from llama_index.core.base.llms.types import ChatMessage, MessageRole
 from llama_index.core.tools import FunctionTool
 from llama_index.core.workflow.errors import WorkflowRuntimeError
 
-from tensortruth.agents.tool_output import extract_tool_text
+from tensortruth.agents.tool_output import describe_tool_call, extract_tool_text
 from tensortruth.core.ollama import get_orchestrator_llm
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
 from tensortruth.services.orchestrator_tool_wrappers import (
@@ -81,7 +81,10 @@ _DEFAULT_ANALYZING_MESSAGE = "Analyzing results..."
 
 def _analyzing_message(tool_name: str) -> str:
     """Return a context-aware message for the post-tool inference phase."""
-    return _TOOL_ANALYZING_MESSAGES.get(tool_name, _DEFAULT_ANALYZING_MESSAGE)
+    if tool_name in _TOOL_ANALYZING_MESSAGES:
+        return _TOOL_ANALYZING_MESSAGES[tool_name]
+    readable = tool_name.replace("_", " ").replace("-", " ")
+    return f"Analyzing {readable} results..."
 
 
 @dataclass
@@ -365,6 +368,22 @@ class OrchestratorService:
             "the issue and continue with other tools if possible."
         )
 
+        # --- MCP tool routing ---
+        mcp_tools = [
+            t
+            for t in tools
+            if t.metadata.name not in _WRAPPED_BUILTIN_TOOL_NAMES
+            and t.metadata.name != "rag_query"
+        ]
+        if mcp_tools:
+            lines = []
+            for t in mcp_tools:
+                desc = (t.metadata.description or "")[:200]
+                if desc:
+                    lines.append(f"- {t.metadata.name}: {desc}")
+            if lines:
+                sections.append("Additional tools:\n" + "\n".join(lines))
+
         # --- Iteration budget ---
         sections.append(
             f"IMPORTANT: You have a budget of {self._max_iterations} iterations "
@@ -595,6 +614,22 @@ class OrchestratorService:
                             "params": event.tool_kwargs,
                         }
                     )
+
+                    # For MCP tools (not wrapped built-ins), synthesize a
+                    # ToolProgress event so users see what's happening
+                    # instead of stale "Analyzing your request..."
+                    if event.tool_name not in _WRAPPED_BUILTIN_TOOL_NAMES:
+                        phase_msg = describe_tool_call(
+                            event.tool_name, event.tool_kwargs
+                        )
+                        yield OrchestratorEvent(
+                            tool_phase=ToolProgress(
+                                tool_id=event.tool_name,
+                                phase="tool_call",
+                                message=phase_msg,
+                                metadata={"tool": event.tool_name},
+                            )
+                        )
 
                     # Drain any pending tool phase events that were emitted
                     # by the tool wrapper's progress emitter
