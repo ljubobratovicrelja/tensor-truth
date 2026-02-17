@@ -105,7 +105,8 @@ class TestMakeFallbackTitle:
 
     def test_heading_prefixed_text(self):
         title = _make_fallback_title(
-            "## What Is Backpropagation? Backpropagation is the engine behind modern deep learning systems"
+            "## What Is Backpropagation? Backpropagation is the engine "
+            "behind modern deep learning systems"
         )
         assert not title.startswith("#")
         assert title.endswith("..")

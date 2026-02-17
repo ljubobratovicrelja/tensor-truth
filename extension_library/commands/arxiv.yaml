@@ -4,10 +4,8 @@ usage: "/arxiv <query>"
 aliases: [ax]
 
 steps:
-  - tool: search_papers
+  - tool: search_arxiv
     params:
       query: "{{args}}"
       max_results: 5
       sort_by: relevance
-
-requires_mcp: simple-arxiv

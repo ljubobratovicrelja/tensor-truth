@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { ChevronDown, ChevronUp, Wrench, Check, X, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -87,12 +87,13 @@ interface ToolStepsProps {
 }
 
 export function ToolSteps({ steps, defaultOpen = false }: ToolStepsProps) {
-  const [collapsed, setCollapsed] = useState(!defaultOpen);
-
-  // Auto-collapse when defaultOpen transitions to false (e.g. synthesis starts)
-  useEffect(() => {
-    if (!defaultOpen) setCollapsed(true);
-  }, [defaultOpen]);
+  // userToggle: null = follow defaultOpen, true/false = user override
+  const [userToggle, setUserToggle] = useState<boolean | null>(null);
+  const collapsed = userToggle !== null ? !userToggle : !defaultOpen;
+  const toggle = useCallback(
+    () => setUserToggle((prev) => !(prev ?? defaultOpen)),
+    [defaultOpen]
+  );
 
   if (steps.length === 0) return null;
 
@@ -103,7 +104,7 @@ export function ToolSteps({ steps, defaultOpen = false }: ToolStepsProps) {
   return (
     <div className="mt-2 border-t pt-2">
       <button
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={toggle}
         className="text-muted-foreground hover:text-foreground mb-1.5 flex w-full items-center justify-between gap-2 text-xs transition-colors"
       >
         <div className="flex items-center gap-2">

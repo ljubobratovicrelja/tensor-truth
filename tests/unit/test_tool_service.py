@@ -57,8 +57,8 @@ class TestToolServiceLoadTools:
         await service.load_tools()
 
         mock_registry.load_tools.assert_awaited_once()
-        # Should have 4 built-in tools + 2 MCP tools = 6 total
-        assert len(service.tools) == 6
+        # Should have 6 built-in tools + 2 MCP tools = 8 total
+        assert len(service.tools) == 8
         assert service._loaded is True
 
     @pytest.mark.asyncio
@@ -83,8 +83,8 @@ class TestToolServiceLoadTools:
         service = ToolService(mcp_registry=mock_registry)
         await service.load_tools()
 
-        # Should still have 4 built-in tools even with no MCP tools
-        assert len(service.tools) == 4
+        # Should still have 6 built-in tools even with no MCP tools
+        assert len(service.tools) == 6
         assert service._loaded is True
 
 
@@ -309,8 +309,8 @@ class TestToolServiceBuiltinTools:
         service = ToolService(mcp_registry=mock_registry)
         await service.load_tools()
 
-        # Should have 4 built-in + 1 MCP = 5 total
-        assert len(service.tools) == 5
+        # Should have 6 built-in + 1 MCP = 7 total
+        assert len(service.tools) == 7
         tool_names = [t.metadata.name for t in service.tools]
         assert "search_web" in tool_names
         assert "mcp_custom_tool" in tool_names

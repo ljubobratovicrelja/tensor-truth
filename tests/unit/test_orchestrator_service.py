@@ -1164,7 +1164,7 @@ class TestMaxIterationsHandling:
         assert "budget" in prompt.lower()
         assert "15" in prompt
         assert "iterations" in prompt.lower()
-        assert "1-2" in prompt  # Specific allocation guidance
+        assert "parallel" in prompt.lower()  # Parallel tool call guidance
         # Old prescriptive recipes should be gone
         assert "standard web research pattern" not in prompt
         assert "2-3 tool calls" not in prompt

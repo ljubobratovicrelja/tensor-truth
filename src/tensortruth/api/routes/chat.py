@@ -608,7 +608,9 @@ async def websocket_chat(
                     if needs_title and full_response:
                         try:
                             cmd_model = session.get("params", {}).get("model")
-                            cmd_ctx = context.params.get("context_window", 16384)
+                            cmd_ctx = session.get("params", {}).get(
+                                "context_window", 16384
+                            )
                             title = await generate_smart_title_async(
                                 full_response, cmd_model, cmd_ctx
                             )

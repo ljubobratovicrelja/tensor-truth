@@ -146,6 +146,7 @@ export interface StreamToolProgress {
   params: Record<string, unknown>;
   output?: string;
   is_error?: boolean;
+  tool_id?: string;
 }
 
 export interface StreamToolPhase {
@@ -161,6 +162,7 @@ export interface ToolStep {
   params: Record<string, unknown>;
   output: string;
   is_error: boolean;
+  tool_id?: string;
 }
 
 export type AgentPhase =

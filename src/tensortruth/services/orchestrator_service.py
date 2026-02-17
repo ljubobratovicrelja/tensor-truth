@@ -365,7 +365,9 @@ class OrchestratorService:
             "opinions), respond directly without using any tools.\n"
             "- If a tool returns an error, analyze the cause: if the input was "
             "wrong, correct it and retry; if it is an internal error, report "
-            "the issue and continue with other tools if possible."
+            "the issue and continue with other tools if possible.\n"
+            "- To fetch multiple web pages, prefer fetch_pages_batch with a list of "
+            "URLs over calling fetch_page multiple times."
         )
 
         # --- MCP tool routing ---
@@ -384,12 +386,18 @@ class OrchestratorService:
             if lines:
                 sections.append("Additional tools:\n" + "\n".join(lines))
 
-        # --- Iteration budget ---
+        # --- Parallel tool calls + iteration budget ---
         sections.append(
-            f"IMPORTANT: You have a budget of {self._max_iterations} iterations "
-            "for this request. Each tool call or response counts as one iteration. "
-            "Plan your research efficiently: limit web searches to 1-2 focused "
-            "queries, then use remaining iterations to fetch and read page content."
+            "PARALLEL TOOL CALLS: You can invoke multiple tools in a single "
+            "response and they will execute simultaneously. This is both faster "
+            "and more efficient. For example, after a search returns 5 results, "
+            "call get_arxiv_paper for all 5 in one response — they run in "
+            "parallel and only cost one iteration. Calling them one at a time "
+            "would waste 5 iterations.\n\n"
+            f"You have a budget of {self._max_iterations} iterations. Each "
+            "response you produce counts as one iteration, regardless of how "
+            "many tool calls it contains. Plan efficiently: batch independent "
+            "tool calls into a single response whenever possible."
         )
 
         # --- Synthesis handoff ---
@@ -612,6 +620,7 @@ class OrchestratorService:
                         tool_call={
                             "tool": event.tool_name,
                             "params": event.tool_kwargs,
+                            "tool_id": event.tool_id,
                         }
                     )
 
@@ -667,6 +676,7 @@ class OrchestratorService:
                             "output": output_text,
                             "full_output": full_output,
                             "is_error": is_error,
+                            "tool_id": event.tool_id,
                         }
                     )
 

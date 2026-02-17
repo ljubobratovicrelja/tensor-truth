@@ -40,6 +40,24 @@ class TestTranslateEvent:
             "tool": "web_search",
             "action": "calling",
             "params": {"query": "test"},
+            "tool_id": "",
+        }
+
+    def test_tool_call_event_with_tool_id(self):
+        event = OrchestratorEvent(
+            tool_call={
+                "tool": "web_search",
+                "params": {"query": "test"},
+                "tool_id": "call_abc123",
+            }
+        )
+        msg = translate_event(event)
+        assert msg == {
+            "type": "tool_progress",
+            "tool": "web_search",
+            "action": "calling",
+            "params": {"query": "test"},
+            "tool_id": "call_abc123",
         }
 
     def test_tool_call_result_success(self):

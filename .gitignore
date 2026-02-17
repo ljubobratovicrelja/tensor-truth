@@ -234,3 +234,4 @@ frontend/.vite/
 
 # Bundled frontend in Python package (build artifact)
 src/tensortruth/static/
+node_modules/

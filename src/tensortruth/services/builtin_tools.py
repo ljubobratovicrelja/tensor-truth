@@ -9,10 +9,13 @@ FunctionTool pattern and return string results suitable for LLM consumption.
 import asyncio
 import json
 import logging
+import re
 from typing import List, Optional, Union
 
 import aiohttp
+import arxiv
 
+from tensortruth.utils.validation import validate_arxiv_id
 from tensortruth.utils.web_search import (
     fetch_page_as_markdown,
     search_duckduckgo,
@@ -348,3 +351,161 @@ async def search_focused(query: str, domain: str, max_results: int = 5) -> str:
         logger.error(f"search_focused failed: {e}", exc_info=True)
         error_result = {"error": str(e), "results": []}
         return json.dumps(error_result, indent=2)
+
+
+_ARXIV_SORT_MAP = {
+    "relevance": arxiv.SortCriterion.Relevance,
+    "submitted": arxiv.SortCriterion.SubmittedDate,
+    "updated": arxiv.SortCriterion.LastUpdatedDate,
+}
+
+
+async def search_arxiv(
+    query: str, max_results: int = 5, sort_by: str = "relevance"
+) -> str:
+    """Search arXiv for academic papers.
+
+    Args:
+        query: Search query for arXiv papers.
+        max_results: Maximum number of papers to return (default: 5).
+        sort_by: Sort order — 'relevance', 'submitted', or 'updated'.
+
+    Returns:
+        JSON array of paper objects, or error JSON on failure.
+    """
+    logger.info(f"search_arxiv called with query={query!r}, max_results={max_results}")
+
+    try:
+        sort_criterion = _ARXIV_SORT_MAP.get(sort_by, arxiv.SortCriterion.Relevance)
+        search = arxiv.Search(
+            query=query,
+            max_results=max_results,
+            sort_by=sort_criterion,
+        )
+
+        loop = asyncio.get_event_loop()
+
+        def _fetch():
+            return list(search.results())
+
+        papers = await asyncio.wait_for(
+            loop.run_in_executor(None, _fetch),
+            timeout=30,
+        )
+
+        results = []
+        for paper in papers:
+            # Truncate abstract to first ~300 chars for search overview
+            abstract = paper.summary.strip()
+            if len(abstract) > 300:
+                abstract = abstract[:300].rsplit(" ", 1)[0] + "..."
+            # Strip version suffix (e.g. "2301.12345v2" -> "2301.12345")
+            raw_id = paper.entry_id.split("/abs/")[-1]
+            arxiv_id = re.sub(r"v\d+$", "", raw_id)
+            results.append(
+                {
+                    "arxiv_id": arxiv_id,
+                    "title": paper.title,
+                    "authors": [a.name for a in paper.authors[:5]],
+                    "published": paper.published.strftime("%Y-%m-%d"),
+                    "categories": paper.categories,
+                    "abstract_snippet": abstract,
+                    "pdf_url": paper.pdf_url,
+                }
+            )
+
+        logger.info(f"search_arxiv returned {len(results)} papers")
+
+        # Build output with cue for the orchestrator
+        output = {"results": results, "total": len(results)}
+        if results:
+            ids = ", ".join(r["arxiv_id"] for r in results)
+            output["hint"] = (
+                f"Call get_arxiv_paper on promising IDs for full abstracts, "
+                f"authors, and metadata: {ids}"
+            )
+        return json.dumps(output, indent=2)
+
+    except asyncio.TimeoutError:
+        logger.warning("search_arxiv timed out")
+        return json.dumps({"error": "arXiv API timeout", "results": []}, indent=2)
+    except Exception as e:
+        logger.error(f"search_arxiv failed: {e}", exc_info=True)
+        return json.dumps({"error": str(e), "results": []}, indent=2)
+
+
+async def get_arxiv_paper(paper_id: str) -> str:
+    """Get detailed info about a specific arXiv paper.
+
+    Args:
+        paper_id: ArXiv paper ID (e.g. '2301.12345', 'hep-th/9901001',
+            or full arXiv URL).
+
+    Returns:
+        Structured markdown with paper metadata and abstract, or error string.
+    """
+    logger.info(f"get_arxiv_paper called with paper_id={paper_id!r}")
+
+    # Validate and normalize
+    normalized_id = validate_arxiv_id(paper_id)
+    if not normalized_id:
+        return f"Error: Invalid arXiv ID format: {paper_id}"
+
+    try:
+        search = arxiv.Search(id_list=[normalized_id])
+
+        loop = asyncio.get_event_loop()
+
+        def _fetch():
+            try:
+                return next(search.results())
+            except StopIteration:
+                return None
+
+        paper = await asyncio.wait_for(
+            loop.run_in_executor(None, _fetch),
+            timeout=15,
+        )
+
+        if paper is None:
+            return f"Error: Paper not found: {normalized_id}"
+
+        # Build structured markdown (matches arxiv_handler.py pattern)
+        lines = []
+        lines.append(f"# {paper.title}")
+        lines.append("")
+        lines.append("## Metadata")
+        lines.append("")
+        lines.append(f"**ArXiv ID**: {normalized_id}")
+        lines.append(f"**Authors**: {', '.join(a.name for a in paper.authors)}")
+        lines.append(f"**Published**: {paper.published.strftime('%Y-%m-%d')}")
+        lines.append(f"**Updated**: {paper.updated.strftime('%Y-%m-%d')}")
+        if paper.categories:
+            lines.append(f"**Categories**: {', '.join(paper.categories)}")
+        if paper.primary_category:
+            lines.append(f"**Primary Category**: {paper.primary_category}")
+        lines.append(f"**PDF URL**: {paper.pdf_url}")
+        lines.append(f"**ArXiv URL**: {paper.entry_id}")
+        if paper.doi:
+            lines.append(f"**DOI**: {paper.doi}")
+        if paper.journal_ref:
+            lines.append(f"**Journal Reference**: {paper.journal_ref}")
+        lines.append("")
+        lines.append("## Abstract")
+        lines.append("")
+        lines.append(paper.summary.strip())
+        lines.append("")
+        if paper.comment:
+            lines.append("## Comments")
+            lines.append("")
+            lines.append(paper.comment.strip())
+            lines.append("")
+
+        return "\n".join(lines)
+
+    except asyncio.TimeoutError:
+        logger.warning(f"get_arxiv_paper timed out for {normalized_id}")
+        return f"Error: arXiv API timeout for paper {normalized_id}"
+    except Exception as e:
+        logger.error(f"get_arxiv_paper failed: {e}", exc_info=True)
+        return f"Error: {str(e)}"

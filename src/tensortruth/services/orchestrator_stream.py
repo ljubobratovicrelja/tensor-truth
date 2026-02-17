@@ -99,6 +99,7 @@ def translate_event(event: Any) -> Optional[Dict[str, Any]]:
             "tool": tc.get("tool", ""),
             "action": "calling",
             "params": tc.get("params", {}),
+            "tool_id": tc.get("tool_id", ""),
         }
 
     # Tool call completed
@@ -112,6 +113,7 @@ def translate_event(event: Any) -> Optional[Dict[str, Any]]:
             "params": tcr.get("params", {}),
             "output": tcr.get("output"),
             "is_error": tcr.get("is_error", False),
+            "tool_id": tcr.get("tool_id", ""),
         }
 
     # Tool phase progress

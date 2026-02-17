@@ -161,22 +161,24 @@ export const useChatStore = create<ChatStore>((set) => ({
               output: "",
               is_error: false,
               status: "calling" as const,
+              tool_id: progress.tool_id,
             },
           ],
         };
       }
-      // "completed" or "failed": find last matching "calling" step and update it
+      // "completed" or "failed": match by tool_id (unique) when available,
+      // fall back to backward search by tool name for older messages
       const steps = [...state.streamingToolSteps];
-      for (let i = steps.length - 1; i >= 0; i--) {
-        if (steps[i].tool === progress.tool && steps[i].status === "calling") {
-          steps[i] = {
-            ...steps[i],
-            output: progress.output ?? "",
-            is_error: progress.is_error ?? false,
-            status: progress.action,
-          };
-          break;
-        }
+      const idx = progress.tool_id
+        ? steps.findIndex((s) => s.tool_id === progress.tool_id && s.status === "calling")
+        : steps.findLastIndex((s) => s.tool === progress.tool && s.status === "calling");
+      if (idx !== -1) {
+        steps[idx] = {
+          ...steps[idx],
+          output: progress.output ?? "",
+          is_error: progress.is_error ?? false,
+          status: progress.action,
+        };
       }
       return { streamingToolSteps: steps };
     }),

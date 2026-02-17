@@ -2,8 +2,9 @@
 
 import logging
 import os
+import uuid
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 
 import requests
 
@@ -194,6 +195,56 @@ def check_tool_call_support(model_name: str) -> bool:
     return False
 
 
+def _patch_parallel_tool_calls(llm: Any) -> None:
+    """Patch an Ollama LLM instance for proper parallel tool call support.
+
+    The upstream LlamaIndex Ollama adapter sets ``tool_id=tool_name`` in
+    ``get_tool_calls_from_response``, making multiple calls to the same
+    tool indistinguishable.  This patches the method on the instance to
+    generate unique UUIDs for each tool call instead.
+    """
+    import types
+
+    from llama_index.core.base.llms.types import ToolCallBlock
+    from llama_index.core.llms.llm import ToolSelection
+
+    def _get_tool_calls_from_response(
+        self: Any,
+        response: Any,
+        error_on_no_tool_call: bool = True,
+    ) -> list:
+        tool_calls = [
+            block
+            for block in response.message.blocks
+            if isinstance(block, ToolCallBlock)
+        ]
+        if len(tool_calls) < 1:
+            if error_on_no_tool_call:
+                raise ValueError(
+                    f"Expected at least one tool call, but got {len(tool_calls)}."
+                )
+            return []
+
+        tool_selections = []
+        for tc in tool_calls:
+            tool_selections.append(
+                ToolSelection(
+                    tool_id=tc.tool_call_id or f"call_{uuid.uuid4().hex[:12]}",
+                    tool_name=tc.tool_name,
+                    tool_kwargs=cast(dict, tc.tool_kwargs),
+                )
+            )
+        return tool_selections
+
+    # Pydantic v2 blocks __setattr__ for unknown fields, so we must
+    # bypass it with object.__setattr__ to patch the instance method.
+    object.__setattr__(
+        llm,
+        "get_tool_calls_from_response",
+        types.MethodType(_get_tool_calls_from_response, llm),
+    )
+
+
 def get_orchestrator_llm(
     model: str,
     base_url: str,
@@ -244,6 +295,7 @@ def get_orchestrator_llm(
         request_timeout=120.0,
         additional_kwargs={"num_ctx": context_window, "num_predict": -1},
     )
+    _patch_parallel_tool_calls(_orchestrator_llm_instance)
     _orchestrator_llm_key = key
 
     return _orchestrator_llm_instance

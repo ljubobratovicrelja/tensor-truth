@@ -130,22 +130,12 @@ Beyond RAG, Tensor-Truth has built-in slash commands for web search and autonomo
 
 Add your own slash commands and agents by dropping YAML files into `~/.tensortruth/commands/` and `~/.tensortruth/agents/`. No code changes needed — just define a tool pipeline or agent config and restart.
 
-```yaml
-# ~/.tensortruth/commands/arxiv.yaml
-name: arxiv
-description: "Search arXiv for academic papers"
-usage: "/arxiv <query>"
-aliases: [ax]
-steps:
-  - tool: search_papers
-    params:
-      query: "{{args}}"
-      max_results: 5
-      sort_by: relevance
-requires_mcp: simple-arxiv
+```bash
+mkdir -p ~/.tensortruth/commands
+cp extension_library/commands/arxiv.yaml ~/.tensortruth/commands/
 ```
 
-The repository includes ready-to-use extensions for [arXiv](https://github.com/andybrandt/mcp-simple-arxiv) and [Context7](https://github.com/upstash/context7) in the [`extension_library/`](extension_library/) directory — copy what you need. For the full guide (YAML schema, template variables, Python extensions, MCP setup), see **[docs/EXTENSIONS.md](docs/EXTENSIONS.md)**.
+The repository includes ready-to-use extensions for arXiv and [Context7](https://github.com/upstash/context7) in the [`extension_library/`](extension_library/) directory — copy what you need. For the full guide (YAML schema, template variables, Python extensions, MCP setup), see **[docs/EXTENSIONS.md](docs/EXTENSIONS.md)**.
 
 ## Development
 

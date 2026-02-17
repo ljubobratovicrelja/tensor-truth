@@ -98,6 +98,35 @@ class ToolService:
                 default=5, description="Maximum number of results to return"
             )
 
+        class SearchArxivInput(BaseModel):
+            """Input for search_arxiv tool."""
+
+            query: str = Field(
+                description=(
+                    "ArXiv search query. Supports field prefixes: "
+                    "ti: (title), au: (author), abs: (abstract), cat: (category). "
+                    "Boolean: AND, OR, ANDNOT. Use quotes for exact phrases. "
+                    "Example: 'ti:\"gaussian splatting\" AND abs:face'"
+                )
+            )
+            max_results: int = Field(
+                default=5, description="Maximum papers to return (default: 5)"
+            )
+            sort_by: str = Field(
+                default="relevance",
+                description="Sort by: 'relevance', 'submitted', or 'updated'",
+            )
+
+        class GetArxivPaperInput(BaseModel):
+            """Input for get_arxiv_paper tool."""
+
+            paper_id: str = Field(
+                description=(
+                    "ArXiv paper ID (e.g. '2301.12345', 'hep-th/9901001', "
+                    "or full URL)"
+                )
+            )
+
         tools = [
             FunctionTool.from_defaults(
                 async_fn=builtin_tools.search_web,
@@ -150,6 +179,39 @@ class ToolService:
                     "Optional: max_results (int, default=5)."
                 ),
                 fn_schema=SearchFocusedInput,
+            ),
+            FunctionTool.from_defaults(
+                async_fn=builtin_tools.search_arxiv,
+                name="search_arxiv",
+                description=(
+                    "Search arXiv for academic papers. "
+                    "Supports arXiv query syntax for precise searches: "
+                    "ti: (title), au: (author), abs: (abstract), cat: (category). "
+                    "Use AND/OR/ANDNOT for boolean logic, quotes for exact phrases. "
+                    'Example: \'ti:"gaussian splatting" AND ti:"face"\' or '
+                    "'au:vaswani AND ti:attention'. "
+                    "Common categories: cs.CV (vision), cs.CL (NLP), cs.LG (ML), "
+                    "cs.AI, stat.ML, eess.IV (image/video). "
+                    "Returns JSON array of papers with title, authors, abstract, "
+                    "categories, and PDF URL. "
+                    "For thorough research, call multiple times with varied queries. "
+                    "Required: query (str). "
+                    "Optional: max_results (int, default=5), "
+                    "sort_by ('relevance'|'submitted'|'updated', default='relevance')."
+                ),
+                fn_schema=SearchArxivInput,
+            ),
+            FunctionTool.from_defaults(
+                async_fn=builtin_tools.get_arxiv_paper,
+                name="get_arxiv_paper",
+                description=(
+                    "Get detailed info about a specific arXiv paper by its ID. "
+                    "Returns structured markdown with title, authors, dates, "
+                    "categories, abstract, comments, DOI, and PDF URL. "
+                    "Required: paper_id (str) — e.g. '2301.12345', "
+                    "'hep-th/9901001', or full arXiv URL."
+                ),
+                fn_schema=GetArxivPaperInput,
             ),
         ]
 

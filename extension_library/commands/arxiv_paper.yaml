@@ -4,8 +4,6 @@ usage: "/arxiv_paper <paper_id>"
 aliases: [axp]
 
 steps:
-  - tool: get_paper_data
+  - tool: get_arxiv_paper
     params:
       paper_id: "{{args}}"
-
-requires_mcp: simple-arxiv
