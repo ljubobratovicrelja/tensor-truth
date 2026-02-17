@@ -25,36 +25,42 @@ _tool_llm_instance: Optional[Any] = None
 _tool_llm_key: Optional[Tuple[str, str, int]] = None
 
 
+_DEFAULT_OLLAMA_URL = "http://localhost:11434"
+
+
 def get_ollama_url() -> str:
     """Get Ollama base URL with precedence.
 
     Priority:
-    1. Environment variable (OLLAMA_HOST)
-    2. Config file
-    3. Default (http://localhost:11434)
+    1. Config file — if explicitly set to a non-default value (app-specific intent)
+    2. Environment variable (OLLAMA_HOST — generic system-wide fallback)
+    3. Config file default / hardcoded default (http://localhost:11434)
 
     Returns:
         Ollama base URL string
     """
-    # 1. Check Environment Variable (highest priority)
-    env_host = os.environ.get("OLLAMA_HOST")
-    if env_host:
-        # Handle cases where OLLAMA_HOST might be just "0.0.0.0:11434"
-        if not env_host.startswith("http"):
-            return f"http://{env_host}".rstrip("/")
-        return env_host.rstrip("/")
-
-    # 2. Check Config File
+    # 1. Check Config File (highest priority when explicitly configured)
+    config_url = None
     try:
         from tensortruth.app_utils.config import load_config
 
         config = load_config()
-        return config.ollama.base_url.rstrip("/")
+        config_url = config.ollama.base_url.rstrip("/")
     except Exception:
         pass
 
-    # 3. Return Default
-    return "http://localhost:11434"
+    if config_url and config_url != _DEFAULT_OLLAMA_URL:
+        return config_url
+
+    # 2. Check Environment Variable (generic Ollama fallback)
+    env_host = os.environ.get("OLLAMA_HOST")
+    if env_host:
+        if not env_host.startswith("http"):
+            return f"http://{env_host}".rstrip("/")
+        return env_host.rstrip("/")
+
+    # 3. Return config default (if loaded) or hardcoded default
+    return config_url or _DEFAULT_OLLAMA_URL
 
 
 def get_api_base() -> str:
