@@ -603,6 +603,7 @@ class OrchestratorService:
         tool_steps: List[Dict[str, Any]] = []
         tool_results_context: List[str] = []
         agent_final_response = ""
+        agent_deltas: List[str] = []
 
         try:
             handler = agent.run(
@@ -699,11 +700,19 @@ class OrchestratorService:
                     )
 
                 elif isinstance(event, AgentStream):
-                    # Capture but do NOT stream the orchestrator's response.
-                    # Synthesis will be done separately with the thinking LLM.
+                    # Capture the orchestrator's text output.
+                    # If tools have been called, this is ephemeral reasoning
+                    # between tool calls — show it in the reasoning box.
+                    # If no tools have been called yet, this might be the
+                    # final answer (agent responding directly) — DON'T show
+                    # it as reasoning or the user sees the response in the
+                    # wrong place (reasoning box) and then it "dumps" into
+                    # the message area when done.
                     if event.delta:
                         agent_final_response += event.delta
-                        yield OrchestratorEvent(reasoning=event.delta)
+                        agent_deltas.append(event.delta)
+                        if tools_called:
+                            yield OrchestratorEvent(reasoning=event.delta)
 
             # Await the agent handler to completion
             response = await handler
@@ -740,7 +749,8 @@ class OrchestratorService:
         # If no tools were called, the orchestrator's direct response is the
         # final answer (no tool context to synthesize). Stream it directly.
         if not tools_called:
-            yield OrchestratorEvent(token=agent_final_response)
+            for delta in agent_deltas:
+                yield OrchestratorEvent(token=delta)
             logger.info(
                 "Orchestrator execution complete (direct): 0 tools, %d chars",
                 len(agent_final_response),
