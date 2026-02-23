@@ -2,7 +2,7 @@
 
 TensorTruth supports user-defined commands and agents via simple YAML config files (or Python for advanced cases). Drop files into `~/.tensortruth/commands/` or `~/.tensortruth/agents/`, restart the app, and your extensions are available immediately.
 
-Extensions build on [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) tools. If you've already added MCP servers to `~/.tensortruth/mcp_servers.json`, extensions let you wire those tools into slash commands and autonomous agents without writing code.
+Extensions can use built-in tools (like `search_arxiv`, `search_web`, `fetch_page`) or [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) tools. If you've added MCP servers to `~/.tensortruth/mcp_servers.json`, extensions let you wire those tools into slash commands and autonomous agents without writing code.
 
 ## Quick Start: arXiv Search in 2 Steps
 
@@ -190,7 +190,7 @@ Place in `~/.tensortruth/agents/` and reference from agent-delegating commands o
 
 **Agent types:**
 - `function` — Generic tool-calling agent. Recommended for most use cases. Uses the system prompt and tools you specify.
-- `router` — Uses the built-in browse agent's search/fetch/synthesize routing logic. Less flexible for custom agents.
+- `router` — Uses a search/fetch/synthesize routing loop. Less flexible than `function` for custom agents.
 
 **Model behavior:**
 - `model: null` — Uses whatever model the user has selected in the session (recommended)

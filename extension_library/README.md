@@ -49,6 +49,20 @@ cp extension_library/agents/doc_researcher.yaml ~/.tensortruth/agents/
 cp extension_library/commands/research_docs.yaml ~/.tensortruth/commands/
 ```
 
+## Extensions & Agentic Mode
+
+When **agentic mode** is enabled (the default), the orchestrator can use MCP extension tools alongside built-in tools (RAG, web search, page fetch) in a single query. This means the agent can combine multiple sources autonomously — for example, searching arXiv for a paper, looking up implementation details via Context7, and fetching supplementary web pages — all in one go, without the user needing to run separate slash commands.
+
+This is especially useful for complex research queries where a single tool isn't enough:
+
+```
+How does PyTorch implement flash attention? Check the docs and recent papers.
+```
+
+With Context7 installed, the orchestrator may call `resolve-library-id` + `query-docs` for PyTorch API details, `search_arxiv` for the original Flash Attention paper (built-in, no extension needed), and `search_web` + `fetch_page` for blog posts — then synthesize everything into a single cited response.
+
+**Note:** Agentic mode requires models with reliable tool-calling (`qwen3:8b`+, `llama3.1:8b`+). If you're running smaller models, disable agentic mode in session settings and use the explicit slash commands instead (e.g., `/arxiv`, `/c7`, `/web`).
+
 ## MCP Server Prerequisites
 
 Some extensions call MCP tools, so you need the relevant MCP server configured in `~/.tensortruth/mcp_servers.json`. The arXiv commands (`/arxiv`, `/arxiv_paper`) use built-in tools and need no MCP server.
