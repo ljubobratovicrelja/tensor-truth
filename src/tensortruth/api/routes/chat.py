@@ -528,8 +528,8 @@ async def websocket_chat(
                 )
                 continue
 
-            # Detect command anywhere in prompt
-            command_match = re.search(r"/(\w+)(?:\s+(.+))?", prompt)
+            # Detect command in prompt (/ must be at start or after whitespace)
+            command_match = re.search(r"(?<!\S)/(\w+)(?:\s+(.+))?", prompt)
 
             if command_match:
                 cmd_name = command_match.group(1)

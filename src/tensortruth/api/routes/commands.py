@@ -6,7 +6,7 @@ requests to external tools (web search, arXiv, GitHub, etc.) and agents
 (MCP browsing agent), streaming results back as LLM responses.
 
 Key features:
-- Commands can appear anywhere in input (not just at start)
+- Commands are triggered by / preceded by whitespace or at start of input
 - Streaming integration for LLM responses
 - Extensible architecture for adding new tools
 - Backend-first design with frontend UX layer
@@ -32,8 +32,8 @@ class ToolCommand(ABC):
     """Base class for all tool/agent commands.
 
     Tool commands trigger external tools or agents, stream LLM responses
-    via WebSocket, can appear anywhere in user input, and results are
-    saved to session history.
+    via WebSocket, are triggered by / at start of input or after whitespace,
+    and results are saved to session history.
     """
 
     name: str
