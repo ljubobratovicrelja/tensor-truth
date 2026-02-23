@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from llama_index.core.retrievers import BaseRetriever
 
 from tensortruth.app_utils.config_schema import TensorTruthConfig
+from tensortruth.core.prompts import current_date_context
 from tensortruth.rag_engine import (
     CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE,
     CUSTOM_CONTEXT_PROMPT_NO_SOURCES,
@@ -355,18 +356,22 @@ class RAGService:
             metrics_dict = metrics.to_dict()
 
         # Phase 3: Prompt selection
+        date_prefix = current_date_context() + "\n\n"
         is_low_confidence = False
         if retriever is None:
             # No retriever — LLM-only mode with system prompt
             messages = [
-                ChatMessage(role=MessageRole.SYSTEM, content=LLM_ONLY_SYSTEM_PROMPT)
+                ChatMessage(
+                    role=MessageRole.SYSTEM,
+                    content=date_prefix + LLM_ONLY_SYSTEM_PROMPT,
+                )
             ]
             if not history.is_empty:
                 messages.extend(chat_history)
             messages.append(ChatMessage(role=MessageRole.USER, content=prompt))
         elif not source_nodes:
             # Retrieval ran but returned nothing
-            formatted_prompt = CUSTOM_CONTEXT_PROMPT_NO_SOURCES.format(
+            formatted_prompt = date_prefix + CUSTOM_CONTEXT_PROMPT_NO_SOURCES.format(
                 chat_history=chat_history_str,
                 query_str=prompt,
             )
@@ -385,19 +390,25 @@ class RAGService:
                 )
                 if best_score < confidence_threshold:
                     is_low_confidence = True
-                    formatted_prompt = CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE.format(
-                        context_str=context_str,
-                        chat_history=chat_history_str,
-                        query_str=prompt,
+                    formatted_prompt = (
+                        date_prefix
+                        + CUSTOM_CONTEXT_PROMPT_LOW_CONFIDENCE.format(
+                            context_str=context_str,
+                            chat_history=chat_history_str,
+                            query_str=prompt,
+                        )
                     )
                 else:
-                    formatted_prompt = CUSTOM_CONTEXT_PROMPT_TEMPLATE.format(
-                        context_str=context_str,
-                        chat_history=chat_history_str,
-                        query_str=prompt,
+                    formatted_prompt = (
+                        date_prefix
+                        + CUSTOM_CONTEXT_PROMPT_TEMPLATE.format(
+                            context_str=context_str,
+                            chat_history=chat_history_str,
+                            query_str=prompt,
+                        )
                     )
             else:
-                formatted_prompt = CUSTOM_CONTEXT_PROMPT_TEMPLATE.format(
+                formatted_prompt = date_prefix + CUSTOM_CONTEXT_PROMPT_TEMPLATE.format(
                     context_str=context_str,
                     chat_history=chat_history_str,
                     query_str=prompt,

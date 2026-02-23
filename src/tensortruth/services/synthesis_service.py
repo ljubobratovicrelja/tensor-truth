@@ -22,6 +22,7 @@ from typing import (
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
 from tensortruth.core.ollama import check_thinking_support, get_tool_llm
+from tensortruth.core.prompts import current_date_context
 from tensortruth.services.models import ToolProgress
 from tensortruth.services.orchestrator_service import (
     ModuleDescription,
@@ -145,6 +146,9 @@ class SynthesisService:
             Complete system prompt string.
         """
         sections: List[str] = []
+
+        # --- Current date (temporal grounding) ---
+        sections.append(current_date_context())
 
         # --- Role ---
         sections.append(

@@ -32,6 +32,7 @@ from llama_index.core.workflow.errors import WorkflowRuntimeError
 
 from tensortruth.agents.tool_output import describe_tool_call, extract_tool_text
 from tensortruth.core.ollama import get_orchestrator_llm
+from tensortruth.core.prompts import current_date_context
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
 from tensortruth.services.orchestrator_tool_wrappers import (
     ProgressEmitter,
@@ -325,6 +326,9 @@ class OrchestratorService:
             Complete system prompt string.
         """
         sections: List[str] = []
+
+        # --- Current date (temporal grounding) ---
+        sections.append(current_date_context())
 
         # --- Role ---
         sections.append(
