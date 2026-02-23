@@ -165,6 +165,9 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               break;
 
             case "tool_phase":
+              if (data.phase === "generating") {
+                clearReasoning();
+              }
               setToolPhase(data);
               break;
 

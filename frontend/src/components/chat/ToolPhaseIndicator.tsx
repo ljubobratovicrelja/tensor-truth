@@ -69,26 +69,17 @@ function pickRandom<T>(array: readonly T[]): T {
 
 export function ToolPhaseIndicator({ phase }: ToolPhaseIndicatorProps) {
   const streamingReasoning = useChatStore((state) => state.streamingReasoning);
-  const streamingThinking = useChatStore((state) => state.streamingThinking);
-  const streamingContent = useChatStore((state) => state.streamingContent);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Determine intermediate content: show reasoning or thinking, but only
-  // before response tokens start flowing (once content arrives, thinking
-  // is displayed inside MessageItem's ThinkingBox instead).
-  const intermediateContent = !streamingContent
-    ? streamingReasoning || streamingThinking
-    : "";
+  // Show orchestrator reasoning in the collapsible box. Thinking content
+  // is handled by MessageItem's ThinkingBox, not here.
+  const intermediateContent = streamingReasoning || "";
   const hasContent = !!intermediateContent;
-
-  // When showing thinking (not reasoning), override title to "Reasoning"
-  const isShowingThinking =
-    !streamingContent && !streamingReasoning && !!streamingThinking;
 
   // Determine icon and animation from phase config
   const phaseConfig = PHASE_ICON_MAP[phase.phase] ?? DEFAULT_CONFIG;
-  const TitleIcon = isShowingThinking ? Brain : phaseConfig.icon;
-  const titleAnimation = isShowingThinking ? "animate-pulse" : phaseConfig.animation;
+  const TitleIcon = phaseConfig.icon;
+  const titleAnimation = phaseConfig.animation;
 
   // Determine title text
   const displayMessage = useMemo(() => {
@@ -97,7 +88,7 @@ export function ToolPhaseIndicator({ phase }: ToolPhaseIndicatorProps) {
     }
     return phase.message;
   }, [phase.phase, phase.message]);
-  const title = isShowingThinking ? "Reasoning" : displayMessage;
+  const title = displayMessage;
 
   // Auto-expand when content arrives, auto-collapse when cleared
   const [expanded, setExpanded] = useState(hasContent);

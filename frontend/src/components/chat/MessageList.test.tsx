@@ -16,6 +16,7 @@ vi.mock("@/hooks", () => ({
 
 vi.mock("@/stores", () => ({
   useUIStore: () => vi.fn(),
+  useChatStore: () => null,
 }));
 
 describe("MessageList", () => {

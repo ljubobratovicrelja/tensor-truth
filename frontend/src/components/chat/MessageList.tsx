@@ -196,7 +196,7 @@ export function MessageList({
             {/* Streaming: show unified activity box before content appears.
                 Thinking is displayed inside ToolPhaseIndicator (via StreamingIndicator)
                 alongside reasoning — no separate ThinkingBox needed here. */}
-            {isStreaming && !streamingContent && (
+            {isStreaming && !streamingContent && !streamingThinking && (
               <>
                 {agentProgress ? (
                   <AgentProgress progress={agentProgress} />
@@ -211,7 +211,7 @@ export function MessageList({
               </>
             )}
             {/* Streaming: show streaming response with thinking and status */}
-            {isStreaming && streamingContent && (
+            {isStreaming && (streamingContent || streamingThinking) && (
               <>
                 {agentProgress ? (
                   <AgentProgress progress={agentProgress} />
@@ -219,7 +219,7 @@ export function MessageList({
                   pipelineStatus && <StreamingIndicator status={pipelineStatus} />
                 )}
                 <MessageItem
-                  message={{ role: "assistant", content: streamingContent }}
+                  message={{ role: "assistant", content: streamingContent ?? "" }}
                   sources={streamingSources}
                   metrics={streamingMetrics}
                   thinking={streamingThinking}
