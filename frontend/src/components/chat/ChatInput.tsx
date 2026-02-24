@@ -151,11 +151,9 @@ export function ChatInput({
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          disabled={isStreaming}
           className={cn(
             "w-full resize-none bg-transparent px-4 pt-4 pb-14 text-base",
-            "placeholder:text-muted-foreground focus:outline-none",
-            "disabled:cursor-not-allowed disabled:opacity-50"
+            "placeholder:text-muted-foreground focus:outline-none"
           )}
           rows={1}
         />
