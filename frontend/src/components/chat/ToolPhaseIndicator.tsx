@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Search,
   Brain,
@@ -17,6 +17,7 @@ import type { LucideIcon } from "lucide-react";
 import type { StreamToolPhase } from "@/api/types";
 import { useChatStore } from "@/stores";
 import { cn } from "@/lib/utils";
+import { useAutoScroll } from "@/hooks";
 
 interface ToolPhaseIndicatorProps {
   phase: StreamToolPhase;
@@ -69,7 +70,6 @@ function pickRandom<T>(array: readonly T[]): T {
 
 export function ToolPhaseIndicator({ phase }: ToolPhaseIndicatorProps) {
   const streamingReasoning = useChatStore((state) => state.streamingReasoning);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Show orchestrator reasoning in the collapsible box. Thinking content
   // is handled by MessageItem's ThinkingBox, not here.
@@ -97,11 +97,11 @@ export function ToolPhaseIndicator({ phase }: ToolPhaseIndicatorProps) {
   }, [hasContent]);
 
   // Auto-scroll content to bottom as it streams
-  useEffect(() => {
-    if (scrollRef.current && expanded) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [intermediateContent, expanded]);
+  const { scrollRef } = useAutoScroll({
+    nearBottomThreshold: 30,
+    deps: [intermediateContent],
+    enabled: expanded,
+  });
 
   // No content — header-only box (no chevron, not expandable)
   if (!hasContent) {

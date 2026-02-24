@@ -1,11 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { ArrowDown } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { MessageItem } from "./MessageItem";
 import { StreamingIndicator } from "./StreamingIndicator";
 import { AgentProgress } from "./AgentProgress";
-import { useScrollDirection, useIsMobile } from "@/hooks";
+import { useScrollDirection, useIsMobile, useAutoScroll } from "@/hooks";
 import { useUIStore } from "@/stores";
 import { cn } from "@/lib/utils";
 import type {
@@ -51,9 +51,7 @@ export function MessageList({
   confidenceLevel,
   streamingReasoning,
 }: MessageListProps) {
-  // Use state for container so effects re-run when it's set
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
   const isMobile = useIsMobile();
   const setHeaderHidden = useUIStore((state) => state.setHeaderHidden);
   const setInputHidden = useUIStore((state) => state.setInputHidden);
@@ -63,13 +61,57 @@ export function MessageList({
     topThreshold: 0.1,
   });
 
-  // Combine refs - we need both for scroll tracking and auto-scroll
+  // --- Auto-scroll (replaces old threshold-based useEffect) ---
+  const {
+    scrollRef: autoScrollRef,
+    isScrolledAway,
+    scrollToBottom,
+    reEngage,
+  } = useAutoScroll({
+    nearBottomThreshold: 50,
+    deps: [
+      messages,
+      pendingUserMessage,
+      streamingContent,
+      streamingThinking,
+      streamingReasoning,
+    ],
+    enabled: true,
+  });
+
+  // Re-engage auto-scroll when a new streaming session starts
+  const prevStreamingRef = useRef(false);
+  useEffect(() => {
+    if (isStreaming && !prevStreamingRef.current) {
+      reEngage();
+    }
+    prevStreamingRef.current = !!isStreaming;
+  }, [isStreaming, reEngage]);
+
+  // --- Streaming→complete transition: preserve thinking, dedup ---
+  // Keep the last non-empty thinking content so it survives finishStreaming()
+  // which clears streamingThinking. The conditional updates are safe (no loops).
+  const [savedThinking, setSavedThinking] = useState("");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: preserve previous value across store clears
+    if (streamingThinking) setSavedThinking(streamingThinking);
+    if (isStreaming && !streamingContent) setSavedThinking("");
+  }, [streamingThinking, isStreaming, streamingContent]);
+
+  // Check if the messages array already contains the streaming message (dedup)
+  const streamingDeduplicated = !!(
+    streamingContent &&
+    messages.some((m) => m.role === "assistant" && m.content === streamingContent)
+  );
+
+  // Combine refs - we need scroll direction, auto-scroll, and container state
   const combinedRef = useCallback(
     (node: HTMLDivElement | null) => {
       setScrollContainer(node);
       scrollRef(node);
+      autoScrollRef(node);
     },
-    [scrollRef]
+    [scrollRef, autoScrollRef]
   );
 
   // Update header visibility based on scroll (mobile only)
@@ -98,11 +140,10 @@ export function MessageList({
     };
   }, [setHeaderHidden, setInputHidden]);
 
-  // Update input visibility (mobile) and scroll button visibility (all)
+  // Update input visibility on mobile (based on scroll position)
   useEffect(() => {
     if (!scrollContainer) {
       setInputHidden(false);
-      setShowScrollButton(false);
       return;
     }
 
@@ -118,46 +159,12 @@ export function MessageList({
       if (isMobile) {
         setInputHidden(!isNearBottom);
       }
-
-      // Show scroll button only when input is hidden (same threshold)
-      setShowScrollButton(!isNearBottom);
     };
 
-    // Initial check
     handleScroll();
-
     scrollContainer.addEventListener("scroll", handleScroll);
     return () => scrollContainer.removeEventListener("scroll", handleScroll);
   }, [isMobile, scrollContainer, setInputHidden]);
-
-  // Auto-scroll to bottom on new content, but only if already near bottom
-  useEffect(() => {
-    if (!scrollContainer) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-
-    // Only auto-scroll if already within 150px of bottom
-    // This respects user's position if they've scrolled up
-    if (distanceFromBottom < 150) {
-      // eslint-disable-next-line react-hooks/immutability
-      scrollContainer.scrollTop = scrollHeight;
-    }
-  }, [
-    scrollContainer,
-    messages,
-    pendingUserMessage,
-    streamingContent,
-    streamingThinking,
-    streamingReasoning,
-  ]);
-
-  const scrollToBottom = useCallback(() => {
-    scrollContainer?.scrollTo({
-      top: scrollContainer.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [scrollContainer]);
 
   // Only show loading skeleton if we have nothing to display
   // If there's a pending message or streaming content, show that instead
@@ -210,8 +217,10 @@ export function MessageList({
                 )}
               </>
             )}
-            {/* Streaming: show streaming response with thinking and status */}
-            {isStreaming && (streamingContent || streamingThinking) && (
+            {/* Streaming / transition: show streaming response with thinking and status.
+                After finishStreaming, streamingContent persists (only reset() clears it)
+                so the MessageItem stays mounted until the refetch deduplicates it. */}
+            {(streamingContent || streamingThinking) && !streamingDeduplicated && (
               <>
                 {agentProgress ? (
                   <AgentProgress progress={agentProgress} />
@@ -222,10 +231,10 @@ export function MessageList({
                   message={{ role: "assistant", content: streamingContent ?? "" }}
                   sources={streamingSources}
                   metrics={streamingMetrics}
-                  thinking={streamingThinking}
+                  thinking={streamingThinking || savedThinking}
                   toolSteps={streamingToolSteps}
                   confidenceLevel={confidenceLevel ?? undefined}
-                  isStreaming
+                  isStreaming={!!isStreaming}
                 />
               </>
             )}
@@ -235,13 +244,13 @@ export function MessageList({
 
       {/* Scroll to bottom button */}
       <Button
-        onClick={scrollToBottom}
+        onClick={() => scrollToBottom()}
         size="icon"
         variant="secondary"
         className={cn(
           "fixed right-4 bottom-6 z-10 h-8 w-8 rounded-full opacity-60 shadow-md transition-all hover:opacity-100",
           "md:right-8 md:bottom-44",
-          showScrollButton
+          isScrolledAway
             ? "translate-y-0 scale-100"
             : "pointer-events-none translate-y-4 scale-75 opacity-0"
         )}

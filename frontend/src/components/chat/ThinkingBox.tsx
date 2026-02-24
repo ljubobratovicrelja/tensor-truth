@@ -1,7 +1,8 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useState } from "react";
 import { Brain, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MemoizedMarkdown } from "./MemoizedMarkdown";
+import { useAutoScroll } from "@/hooks";
 
 interface ThinkingBoxProps {
   content: string;
@@ -18,18 +19,17 @@ function ThinkingBoxComponent({
   thinkingComplete = false,
   className,
 }: ThinkingBoxProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(!isCollapsed);
 
   // Thinking content is still streaming (not complete, not collapsed)
   const isThinkingStreaming = !isCollapsed && !thinkingComplete;
 
   // Auto-scroll to bottom as content streams in (only when expanded and streaming)
-  useEffect(() => {
-    if (scrollRef.current && expanded && isThinkingStreaming) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [content, expanded, isThinkingStreaming]);
+  const { scrollRef } = useAutoScroll({
+    nearBottomThreshold: 30,
+    deps: [content],
+    enabled: expanded && isThinkingStreaming,
+  });
 
   if (!content) return null;
 

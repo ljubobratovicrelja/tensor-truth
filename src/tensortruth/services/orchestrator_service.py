@@ -31,7 +31,11 @@ from llama_index.core.tools import FunctionTool
 from llama_index.core.workflow.errors import WorkflowRuntimeError
 
 from tensortruth.agents.tool_output import describe_tool_call, extract_tool_text
-from tensortruth.core.ollama import get_orchestrator_llm
+from tensortruth.core.ollama import (
+    check_thinking_support,
+    get_orchestrator_llm,
+    get_tool_llm,
+)
 from tensortruth.core.prompts import current_date_context
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
 from tensortruth.services.orchestrator_tool_wrappers import (
@@ -520,6 +524,112 @@ class OrchestratorService:
         return kept
 
     # ------------------------------------------------------------------
+    # Direct response generation (thinking-enabled, no tools)
+    # ------------------------------------------------------------------
+
+    def _build_direct_system_prompt(self) -> str:
+        """Compose a system prompt for direct (no-tool) response generation.
+
+        Similar to the orchestrator system prompt but without tool routing,
+        tool lists, or synthesis/citation rules. Used when the orchestrator
+        decided no tools are needed and we re-generate with thinking enabled.
+
+        Returns:
+            System prompt string.
+        """
+        sections: List[str] = []
+
+        sections.append(current_date_context())
+
+        sections.append(
+            "You are an intelligent assistant that helps users by answering "
+            "questions, finding information, and completing tasks. Provide "
+            "comprehensive, well-structured answers using markdown formatting "
+            "when appropriate."
+        )
+
+        if self._module_descriptions:
+            module_lines = [
+                f"- {mod.name}: {mod.display_name} ({mod.doc_type})"
+                for mod in self._module_descriptions
+            ]
+            modules_block = "\n".join(module_lines)
+            sections.append(
+                "You have access to a knowledge base with the following indexed "
+                f"modules:\n{modules_block}"
+            )
+
+        if self._project_metadata:
+            sections.append(f"Project context:\n{self._project_metadata}")
+
+        if self._custom_instructions:
+            sections.append(
+                f"Additional instructions from the user:\n{self._custom_instructions}"
+            )
+
+        return "\n\n".join(sections)
+
+    async def _generate_direct_response(
+        self,
+        prompt: str,
+        chat_history: List[ChatMessage],
+        progress_emitter: ProgressEmitter,
+    ) -> AsyncGenerator[OrchestratorEvent, None]:
+        """Re-generate a direct response with thinking enabled.
+
+        Called when the orchestrator decided no tools are needed. Uses the
+        thinking-enabled tool LLM to produce both reasoning tokens and the
+        final answer — matching the quality of the synthesis path.
+
+        Args:
+            prompt: The original user prompt.
+            chat_history: Budgeted chat history as ChatMessage objects.
+            progress_emitter: Callback for progress events.
+
+        Yields:
+            OrchestratorEvent instances (thinking and token events).
+        """
+        # Emit thinking phase
+        progress_emitter(
+            ToolProgress(
+                tool_id="orchestrator",
+                phase="thinking",
+                message="Thinking...",
+            )
+        )
+
+        llm = get_tool_llm(self._model, self._base_url, self._context_window)
+        system_prompt = self._build_direct_system_prompt()
+
+        messages = [ChatMessage(role=MessageRole.SYSTEM, content=system_prompt)]
+        messages.extend(chat_history)
+        messages.append(ChatMessage(role=MessageRole.USER, content=prompt))
+
+        sent_generating_phase = False
+
+        try:
+            async for chunk in await llm.astream_chat(messages):
+                thinking_delta = chunk.additional_kwargs.get("thinking_delta")
+                if thinking_delta:
+                    yield OrchestratorEvent(thinking=thinking_delta)
+                elif chunk.delta:
+                    if not sent_generating_phase:
+                        progress_emitter(
+                            ToolProgress(
+                                tool_id="orchestrator",
+                                phase="generating",
+                                message="Generating response...",
+                            )
+                        )
+                        sent_generating_phase = True
+                    yield OrchestratorEvent(token=chunk.delta)
+        except Exception as e:
+            logger.error("Direct response generation failed: %s", e, exc_info=True)
+            yield OrchestratorEvent(
+                token=f"I encountered an error generating the response: {e}"
+            )
+
+    # ------------------------------------------------------------------
     # Main execution
     # ------------------------------------------------------------------
 
@@ -750,11 +860,18 @@ class OrchestratorService:
             return
 
         # --- Phase 2: Response generation ---
-        # If no tools were called, the orchestrator's direct response is the
-        # final answer (no tool context to synthesize). Stream it directly.
+        # If no tools were called, the orchestrator answered directly. When
+        # thinking is supported, re-generate with the thinking-enabled LLM
+        # so the user gets reasoning tokens. Otherwise, use the fast path.
         if not tools_called:
-            for delta in agent_deltas:
-                yield OrchestratorEvent(token=delta)
+            if check_thinking_support(self._model):
+                async for event in self._generate_direct_response(
+                    prompt, llama_history, _combined_emitter
+                ):
+                    yield event
+            else:
+                for delta in agent_deltas:
+                    yield OrchestratorEvent(token=delta)
             logger.info(
                 "Orchestrator execution complete (direct): 0 tools, %d chars",
                 len(agent_final_response),
