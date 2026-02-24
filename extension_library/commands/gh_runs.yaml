@@ -1,0 +1,11 @@
+name: gh_runs
+description: "List recent CI workflow runs for a GitHub repository"
+usage: "/gh_runs <owner> <repo>"
+
+steps:
+  - tool: list_workflow_runs
+    params:
+      owner: "{{args.0}}"
+      repo: "{{args.1}}"
+
+requires_mcp: github

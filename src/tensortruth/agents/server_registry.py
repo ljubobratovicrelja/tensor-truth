@@ -2,15 +2,49 @@
 
 import json
 import logging
+import os
 from pathlib import Path
 
 from llama_index.core.tools import FunctionTool
 from llama_index.tools.mcp import BasicMCPClient, McpToolSpec
+from mcp.client.stdio import get_default_environment
 
 from .config import MCPServerConfig, MCPServerType
 from .tool_output import wrap_mcp_tool_fn
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_env(env: dict[str, str] | None) -> dict[str, str] | None:
+    """Resolve environment variable references and merge onto MCP defaults.
+
+    Values starting with ``$`` are expanded from ``os.environ``.
+    The resolved vars are merged on top of ``get_default_environment()``
+    so that PATH, HOME, etc. are always present.
+
+    Returns ``None`` when *env* is ``None`` or empty (fall back to SDK defaults).
+    """
+    if not env:
+        return None
+
+    resolved: dict[str, str] = {}
+    for key, value in env.items():
+        if isinstance(value, str) and value.startswith("$"):
+            var_name = value[1:]
+            env_value = os.environ.get(var_name)
+            if env_value:
+                resolved[key] = env_value
+            else:
+                logger.warning(f"Environment variable {var_name} not set, skipping")
+        else:
+            resolved[key] = value
+
+    if not resolved:
+        return None
+
+    base = get_default_environment()
+    base.update(resolved)
+    return base
 
 
 class MCPServerRegistry:
@@ -76,6 +110,7 @@ class MCPServerRegistry:
                     args=server_data.get("args", []),
                     url=server_data.get("url"),
                     description=server_data.get("description"),
+                    env=server_data.get("env"),
                     enabled=server_data.get("enabled", True),
                 )
                 self.register(config)
@@ -103,9 +138,11 @@ class MCPServerRegistry:
                     if not config.command:
                         logger.warning(f"STDIO server {name} has no command configured")
                         continue
+                    resolved_env = _resolve_env(config.env)
                     client = BasicMCPClient(
                         command_or_url=config.command,
                         args=config.args or [],
+                        env=resolved_env,
                     )
                 elif config.type == MCPServerType.SSE:
                     # For SSE, just pass the URL

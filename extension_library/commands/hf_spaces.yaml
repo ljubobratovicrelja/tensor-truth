@@ -1,0 +1,11 @@
+name: hf_spaces
+description: "Search HuggingFace Spaces (demos and apps)"
+usage: "/hf_spaces <query>"
+aliases: [hfs]
+
+steps:
+  - tool: spaces_semantic_search
+    params:
+      query: "{{args}}"
+
+requires_mcp: huggingface

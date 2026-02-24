@@ -32,6 +32,7 @@ class MCPServerConfig:
     args: Optional[list[str]] = field(default_factory=list)
     url: Optional[str] = None
     description: Optional[str] = None
+    env: Optional[dict[str, str]] = None
     enabled: bool = True
 
     def __post_init__(self):

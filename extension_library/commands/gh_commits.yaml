@@ -1,0 +1,11 @@
+name: gh_commits
+description: "List recent commits for a GitHub repository"
+usage: "/gh_commits <owner> <repo>"
+
+steps:
+  - tool: list_commits
+    params:
+      owner: "{{args.0}}"
+      repo: "{{args.1}}"
+
+requires_mcp: github
