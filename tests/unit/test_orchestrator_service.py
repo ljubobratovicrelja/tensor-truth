@@ -940,27 +940,6 @@ class TestBuildSourceReference:
         assert "[1]" in result
         assert "[2]" not in result  # Only one source should be listed
 
-    def test_fallback_from_search_results(self):
-        """When no web_sources exist, should fall back to web_search_results."""
-        search_results = [
-            {"title": "Page A", "url": "https://a.com", "snippet": "..."},
-            {"title": "Page B", "url": "https://b.com", "snippet": "..."},
-        ]
-        result = build_source_reference([], web_search_results=search_results)
-        assert "[1]" in result
-        assert "[2]" in result
-        assert "Page A" in result
-        assert "snippet only" in result
-
-    def test_snippet_only_preamble_when_unfetched(self):
-        """Source reference block should include a preamble when snippet-only sources exist."""
-        search_results = [
-            {"title": "Page A", "url": "https://a.com", "snippet": "..."},
-        ]
-        result = build_source_reference([], web_search_results=search_results)
-        assert "Note:" in result
-        assert "snippet only" in result.lower()
-
     def test_no_snippet_preamble_for_fetched_sources(self):
         """Should NOT include snippet preamble when all sources are fetched."""
         from tensortruth.core.source import SourceNode, SourceStatus, SourceType
@@ -976,8 +955,8 @@ class TestBuildSourceReference:
         result = build_source_reference([], web_sources=[web_node])
         assert "Note:" not in result
 
-    def test_prefers_web_sources_over_search_results(self):
-        """When web_sources exist, should use them instead of search_results fallback."""
+    def test_web_sources_listed_correctly(self):
+        """Web sources should be listed in the source reference block."""
         from tensortruth.core.source import SourceNode, SourceStatus, SourceType
 
         web_node = SourceNode(
@@ -988,14 +967,9 @@ class TestBuildSourceReference:
             score=0.9,
             status=SourceStatus.SUCCESS,
         )
-        search_results = [
-            {"title": "Search Result", "url": "https://search.com"},
-        ]
-        result = build_source_reference(
-            [], web_sources=[web_node], web_search_results=search_results
-        )
+        result = build_source_reference([], web_sources=[web_node])
         assert "Fetched Page" in result
-        assert "Search Result" not in result  # fallback not used
+        assert "[1]" in result
 
 
 class TestLoadModuleDescriptions:
@@ -1192,9 +1166,9 @@ class TestMaxIterationsHandling:
         # General routing guidance still present
         assert "knowledge base" in prompt.lower()
         assert "current events" in prompt.lower()
-        # Snippet warning and fetch instruction present
-        assert "snippet" in prompt.lower()
-        assert "fetch" in prompt.lower()
+        # Must-fetch directive present (no snippets exposed to LLM)
+        assert "no page content" in prompt.lower()
+        assert "fetch_pages_batch" in prompt.lower()
 
     def test_orchestrator_llm_no_nested_options(self):
         """Orchestrator LLM additional_kwargs must not nest options inside 'options'."""

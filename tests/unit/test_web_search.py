@@ -298,11 +298,15 @@ class TestFetchPageAsMarkdown:
         mock_session = AsyncMock()
         mock_response = AsyncMock()
         mock_response.status = 200
-        # Add enough content to pass the 100 char minimum
+        # Add enough content to pass the 300 char minimum
         mock_response.text = AsyncMock(return_value="""<html><body><main>
                 <h1>Title</h1>
                 <p>This is enough content to pass the minimum length requirement
-                for the page fetcher. It needs to be at least 100 characters long.</p>
+                for the page fetcher. It needs to be at least 300 characters long
+                after markdown conversion, so we include several sentences of
+                substantive content here. The page discusses various topics
+                including machine learning techniques, natural language processing
+                advances, and their practical applications in modern software.</p>
             </main></body></html>""")
 
         # Properly mock async context manager
@@ -400,7 +404,15 @@ class TestFetchPageAsMarkdown:
                 <nav>Navigation</nav>
                 <main>
                     <h1>Article Title</h1>
-                    <p>This is the main article content that should be extracted.</p>
+                    <p>This is the main article content that should be extracted.
+                    It contains multiple sentences with enough detail to pass the
+                    minimum content length threshold. The article discusses several
+                    important topics including machine learning, natural language
+                    processing, and computer vision techniques that have been
+                    developed over the past decade.</p>
+                    <p>Furthermore, the article explores the implications of these
+                    technologies on modern software engineering practices and how
+                    they can be applied to solve real-world problems efficiently.</p>
                 </main>
                 <footer>Footer</footer>
             </body>
@@ -863,9 +875,11 @@ class TestRerankFetchedPages:
         """Each page has associated relevance score."""
         from tensortruth.utils.web_search import rerank_fetched_pages
 
+        # Content must be >= 500 chars to avoid thin-content penalty
+        long_content = "x" * 500
         pages = [
-            ("https://example.com/1", "Page 1", "Content 1"),
-            ("https://example.com/2", "Page 2", "Content 2"),
+            ("https://example.com/1", "Page 1", long_content),
+            ("https://example.com/2", "Page 2", long_content),
         ]
 
         mock_reranker = MagicMock()
@@ -884,7 +898,8 @@ class TestRerankFetchedPages:
         assert ranked[0][1] == 0.9
         assert ranked[1][1] == 0.7
         # Pages are tuples
-        assert ranked[0][0] == ("https://example.com/1", "Page 1", "Content 1")
+        assert ranked[0][0][0] == "https://example.com/1"
+        assert ranked[0][0][1] == "Page 1"
 
     def test_truncates_long_content(self):
         """Content truncated for efficiency in ranking."""

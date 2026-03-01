@@ -188,7 +188,18 @@ def rerank_fetched_pages(
     # Sort by score descending
     ranked_pages.sort(key=lambda x: x[1], reverse=True)
 
-    return ranked_pages
+    # Penalize thin content: pages under 500 chars get a linear penalty
+    # (0 chars → 0.5x, 500 chars → 1.0x)
+    penalized = []
+    for page_tuple, score in ranked_pages:
+        content_len = len(page_tuple[2]) if len(page_tuple) > 2 else 0
+        if content_len < 500:
+            factor = 0.5 + 0.5 * (content_len / 500)
+            score = score * factor
+        penalized.append((page_tuple, score))
+    penalized.sort(key=lambda x: x[1], reverse=True)
+
+    return penalized
 
 
 # Type variable for generic filter function
@@ -700,7 +711,7 @@ async def fetch_generic_html(
         markdown = f"<!-- Source: {url} -->\n\n{markdown}"
 
         # Basic quality check
-        if len(markdown.strip()) < 100:
+        if len(markdown.strip()) < 300:
             error_msg = "Content too short"
             logger.warning(f"{error_msg} for {url}")
             return None, "too_short", error_msg

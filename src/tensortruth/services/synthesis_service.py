@@ -186,12 +186,7 @@ class SynthesisService:
             "Do not invent sources.\n"
             "- If sources conflict, note which source says what with citations.\n"
             "- If the tool results are insufficient to fully answer the "
-            "question, say so and provide what you can.\n"
-            "- Sources marked '(snippet only)' were found via web search but their "
-            "full content was NOT retrieved. For these sources: only use information "
-            "that appears verbatim in the search snippets from the tool results, "
-            "do not extrapolate or infer details beyond what the snippets contain, "
-            "and note in your response that full page content was not available."
+            "question, say so and provide what you can."
         )
 
         # --- Project metadata ---

@@ -374,13 +374,21 @@ def create_web_search_tool(
                 title_threshold,
             )
 
-        # Store query and results for fetch_pages_batch to access
+        # Store query and full results (with snippets) for fetch_pages_batch
         if web_query_setter:
             web_query_setter(query)
         if web_search_results_setter:
             web_search_results_setter(search_results)
 
-        return json.dumps(search_results, indent=2)
+        # Strip snippets — LLM sees only urls, titles, scores
+        llm_results = []
+        for r in search_results:
+            entry = {"url": r.get("url", ""), "title": r.get("title", "")}
+            if "relevance_score" in r:
+                entry["relevance_score"] = r["relevance_score"]
+            llm_results.append(entry)
+
+        return json.dumps(llm_results, indent=2)
 
     return FunctionTool.from_defaults(
         async_fn=web_search,
@@ -388,9 +396,9 @@ def create_web_search_tool(
         description=(
             "Search the web using DuckDuckGo for current information, recent "
             "events, or topics not in the indexed knowledge base. Returns a "
-            "JSON array of search results, each containing a title, URL, and "
-            "short snippet. Output contains only metadata and snippets — not "
-            "full page content."
+            "JSON array of results with titles, URLs, and relevance scores — "
+            "NO page content or snippets. You MUST call fetch_pages_batch "
+            "with the relevant URLs after this tool to retrieve actual content."
         ),
         fn_schema=WebSearchInput,
     )
@@ -593,7 +601,10 @@ def create_fetch_pages_batch_tool(
 
         parts = []
         for url, title, content in fitted_pages:
-            parts.append(f"## {title}\nSource: {url}\n\n{content}")
+            header = f"## {title}\nSource: {url}\n"
+            if len(content) < 500:
+                header += f"\n*Note: Limited content ({len(content)} chars)*\n"
+            parts.append(f"{header}\n{content}")
         return "\n\n---\n\n".join(parts)
 
     return FunctionTool.from_defaults(
