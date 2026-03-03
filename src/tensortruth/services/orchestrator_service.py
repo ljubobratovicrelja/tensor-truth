@@ -11,6 +11,7 @@ memory -- history is passed per-call from ChatHistoryService.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import (
@@ -90,6 +91,24 @@ def _analyzing_message(tool_name: str) -> str:
         return _TOOL_ANALYZING_MESSAGES[tool_name]
     readable = tool_name.replace("_", " ").replace("-", " ")
     return f"Analyzing {readable} results..."
+
+
+def _is_transient_llm_error(exc: Exception) -> bool:
+    """Check if an exception is likely a transient Ollama/LLM error."""
+    msg = str(exc).lower()
+    transient_indicators = [
+        "failed to parse json",
+        "connection refused",
+        "connection reset",
+        "status code: 500",
+        "status code: 502",
+        "status code: 503",
+        "timed out",
+        "timeout",
+        "server disconnected",
+        "broken pipe",
+    ]
+    return any(indicator in msg for indicator in transient_indicators)
 
 
 @dataclass
@@ -718,145 +737,176 @@ class OrchestratorService:
         agent_final_response = ""
         agent_deltas: List[str] = []
 
-        try:
-            handler = agent.run(
-                user_msg=prompt,
-                chat_history=llama_history if llama_history else None,
-                max_iterations=self._max_iterations,
-            )
+        max_attempts = 2
 
-            async for event in handler.stream_events():
-                if isinstance(event, ToolCall):
-                    tools_called.append(event.tool_name)
+        for attempt in range(max_attempts):
+            try:
+                handler = agent.run(
+                    user_msg=prompt,
+                    chat_history=llama_history if llama_history else None,
+                    max_iterations=self._max_iterations,
+                )
 
-                    # Yield tool call event
-                    yield OrchestratorEvent(
-                        tool_call={
-                            "tool": event.tool_name,
-                            "params": event.tool_kwargs,
-                            "tool_id": event.tool_id,
-                        }
-                    )
+                async for event in handler.stream_events():
+                    if isinstance(event, ToolCall):
+                        tools_called.append(event.tool_name)
 
-                    # For MCP tools (not wrapped built-ins), synthesize a
-                    # ToolProgress event so users see what's happening
-                    # instead of stale "Analyzing your request..."
-                    if event.tool_name not in _WRAPPED_BUILTIN_TOOL_NAMES:
-                        phase_msg = describe_tool_call(
-                            event.tool_name, event.tool_kwargs
+                        # Yield tool call event
+                        yield OrchestratorEvent(
+                            tool_call={
+                                "tool": event.tool_name,
+                                "params": event.tool_kwargs,
+                                "tool_id": event.tool_id,
+                            }
                         )
+
+                        # For MCP tools (not wrapped built-ins), synthesize a
+                        # ToolProgress event so users see what's happening
+                        # instead of stale "Analyzing your request..."
+                        if event.tool_name not in _WRAPPED_BUILTIN_TOOL_NAMES:
+                            phase_msg = describe_tool_call(
+                                event.tool_name, event.tool_kwargs
+                            )
+                            yield OrchestratorEvent(
+                                tool_phase=ToolProgress(
+                                    tool_id=event.tool_name,
+                                    phase="tool_call",
+                                    message=phase_msg,
+                                    metadata={"tool": event.tool_name},
+                                )
+                            )
+
+                        # Drain any pending tool phase events that were emitted
+                        # by the tool wrapper's progress emitter
+                        for phase in self._pending_phases:
+                            yield OrchestratorEvent(tool_phase=phase)
+                        self._pending_phases = []
+
+                    elif isinstance(event, ToolCallResult):
+                        full_output = extract_tool_text(event.tool_output)
+                        output_text = full_output[:2000]
+                        is_error = event.tool_output.is_error
+
+                        # tool_steps (saved to DB): truncated for storage
+                        tool_steps.append(
+                            {
+                                "tool": event.tool_name,
+                                "params": event.tool_kwargs,
+                                "output": output_text,
+                                "is_error": is_error,
+                            }
+                        )
+
+                        # Collect tool results for synthesis context (full output)
+                        status = "ERROR" if is_error else "OK"
+                        tool_results_context.append(
+                            f"[{event.tool_name} ({status})]\n{full_output}"
+                        )
+
+                        # Include full_output for source extraction by stream
+                        # translator; strip before storing in tool_steps
+                        yield OrchestratorEvent(
+                            tool_call_result={
+                                "tool": event.tool_name,
+                                "params": event.tool_kwargs,
+                                "output": output_text,
+                                "full_output": full_output,
+                                "is_error": is_error,
+                                "tool_id": event.tool_id,
+                            }
+                        )
+
+                        # Drain any remaining tool phases
+                        for phase in self._pending_phases:
+                            yield OrchestratorEvent(tool_phase=phase)
+                        self._pending_phases = []
+
+                        # Emit transitional phase to cover the LLM inference
+                        # gap between tool completion and next action. Without
+                        # this, the last tool phase (e.g. "Fetching arxiv.org...")
+                        # stays displayed while the orchestrator LLM processes
+                        # the result — misleading because the fetch is already done.
                         yield OrchestratorEvent(
                             tool_phase=ToolProgress(
-                                tool_id=event.tool_name,
-                                phase="tool_call",
-                                message=phase_msg,
-                                metadata={"tool": event.tool_name},
+                                tool_id="orchestrator",
+                                phase="analyzing",
+                                message=_analyzing_message(event.tool_name),
                             )
                         )
 
-                    # Drain any pending tool phase events that were emitted
-                    # by the tool wrapper's progress emitter
-                    for phase in self._pending_phases:
-                        yield OrchestratorEvent(tool_phase=phase)
-                    self._pending_phases = []
+                    elif isinstance(event, AgentStream):
+                        # Capture the orchestrator's text output.
+                        # If tools have been called, this is ephemeral reasoning
+                        # between tool calls — show it in the reasoning box.
+                        # If no tools have been called yet, this might be the
+                        # final answer (agent responding directly) — DON'T show
+                        # it as reasoning or the user sees the response in the
+                        # wrong place (reasoning box) and then it "dumps" into
+                        # the message area when done.
+                        if event.delta:
+                            agent_final_response += event.delta
+                            agent_deltas.append(event.delta)
+                            if tools_called:
+                                yield OrchestratorEvent(reasoning=event.delta)
 
-                elif isinstance(event, ToolCallResult):
-                    full_output = extract_tool_text(event.tool_output)
-                    output_text = full_output[:2000]
-                    is_error = event.tool_output.is_error
+                # Await the agent handler to completion
+                response = await handler
+                if not agent_final_response:
+                    agent_final_response = str(response)
+                break  # Success — exit retry loop
 
-                    # tool_steps (saved to DB): truncated for storage
-                    tool_steps.append(
-                        {
-                            "tool": event.tool_name,
-                            "params": event.tool_kwargs,
-                            "output": output_text,
-                            "is_error": is_error,
-                        }
+            except WorkflowRuntimeError:
+                # Max iterations reached — agent was cut off mid-loop.
+                # All tool results from prior iterations are already in
+                # tool_results_context. If we have any, fall through to synthesis.
+                if tool_results_context:
+                    logger.warning(
+                        "Max iterations reached after %d tool calls; "
+                        "proceeding to synthesis with available results",
+                        len(tools_called),
                     )
-
-                    # Collect tool results for synthesis context (full output)
-                    status = "ERROR" if is_error else "OK"
-                    tool_results_context.append(
-                        f"[{event.tool_name} ({status})]\n{full_output}"
-                    )
-
-                    # Include full_output for source extraction by stream
-                    # translator; strip before storing in tool_steps
+                    # Fall through to Phase 2 (synthesis) below
+                else:
+                    logger.error("Max iterations reached with no tool results")
                     yield OrchestratorEvent(
-                        tool_call_result={
-                            "tool": event.tool_name,
-                            "params": event.tool_kwargs,
-                            "output": output_text,
-                            "full_output": full_output,
-                            "is_error": is_error,
-                            "tool_id": event.tool_id,
-                        }
+                        token="I was unable to complete the research within the "
+                        "iteration limit. Please try a more specific question."
                     )
+                    return
+                break
 
-                    # Drain any remaining tool phases
-                    for phase in self._pending_phases:
-                        yield OrchestratorEvent(tool_phase=phase)
-                    self._pending_phases = []
-
-                    # Emit transitional phase to cover the LLM inference
-                    # gap between tool completion and next action. Without
-                    # this, the last tool phase (e.g. "Fetching arxiv.org...")
-                    # stays displayed while the orchestrator LLM processes
-                    # the result — misleading because the fetch is already done.
-                    yield OrchestratorEvent(
-                        tool_phase=ToolProgress(
-                            tool_id="orchestrator",
-                            phase="analyzing",
-                            message=_analyzing_message(event.tool_name),
-                        )
+            except Exception as e:
+                if (
+                    _is_transient_llm_error(e)
+                    and not tool_results_context
+                    and attempt < max_attempts - 1
+                ):
+                    logger.warning(
+                        "Transient LLM error (attempt %d/%d), retrying: %s",
+                        attempt + 1,
+                        max_attempts,
+                        e,
                     )
+                    await asyncio.sleep(2)
+                    continue  # Retry
 
-                elif isinstance(event, AgentStream):
-                    # Capture the orchestrator's text output.
-                    # If tools have been called, this is ephemeral reasoning
-                    # between tool calls — show it in the reasoning box.
-                    # If no tools have been called yet, this might be the
-                    # final answer (agent responding directly) — DON'T show
-                    # it as reasoning or the user sees the response in the
-                    # wrong place (reasoning box) and then it "dumps" into
-                    # the message area when done.
-                    if event.delta:
-                        agent_final_response += event.delta
-                        agent_deltas.append(event.delta)
-                        if tools_called:
-                            yield OrchestratorEvent(reasoning=event.delta)
+                if _is_transient_llm_error(e) and tool_results_context:
+                    logger.warning(
+                        "Transient LLM error after %d tool calls; "
+                        "proceeding to synthesis with available results: %s",
+                        len(tools_called),
+                        e,
+                    )
+                    break  # Fall through to Phase 2
 
-            # Await the agent handler to completion
-            response = await handler
-            if not agent_final_response:
-                agent_final_response = str(response)
-
-        except WorkflowRuntimeError:
-            # Max iterations reached — agent was cut off mid-loop.
-            # All tool results from prior iterations are already in
-            # tool_results_context. If we have any, fall through to synthesis.
-            if tool_results_context:
-                logger.warning(
-                    "Max iterations reached after %d tool calls; "
-                    "proceeding to synthesis with available results",
-                    len(tools_called),
-                )
-                # Fall through to Phase 2 (synthesis) below
-            else:
-                logger.error("Max iterations reached with no tool results")
+                # Non-transient or final attempt with no results
+                logger.error("Orchestrator execution failed: %s", e, exc_info=True)
                 yield OrchestratorEvent(
-                    token="I was unable to complete the research within the "
-                    "iteration limit. Please try a more specific question."
+                    token="I encountered an error while processing your "
+                    "request. This may be a temporary issue — please try "
+                    "again."
                 )
                 return
-
-        except Exception as e:
-            logger.error("Orchestrator execution failed: %s", e, exc_info=True)
-            yield OrchestratorEvent(
-                token=f"I encountered an error while processing your request: {e}"
-            )
-            return
 
         # --- Phase 2: Response generation ---
         # If no tools were called, the orchestrator answered directly. When
@@ -864,10 +914,10 @@ class OrchestratorService:
         # so the user gets reasoning tokens. Otherwise, use the fast path.
         if not tools_called:
             if check_thinking_support(self._model):
-                async for event in self._generate_direct_response(
+                async for direct_event in self._generate_direct_response(
                     prompt, llama_history, _combined_emitter
                 ):
-                    yield event
+                    yield direct_event
             else:
                 for delta in agent_deltas:
                     yield OrchestratorEvent(token=delta)

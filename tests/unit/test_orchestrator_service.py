@@ -23,6 +23,7 @@ from tensortruth.services.orchestrator_service import (
     ModuleDescription,
     OrchestratorEvent,
     OrchestratorService,
+    _is_transient_llm_error,
     build_source_reference,
 )
 
@@ -1206,3 +1207,261 @@ class TestMaxIterationsHandling:
 
         ollama_mod._orchestrator_llm_instance = None
         ollama_mod._orchestrator_llm_key = None
+
+
+# ---------------------------------------------------------------
+# Transient error classification
+# ---------------------------------------------------------------
+
+
+class TestIsTransientLlmError:
+    """Tests for _is_transient_llm_error()."""
+
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            "failed to parse JSON: invalid character '<'",
+            "Connection refused by server",
+            "connection reset by peer",
+            "status code: 500 internal server error",
+            "status code: 502 bad gateway",
+            "status code: 503 service unavailable",
+            "request timed out after 120s",
+            "operation timeout waiting for response",
+            "server disconnected unexpectedly",
+            "broken pipe during write",
+        ],
+    )
+    def test_transient_errors_detected(self, msg):
+        assert _is_transient_llm_error(RuntimeError(msg)) is True
+
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            "Agent crashed",
+            "KeyError: 'missing_key'",
+            "ValueError: invalid literal",
+            "status code: 404 not found",
+            "status code: 401 unauthorized",
+        ],
+    )
+    def test_non_transient_errors_rejected(self, msg):
+        assert _is_transient_llm_error(RuntimeError(msg)) is False
+
+
+# ---------------------------------------------------------------
+# Transient error retry & graceful degradation
+# ---------------------------------------------------------------
+
+
+class TestTransientErrorHandling:
+    """Tests for retry and graceful degradation on transient LLM errors."""
+
+    @pytest.mark.asyncio
+    async def test_transient_error_with_results_falls_through_to_synthesis(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """Transient error after tool results should fall through to synthesis."""
+        from llama_index.core.agent.workflow import ToolCall as LIToolCall
+        from llama_index.core.agent.workflow import ToolCallResult as LIToolCallResult
+        from llama_index.core.tools.types import ToolOutput
+
+        svc = _create_service(tool_service, rag_service_not_loaded)
+
+        tool_output = ToolOutput(
+            tool_name="web_search",
+            content="search results about AI",
+            raw_input={"query": "AI"},
+            raw_output="search results about AI",
+            is_error=False,
+        )
+        tc = LIToolCall(
+            tool_name="web_search",
+            tool_kwargs={"query": "AI"},
+            tool_id="tc_1",
+        )
+        tcr = LIToolCallResult(
+            tool_name="web_search",
+            tool_kwargs={"query": "AI"},
+            tool_id="tc_1",
+            tool_output=tool_output,
+            return_direct=False,
+        )
+
+        async def stream_events():
+            yield tc
+            yield tcr
+            raise RuntimeError(
+                "failed to parse JSON: invalid character '<' looking for value"
+            )
+
+        handler = _make_awaitable_handler(stream_events)
+
+        mock_synth = MagicMock()
+
+        async def fake_synthesize(**kwargs):
+            yield OrchestratorEvent(token="Synthesized answer from tool results.")
+
+        mock_synth.synthesize = MagicMock(side_effect=fake_synthesize)
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_service.LIFunctionAgent",
+                return_value=MagicMock(run=MagicMock(return_value=handler)),
+            ),
+            patch(
+                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "tensortruth.services.synthesis_service.get_synthesis_service",
+                return_value=mock_synth,
+            ),
+        ):
+            events = []
+            async for event in svc.execute("Tell me about AI"):
+                events.append(event)
+
+        token_events = [e for e in events if e.token is not None]
+        token_text = "".join(e.token for e in token_events)
+        assert "Synthesized answer" in token_text
+        # Raw error should never reach the user
+        assert "failed to parse" not in token_text
+
+    @pytest.mark.asyncio
+    async def test_transient_error_no_results_retries(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """Transient error with no results should retry, succeed on second attempt."""
+        from llama_index.core.agent.workflow import AgentStream
+
+        svc = _create_service(tool_service, rag_service_not_loaded)
+
+        call_count = 0
+
+        def make_handler():
+            nonlocal call_count
+            call_count += 1
+
+            if call_count == 1:
+                # First attempt: transient error
+                async def stream_fail():
+                    raise RuntimeError("connection refused")
+                    yield  # pragma: no cover
+
+                return _make_awaitable_handler(stream_fail)
+            else:
+                # Second attempt: success
+                async def stream_ok():
+                    yield AgentStream(
+                        delta="Success!",
+                        response="",
+                        current_agent_name="orchestrator",
+                    )
+
+                return _make_awaitable_handler(stream_ok, "Success!")
+
+        mock_agent = MagicMock()
+        mock_agent.run = MagicMock(side_effect=lambda **kwargs: make_handler())
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_service.LIFunctionAgent",
+                return_value=mock_agent,
+            ),
+            patch(
+                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                return_value=MagicMock(),
+            ),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            events = []
+            async for event in svc.execute("Hello"):
+                events.append(event)
+
+        # Should have succeeded on retry
+        token_events = [e for e in events if e.token is not None]
+        token_text = "".join(e.token for e in token_events)
+        assert "Success" in token_text
+        assert "error" not in token_text.lower()
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_non_transient_error_no_retry(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """Non-transient error should yield friendly message without retry."""
+        svc = _create_service(tool_service, rag_service_not_loaded)
+
+        call_count = 0
+
+        def make_handler():
+            nonlocal call_count
+            call_count += 1
+
+            async def stream_events_error():
+                raise RuntimeError("Agent crashed with KeyError")
+                yield  # pragma: no cover
+
+            return _make_awaitable_handler(stream_events_error)
+
+        mock_agent = MagicMock()
+        mock_agent.run = MagicMock(side_effect=lambda **kwargs: make_handler())
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_service.LIFunctionAgent",
+                return_value=mock_agent,
+            ),
+            patch(
+                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                return_value=MagicMock(),
+            ),
+        ):
+            events = []
+            async for event in svc.execute("Crash please"):
+                events.append(event)
+
+        token_events = [e for e in events if e.token is not None]
+        token_text = "".join(e.token for e in token_events)
+        # Friendly message, not raw exception
+        assert "error" in token_text.lower()
+        assert "try again" in token_text.lower()
+        # Raw exception text must not leak
+        assert "Agent crashed" not in token_text
+        # No retry for non-transient errors
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_error_message_never_contains_raw_exception(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """User-facing error should never include raw exception text."""
+        svc = _create_service(tool_service, rag_service_not_loaded)
+
+        async def stream_events_error():
+            raise RuntimeError("Agent crashed")
+            yield  # pragma: no cover
+
+        handler = _make_awaitable_handler(stream_events_error)
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_service.LIFunctionAgent",
+                return_value=MagicMock(run=MagicMock(return_value=handler)),
+            ),
+            patch(
+                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                return_value=MagicMock(),
+            ),
+        ):
+            events = []
+            async for event in svc.execute("Crash please"):
+                events.append(event)
+
+        token_events = [e for e in events if e.token is not None]
+        error_text = "".join(e.token for e in token_events)
+        assert "Agent crashed" not in error_text
+        assert (
+            "temporary issue" in error_text.lower() or "try again" in error_text.lower()
+        )
