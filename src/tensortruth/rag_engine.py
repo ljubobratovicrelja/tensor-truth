@@ -31,7 +31,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 
 # Config import for model defaults
 from tensortruth.app_utils.config import load_config
-from tensortruth.core.ollama import check_thinking_support, get_ollama_url
+from tensortruth.core.ollama import get_ollama_url, resolve_thinking
 
 logger = logging.getLogger(__name__)
 
@@ -229,8 +229,9 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
         print(f"Loading LLM {model_name} on: CPU (Forced)")
         ollama_options["num_gpu"] = 0
 
-    # Check if model supports thinking by querying Ollama API
-    thinking_enabled = check_thinking_support(model_name)
+    # Resolve thinking: user preference from session params, or auto-detect
+    thinking_preference = params.get("thinking")
+    thinking_enabled = resolve_thinking(model_name, thinking_preference)
 
     # For thinking models, limit total tokens to prevent runaway reasoning
     # For non-thinking models, use unlimited (-1) to prevent truncation

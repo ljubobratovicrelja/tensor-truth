@@ -6,9 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { useProject, useModels, useConfig, useCreateProjectSession } from "@/hooks";
+import {
+  useProject,
+  useModels,
+  useConfig,
+  useCreateProjectSession,
+  useThinking,
+  thinkingToParam,
+} from "@/hooks";
 import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
+import { ThinkingSelect } from "@/components/chat/ThinkingSelect";
 import { SessionSettingsPanel } from "@/components/config/SessionSettingsPanel";
 
 export function ProjectViewPage() {
@@ -31,13 +39,30 @@ export function ProjectViewPage() {
   const projectModel = (project?.config?.model as string) || "";
   const effectiveModel = selectedModel || projectModel || config?.llm.default_model || "";
 
+  const {
+    thinking,
+    thinkingSupport,
+    handleModelChange: handleThinkingModelChange,
+    setThinking,
+  } = useThinking({ modelsData, effectiveModel });
+
+  const handleModelSelect = (model: string) => {
+    setSelectedModel(model);
+    handleThinkingModelChange(model);
+  };
+
   const handleSubmit = async () => {
     const text = message.trim();
     if (!text || isSubmitting || !projectId) return;
 
     setIsSubmitting(true);
     try {
-      const params: Record<string, unknown> = { ...sessionParams, model: effectiveModel };
+      const thinkingValue = thinkingToParam(thinking);
+      const params: Record<string, unknown> = {
+        ...sessionParams,
+        model: effectiveModel,
+        ...(thinkingValue !== undefined && { thinking: thinkingValue }),
+      };
 
       const result = await createProjectSession.mutateAsync({
         projectId,
@@ -142,7 +167,7 @@ export function ProjectViewPage() {
                 />
 
                 {/* Model selector */}
-                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                <Select value={selectedModel} onValueChange={handleModelSelect}>
                   <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
                     <Bot className="h-3.5 w-3.5" />
                     <span className="text-xs">{effectiveModel || "Model"}</span>
@@ -164,6 +189,14 @@ export function ProjectViewPage() {
                     )}
                   </SelectContent>
                 </Select>
+                {thinkingSupport.thinking && (
+                  <ThinkingSelect
+                    value={thinking}
+                    onValueChange={setThinking}
+                    disabled={isSubmitting}
+                    supportsLevels={thinkingSupport.levels}
+                  />
+                )}
               </div>
 
               {/* Right side - send button */}

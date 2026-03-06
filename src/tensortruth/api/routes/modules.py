@@ -33,6 +33,7 @@ class ModelInfo(BaseModel):
     name: str
     size: int = 0
     modified_at: str = ""
+    capabilities: List[str] = []
 
 
 class ModelsResponse(BaseModel):
@@ -146,6 +147,8 @@ async def list_embedding_models(
 @router.get("/models", response_model=ModelsResponse)
 async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
     """List available Ollama models."""
+    from tensortruth.core.ollama import _supports_thinking_levels, get_model_info
+
     ollama_url = config_service.get_ollama_url()
 
     try:
@@ -153,14 +156,24 @@ async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
         response.raise_for_status()
         data = response.json()
 
-        models = [
-            ModelInfo(
-                name=model.get("name", ""),
-                size=model.get("size", 0),
-                modified_at=model.get("modified_at", ""),
+        models = []
+        for model in data.get("models", []):
+            name = model.get("name", "")
+            info = get_model_info(name) if name else {}
+            capabilities = list(info.get("capabilities", []))
+
+            # Probe thinking level support for thinking-capable models
+            if "thinking" in capabilities and _supports_thinking_levels(name):
+                capabilities.append("thinking_levels")
+
+            models.append(
+                ModelInfo(
+                    name=name,
+                    size=model.get("size", 0),
+                    modified_at=model.get("modified_at", ""),
+                    capabilities=capabilities,
+                )
             )
-            for model in data.get("models", [])
-        ]
         return ModelsResponse(models=models)
 
     except requests.exceptions.ConnectionError:

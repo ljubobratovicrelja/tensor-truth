@@ -9,3 +9,4 @@ export { StreamingText } from "./StreamingText";
 export { ThinkingBox } from "./ThinkingBox";
 export { ToolSteps } from "./ToolSteps";
 export { CommandAutocomplete } from "./CommandAutocomplete";
+export { ThinkingSelect } from "./ThinkingSelect";

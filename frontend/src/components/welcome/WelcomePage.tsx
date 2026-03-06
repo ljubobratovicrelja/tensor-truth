@@ -11,10 +11,13 @@ import {
   useProjects,
   useConfig,
   useCommandDetection,
+  useThinking,
+  thinkingToParam,
 } from "@/hooks";
 import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
 import { CommandAutocomplete } from "@/components/chat/CommandAutocomplete";
+import { ThinkingSelect } from "@/components/chat/ThinkingSelect";
 import { SessionSettingsPanel } from "@/components/config";
 import type { CommandDefinition } from "@/types/commands";
 
@@ -44,13 +47,30 @@ export function WelcomePage() {
   // Derive effective model: user selection or config default
   const effectiveModel = selectedModel || config?.llm.default_model || "";
 
+  const {
+    thinking,
+    thinkingSupport,
+    handleModelChange: handleThinkingModelChange,
+    setThinking,
+  } = useThinking({ modelsData, effectiveModel });
+
+  const handleModelSelect = (model: string) => {
+    setSelectedModel(model);
+    handleThinkingModelChange(model);
+  };
+
   const handleSubmit = async (promptText?: string) => {
     const text = promptText ?? message.trim();
     if (!text || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      const params = { ...sessionParams, model: effectiveModel };
+      const thinkingValue = thinkingToParam(thinking);
+      const params = {
+        ...sessionParams,
+        model: effectiveModel,
+        ...(thinkingValue !== undefined && { thinking: thinkingValue }),
+      };
 
       const result = await createSession.mutateAsync({
         modules: selectedModules.length > 0 ? selectedModules : undefined,
@@ -179,7 +199,7 @@ export function WelcomePage() {
                 />
 
                 {/* Model selector */}
-                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                <Select value={selectedModel} onValueChange={handleModelSelect}>
                   <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
                     <Bot className="h-3.5 w-3.5" />
                     <span className="text-xs">{effectiveModel || "Model"}</span>
@@ -201,6 +221,14 @@ export function WelcomePage() {
                     )}
                   </SelectContent>
                 </Select>
+                {thinkingSupport.thinking && (
+                  <ThinkingSelect
+                    value={thinking}
+                    onValueChange={setThinking}
+                    disabled={isSubmitting}
+                    supportsLevels={thinkingSupport.levels}
+                  />
+                )}
               </div>
 
               {/* Right side - send button */}

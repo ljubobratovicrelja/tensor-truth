@@ -9,6 +9,9 @@ import {
   useWebSocketChat,
   useIsMobile,
   useProject,
+  useModels,
+  paramToThinking,
+  thinkingToParam,
 } from "@/hooks";
 import { cn } from "@/lib/utils";
 import { DocumentDialog } from "@/components/documents";
@@ -90,6 +93,16 @@ export function ChatContainer() {
   // Load project data if session belongs to a project
   const sessionProjectId = sessionData?.project_id ?? null;
   const { data: projectData } = useProject(sessionProjectId);
+  const { data: modelsData } = useModels();
+
+  const modelThinkingSupport = (modelName: string) => {
+    const info = modelsData?.models.find((m) => m.name === modelName);
+    const caps = info?.capabilities ?? [];
+    return {
+      thinking: caps.includes("thinking"),
+      levels: caps.includes("thinking_levels"),
+    };
+  };
 
   // Redirect to home (or project view) if session doesn't exist
   useEffect(() => {
@@ -166,9 +179,26 @@ export function ChatContainer() {
   const handleModelChange = (model: string | null) => {
     if (!urlSessionId) return;
     const currentParams = sessionData?.params ?? {};
-    const newParams = model
+    let newParams = model
       ? { ...currentParams, model }
       : Object.fromEntries(Object.entries(currentParams).filter(([k]) => k !== "model"));
+
+    // Reset thinking if incompatible with new model
+    if (model && newParams.thinking !== undefined) {
+      const support = modelThinkingSupport(model);
+      const thinkingVal = newParams.thinking;
+      if (
+        !support.thinking ||
+        (!support.levels &&
+          typeof thinkingVal === "string" &&
+          ["low", "medium", "high"].includes(thinkingVal))
+      ) {
+        newParams = Object.fromEntries(
+          Object.entries(newParams).filter(([k]) => k !== "thinking")
+        );
+      }
+    }
+
     updateSession.mutate(
       { sessionId: urlSessionId, data: { params: newParams } },
       {
@@ -177,8 +207,27 @@ export function ChatContainer() {
     );
   };
 
+  const handleThinkingChange = (value: string) => {
+    if (!urlSessionId) return;
+    const currentParams = sessionData?.params ?? {};
+    const paramValue = thinkingToParam(value);
+    const newParams =
+      paramValue === undefined
+        ? Object.fromEntries(
+            Object.entries(currentParams).filter(([k]) => k !== "thinking")
+          )
+        : { ...currentParams, thinking: paramValue };
+    updateSession.mutate(
+      { sessionId: urlSessionId, data: { params: newParams } },
+      {
+        onError: () => toast.error("Failed to update thinking"),
+      }
+    );
+  };
+
   const currentModules = sessionData?.modules ?? [];
   const currentModel = (sessionData?.params?.model as string) || undefined;
+  const currentThinking = paramToThinking(sessionData?.params?.thinking);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -228,6 +277,8 @@ export function ChatContainer() {
             onModulesChange={handleModulesChange}
             selectedModel={currentModel}
             onModelChange={handleModelChange}
+            thinking={currentThinking}
+            onThinkingChange={handleThinkingChange}
             sessionId={urlSessionId}
             sessionParams={sessionData?.params ?? {}}
             lockedModules={

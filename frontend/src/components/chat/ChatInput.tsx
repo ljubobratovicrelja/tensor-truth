@@ -3,8 +3,9 @@ import { Send, Square, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { useModels, useConfig, useCommandDetection } from "@/hooks";
+import { useModels, useConfig, useCommandDetection, useThinkingSupport } from "@/hooks";
 import { ModuleSelector } from "./ModuleSelector";
+import { ThinkingSelect } from "./ThinkingSelect";
 import { SessionSettingsPanel } from "@/components/config";
 import { CommandAutocomplete } from "./CommandAutocomplete";
 import type { CommandDefinition } from "@/types/commands";
@@ -19,6 +20,8 @@ interface ChatInputProps {
   onModulesChange?: (modules: string[]) => void;
   selectedModel?: string;
   onModelChange?: (model: string | null) => void;
+  thinking?: string;
+  onThinkingChange?: (thinking: string) => void;
   sessionId?: string;
   sessionParams?: Record<string, unknown>;
   /** Module names locked by the project (shown as non-toggleable). */
@@ -38,6 +41,8 @@ export function ChatInput({
   onModulesChange,
   selectedModel,
   onModelChange,
+  thinking = "auto",
+  onThinkingChange,
   sessionId,
   sessionParams = {},
   lockedModules,
@@ -50,6 +55,9 @@ export function ChatInput({
   const { data: config } = useConfig();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const detection = useCommandDetection(message);
+
+  const activeModel = selectedModel || config?.models.default_rag_model || "";
+  const thinkingSupport = useThinkingSupport(modelsData, activeModel);
 
   // Show autocomplete only if command detected AND no space after command name
   // (hide when user is typing arguments, only show when typing command name)
@@ -216,6 +224,14 @@ export function ChatInput({
                   )}
                 </SelectContent>
               </Select>
+            )}
+            {onThinkingChange && thinkingSupport.thinking && (
+              <ThinkingSelect
+                value={thinking}
+                onValueChange={onThinkingChange}
+                disabled={isStreaming}
+                supportsLevels={thinkingSupport.levels}
+              />
             )}
           </div>
 

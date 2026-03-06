@@ -323,6 +323,7 @@ export interface ModelInfo {
   name: string;
   size: number;
   modified_at: string;
+  capabilities?: string[];
 }
 
 export interface ModelsResponse {

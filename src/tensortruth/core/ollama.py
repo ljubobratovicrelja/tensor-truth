@@ -4,7 +4,7 @@ import logging
 import os
 import uuid
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union, cast
 
 import requests
 
@@ -249,6 +249,76 @@ def _patch_parallel_tool_calls(llm: Any) -> None:
         "get_tool_calls_from_response",
         types.MethodType(_get_tool_calls_from_response, llm),
     )
+
+
+def resolve_thinking(
+    model_name: str,
+    user_preference: Optional[Union[bool, Literal["low", "medium", "high"]]] = None,
+) -> Union[bool, Literal["low", "medium", "high"]]:
+    """Resolve the effective thinking setting for a model.
+
+    Combines user preference with model capability to determine the
+    actual thinking parameter to pass to Ollama.
+
+    Args:
+        model_name: The model to check capabilities for
+        user_preference: User's thinking preference from session params.
+            None = auto-detect (current behavior)
+            False = force off
+            True = force on (if model supports it)
+            "low"/"medium"/"high" = specific level (if model supports it)
+
+    Returns:
+        The resolved thinking value to pass to Ollama().
+    """
+    supports_thinking = check_thinking_support(model_name)
+
+    if user_preference is None:
+        # Auto mode: use model capability
+        return supports_thinking
+
+    if user_preference is False:
+        return False
+
+    # User wants thinking on (True or a level string)
+    if not supports_thinking:
+        logger.warning(
+            f"Thinking requested for {model_name} but model doesn't support it; "
+            "falling back to False"
+        )
+        return False
+
+    # For level strings, verify the model actually accepts them by probing
+    # Ollama. If rejected, fall back to boolean True.
+    if isinstance(user_preference, str) and user_preference in (
+        "low",
+        "medium",
+        "high",
+    ):
+        if not _supports_thinking_levels(model_name):
+            logger.info(
+                f"Model {model_name} doesn't support thinking levels; "
+                "falling back to True"
+            )
+            return True
+
+    return user_preference
+
+
+def _supports_thinking_levels(model_name: str) -> bool:
+    """Check if a model supports thinking level strings (low/medium/high).
+
+    Ollama doesn't expose a capability flag for this. Per the docs, only
+    models using the Harmony parser (gptoss family) support levels.
+    All other thinking models accept boolean only.
+
+    Uses get_model_info() which is fast (~2ms, localhost).
+    """
+    info = get_model_info(model_name)
+    family = (info.get("family") or "").lower()
+    # Harmony parser models: gptoss family supports low/medium/high levels.
+    # As new model families add level support, add them here.
+    return family in ("gptoss",)
 
 
 def get_orchestrator_llm(

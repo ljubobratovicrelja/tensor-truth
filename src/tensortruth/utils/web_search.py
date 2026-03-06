@@ -23,7 +23,7 @@ from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
 from llama_index.llms.ollama import Ollama
 from markdownify import markdownify as md
 
-from tensortruth.core.ollama import check_thinking_support
+from tensortruth.core.ollama import resolve_thinking
 from tensortruth.core.synthesis import (
     CitationStyle,
     SynthesisConfig,
@@ -368,7 +368,7 @@ Write a brief, helpful explanation (2-3 sentences) that:
 Keep it concise and actionable. Don't apologize excessively."""
 
     try:
-        thinking_enabled = check_thinking_support(model_name)
+        thinking_enabled = resolve_thinking(model_name)
 
         llm = Ollama(
             model=model_name,
@@ -1058,7 +1058,7 @@ Include relevant details and preserve all markdown links from sources.]
 Begin your response:"""
 
     try:
-        thinking_enabled = check_thinking_support(model_name)
+        thinking_enabled = resolve_thinking(model_name)
 
         # Create Ollama LLM (reuses already-loaded model in VRAM)
         llm = Ollama(
@@ -1436,7 +1436,7 @@ async def web_search_stream(
     )
 
     # Initialize LLM for synthesis
-    thinking_enabled = check_thinking_support(model_name)
+    thinking_enabled = resolve_thinking(model_name)
     llm = Ollama(
         model=model_name,
         base_url=ollama_url,
