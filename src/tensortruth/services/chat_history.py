@@ -211,7 +211,7 @@ class ChatHistoryService:
         # A turn = user query + assistant response
         effective_turns = max_turns
         if effective_turns is None:
-            effective_turns = self.config.rag.max_history_turns
+            effective_turns = self.config.conversation.max_history_turns
 
         # Apply hard safety limit first
         if effective_turns is None or effective_turns > self.MAX_HISTORY_TURNS:

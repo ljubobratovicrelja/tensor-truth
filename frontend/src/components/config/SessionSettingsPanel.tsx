@@ -18,6 +18,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ import {
   useRerankers,
   useAddReranker,
   useRestartEngine,
+  useModelCapabilities,
 } from "@/hooks";
 import { toast } from "sonner";
 
@@ -74,6 +76,11 @@ export function SessionSettingsPanel({
   const updateSession = useUpdateSession();
   const restartEngine = useRestartEngine();
 
+  // Query model capabilities to determine if agentic mode is available
+  const sessionModel = currentParams.model as string | undefined;
+  const { data: modelCapabilities } = useModelCapabilities(sessionModel ?? null);
+  const orchestratorAvailable = modelCapabilities?.orchestrator_available ?? false;
+
   // Add reranker dialog state
   const [addRerankerOpen, setAddRerankerOpen] = useState(false);
   const [newRerankerModel, setNewRerankerModel] = useState("");
@@ -95,6 +102,7 @@ export function SessionSettingsPanel({
   const [memoryTokenLimit, setMemoryTokenLimit] = useState<number>(4000);
   const [routerModel, setRouterModel] = useState<string>("");
   const [functionAgentModel, setFunctionAgentModel] = useState<string>("");
+  const [orchestratorEnabled, setOrchestratorEnabled] = useState<boolean>(true);
 
   // Fetch available devices from backend
   useEffect(() => {
@@ -137,25 +145,25 @@ export function SessionSettingsPanel({
   useEffect(() => {
     if (open && config) {
       setTemperature(
-        (currentParams.temperature as number) ?? config.ui.default_temperature
+        (currentParams.temperature as number) ?? config.llm.default_temperature
       );
       setContextWindow(
-        (currentParams.context_window as number) ?? config.ui.default_context_window
+        (currentParams.context_window as number) ?? config.llm.default_context_window
       );
-      setMaxTokens((currentParams.max_tokens as number) ?? config.ui.default_max_tokens);
+      setMaxTokens((currentParams.max_tokens as number) ?? config.llm.default_max_tokens);
       setRerankerModel(
         (currentParams.reranker_model as string) ?? config.rag.default_reranker
       );
       setRerankerTopN(
-        (currentParams.reranker_top_n as number) ?? config.ui.default_top_n
+        (currentParams.reranker_top_n as number) ?? config.rag.default_top_n
       );
       setConfidenceCutoff(
         (currentParams.confidence_cutoff as number) ??
-          config.ui.default_confidence_threshold
+          config.rag.default_confidence_threshold
       );
       setConfidenceCutoffHard(
         (currentParams.confidence_cutoff_hard as number) ??
-          config.ui.default_confidence_cutoff_hard
+          config.rag.default_confidence_cutoff_hard
       );
       setSystemPrompt((currentParams.system_prompt as string) ?? "");
       setRagDevice((currentParams.rag_device as string) ?? config.rag.default_device);
@@ -164,15 +172,21 @@ export function SessionSettingsPanel({
         (currentParams.embedding_model as string) ?? config.rag.default_embedding_model
       );
       setMaxHistoryTurns(
-        (currentParams.max_history_turns as number) ?? config.rag.max_history_turns
+        (currentParams.max_history_turns as number) ??
+          config.conversation.max_history_turns
       );
       setMemoryTokenLimit(
-        (currentParams.memory_token_limit as number) ?? config.rag.memory_token_limit
+        (currentParams.memory_token_limit as number) ??
+          config.conversation.memory_token_limit
       );
       setRouterModel((currentParams.router_model as string) ?? config.agent.router_model);
       setFunctionAgentModel(
         (currentParams.function_agent_model as string) ??
           config.agent.function_agent_model
+      );
+      setOrchestratorEnabled(
+        (currentParams.orchestrator_enabled as boolean) ??
+          config.agent.orchestrator_enabled
       );
     }
   }, [open, config, currentParams]);
@@ -194,6 +208,7 @@ export function SessionSettingsPanel({
       memory_token_limit: memoryTokenLimit,
       router_model: routerModel,
       function_agent_model: functionAgentModel,
+      orchestrator_enabled: orchestratorEnabled,
     };
 
     // Only include system_prompt if non-empty and not hidden (project sessions
@@ -532,6 +547,29 @@ export function SessionSettingsPanel({
           {/* Agent Section */}
           <div className="space-y-4">
             <h3 className="text-sm font-medium">Agent</h3>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="orchestrator-toggle">Agentic mode</Label>
+                    <HelpTooltip text="When enabled, messages are routed through an orchestrator agent that can autonomously call tools (RAG search, web search, page fetching). Requires a model with tool-calling support." />
+                  </div>
+                  <Switch
+                    id="orchestrator-toggle"
+                    checked={orchestratorEnabled}
+                    onCheckedChange={setOrchestratorEnabled}
+                    disabled={!orchestratorAvailable}
+                  />
+                </div>
+              </TooltipTrigger>
+              {!orchestratorAvailable && (
+                <TooltipContent side="top" className="max-w-xs">
+                  {sessionModel
+                    ? `Model "${sessionModel}" does not support tool-calling. Agentic mode is unavailable.`
+                    : "No model selected. Select a model to check agentic mode availability."}
+                </TooltipContent>
+              )}
+            </Tooltip>
             <div className="space-y-2">
               <Label>
                 Reasoning Model

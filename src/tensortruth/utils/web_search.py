@@ -68,10 +68,10 @@ def get_reranker_for_web(
 
 def rerank_search_results(
     query: str,
-    results: List[Dict[str, str]],
+    results: List[Dict[str, Any]],
     top_n: int,
     reranker: SentenceTransformerRerank,
-) -> List[Tuple[Dict[str, str], float]]:
+) -> List[Tuple[Dict[str, Any], float]]:
     """Rerank search results by title+snippet relevance.
 
     Creates TextNodes from title+snippet and uses the reranker to score them.
@@ -188,7 +188,18 @@ def rerank_fetched_pages(
     # Sort by score descending
     ranked_pages.sort(key=lambda x: x[1], reverse=True)
 
-    return ranked_pages
+    # Penalize thin content: pages under 500 chars get a linear penalty
+    # (0 chars → 0.5x, 500 chars → 1.0x)
+    penalized = []
+    for page_tuple, score in ranked_pages:
+        content_len = len(page_tuple[2]) if len(page_tuple) > 2 else 0
+        if content_len < 500:
+            factor = 0.5 + 0.5 * (content_len / 500)
+            score = score * factor
+        penalized.append((page_tuple, score))
+    penalized.sort(key=lambda x: x[1], reverse=True)
+
+    return penalized
 
 
 # Type variable for generic filter function
@@ -294,6 +305,7 @@ async def generate_no_sources_explanation(
     content_threshold: float,
     model_name: str,
     ollama_url: str,
+    context_window: int = 16384,
 ) -> AsyncGenerator[str, None]:
     """Generate LLM explanation when no sources pass thresholds.
 
@@ -364,6 +376,7 @@ Keep it concise and actionable. Don't apologize excessively."""
             request_timeout=60.0,
             temperature=0.5,
             thinking=thinking_enabled,
+            additional_kwargs={"num_ctx": context_window},
         )
 
         async for chunk in await llm.astream_complete(prompt):
@@ -698,7 +711,7 @@ async def fetch_generic_html(
         markdown = f"<!-- Source: {url} -->\n\n{markdown}"
 
         # Basic quality check
-        if len(markdown.strip()) < 100:
+        if len(markdown.strip()) < 300:
             error_msg = "Content too short"
             logger.warning(f"{error_msg} for {url}")
             return None, "too_short", error_msg
@@ -1052,10 +1065,10 @@ Begin your response:"""
             model=model_name,
             base_url=ollama_url,
             request_timeout=120.0,
-            temperature=0.5,  # Moderate temperature for balanced summarization
+            temperature=0.5,
             context_window=context_window,
-            num_ctx=context_window,  # Ollama-specific parameter
             thinking=thinking_enabled,
+            additional_kwargs={"num_ctx": context_window},
         )
 
         # Generate summary
@@ -1372,6 +1385,7 @@ async def web_search_stream(
             content_threshold=rerank_content_threshold,
             model_name=model_name,
             ollama_url=ollama_url,
+            context_window=context_window or 16384,
         ):
             yield WebSearchChunk(token=token)
 
@@ -1429,8 +1443,8 @@ async def web_search_stream(
         request_timeout=120.0,
         temperature=0.3,
         context_window=context_window,
-        num_ctx=context_window,
         thinking=thinking_enabled,
+        additional_kwargs={"num_ctx": context_window},
     )
 
     # Use core synthesis engine

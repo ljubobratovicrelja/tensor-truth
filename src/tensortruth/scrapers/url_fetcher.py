@@ -1,7 +1,6 @@
 """URL fetching and HTML-to-markdown conversion for document ingestion."""
 
 import logging
-import re
 from typing import Tuple
 from urllib.parse import urlparse
 

@@ -32,10 +32,10 @@ export function ProjectConfigPanel({ project, onUpdate }: ProjectConfigPanelProp
   const systemPrompt = (project.config.system_prompt as string) ?? "";
   const serverModel = (project.config.model as string) ?? "";
   const temperature =
-    (project.config.temperature as number) ?? config?.ui.default_temperature ?? 0.7;
+    (project.config.temperature as number) ?? config?.llm.default_temperature ?? 0.7;
   const contextWindow =
     (project.config.context_window as number) ??
-    config?.ui.default_context_window ??
+    config?.llm.default_context_window ??
     8192;
 
   // Debounced system prompt

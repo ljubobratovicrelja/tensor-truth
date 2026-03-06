@@ -102,6 +102,9 @@ export interface StreamSources {
   type: "sources";
   data: SourceNode[];
   metrics?: RetrievalMetrics | null;
+  source_types?: string[];
+  rag_count?: number;
+  web_count?: number;
 }
 
 export interface StreamDone {
@@ -126,6 +129,11 @@ export interface StreamThinking {
   content: string;
 }
 
+export interface StreamReasoning {
+  type: "reasoning";
+  content: string;
+}
+
 export interface StreamStatus {
   type: "status";
   status: "loading_models" | "retrieving" | "reranking" | "thinking" | "generating";
@@ -138,6 +146,15 @@ export interface StreamToolProgress {
   params: Record<string, unknown>;
   output?: string;
   is_error?: boolean;
+  tool_id?: string;
+}
+
+export interface StreamToolPhase {
+  type: "tool_phase";
+  tool_id: string;
+  phase: string;
+  message: string;
+  metadata: Record<string, unknown>;
 }
 
 export interface ToolStep {
@@ -145,6 +162,7 @@ export interface ToolStep {
   params: Record<string, unknown>;
   output: string;
   is_error: boolean;
+  tool_id?: string;
 }
 
 export type AgentPhase =
@@ -199,8 +217,10 @@ export type StreamMessage =
   | StreamError
   | StreamTitle
   | StreamThinking
+  | StreamReasoning
   | StreamStatus
   | StreamToolProgress
+  | StreamToolPhase
   | StreamAgentProgress
   | StreamWebSearchSources;
 
@@ -222,13 +242,11 @@ export interface OllamaConfig {
   timeout: number;
 }
 
-export interface UIConfig {
+export interface LLMConfig {
+  default_model: string;
   default_temperature: number;
   default_context_window: number;
   default_max_tokens: number;
-  default_top_n: number;
-  default_confidence_threshold: number;
-  default_confidence_cutoff_hard: number;
 }
 
 export interface RAGConfig {
@@ -236,14 +254,14 @@ export interface RAGConfig {
   default_balance_strategy: string;
   default_embedding_model: string;
   default_reranker: string;
-  // Max conversation turns (1 turn = user query + assistant response)
-  max_history_turns: number;
-  memory_token_limit: number;
+  default_top_n: number;
+  default_confidence_threshold: number;
+  default_confidence_cutoff_hard: number;
 }
 
-export interface ModelsConfig {
-  default_rag_model: string;
-  default_agent_reasoning_model: string;
+export interface ConversationConfig {
+  max_history_turns: number;
+  memory_token_limit: number;
 }
 
 export interface AgentConfig {
@@ -253,6 +271,12 @@ export interface AgentConfig {
   function_agent_model: string;
   enable_natural_language_agents: boolean;
   intent_classifier_model: string;
+  orchestrator_enabled: boolean;
+}
+
+export interface ModelCapabilitiesResponse {
+  model: string | null;
+  orchestrator_available: boolean;
 }
 
 export interface HistoryCleaningConfig {
@@ -274,9 +298,9 @@ export interface WebSearchConfig {
 
 export interface ConfigResponse {
   ollama: OllamaConfig;
-  ui: UIConfig;
+  llm: LLMConfig;
   rag: RAGConfig;
-  models: ModelsConfig;
+  conversation: ConversationConfig;
   agent: AgentConfig;
   history_cleaning: HistoryCleaningConfig;
   web_search: WebSearchConfig;

@@ -60,6 +60,9 @@ class StreamSources(BaseModel):
     type: Literal["sources"] = "sources"
     data: List[SourceNode]
     metrics: Optional[Dict[str, Any]] = None
+    source_types: Optional[List[str]] = None
+    rag_count: Optional[int] = None
+    web_count: Optional[int] = None
 
 
 class StreamDone(BaseModel):
@@ -74,6 +77,17 @@ class StreamThinking(BaseModel):
     """WebSocket message for thinking/reasoning tokens."""
 
     type: Literal["thinking"] = "thinking"
+    content: str
+
+
+class StreamReasoning(BaseModel):
+    """WebSocket message for agent intermediate reasoning deltas.
+
+    Emitted between tool calls when the FunctionAgent's LLM is reasoning
+    about results. Ephemeral — not accumulated or stored.
+    """
+
+    type: Literal["reasoning"] = "reasoning"
     content: str
 
 
@@ -93,6 +107,22 @@ class StreamToolProgress(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict)
     output: Optional[str] = None
     is_error: Optional[bool] = None
+
+
+class StreamToolPhase(BaseModel):
+    """WebSocket message for real-time tool phase progress.
+
+    Separate from StreamToolProgress which tracks tool execution steps
+    (calling/completed/failed). This reports phase-level progress within
+    a tool's execution (e.g., "Searching knowledge base...", "Ranking results...").
+    Each tool defines its own phases and messages.
+    """
+
+    type: Literal["tool_phase"] = "tool_phase"
+    tool_id: str
+    phase: str
+    message: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentPhase(str, Enum):

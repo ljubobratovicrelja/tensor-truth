@@ -1,0 +1,11 @@
+name: hf_papers
+description: "Search HuggingFace papers by topic"
+usage: "/hf_papers <query>"
+aliases: [hfp]
+
+steps:
+  - tool: papers_semantic_search
+    params:
+      query: "{{args}}"
+
+requires_mcp: huggingface

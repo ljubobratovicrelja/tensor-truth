@@ -73,11 +73,12 @@ class ConfigService:
 
         Supports nested updates using prefixed keys:
         - ollama_*: Updates ollama config
-        - ui_*: Updates UI config
+        - llm_*: Updates LLM config
         - rag_*: Updates RAG config
+        - conversation_*: Updates conversation config
         - agent_*: Updates agent config
-        - models_*: Updates models config
         - history_cleaning_*: Updates history cleaning config
+        - web_search_*: Updates web search config
 
         Args:
             **kwargs: Config values to update.
@@ -87,17 +88,17 @@ class ConfigService:
 
         Examples:
             service.update(ollama_base_url="http://192.168.1.100:11434")
-            service.update(ui_default_temperature=0.5)
+            service.update(llm_default_temperature=0.5)
         """
         config = self.load()
 
         # Map of prefix -> config section for dispatching updates
         sections = {
             "ollama_": config.ollama,
-            "ui_": config.ui,
+            "llm_": config.llm,
             "rag_": config.rag,
+            "conversation_": config.conversation,
             "agent_": config.agent,
-            "models_": config.models,
             "history_cleaning_": config.history_cleaning,
             "web_search_": config.web_search,
         }
@@ -176,7 +177,7 @@ class ConfigService:
             Default model name.
         """
         config = self.load()
-        return config.models.default_rag_model
+        return config.llm.default_model
 
     def get_intent_classifier_model(self) -> str:
         """Get the intent classifier model from config.

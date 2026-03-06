@@ -1,0 +1,13 @@
+name: gh_pr
+description: "Get details of a specific pull request"
+usage: "/gh_pr <owner> <repo> <number>"
+aliases: [ghp]
+
+steps:
+  - tool: get_pull_request
+    params:
+      owner: "{{args.0}}"
+      repo: "{{args.1}}"
+      pullNumber: "{{args.2}}"
+
+requires_mcp: github

@@ -1,0 +1,10 @@
+name: hf_docs
+description: "Search HuggingFace documentation"
+usage: "/hf_docs <query>"
+
+steps:
+  - tool: documentation_semantic_search
+    params:
+      query: "{{args}}"
+
+requires_mcp: huggingface

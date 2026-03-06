@@ -1,0 +1,11 @@
+name: hf_models
+description: "Search HuggingFace models by keyword or task"
+usage: "/hf_models <query>"
+aliases: [hfm]
+
+steps:
+  - tool: model_search
+    params:
+      query: "{{args}}"
+
+requires_mcp: huggingface

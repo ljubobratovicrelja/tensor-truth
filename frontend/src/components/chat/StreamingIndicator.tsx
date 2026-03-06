@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { Search, Brain, Sparkles, Loader2, Scale } from "lucide-react";
+import { useChatStore } from "@/stores";
+import { ToolPhaseIndicator } from "./ToolPhaseIndicator";
 import type { PipelineStatus } from "@/stores/chatStore";
 
 interface StreamingIndicatorProps {
@@ -9,6 +11,7 @@ interface StreamingIndicatorProps {
 const STATUS_CONFIG = {
   loading_models: {
     icon: Loader2,
+    animation: "animate-spin",
     labels: [
       "Waking up the AI...",
       "Booting up neural networks...",
@@ -20,6 +23,7 @@ const STATUS_CONFIG = {
   },
   retrieving: {
     icon: Search,
+    animation: "animate-bounce",
     labels: [
       "Hunting for clues...",
       "Digging through the archives...",
@@ -32,6 +36,7 @@ const STATUS_CONFIG = {
   },
   reranking: {
     icon: Scale,
+    animation: "animate-pulse",
     labels: [
       "Separating wheat from chaff...",
       "Ranking the suspects...",
@@ -44,6 +49,7 @@ const STATUS_CONFIG = {
   },
   thinking: {
     icon: Brain,
+    animation: "animate-pulse",
     labels: [
       "Deep in thought...",
       "Pondering the mysteries...",
@@ -56,6 +62,7 @@ const STATUS_CONFIG = {
   },
   generating: {
     icon: Sparkles,
+    animation: "animate-pulse",
     labels: [
       "Crafting the perfect response...",
       "Weaving words together...",
@@ -73,6 +80,8 @@ function pickRandom<T>(array: readonly T[]): T {
 }
 
 export function StreamingIndicator({ status }: StreamingIndicatorProps) {
+  const toolPhase = useChatStore((state) => state.toolPhase);
+
   // Pick a random label when status changes, but keep it stable while status is the same
   const label = useMemo(() => {
     if (!status) return "Processing...";
@@ -80,32 +89,22 @@ export function StreamingIndicator({ status }: StreamingIndicatorProps) {
     return config ? pickRandom(config.labels) : "Processing...";
   }, [status]);
 
-  const config = status ? STATUS_CONFIG[status] : null;
-  const Icon = config?.icon;
+  // When toolPhase is present, delegate to ToolPhaseIndicator
+  if (toolPhase) {
+    return <ToolPhaseIndicator phase={toolPhase} />;
+  }
 
-  // Different animation per icon type
-  const getIconAnimation = () => {
-    if (!status) return "animate-pulse";
-    switch (status) {
-      case "loading_models":
-        return "animate-spin";
-      case "retrieving":
-        return "animate-bounce";
-      case "reranking":
-        return "animate-pulse";
-      case "thinking":
-        return "animate-pulse";
-      case "generating":
-        return "animate-pulse";
-      default:
-        return "animate-pulse";
-    }
-  };
+  // Legacy status rendering — box style for visual consistency
+  const config = status ? STATUS_CONFIG[status] : null;
+  const Icon = config?.icon ?? Loader2;
+  const animation = config?.animation ?? "animate-pulse";
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2">
-      {Icon && <Icon className={`text-muted-foreground h-4 w-4 ${getIconAnimation()}`} />}
-      <span className="text-muted-foreground text-sm">{label}</span>
+    <div className="border-muted bg-muted/30 mb-3 rounded-lg border">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <Icon className={`text-muted-foreground h-4 w-4 ${animation}`} />
+        <span className="text-muted-foreground text-sm font-medium">{label}</span>
+      </div>
     </div>
   );
 }

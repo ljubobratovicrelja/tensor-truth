@@ -1,0 +1,11 @@
+name: hf_repo
+description: "Get detailed info about a HuggingFace repository"
+usage: "/hf_repo <repo_id>"
+aliases: [hfr]
+
+steps:
+  - tool: hub_repository_details
+    params:
+      repo_id: "{{args}}"
+
+requires_mcp: huggingface

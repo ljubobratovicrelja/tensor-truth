@@ -1,13 +1,15 @@
 """Unit tests for tensortruth.services.builtin_tools module."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from tensortruth.services.builtin_tools import (
     fetch_page,
     fetch_pages_batch,
+    get_arxiv_paper,
+    search_arxiv,
     search_focused,
     search_web,
 )
@@ -752,3 +754,270 @@ async def test_tools_handle_empty_inputs():
         assert isinstance(result1, str)
         assert isinstance(result2, str)
         assert isinstance(result3, str)
+
+
+# ============================================================================
+# Fixtures for arXiv tools
+# ============================================================================
+
+
+class _MockAuthor:
+    def __init__(self, name):
+        self.name = name
+
+
+class _MockPaper:
+    """Mimics an arxiv.Result object."""
+
+    def __init__(self, **kwargs):
+        from datetime import datetime
+
+        self.entry_id = kwargs.get("entry_id", "http://arxiv.org/abs/2301.12345v1")
+        self.title = kwargs.get("title", "Attention Is All You Need")
+        self.authors = [_MockAuthor(n) for n in kwargs.get("authors", ["Author One"])]
+        self.published = kwargs.get("published", datetime(2023, 1, 15))
+        self.updated = kwargs.get("updated", datetime(2023, 2, 10))
+        self.categories = kwargs.get("categories", ["cs.CL", "cs.AI"])
+        self.primary_category = kwargs.get("primary_category", "cs.CL")
+        self.summary = kwargs.get("summary", "We propose a new architecture...")
+        self.pdf_url = kwargs.get("pdf_url", "http://arxiv.org/pdf/2301.12345v1")
+        self.doi = kwargs.get("doi", None)
+        self.journal_ref = kwargs.get("journal_ref", None)
+        self.comment = kwargs.get("comment", None)
+
+
+@pytest.fixture
+def mock_paper():
+    return _MockPaper()
+
+
+@pytest.fixture
+def mock_papers():
+    return [
+        _MockPaper(
+            entry_id="http://arxiv.org/abs/2301.00001v1",
+            title="Paper One",
+            authors=["Alice"],
+            pdf_url="http://arxiv.org/pdf/2301.00001v1",
+        ),
+        _MockPaper(
+            entry_id="http://arxiv.org/abs/2301.00002v1",
+            title="Paper Two",
+            authors=["Bob"],
+            pdf_url="http://arxiv.org/pdf/2301.00002v1",
+        ),
+    ]
+
+
+# ============================================================================
+# Tests for search_arxiv
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_search_arxiv_success(mock_papers):
+    """Test successful arXiv search returns structured output with hint."""
+    mock_search_instance = MagicMock()
+    mock_search_instance.results.return_value = iter(mock_papers)
+
+    with patch(
+        "tensortruth.services.builtin_tools.arxiv.Search",
+        return_value=mock_search_instance,
+    ):
+        result = await search_arxiv("transformer attention")
+
+        parsed = json.loads(result)
+        assert isinstance(parsed, dict)
+        assert parsed["total"] == 2
+
+        papers = parsed["results"]
+        assert len(papers) == 2
+        assert papers[0]["title"] == "Paper One"
+        assert papers[0]["authors"] == ["Alice"]
+        assert "pdf_url" in papers[0]
+        assert "abstract_snippet" in papers[0]
+        assert "arxiv_id" in papers[0]
+
+        # Should include hint to fetch details (IDs without version suffix)
+        assert "hint" in parsed
+        assert "get_arxiv_paper" in parsed["hint"]
+        assert "2301.00001" in parsed["hint"]
+        assert "v1" not in parsed["hint"]
+
+
+@pytest.mark.asyncio
+async def test_search_arxiv_empty_results():
+    """Test search_arxiv with no results."""
+    mock_search_instance = MagicMock()
+    mock_search_instance.results.return_value = iter([])
+
+    with patch(
+        "tensortruth.services.builtin_tools.arxiv.Search",
+        return_value=mock_search_instance,
+    ):
+        result = await search_arxiv("zzzznonexistent9999")
+
+        parsed = json.loads(result)
+        assert isinstance(parsed, dict)
+        assert parsed["total"] == 0
+        assert len(parsed["results"]) == 0
+        assert "hint" not in parsed
+
+
+@pytest.mark.asyncio
+async def test_search_arxiv_api_error():
+    """Test search_arxiv handles API errors gracefully."""
+    mock_search_instance = MagicMock()
+    mock_search_instance.results.side_effect = Exception("API rate limit")
+
+    with patch(
+        "tensortruth.services.builtin_tools.arxiv.Search",
+        return_value=mock_search_instance,
+    ):
+        result = await search_arxiv("test query")
+
+        parsed = json.loads(result)
+        assert "error" in parsed
+        assert "API rate limit" in parsed["error"]
+
+
+@pytest.mark.asyncio
+async def test_search_arxiv_sort_by():
+    """Test search_arxiv passes sort_by correctly."""
+    import arxiv as arxiv_mod
+
+    mock_search_instance = MagicMock()
+    mock_search_instance.results.return_value = iter([])
+
+    with patch(
+        "tensortruth.services.builtin_tools.arxiv.Search",
+        return_value=mock_search_instance,
+    ) as mock_cls:
+        await search_arxiv("test", sort_by="submitted")
+
+        mock_cls.assert_called_once_with(
+            query="test",
+            max_results=5,
+            sort_by=arxiv_mod.SortCriterion.SubmittedDate,
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_arxiv_returns_string():
+    """Test search_arxiv always returns a string."""
+    mock_search_instance = MagicMock()
+    mock_search_instance.results.return_value = iter([])
+
+    with patch(
+        "tensortruth.services.builtin_tools.arxiv.Search",
+        return_value=mock_search_instance,
+    ):
+        result = await search_arxiv("test")
+        assert isinstance(result, str)
+
+
+# ============================================================================
+# Tests for get_arxiv_paper
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_get_arxiv_paper_success(mock_paper):
+    """Test successful paper retrieval returns markdown."""
+    mock_search_instance = MagicMock()
+    mock_search_instance.results.return_value = iter([mock_paper])
+
+    with patch(
+        "tensortruth.services.builtin_tools.arxiv.Search",
+        return_value=mock_search_instance,
+    ):
+        result = await get_arxiv_paper("2301.12345")
+
+        assert isinstance(result, str)
+        assert "# Attention Is All You Need" in result
+        assert "**ArXiv ID**: 2301.12345" in result
+        assert "Author One" in result
+        assert "## Abstract" in result
+        assert "We propose a new architecture" in result
+
+
+@pytest.mark.asyncio
+async def test_get_arxiv_paper_invalid_id():
+    """Test get_arxiv_paper with invalid ID."""
+    result = await get_arxiv_paper("not-a-valid-id")
+
+    assert result.startswith("Error:")
+    assert "Invalid" in result
+
+
+@pytest.mark.asyncio
+async def test_get_arxiv_paper_url_input(mock_paper):
+    """Test get_arxiv_paper accepts full arXiv URL."""
+    mock_search_instance = MagicMock()
+    mock_search_instance.results.return_value = iter([mock_paper])
+
+    with patch(
+        "tensortruth.services.builtin_tools.arxiv.Search",
+        return_value=mock_search_instance,
+    ) as mock_cls:
+        result = await get_arxiv_paper("https://arxiv.org/abs/2301.12345")
+
+        # Should extract and use the normalized ID
+        mock_cls.assert_called_once_with(id_list=["2301.12345"])
+        assert "# Attention Is All You Need" in result
+
+
+@pytest.mark.asyncio
+async def test_get_arxiv_paper_not_found():
+    """Test get_arxiv_paper when paper doesn't exist."""
+    mock_search_instance = MagicMock()
+    mock_search_instance.results.return_value = iter([])
+
+    with patch(
+        "tensortruth.services.builtin_tools.arxiv.Search",
+        return_value=mock_search_instance,
+    ):
+        result = await get_arxiv_paper("9999.99999")
+
+        assert result.startswith("Error:")
+        assert "not found" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_get_arxiv_paper_with_optional_fields():
+    """Test get_arxiv_paper includes DOI, journal ref, and comments when present."""
+    paper = _MockPaper(
+        doi="10.1234/example",
+        journal_ref="Nature 2023",
+        comment="15 pages, 3 figures",
+    )
+
+    mock_search_instance = MagicMock()
+    mock_search_instance.results.return_value = iter([paper])
+
+    with patch(
+        "tensortruth.services.builtin_tools.arxiv.Search",
+        return_value=mock_search_instance,
+    ):
+        result = await get_arxiv_paper("2301.12345")
+
+        assert "**DOI**: 10.1234/example" in result
+        assert "**Journal Reference**: Nature 2023" in result
+        assert "## Comments" in result
+        assert "15 pages, 3 figures" in result
+
+
+@pytest.mark.asyncio
+async def test_get_arxiv_paper_api_error():
+    """Test get_arxiv_paper handles API errors gracefully."""
+    mock_search_instance = MagicMock()
+    mock_search_instance.results.side_effect = Exception("Connection reset")
+
+    with patch(
+        "tensortruth.services.builtin_tools.arxiv.Search",
+        return_value=mock_search_instance,
+    ):
+        result = await get_arxiv_paper("2301.12345")
+
+        assert result.startswith("Error:")
+        assert "Connection reset" in result

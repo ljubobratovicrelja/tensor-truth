@@ -151,11 +151,9 @@ export function ChatInput({
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          disabled={isStreaming}
           className={cn(
             "w-full resize-none bg-transparent px-4 pt-4 pb-14 text-base",
-            "placeholder:text-muted-foreground focus:outline-none",
-            "disabled:cursor-not-allowed disabled:opacity-50"
+            "placeholder:text-muted-foreground focus:outline-none"
           )}
           rows={1}
         />
@@ -193,13 +191,13 @@ export function ChatInput({
                 <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
                   <Bot className="h-3.5 w-3.5" />
                   <span className="text-xs">
-                    {selectedModel || config?.models.default_rag_model || "Model"}
+                    {selectedModel || config?.llm.default_model || "Model"}
                   </span>
                 </SelectTrigger>
                 <SelectContent position="popper" side="top" className="max-h-[300px]">
                   <SelectItem value="__none__">
                     <span className="text-muted-foreground">
-                      Default ({config?.models.default_rag_model || "..."})
+                      Default ({config?.llm.default_model || "..."})
                     </span>
                   </SelectItem>
                   {modelsLoading ? (

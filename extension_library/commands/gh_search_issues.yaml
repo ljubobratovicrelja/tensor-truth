@@ -1,0 +1,11 @@
+name: gh_search_issues
+description: "Search issues and PRs across GitHub with query syntax"
+usage: "/gh_search_issues <query>"
+aliases: [ghsi]
+
+steps:
+  - tool: search_issues
+    params:
+      query: "{{args}}"
+
+requires_mcp: github

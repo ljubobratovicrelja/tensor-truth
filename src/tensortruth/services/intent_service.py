@@ -51,6 +51,7 @@ class IntentService:
                 base_url=self.ollama_url,
                 temperature=0.0,
                 request_timeout=30.0,
+                additional_kwargs={"num_ctx": 16384},
             )
         return self._llm
 

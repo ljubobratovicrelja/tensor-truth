@@ -1,0 +1,7 @@
+name: github
+description: "Research GitHub repos, issues, PRs, and code using AI agent"
+usage: "/github <query>"
+aliases: [gh]
+agent: github_researcher
+
+requires_mcp: github

@@ -29,8 +29,7 @@ export function ProjectViewPage() {
 
   // Derive effective model: user selection, project config, or system default
   const projectModel = (project?.config?.model as string) || "";
-  const effectiveModel =
-    selectedModel || projectModel || config?.models.default_rag_model || "";
+  const effectiveModel = selectedModel || projectModel || config?.llm.default_model || "";
 
   const handleSubmit = async () => {
     const text = message.trim();

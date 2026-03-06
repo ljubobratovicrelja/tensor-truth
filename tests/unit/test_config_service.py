@@ -32,7 +32,7 @@ class TestConfigServiceLoad:
 
         # Default values
         assert config.ollama.base_url == "http://localhost:11434"
-        assert config.ui.default_temperature == 0.7
+        assert config.llm.default_temperature == 0.7
         assert config.agent.max_iterations == 10
 
         # File should be created
@@ -44,9 +44,8 @@ class TestConfigServiceLoad:
         """Load reads existing config correctly."""
         existing_config = {
             "ollama": {"base_url": "http://custom:11434", "timeout": 600},
-            "ui": {"default_temperature": 0.5},
+            "llm": {"default_temperature": 0.5, "default_model": "custom-model"},
             "rag": {"default_device": "cuda"},
-            "models": {"default_rag_model": "custom-model"},
             "agent": {"max_iterations": 20},
         }
         temp_config_file.write_text(yaml.safe_dump(existing_config))
@@ -55,7 +54,29 @@ class TestConfigServiceLoad:
 
         assert config.ollama.base_url == "http://custom:11434"
         assert config.ollama.timeout == 600
-        assert config.ui.default_temperature == 0.5
+        assert config.llm.default_temperature == 0.5
+        assert config.llm.default_model == "custom-model"
+        assert config.agent.max_iterations == 20
+
+    def test_load_old_format_config_migrates(
+        self, config_service: ConfigService, temp_config_file: Path
+    ):
+        """Load migrates old-format config (ui, models) to new format."""
+        old_config = {
+            "ollama": {"base_url": "http://custom:11434", "timeout": 600},
+            "ui": {"default_temperature": 0.5},
+            "rag": {"default_device": "cuda"},
+            "models": {"default_rag_model": "custom-model"},
+            "agent": {"max_iterations": 20},
+        }
+        temp_config_file.write_text(yaml.safe_dump(old_config))
+
+        config = config_service.load()
+
+        assert config.ollama.base_url == "http://custom:11434"
+        assert config.ollama.timeout == 600
+        assert config.llm.default_temperature == 0.5
+        assert config.llm.default_model == "custom-model"
         assert config.agent.max_iterations == 20
 
     def test_load_partial_config_uses_defaults(
@@ -73,7 +94,7 @@ class TestConfigServiceLoad:
         # Custom value loaded
         assert config.ollama.base_url == "http://custom:11434"
         # Default values for missing fields
-        assert config.ui.default_temperature == 0.7
+        assert config.llm.default_temperature == 0.7
         assert config.agent.max_iterations == 10
 
 
@@ -112,11 +133,11 @@ class TestConfigServiceUpdate:
 
         assert config.ollama.base_url == "http://updated:11434"
 
-    def test_update_ui_config(self, config_service: ConfigService):
-        """Update modifies UI config values."""
-        config = config_service.update(ui_default_temperature=0.8)
+    def test_update_llm_config(self, config_service: ConfigService):
+        """Update modifies LLM config values."""
+        config = config_service.update(llm_default_temperature=0.8)
 
-        assert config.ui.default_temperature == 0.8
+        assert config.llm.default_temperature == 0.8
 
     def test_update_rag_config(self, config_service: ConfigService):
         """Update modifies RAG config values."""
@@ -124,28 +145,34 @@ class TestConfigServiceUpdate:
 
         assert config.rag.default_device == "cuda"
 
+    def test_update_conversation_config(self, config_service: ConfigService):
+        """Update modifies conversation config values."""
+        config = config_service.update(conversation_max_history_turns=10)
+
+        assert config.conversation.max_history_turns == 10
+
     def test_update_agent_config(self, config_service: ConfigService):
         """Update modifies agent config values."""
         config = config_service.update(agent_max_iterations=25)
 
         assert config.agent.max_iterations == 25
 
-    def test_update_models_config(self, config_service: ConfigService):
-        """Update modifies models config values."""
-        config = config_service.update(models_default_rag_model="custom-model")
+    def test_update_llm_default_model(self, config_service: ConfigService):
+        """Update modifies LLM default model."""
+        config = config_service.update(llm_default_model="custom-model")
 
-        assert config.models.default_rag_model == "custom-model"
+        assert config.llm.default_model == "custom-model"
 
     def test_update_multiple_values(self, config_service: ConfigService):
         """Update modifies multiple values at once."""
         config = config_service.update(
             ollama_base_url="http://multi:11434",
-            ui_default_temperature=0.3,
+            llm_default_temperature=0.3,
             agent_max_iterations=15,
         )
 
         assert config.ollama.base_url == "http://multi:11434"
-        assert config.ui.default_temperature == 0.3
+        assert config.llm.default_temperature == 0.3
         assert config.agent.max_iterations == 15
 
     def test_update_persists_changes(
@@ -336,15 +363,6 @@ class TestConfigUpdatePrefixStripping:
         config = config_service.update(agent_router_model="router:3b")
         assert config.agent.router_model == "router:3b"
 
-    def test_update_models_default_agent_reasoning_model(
-        self, config_service: ConfigService
-    ):
-        """models_default_agent_reasoning_model strips only 'models_' prefix."""
-        config = config_service.update(
-            models_default_agent_reasoning_model="reasoning:14b"
-        )
-        assert config.models.default_agent_reasoning_model == "reasoning:14b"
-
     def test_update_unknown_key_is_ignored(self, config_service: ConfigService):
         """Unknown keys are silently ignored (with logging)."""
         config = config_service.update(nonexistent_key="value")
@@ -363,18 +381,20 @@ class TestConfigUpdatePrefixStripping:
         """All config prefix patterns resolve correctly."""
         config = config_service.update(
             ollama_timeout=600,
-            ui_default_temperature=0.5,
+            llm_default_temperature=0.5,
             rag_default_device="cuda",
             agent_max_iterations=20,
-            models_default_rag_model="custom:14b",
+            llm_default_model="custom:14b",
+            conversation_max_history_turns=5,
             history_cleaning_enabled=False,
             web_search_ddg_max_results=20,
         )
         assert config.ollama.timeout == 600
-        assert config.ui.default_temperature == 0.5
+        assert config.llm.default_temperature == 0.5
         assert config.rag.default_device == "cuda"
         assert config.agent.max_iterations == 20
-        assert config.models.default_rag_model == "custom:14b"
+        assert config.llm.default_model == "custom:14b"
+        assert config.conversation.max_history_turns == 5
         assert config.history_cleaning.enabled is False
         assert config.web_search.ddg_max_results == 20
 
@@ -394,10 +414,15 @@ class TestAgentReasoningModelRemoved:
         config = config_service.load()
         assert not hasattr(config.agent, "reasoning_model")
 
-    def test_models_reasoning_model_still_exists(self, config_service: ConfigService):
-        """models.default_agent_reasoning_model should still exist."""
+    def test_no_models_config_section(self, config_service: ConfigService):
+        """Config should not have a models section anymore."""
         config = config_service.load()
-        assert hasattr(config.models, "default_agent_reasoning_model")
+        assert not hasattr(config, "models")
+
+    def test_no_ui_config_section(self, config_service: ConfigService):
+        """Config should not have a ui section anymore."""
+        config = config_service.load()
+        assert not hasattr(config, "ui")
 
 
 class TestConfigBackwardCompatibility:
@@ -431,3 +456,31 @@ class TestConfigBackwardCompatibility:
         config = TensorTruthConfig.from_dict(data)
         assert config.ollama.base_url == "http://localhost:11434"
         assert config.agent.max_iterations == 5
+
+    def test_load_old_format_with_ui_and_models(
+        self, config_service: ConfigService, temp_config_file: Path
+    ):
+        """Loading old config with ui and models sections migrates correctly."""
+        old_config = {
+            "ui": {
+                "default_temperature": 0.5,
+                "default_top_n": 10,
+                "default_confidence_threshold": 0.4,
+            },
+            "models": {
+                "default_rag_model": "old-model:14b",
+            },
+            "rag": {
+                "default_device": "cuda",
+                "max_history_turns": 5,
+            },
+        }
+        temp_config_file.write_text(yaml.safe_dump(old_config))
+
+        config = config_service.load()
+        assert config.llm.default_temperature == 0.5
+        assert config.llm.default_model == "old-model:14b"
+        assert config.rag.default_top_n == 10
+        assert config.rag.default_confidence_threshold == 0.4
+        assert config.rag.default_device == "cuda"
+        assert config.conversation.max_history_turns == 5

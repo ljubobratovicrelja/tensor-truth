@@ -82,7 +82,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   );
 
   // Models
-  const [ragModel, setRagModel] = useState(config.models.default_rag_model);
+  const [ragModel, setRagModel] = useState(config.llm.default_model);
   const [agentReasoningModel, setAgentReasoningModel] = useState(
     config.agent.router_model
   );
@@ -91,18 +91,18 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   );
 
   // Generation
-  const [temperature, setTemperature] = useState(config.ui.default_temperature);
-  const [contextWindow, setContextWindow] = useState(config.ui.default_context_window);
-  const [maxTokens, setMaxTokens] = useState(config.ui.default_max_tokens);
+  const [temperature, setTemperature] = useState(config.llm.default_temperature);
+  const [contextWindow, setContextWindow] = useState(config.llm.default_context_window);
+  const [maxTokens, setMaxTokens] = useState(config.llm.default_max_tokens);
 
   // Retrieval
   const [reranker, setReranker] = useState(config.rag.default_reranker);
-  const [topN, setTopN] = useState(config.ui.default_top_n);
+  const [topN, setTopN] = useState(config.rag.default_top_n);
   const [confidenceThreshold, setConfidenceThreshold] = useState(
-    config.ui.default_confidence_threshold
+    config.rag.default_confidence_threshold
   );
   const [confidenceCutoffHard, setConfidenceCutoffHard] = useState(
-    config.ui.default_confidence_cutoff_hard
+    config.rag.default_confidence_cutoff_hard
   );
 
   // Hardware
@@ -130,8 +130,12 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   );
 
   // History Size (turns = user query + assistant response pairs)
-  const [maxHistoryTurns, setMaxHistoryTurns] = useState(config.rag.max_history_turns);
-  const [memoryTokenLimit, setMemoryTokenLimit] = useState(config.rag.memory_token_limit);
+  const [maxHistoryTurns, setMaxHistoryTurns] = useState(
+    config.conversation.max_history_turns
+  );
+  const [memoryTokenLimit, setMemoryTokenLimit] = useState(
+    config.conversation.memory_token_limit
+  );
 
   // Web Search
   const [ddgMaxResults, setDdgMaxResults] = useState(config.web_search.ddg_max_results);
@@ -153,15 +157,15 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
   // Sync form state when config prop changes (e.g., after save)
   useEffect(() => {
-    setRagModel(config.models.default_rag_model);
+    setRagModel(config.llm.default_model);
     setAgentReasoningModel(config.agent.router_model);
     setFunctionAgentModel(config.agent.function_agent_model);
-    setTemperature(config.ui.default_temperature);
-    setContextWindow(config.ui.default_context_window);
-    setMaxTokens(config.ui.default_max_tokens);
-    setTopN(config.ui.default_top_n);
-    setConfidenceThreshold(config.ui.default_confidence_threshold);
-    setConfidenceCutoffHard(config.ui.default_confidence_cutoff_hard);
+    setTemperature(config.llm.default_temperature);
+    setContextWindow(config.llm.default_context_window);
+    setMaxTokens(config.llm.default_max_tokens);
+    setTopN(config.rag.default_top_n);
+    setConfidenceThreshold(config.rag.default_confidence_threshold);
+    setConfidenceCutoffHard(config.rag.default_confidence_cutoff_hard);
     setDevice(config.rag.default_device);
     setEmbeddingModel(config.rag.default_embedding_model);
     setReranker(config.rag.default_reranker);
@@ -170,8 +174,8 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     setRemoveFillerPhrases(config.history_cleaning.remove_filler_phrases);
     setNormalizeWhitespace(config.history_cleaning.normalize_whitespace);
     setCollapseNewlines(config.history_cleaning.collapse_newlines);
-    setMaxHistoryTurns(config.rag.max_history_turns);
-    setMemoryTokenLimit(config.rag.memory_token_limit);
+    setMaxHistoryTurns(config.conversation.max_history_turns);
+    setMemoryTokenLimit(config.conversation.memory_token_limit);
     setDdgMaxResults(config.web_search.ddg_max_results);
     setMaxPagesToFetch(config.web_search.max_pages_to_fetch);
     setRerankTitleThreshold(config.web_search.rerank_title_threshold);
@@ -264,15 +268,15 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
   const handleSave = async () => {
     await onSave({
-      models_default_rag_model: ragModel,
+      llm_default_model: ragModel,
       agent_router_model: agentReasoningModel,
       agent_function_agent_model: functionAgentModel,
-      ui_default_temperature: temperature,
-      ui_default_context_window: contextWindow,
-      ui_default_max_tokens: maxTokens,
-      ui_default_top_n: topN,
-      ui_default_confidence_threshold: confidenceThreshold,
-      ui_default_confidence_cutoff_hard: confidenceCutoffHard,
+      llm_default_temperature: temperature,
+      llm_default_context_window: contextWindow,
+      llm_default_max_tokens: maxTokens,
+      rag_default_top_n: topN,
+      rag_default_confidence_threshold: confidenceThreshold,
+      rag_default_confidence_cutoff_hard: confidenceCutoffHard,
       rag_default_device: device,
       rag_default_embedding_model: embeddingModel,
       rag_default_reranker: reranker,
@@ -281,8 +285,8 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
       history_cleaning_remove_filler_phrases: removeFillerPhrases,
       history_cleaning_normalize_whitespace: normalizeWhitespace,
       history_cleaning_collapse_newlines: collapseNewlines,
-      rag_max_history_turns: maxHistoryTurns,
-      rag_memory_token_limit: memoryTokenLimit,
+      conversation_max_history_turns: maxHistoryTurns,
+      conversation_memory_token_limit: memoryTokenLimit,
       web_search_ddg_max_results: ddgMaxResults,
       web_search_max_pages_to_fetch: maxPagesToFetch,
       web_search_rerank_title_threshold: rerankTitleThreshold,

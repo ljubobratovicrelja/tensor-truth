@@ -210,17 +210,19 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
     if model_name is None:
         try:
             config = load_config()
-            model_name = config.models.default_rag_model
+            model_name = config.llm.default_model
         except Exception:
-            from tensortruth.core.constants import DEFAULT_RAG_MODEL
+            from tensortruth.core.constants import DEFAULT_MODEL
 
-            model_name = DEFAULT_RAG_MODEL  # Fallback default
+            model_name = DEFAULT_MODEL  # Fallback default
 
     user_system_prompt = params.get("system_prompt", "").strip()
     device_mode = params.get("llm_device", "gpu")  # 'gpu' or 'cpu'
 
-    # Ollama specific options
-    ollama_options = {}
+    # Ollama specific options — always set num_ctx to match context_window
+    # so Ollama never reloads the model due to a context-size change.
+    ctx_window = params.get("context_window", 16384)
+    ollama_options: dict = {"num_ctx": ctx_window}
 
     # Force CPU if requested
     if device_mode == "cpu":
@@ -245,12 +247,9 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
         base_url=get_ollama_url(),
         request_timeout=300.0,
         temperature=params.get("temperature", 0.3),
-        context_window=params.get("context_window", 16384),
+        context_window=ctx_window,
         thinking=thinking_enabled,
-        additional_kwargs={
-            "num_ctx": params.get("context_window", 16384),
-            "options": ollama_options,
-        },
+        additional_kwargs=ollama_options,
         system_prompt=user_system_prompt,
     )
 
@@ -694,7 +693,7 @@ def load_engine_for_modules(
         try:
             if config is None:
                 config = load_config()
-            memory_token_limit = config.rag.memory_token_limit
+            memory_token_limit = config.conversation.memory_token_limit
         except (ImportError, Exception):
             memory_token_limit = 4000
     memory = ChatMemoryBuffer.from_defaults(token_limit=memory_token_limit)

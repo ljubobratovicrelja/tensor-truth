@@ -1,0 +1,11 @@
+name: gh_code
+description: "Search code across GitHub repositories"
+usage: "/gh_code <query>"
+aliases: [ghc]
+
+steps:
+  - tool: search_code
+    params:
+      query: "{{args}}"
+
+requires_mcp: github

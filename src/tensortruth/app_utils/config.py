@@ -59,22 +59,22 @@ def update_config(**kwargs):
             attr_name = key.replace("ollama_", "")
             if hasattr(config.ollama, attr_name):
                 setattr(config.ollama, attr_name, value)
-        elif key.startswith("ui_"):
-            attr_name = key.replace("ui_", "")
-            if hasattr(config.ui, attr_name):
-                setattr(config.ui, attr_name, value)
+        elif key.startswith("llm_"):
+            attr_name = key.replace("llm_", "")
+            if hasattr(config.llm, attr_name):
+                setattr(config.llm, attr_name, value)
         elif key.startswith("rag_"):
             attr_name = key.replace("rag_", "")
             if hasattr(config.rag, attr_name):
                 setattr(config.rag, attr_name, value)
+        elif key.startswith("conversation_"):
+            attr_name = key.replace("conversation_", "")
+            if hasattr(config.conversation, attr_name):
+                setattr(config.conversation, attr_name, value)
         elif key.startswith("agent_"):
             attr_name = key.replace("agent_", "")
             if hasattr(config.agent, attr_name):
                 setattr(config.agent, attr_name, value)
-        elif key.startswith("models_"):
-            attr_name = key.replace("models_", "")
-            if hasattr(config.models, attr_name):
-                setattr(config.models, attr_name, value)
 
     save_config(config)
 

@@ -1,7 +1,7 @@
 /**
  * Hook for detecting commands in user input
  *
- * Commands can appear anywhere in the input string (not just at the start).
+ * Commands must be preceded by whitespace or appear at the start of the input.
  * Pattern: /commandName optional arguments
  *
  * Examples:
@@ -22,9 +22,10 @@ import type { CommandDetection } from "@/types/commands";
 export function useCommandDetection(input: string): CommandDetection {
   return useMemo(() => {
     // Match pattern: /commandName optionalArgs
+    // (?<!\S) ensures / is at start of string or after whitespace
     // \w+ matches command name (letters, numbers, underscore)
     // (?:\s+(.+))? optionally matches space + remaining text
-    const match = input.match(/\/(\w+)(?:\s+(.+))?/);
+    const match = input.match(/(?<!\S)\/(\w+)(?:\s+(.+))?/);
 
     if (!match) {
       return {

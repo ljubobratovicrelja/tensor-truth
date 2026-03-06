@@ -114,38 +114,37 @@ Or, the smaller qwen2.5-coder, holds up well with API docs on coding aid.
 ollama pull qwen2.5-coder:7b 
 ````
 
-## Agents & Web Search
+## Agentic Mode & Web Search
 
-Beyond RAG, Tensor-Truth has built-in slash commands for web search and autonomous research:
+When **agentic mode** is enabled (the default for models that support tool-calling), every message is routed through an orchestrator agent that autonomously decides what to do: query the knowledge base, search the web, fetch pages, call MCP tools, or just respond directly. The agent loops internally — calling a tool, inspecting the result, deciding whether more information is needed, and repeating until it has a complete answer.
+
+This replaces the need for explicit slash commands for most workflows. Just ask a question and the orchestrator figures out how to answer it:
+
+```
+What is flash attention and how does PyTorch implement it?
+Compare Adam vs AdamW optimizer convergence properties
+```
+
+The orchestrator streams real-time progress to the UI — you see which tools are being called, what's being searched, and when synthesis begins. Sources from both RAG and web are combined and cited in the response.
+
+Agentic mode is **on by default**, but it relies on the model's native tool-calling ability. Larger models (`qwen3:8b`, `llama3.1:8b` and above) handle it well; smaller models (`llama3.2:3b` and below) tend to produce broken tool calls or loop unproductively. If your system is limited to small models, you're better off disabling agentic mode in the session settings and using explicit slash commands (`/web`, `/arxiv`, etc.) instead.
+
+The toggle is per-session in the session settings panel. It is automatically disabled for models that don't support tool-calling at all (e.g., `deepseek-r1`), falling back to the direct RAG pipeline.
+
+The `/web` slash command is still available for explicit web-only searches:
 
 - **`/web <query>`** — Search the web (via DuckDuckGo), fetch top results, and generate an AI summary with sources. Supports optional instructions: `/web python 3.13;focus on performance improvements`.
-- **`/browse <query>`** — Autonomous research agent that plans multi-step web research, searching and reading pages iteratively to answer complex questions. Uses [MCP](https://modelcontextprotocol.io/) tools under the hood.
-
-```
-/web What is flash attention?
-/browse Compare PyTorch 2.x compile modes and their tradeoffs
-```
 
 ## Custom Extensions
 
 Add your own slash commands and agents by dropping YAML files into `~/.tensortruth/commands/` and `~/.tensortruth/agents/`. No code changes needed — just define a tool pipeline or agent config and restart.
 
-```yaml
-# ~/.tensortruth/commands/arxiv.yaml
-name: arxiv
-description: "Search arXiv for academic papers"
-usage: "/arxiv <query>"
-aliases: [ax]
-steps:
-  - tool: search_papers
-    params:
-      query: "{{args}}"
-      max_results: 5
-      sort_by: relevance
-requires_mcp: simple-arxiv
+```bash
+mkdir -p ~/.tensortruth/commands
+cp extension_library/commands/arxiv.yaml ~/.tensortruth/commands/
 ```
 
-The repository includes ready-to-use extensions for [arXiv](https://github.com/andybrandt/mcp-simple-arxiv) and [Context7](https://github.com/upstash/context7) in the [`extension_library/`](extension_library/) directory — copy what you need. For the full guide (YAML schema, template variables, Python extensions, MCP setup), see **[docs/EXTENSIONS.md](docs/EXTENSIONS.md)**.
+The repository includes ready-to-use extensions in the [`extension_library/`](extension_library/) directory — for example, [Context7](https://github.com/upstash/context7) integration for live library docs. arXiv search (`search_arxiv`, `get_arxiv_paper`) is built-in and needs no extension or MCP server; the extension library just provides optional `/arxiv` and `/arxiv_paper` slash command wrappers. For the full guide (YAML schema, template variables, Python extensions, MCP setup), see **[docs/EXTENSIONS.md](docs/EXTENSIONS.md)**.
 
 ## Development
 

@@ -1,0 +1,11 @@
+name: gh_repos
+description: "Search GitHub repositories"
+usage: "/gh_repos <query>"
+aliases: [ghr]
+
+steps:
+  - tool: search_repositories
+    params:
+      query: "{{args}}"
+
+requires_mcp: github

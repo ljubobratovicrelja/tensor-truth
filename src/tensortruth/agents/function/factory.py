@@ -13,6 +13,7 @@ from tensortruth.agents.base import Agent
 from tensortruth.agents.config import AgentConfig
 from tensortruth.agents.factory import register_agent_factory
 from tensortruth.agents.function.wrapper import FunctionAgentWrapper
+from tensortruth.core.prompts import current_date_context
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ def create_function_agent(
     # Small models may "know" about tools from training and try to call them
     # even when they aren't provided in the function-calling schema.
     base_prompt = config.system_prompt or "You are a helpful assistant."
+    base_prompt = f"{current_date_context()}\n\n{base_prompt}"
     tool_names = [t.metadata.name for t in tools if t.metadata.name]
     tool_list_str = ", ".join(tool_names)
     enhanced_prompt = (

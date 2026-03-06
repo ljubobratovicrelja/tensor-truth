@@ -85,9 +85,11 @@ export function AgentProgress({ progress }: AgentProgressProps) {
   }
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2">
-      <Icon className={`text-muted-foreground h-4 w-4 ${animation}`} />
-      <span className="text-muted-foreground text-sm">{statusText}</span>
+    <div className="border-muted bg-muted/30 mb-3 rounded-lg border">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <Icon className={`text-muted-foreground h-4 w-4 ${animation}`} />
+        <span className="text-muted-foreground text-sm font-medium">{statusText}</span>
+      </div>
     </div>
   );
 }

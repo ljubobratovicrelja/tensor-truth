@@ -304,12 +304,9 @@ class TestWebSocketCommandDetection:
     @pytest.mark.asyncio
     async def test_command_detection_at_start(self):
         """Test detecting command at start of message."""
-        # This will test the actual WebSocket handler once implemented
-        # For now, we test the regex pattern that will be used
-
         import re
 
-        pattern = r"/(\w+)(?:\s+(.+))?"
+        pattern = r"(?<!\S)/(\w+)(?:\s+(.+))?"
 
         # Command at start
         match = re.search(pattern, "/web search query")
@@ -322,9 +319,9 @@ class TestWebSocketCommandDetection:
         """Test detecting command in middle of message."""
         import re
 
-        pattern = r"/(\w+)(?:\s+(.+))?"
+        pattern = r"(?<!\S)/(\w+)(?:\s+(.+))?"
 
-        # Command in middle
+        # Command after whitespace
         match = re.search(pattern, "I don't know - /web search for it")
         assert match is not None
         assert match.group(1) == "web"
@@ -335,7 +332,7 @@ class TestWebSocketCommandDetection:
         """Test detecting command without arguments."""
         import re
 
-        pattern = r"/(\w+)(?:\s+(.+))?"
+        pattern = r"(?<!\S)/(\w+)(?:\s+(.+))?"
 
         # Command without args
         match = re.search(pattern, "/help")
@@ -348,7 +345,7 @@ class TestWebSocketCommandDetection:
         """Test that regular messages don't match command pattern."""
         import re
 
-        pattern = r"/(\w+)(?:\s+(.+))?"
+        pattern = r"(?<!\S)/(\w+)(?:\s+(.+))?"
 
         # No command
         match = re.search(pattern, "This is a regular message")
@@ -359,13 +356,43 @@ class TestWebSocketCommandDetection:
         """Test command with special characters in args."""
         import re
 
-        pattern = r"/(\w+)(?:\s+(.+))?"
+        pattern = r"(?<!\S)/(\w+)(?:\s+(.+))?"
 
         # Command with special chars
         match = re.search(pattern, '/web "quoted search" & special')
         assert match is not None
         assert match.group(1) == "web"
         assert match.group(2) == '"quoted search" & special'
+
+    @pytest.mark.asyncio
+    async def test_no_false_positive_on_fraction(self):
+        """Test that fractions like 1/2 don't trigger command detection."""
+        import re
+
+        pattern = r"(?<!\S)/(\w+)(?:\s+(.+))?"
+
+        match = re.search(pattern, "explain 1/2")
+        assert match is None
+
+    @pytest.mark.asyncio
+    async def test_no_false_positive_on_file_path(self):
+        """Test that file paths don't trigger command detection."""
+        import re
+
+        pattern = r"(?<!\S)/(\w+)(?:\s+(.+))?"
+
+        match = re.search(pattern, "path/to/file")
+        assert match is None
+
+    @pytest.mark.asyncio
+    async def test_no_false_positive_on_url(self):
+        """Test that URLs don't trigger command detection."""
+        import re
+
+        pattern = r"(?<!\S)/(\w+)(?:\s+(.+))?"
+
+        match = re.search(pattern, "check https://example.com/page")
+        assert match is None
 
 
 @pytest.fixture

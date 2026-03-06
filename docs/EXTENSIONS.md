@@ -2,57 +2,20 @@
 
 TensorTruth supports user-defined commands and agents via simple YAML config files (or Python for advanced cases). Drop files into `~/.tensortruth/commands/` or `~/.tensortruth/agents/`, restart the app, and your extensions are available immediately.
 
-Extensions build on [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) tools. If you've already added MCP servers to `~/.tensortruth/mcp_servers.json`, extensions let you wire those tools into slash commands and autonomous agents without writing code.
+Extensions can use built-in tools (like `search_arxiv`, `search_web`, `fetch_page`) or [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) tools. If you've added MCP servers to `~/.tensortruth/mcp_servers.json`, extensions let you wire those tools into slash commands and autonomous agents without writing code.
 
-## Quick Start: arXiv Search in 3 Steps
+## Quick Start: arXiv Search in 2 Steps
 
-This example adds an `/arxiv` command that searches academic papers. It assumes you have `tensor-truth` installed via pip.
+This example adds an `/arxiv` command that searches academic papers. It assumes you have `tensor-truth` installed via pip. The arXiv tools are built-in — no MCP server needed.
 
-**Step 1: Add the MCP server**
-
-Create or edit `~/.tensortruth/mcp_servers.json`:
-
-```json
-{
-  "servers": [
-    {
-      "name": "simple-arxiv",
-      "type": "stdio",
-      "command": "uvx",
-      "args": ["mcp-simple-arxiv"],
-      "enabled": true
-    }
-  ]
-}
-```
-
-> Requires [uv](https://docs.astral.sh/uv/getting-started/installation/) for `uvx`. Alternatively, `pip install mcp-simple-arxiv` and use `"command": "python", "args": ["-m", "mcp_simple_arxiv"]`.
-
-**Step 2: Create the command YAML**
+**Step 1: Copy the command from the extension library**
 
 ```bash
 mkdir -p ~/.tensortruth/commands
+cp extension_library/commands/arxiv.yaml ~/.tensortruth/commands/
 ```
 
-Create `~/.tensortruth/commands/arxiv.yaml`:
-
-```yaml
-name: arxiv
-description: "Search arXiv for academic papers"
-usage: "/arxiv <query>"
-aliases: [ax]
-
-steps:
-  - tool: search_papers
-    params:
-      query: "{{args}}"
-      max_results: 5
-      sort_by: relevance
-
-requires_mcp: simple-arxiv
-```
-
-**Step 3: Restart and use**
+**Step 2: Restart and use**
 
 ```bash
 tensor-truth
@@ -227,7 +190,7 @@ Place in `~/.tensortruth/agents/` and reference from agent-delegating commands o
 
 **Agent types:**
 - `function` — Generic tool-calling agent. Recommended for most use cases. Uses the system prompt and tools you specify.
-- `router` — Uses the built-in browse agent's search/fetch/synthesize routing logic. Less flexible for custom agents.
+- `router` — Uses a search/fetch/synthesize routing loop. Less flexible than `function` for custom agents.
 
 **Model behavior:**
 - `model: null` — Uses whatever model the user has selected in the session (recommended)
@@ -262,7 +225,7 @@ The `register()` function can register commands, agents, and tools from a single
 
 ## MCP Server Setup
 
-Extensions call MCP tools, so the relevant MCP server must be configured. Add servers to `~/.tensortruth/mcp_servers.json`:
+Some extensions call MCP tools, so the relevant MCP server must be configured. Add servers to `~/.tensortruth/mcp_servers.json`. Note: arXiv tools are built-in and do not need an MCP server.
 
 ```json
 {
@@ -272,13 +235,6 @@ Extensions call MCP tools, so the relevant MCP server must be configured. Add se
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp@latest"],
-      "enabled": true
-    },
-    {
-      "name": "simple-arxiv",
-      "type": "stdio",
-      "command": "uvx",
-      "args": ["mcp-simple-arxiv"],
       "enabled": true
     }
   ]

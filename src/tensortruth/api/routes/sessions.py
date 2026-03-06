@@ -228,7 +228,7 @@ async def get_session_stats(
 
     # Get the effective max_history_turns limit
     effective_max_turns = (
-        max_turns if max_turns is not None else config.rag.max_history_turns
+        max_turns if max_turns is not None else config.conversation.max_history_turns
     )
 
     # Get configured context window from session params

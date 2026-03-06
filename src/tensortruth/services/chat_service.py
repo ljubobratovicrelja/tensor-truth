@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Generator, List, Optional
 
 from tensortruth.core.source_converter import SourceConverter
-from tensortruth.services.models import RAGChunk, RAGResponse
+from tensortruth.services.models import RAGChunk, RAGResponse, ToolProgress
 from tensortruth.services.rag_service import RAGService
 
 
@@ -115,7 +115,14 @@ class ChatService:
             Final RAGResponse with complete text and sources.
         """
         if self._rag_service.needs_reload(modules, params, additional_index_paths):
-            yield RAGChunk(status="loading_models")
+            yield RAGChunk(
+                status="loading_models",
+                progress=ToolProgress(
+                    tool_id="rag",
+                    phase="loading_models",
+                    message="Loading models...",
+                ),
+            )
             self._rag_service.load_engine(
                 modules=modules,
                 params=params,

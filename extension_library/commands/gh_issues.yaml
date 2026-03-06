@@ -1,0 +1,12 @@
+name: gh_issues
+description: "List issues for a GitHub repository"
+usage: "/gh_issues <owner> <repo>"
+aliases: [ghi]
+
+steps:
+  - tool: list_issues
+    params:
+      owner: "{{args.0}}"
+      repo: "{{args.1}}"
+
+requires_mcp: github

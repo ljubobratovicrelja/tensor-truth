@@ -1,0 +1,11 @@
+name: hf_datasets
+description: "Search HuggingFace datasets"
+usage: "/hf_datasets <query>"
+aliases: [hfd]
+
+steps:
+  - tool: dataset_search
+    params:
+      query: "{{args}}"
+
+requires_mcp: huggingface

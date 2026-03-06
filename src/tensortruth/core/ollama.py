@@ -2,43 +2,65 @@
 
 import logging
 import os
-from typing import Any, Dict, List
+import uuid
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 
 import requests
 
+if TYPE_CHECKING:
+    from llama_index.llms.ollama import Ollama
+
 logger = logging.getLogger(__name__)
+
+# Module-level singletons for LLM instances.
+# Keyed by (model, base_url, context_window) so they are replaced when
+# session configuration changes.  All instances always set num_ctx in
+# additional_kwargs to prevent Ollama from reloading the model when the
+# context size differs between calls.
+_orchestrator_llm_instance: Optional[Any] = None
+_orchestrator_llm_key: Optional[Tuple[str, str, int]] = None
+
+_tool_llm_instance: Optional[Any] = None
+_tool_llm_key: Optional[Tuple[str, str, int]] = None
+
+
+_DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
 
 def get_ollama_url() -> str:
     """Get Ollama base URL with precedence.
 
     Priority:
-    1. Environment variable (OLLAMA_HOST)
-    2. Config file
-    3. Default (http://localhost:11434)
+    1. Config file — if explicitly set to a non-default value (app-specific intent)
+    2. Environment variable (OLLAMA_HOST — generic system-wide fallback)
+    3. Config file default / hardcoded default (http://localhost:11434)
 
     Returns:
         Ollama base URL string
     """
-    # 1. Check Environment Variable (highest priority)
-    env_host = os.environ.get("OLLAMA_HOST")
-    if env_host:
-        # Handle cases where OLLAMA_HOST might be just "0.0.0.0:11434"
-        if not env_host.startswith("http"):
-            return f"http://{env_host}".rstrip("/")
-        return env_host.rstrip("/")
-
-    # 2. Check Config File
+    # 1. Check Config File (highest priority when explicitly configured)
+    config_url = None
     try:
         from tensortruth.app_utils.config import load_config
 
         config = load_config()
-        return config.ollama.base_url.rstrip("/")
+        config_url = config.ollama.base_url.rstrip("/")
     except Exception:
         pass
 
-    # 3. Return Default
-    return "http://localhost:11434"
+    if config_url and config_url != _DEFAULT_OLLAMA_URL:
+        return config_url
+
+    # 2. Check Environment Variable (generic Ollama fallback)
+    env_host = os.environ.get("OLLAMA_HOST")
+    if env_host:
+        if not env_host.startswith("http"):
+            return f"http://{env_host}".rstrip("/")
+        return env_host.rstrip("/")
+
+    # 3. Return config default (if loaded) or hardcoded default
+    return config_url or _DEFAULT_OLLAMA_URL
 
 
 def get_api_base() -> str:
@@ -125,6 +147,7 @@ def stop_model(model_name: str) -> bool:
         return False
 
 
+@lru_cache(maxsize=32)
 def check_thinking_support(model_name: str) -> bool:
     """Check if a model supports thinking/reasoning tokens.
 
@@ -149,6 +172,193 @@ def check_thinking_support(model_name: str) -> bool:
         logger.warning(f"Failed to check thinking support for {model_name}: {e}")
 
     return False
+
+
+@lru_cache(maxsize=32)
+def check_tool_call_support(model_name: str) -> bool:
+    """Check if a model supports native tool-calling.
+
+    This queries the Ollama API for the model's capabilities and checks
+    if "tools" is in the capabilities list.
+
+    Args:
+        model_name: The name of the model to check
+
+    Returns:
+        True if the model supports tool-calling, False otherwise
+    """
+    try:
+        response = requests.post(
+            f"{get_api_base()}/show", json={"model": model_name}, timeout=2
+        )
+        if response.status_code == 200:
+            data = response.json()
+            capabilities = data.get("capabilities", [])
+            return "tools" in capabilities
+    except Exception as e:
+        logger.warning(f"Failed to check tool call support for {model_name}: {e}")
+
+    return False
+
+
+def _patch_parallel_tool_calls(llm: Any) -> None:
+    """Patch an Ollama LLM instance for proper parallel tool call support.
+
+    The upstream LlamaIndex Ollama adapter sets ``tool_id=tool_name`` in
+    ``get_tool_calls_from_response``, making multiple calls to the same
+    tool indistinguishable.  This patches the method on the instance to
+    generate unique UUIDs for each tool call instead.
+    """
+    import types
+
+    from llama_index.core.base.llms.types import ToolCallBlock
+    from llama_index.core.llms.llm import ToolSelection
+
+    def _get_tool_calls_from_response(
+        self: Any,
+        response: Any,
+        error_on_no_tool_call: bool = True,
+    ) -> list:
+        tool_calls = [
+            block
+            for block in response.message.blocks
+            if isinstance(block, ToolCallBlock)
+        ]
+        if len(tool_calls) < 1:
+            if error_on_no_tool_call:
+                raise ValueError(
+                    f"Expected at least one tool call, but got {len(tool_calls)}."
+                )
+            return []
+
+        tool_selections = []
+        for tc in tool_calls:
+            tool_selections.append(
+                ToolSelection(
+                    tool_id=tc.tool_call_id or f"call_{uuid.uuid4().hex[:12]}",
+                    tool_name=tc.tool_name,
+                    tool_kwargs=cast(dict, tc.tool_kwargs),
+                )
+            )
+        return tool_selections
+
+    # Pydantic v2 blocks __setattr__ for unknown fields, so we must
+    # bypass it with object.__setattr__ to patch the instance method.
+    object.__setattr__(
+        llm,
+        "get_tool_calls_from_response",
+        types.MethodType(_get_tool_calls_from_response, llm),
+    )
+
+
+def get_orchestrator_llm(
+    model: str,
+    base_url: str,
+    context_window: int = 16384,
+) -> "Ollama":
+    """Get or create a cached Ollama LLM instance for orchestrator use.
+
+    Returns an Ollama instance with thinking disabled, intended for fast
+    tool-calling decisions in the orchestrator agent.  Also suitable for
+    query condensation and other low-temperature auxiliary tasks.
+
+    The instance is cached as a module-level singleton keyed by
+    ``(model, base_url, context_window)``.  ``num_ctx`` is always set in
+    ``additional_kwargs`` so that Ollama never sees a context-size change
+    between requests (which would trigger a costly model reload).
+
+    Args:
+        model: Ollama model name (e.g., "qwen3:32b").
+        base_url: Ollama server base URL.
+        context_window: Context window size for the model.
+
+    Returns:
+        Cached Ollama LLM instance with thinking=False.
+    """
+    global _orchestrator_llm_instance, _orchestrator_llm_key
+
+    key = (model, base_url, context_window)
+
+    if _orchestrator_llm_instance is not None and _orchestrator_llm_key == key:
+        return _orchestrator_llm_instance
+
+    from llama_index.llms.ollama import Ollama
+
+    logger.info(
+        "Creating orchestrator LLM singleton: model=%s, base_url=%s, "
+        "context_window=%d",
+        model,
+        base_url,
+        context_window,
+    )
+
+    _orchestrator_llm_instance = Ollama(
+        model=model,
+        base_url=base_url,
+        temperature=0.2,
+        context_window=context_window,
+        thinking=False,
+        request_timeout=120.0,
+        additional_kwargs={"num_ctx": context_window, "num_predict": -1},
+    )
+    _patch_parallel_tool_calls(_orchestrator_llm_instance)
+    _orchestrator_llm_key = key
+
+    return _orchestrator_llm_instance
+
+
+def get_tool_llm(
+    model: str,
+    base_url: str,
+    context_window: int = 16384,
+) -> "Ollama":
+    """Get or create a cached thinking-enabled Ollama LLM for tool/synthesis use.
+
+    Returns an Ollama instance with thinking enabled (when the model supports
+    it), intended for synthesis, RAG generation, and other content-producing
+    calls.  Shares the same ``num_ctx`` as the orchestrator LLM so Ollama
+    keeps the model loaded without reloading.
+
+    Args:
+        model: Ollama model name.
+        base_url: Ollama server base URL.
+        context_window: Context window size for the model.
+
+    Returns:
+        Cached Ollama LLM instance with thinking enabled (if supported).
+    """
+    global _tool_llm_instance, _tool_llm_key
+
+    key = (model, base_url, context_window)
+
+    if _tool_llm_instance is not None and _tool_llm_key == key:
+        return _tool_llm_instance
+
+    from llama_index.llms.ollama import Ollama
+
+    thinking_supported = check_thinking_support(model)
+
+    logger.info(
+        "Creating tool LLM singleton: model=%s, base_url=%s, "
+        "context_window=%d, thinking=%s",
+        model,
+        base_url,
+        context_window,
+        thinking_supported,
+    )
+
+    _tool_llm_instance = Ollama(
+        model=model,
+        base_url=base_url,
+        temperature=0.7,
+        context_window=context_window,
+        thinking=thinking_supported,
+        request_timeout=120.0,
+        additional_kwargs={"num_ctx": context_window, "num_predict": -1},
+    )
+    _tool_llm_key = key
+
+    return _tool_llm_instance
 
 
 def get_model_info(model_name: str) -> Dict[str, Any]:
@@ -274,8 +484,7 @@ def ensure_required_models_available() -> List[str]:
         # Get required models from config
         config = load_config()
         required_models = [
-            config.models.default_rag_model,
-            config.models.default_agent_reasoning_model,
+            config.llm.default_model,
         ]
 
         # Remove duplicates while preserving order

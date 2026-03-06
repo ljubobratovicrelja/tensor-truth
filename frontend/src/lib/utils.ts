@@ -30,6 +30,11 @@ export function convertLatexDelimiters(text: string | null | undefined): string 
   // Preserve all whitespace/newlines for proper remark-math parsing of environments like \begin{aligned}
   let converted = text.replace(/\\\[([\s\S]*?)\\\]/g, (_match, p1) => `$$${p1}$$`);
 
+  // Strip leading whitespace from $$ delimiter lines so CommonMark doesn't
+  // treat them as indented code blocks (4+ spaces = code in CommonMark).
+  // This happens when \[...\] appears indented inside list items.
+  converted = converted.replace(/^[ \t]+(\$\$)/gm, "$1");
+
   // Convert inline math \(...\) to $...$
   // Preserve whitespace to maintain original formatting
   converted = converted.replace(/\\\(([\s\S]*?)\\\)/g, (_match, p1) => `$${p1}$`);

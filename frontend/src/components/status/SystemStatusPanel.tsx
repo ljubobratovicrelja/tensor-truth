@@ -349,8 +349,8 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
 
               <div className="text-muted-foreground space-y-1.5 text-xs">
                 <div>
-                  <span className="font-medium">RAG Model:</span>{" "}
-                  <span className="font-mono">{config.models.default_rag_model}</span>
+                  <span className="font-medium">Default Model:</span>{" "}
+                  <span className="font-mono">{config.llm.default_model}</span>
                 </div>
                 {config.agent.router_model && (
                   <div>

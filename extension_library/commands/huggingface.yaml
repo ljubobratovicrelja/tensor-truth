@@ -1,0 +1,7 @@
+name: huggingface
+description: "Research HuggingFace models, datasets, and papers using AI agent"
+usage: "/huggingface <query>"
+aliases: [hf]
+agent: hf_researcher
+
+requires_mcp: huggingface
