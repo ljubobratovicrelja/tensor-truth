@@ -147,7 +147,7 @@ async def list_embedding_models(
 @router.get("/models", response_model=ModelsResponse)
 async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
     """List available Ollama models."""
-    from tensortruth.core.ollama import _supports_thinking_levels, get_model_info
+    from tensortruth.core.ollama import get_model_info, supports_thinking_levels
 
     ollama_url = config_service.get_ollama_url()
 
@@ -163,7 +163,7 @@ async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
             capabilities = list(info.get("capabilities", []))
 
             # Probe thinking level support for thinking-capable models
-            if "thinking" in capabilities and _supports_thinking_levels(name):
+            if "thinking" in capabilities and supports_thinking_levels(name):
                 capabilities.append("thinking_levels")
 
             models.append(

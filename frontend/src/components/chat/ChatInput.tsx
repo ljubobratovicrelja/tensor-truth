@@ -56,7 +56,7 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const detection = useCommandDetection(message);
 
-  const activeModel = selectedModel || config?.models.default_rag_model || "";
+  const activeModel = selectedModel || config?.llm.default_model || "";
   const thinkingSupport = useThinkingSupport(modelsData, activeModel);
 
   // Show autocomplete only if command detected AND no space after command name

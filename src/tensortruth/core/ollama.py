@@ -22,7 +22,7 @@ _orchestrator_llm_instance: Optional[Any] = None
 _orchestrator_llm_key: Optional[Tuple[str, str, int]] = None
 
 _tool_llm_instance: Optional[Any] = None
-_tool_llm_key: Optional[Tuple[str, str, int]] = None
+_tool_llm_key: Optional[Tuple[str, str, int, Union[bool, str, None]]] = None
 
 
 _DEFAULT_OLLAMA_URL = "http://localhost:11434"
@@ -295,7 +295,7 @@ def resolve_thinking(
         "medium",
         "high",
     ):
-        if not _supports_thinking_levels(model_name):
+        if not supports_thinking_levels(model_name):
             logger.info(
                 f"Model {model_name} doesn't support thinking levels; "
                 "falling back to True"
@@ -305,7 +305,7 @@ def resolve_thinking(
     return user_preference
 
 
-def _supports_thinking_levels(model_name: str) -> bool:
+def supports_thinking_levels(model_name: str) -> bool:
     """Check if a model supports thinking level strings (low/medium/high).
 
     Ollama doesn't expose a capability flag for this. Per the docs, only
@@ -381,6 +381,7 @@ def get_tool_llm(
     model: str,
     base_url: str,
     context_window: int = 16384,
+    thinking: Optional[Union[bool, Literal["low", "medium", "high"]]] = None,
 ) -> "Ollama":
     """Get or create a cached thinking-enabled Ollama LLM for tool/synthesis use.
 
@@ -393,20 +394,24 @@ def get_tool_llm(
         model: Ollama model name.
         base_url: Ollama server base URL.
         context_window: Context window size for the model.
+        thinking: Resolved thinking preference. When ``None`` (default),
+            auto-detects via ``check_thinking_support()``.
 
     Returns:
         Cached Ollama LLM instance with thinking enabled (if supported).
     """
     global _tool_llm_instance, _tool_llm_key
 
-    key = (model, base_url, context_window)
+    resolved_thinking: Union[bool, str, None] = (
+        thinking if thinking is not None else check_thinking_support(model)
+    )
+
+    key = (model, base_url, context_window, resolved_thinking)
 
     if _tool_llm_instance is not None and _tool_llm_key == key:
         return _tool_llm_instance
 
     from llama_index.llms.ollama import Ollama
-
-    thinking_supported = check_thinking_support(model)
 
     logger.info(
         "Creating tool LLM singleton: model=%s, base_url=%s, "
@@ -414,7 +419,7 @@ def get_tool_llm(
         model,
         base_url,
         context_window,
-        thinking_supported,
+        resolved_thinking,
     )
 
     _tool_llm_instance = Ollama(
@@ -422,7 +427,7 @@ def get_tool_llm(
         base_url=base_url,
         temperature=0.7,
         context_window=context_window,
-        thinking=thinking_supported,
+        thinking=resolved_thinking,
         request_timeout=120.0,
         additional_kwargs={"num_ctx": context_window, "num_predict": -1},
     )

@@ -36,6 +36,7 @@ from tensortruth.core.ollama import (
     check_thinking_support,
     get_orchestrator_llm,
     get_tool_llm,
+    resolve_thinking,
 )
 from tensortruth.core.prompts import current_date_context
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
@@ -616,7 +617,11 @@ class OrchestratorService:
             )
         )
 
-        llm = get_tool_llm(self._model, self._base_url, self._context_window)
+        thinking_pref = self._session_params.get("thinking")
+        resolved = resolve_thinking(self._model, thinking_pref)
+        llm = get_tool_llm(
+            self._model, self._base_url, self._context_window, thinking=resolved
+        )
         system_prompt = self._build_direct_system_prompt()
 
         messages = [ChatMessage(role=MessageRole.SYSTEM, content=system_prompt)]
@@ -913,7 +918,9 @@ class OrchestratorService:
         # thinking is supported, re-generate with the thinking-enabled LLM
         # so the user gets reasoning tokens. Otherwise, use the fast path.
         if not tools_called:
-            if check_thinking_support(self._model):
+            thinking_pref = self._session_params.get("thinking")
+            resolved = resolve_thinking(self._model, thinking_pref)
+            if resolved:
                 async for direct_event in self._generate_direct_response(
                     prompt, llama_history, _combined_emitter
                 ):

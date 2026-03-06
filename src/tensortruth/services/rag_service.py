@@ -659,7 +659,7 @@ class RAGService:
     def get_llm(self) -> Optional[Ollama]:
         """Get the underlying LLM instance from the engine.
 
-        Useful for intent classification reuse.
+        Useful for direct LLM access without the full RAG pipeline.
 
         Returns:
             Ollama LLM instance or None if engine not loaded.
@@ -669,7 +669,7 @@ class RAGService:
     def get_llm_from_params(self, params: Dict[str, Any]) -> Ollama:
         """Create an LLM instance from parameters without loading full engine.
 
-        Useful for operations that only need LLM (like intent classification).
+        Useful for operations that only need the LLM without loading the full engine.
 
         Args:
             params: Engine parameters.

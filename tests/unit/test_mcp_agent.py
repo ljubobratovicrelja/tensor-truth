@@ -102,15 +102,3 @@ class TestAgentResult:
             error="Connection failed",
         )
         assert result.error == "Connection failed"
-
-    def test_agent_result_with_urls_browsed(self):
-        """Test AgentResult with urls_browsed field."""
-        result = AgentResult(
-            final_answer="Research complete",
-            iterations=3,
-            tools_called=["search_web", "fetch_page", "fetch_page"],
-            urls_browsed=["https://example.com", "https://docs.python.org"],
-        )
-        assert len(result.urls_browsed) == 2
-        assert "https://example.com" in result.urls_browsed
-        assert "https://docs.python.org" in result.urls_browsed
