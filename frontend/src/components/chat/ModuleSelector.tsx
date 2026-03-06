@@ -222,13 +222,16 @@ export function ModuleSelector({
     ? (lockedModules?.length ?? 0) + localSelection.length
     : localSelection.length;
 
+  const hasNoModules = !isLoading && filteredModules.length === 0 && !isProjectContext;
+  const effectiveDisabled = disabled || hasNoModules;
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
-          disabled={disabled}
+          disabled={effectiveDisabled}
           className={cn(
             "h-8 w-8",
             totalSelectedCount > 0
@@ -236,9 +239,11 @@ export function ModuleSelector({
               : "text-muted-foreground hover:text-foreground"
           )}
           title={
-            totalSelectedCount > 0
-              ? `${totalSelectedCount} module${totalSelectedCount !== 1 ? "s" : ""} selected`
-              : "Select knowledge modules"
+            hasNoModules
+              ? "No modules available. Create your own or download indexes in Settings (gear icon)."
+              : totalSelectedCount > 0
+                ? `${totalSelectedCount} module${totalSelectedCount !== 1 ? "s" : ""} selected`
+                : "Select knowledge modules"
           }
         >
           <Database className="h-4 w-4" />

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
@@ -30,6 +31,9 @@ router = APIRouter()
 
 # Thread pool for blocking operations
 _thread_pool = ThreadPoolExecutor(max_workers=2)
+
+# Lock to prevent concurrent index download/reinitialize operations
+_index_lock = threading.Lock()
 
 
 # ============================================================================
@@ -157,6 +161,9 @@ def _download_indexes_sync(
     embedding_model: str | None = None,
 ) -> bool:
     """Synchronous wrapper for index download (runs in thread pool)."""
+    if not _index_lock.acquire(blocking=False):
+        logger.warning("Index operation already in progress, skipping download")
+        return False
     try:
         user_dir = get_user_data_dir()
         success = download_and_extract_indexes(
@@ -174,6 +181,8 @@ def _download_indexes_sync(
     except Exception as e:
         logger.error(f"Error downloading indexes: {e}", exc_info=True)
         return False
+    finally:
+        _index_lock.release()
 
 
 async def _download_indexes_background(
@@ -288,6 +297,9 @@ def _reinitialize_indexes_sync() -> bool:
     """Delete indexes directory and redownload (runs in thread pool)."""
     import shutil
 
+    if not _index_lock.acquire(blocking=False):
+        logger.warning("Index operation already in progress, skipping reinitialize")
+        return False
     try:
         indexes_dir = get_indexes_dir()
 
@@ -314,6 +326,8 @@ def _reinitialize_indexes_sync() -> bool:
     except Exception as e:
         logger.error(f"Error reinitializing indexes: {e}", exc_info=True)
         return False
+    finally:
+        _index_lock.release()
 
 
 async def _reinitialize_indexes_background():

@@ -250,6 +250,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     if (isReinitializing && startupStatus?.indexes_ok) {
       setIsReinitializing(false);
       localStorage.removeItem(REINITIALIZE_START_KEY);
+      localStorage.removeItem("tensortruth-indexes-skipped");
       const elapsed = reinitializeStartTime ? Date.now() - reinitializeStartTime : 0;
       const elapsedSeconds = Math.round(elapsed / 1000);
       toast.success(`Indexes reinitialized successfully! (${elapsedSeconds}s)`);

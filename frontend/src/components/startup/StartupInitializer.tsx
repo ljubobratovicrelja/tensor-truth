@@ -19,8 +19,12 @@ interface StartupInitializerProps {
 
 const DOWNLOAD_START_KEY = "tensortruth-download-start";
 const PULLING_START_KEY = "tensortruth-pulling-start";
+const INDEXES_SKIPPED_KEY = "tensortruth-indexes-skipped";
 
 export function StartupInitializer({ onComplete }: StartupInitializerProps) {
+  const [indexesSkipped, setIndexesSkipped] = useState(
+    () => localStorage.getItem(INDEXES_SKIPPED_KEY) === "true"
+  );
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadStartTime, setDownloadStartTime] = useState<number | null>(null);
   const [downloadElapsedSeconds, setDownloadElapsedSeconds] = useState(0);
@@ -126,18 +130,20 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
 
   // Auto-complete when all resources are available
   useEffect(() => {
-    if (status?.ready && status.indexes_ok && status.models_ok) {
-      // All resources available, complete initialization
+    if (status?.ready && (status.indexes_ok || indexesSkipped) && status.models_ok) {
+      // All resources available (or indexes skipped), complete initialization
       setIsDownloading(false);
       onComplete();
     }
-  }, [status, onComplete]);
+  }, [status, indexesSkipped, onComplete]);
 
   // Detect when indexes become available during download
   useEffect(() => {
     if (isDownloading && status?.indexes_ok) {
       setIsDownloading(false);
       localStorage.removeItem(DOWNLOAD_START_KEY);
+      localStorage.removeItem(INDEXES_SKIPPED_KEY);
+      setIndexesSkipped(false);
       const elapsed = downloadStartTime ? Date.now() - downloadStartTime : 0;
       const elapsedSeconds = Math.round(elapsed / 1000);
       toast.success(`Indexes downloaded successfully! (${elapsedSeconds}s)`);
@@ -154,6 +160,11 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
       toast.success(`All models pulled successfully! (${elapsedSeconds}s)`);
     }
   }, [isPulling, status?.models_ok, pullingStartTime]);
+
+  const handleSkipIndexes = () => {
+    localStorage.setItem(INDEXES_SKIPPED_KEY, "true");
+    setIndexesSkipped(true);
+  };
 
   const handleDownloadIndexes = () => {
     const startTime = Date.now();
@@ -272,7 +283,7 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
   }
 
   // Setup required for optional resources
-  if (status && (!status.indexes_ok || !status.models_ok)) {
+  if (status && ((!status.indexes_ok && !indexesSkipped) || !status.models_ok)) {
     return (
       <div className="bg-background flex h-screen items-center justify-center px-4">
         <div className="w-full max-w-2xl space-y-6">
@@ -331,6 +342,21 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
                   </div>
                   <p className="text-muted-foreground text-xs">
                     This may take a few minutes. The indexes are approximately 3.9GB.
+                  </p>
+                </div>
+              )}
+              {!isDownloading && (
+                <div className="mt-3 text-center">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSkipIndexes}
+                    className="text-muted-foreground text-xs"
+                  >
+                    Continue without indexes
+                  </Button>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    You can download indexes later from Settings (gear icon, top-right).
                   </p>
                 </div>
               )}
