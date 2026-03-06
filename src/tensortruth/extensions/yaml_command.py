@@ -276,7 +276,7 @@ class YamlAgentCommand(ToolCommand):
 
         query = args.strip()
 
-        # Build session params (same pattern as BrowseCommand)
+        # Build session params from config
         config_service = ConfigService()
         config = config_service.load()
         params = session.get("params", {})

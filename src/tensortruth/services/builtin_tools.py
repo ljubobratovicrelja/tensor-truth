@@ -2,7 +2,7 @@
 Built-in tools for TensorTruth agents.
 
 This module provides async tool functions that wrap web search and fetching
-utilities for use by agents (e.g., browse agent). These tools follow the
+utilities for use by agents (e.g., orchestrator). These tools follow the
 FunctionTool pattern and return string results suitable for LLM consumption.
 """
 

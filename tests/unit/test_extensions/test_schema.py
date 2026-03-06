@@ -38,9 +38,9 @@ class TestCommandSpec:
         spec = CommandSpec(
             name="test",
             description="A test command",
-            agent="browse",
+            agent="researcher",
         )
-        assert spec.agent == "browse"
+        assert spec.agent == "researcher"
         assert spec.steps is None
 
     def test_steps_and_agent_raises(self):
@@ -49,7 +49,7 @@ class TestCommandSpec:
                 name="test",
                 description="A test command",
                 steps=[StepSpec(tool="my-tool")],
-                agent="browse",
+                agent="researcher",
             )
 
     def test_neither_steps_nor_agent_raises(self):
@@ -96,7 +96,7 @@ class TestAgentSpec:
             name="researcher",
             description="Research agent",
             tools=["search_web", "fetch_page"],
-            agent_type="router",
+            agent_type="function",
             system_prompt="You are a researcher.",
             model="llama3.2:3b",
             max_iterations=5,

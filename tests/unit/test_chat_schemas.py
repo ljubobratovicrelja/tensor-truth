@@ -5,8 +5,6 @@ import pytest
 from tensortruth.api.schemas.chat import (
     ChatRequest,
     ChatResponse,
-    IntentRequest,
-    IntentResponse,
     SourceNode,
     StreamDone,
     StreamSources,
@@ -139,49 +137,3 @@ class TestStreamStatus:
         for status in ["retrieving", "thinking", "generating"]:
             msg = StreamStatus(status=status)
             assert msg.status == status
-
-
-@pytest.mark.unit
-class TestIntentRequest:
-    """Tests for IntentRequest schema."""
-
-    def test_creation(self):
-        """IntentRequest can be created."""
-        request = IntentRequest(
-            message="search for AI news",
-            recent_messages=[{"role": "user", "content": "hi"}],
-        )
-        assert request.message == "search for AI news"
-        assert len(request.recent_messages) == 1
-
-    def test_defaults(self):
-        """IntentRequest has sensible defaults."""
-        request = IntentRequest(message="hello")
-        assert request.recent_messages == []
-
-
-@pytest.mark.unit
-class TestIntentResponse:
-    """Tests for IntentResponse schema."""
-
-    def test_creation_chat(self):
-        """IntentResponse for chat intent."""
-        response = IntentResponse(intent="chat", query=None, reason="no_triggers")
-        assert response.intent == "chat"
-        assert response.query is None
-
-    def test_creation_browse(self):
-        """IntentResponse for browse intent."""
-        response = IntentResponse(
-            intent="browse", query="AI news", reason="explicit_browse"
-        )
-        assert response.intent == "browse"
-        assert response.query == "AI news"
-
-    def test_creation_search(self):
-        """IntentResponse for search intent."""
-        response = IntentResponse(
-            intent="search", query="python features", reason="explicit_search"
-        )
-        assert response.intent == "search"
-        assert response.query == "python features"

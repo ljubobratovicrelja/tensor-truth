@@ -22,7 +22,6 @@ from tensortruth.services import (
     ChatService,
     ConfigService,
     DocumentService,
-    IntentService,
     ProjectService,
     RAGService,
     SessionService,
@@ -98,15 +97,6 @@ def get_chat_service() -> ChatService:
     return ChatService(rag_service=get_rag_service())
 
 
-def get_intent_service() -> IntentService:
-    """Get IntentService instance."""
-    config_service = get_config_service()
-    return IntentService(
-        ollama_url=config_service.get_ollama_url(),
-        classifier_model=config_service.get_default_model(),
-    )
-
-
 def get_document_service(scope_id: str, scope_type: str = "session") -> DocumentService:
     """Get DocumentService for a scope (session or project).
 
@@ -176,7 +166,6 @@ ConfigServiceDep = Annotated[ConfigService, Depends(get_config_service)]
 StartupServiceDep = Annotated[StartupService, Depends(get_startup_service)]
 RAGServiceDep = Annotated[RAGService, Depends(get_rag_service)]
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
-IntentServiceDep = Annotated[IntentService, Depends(get_intent_service)]
 ChatHistoryServiceDep = Annotated[ChatHistoryService, Depends(get_chat_history_service)]
 ToolServiceDep = Annotated[ToolService, Depends(get_tool_service)]
 # TaskRunner singleton - needs async start()/stop() lifecycle

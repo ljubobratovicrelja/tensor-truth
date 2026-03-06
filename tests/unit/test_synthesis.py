@@ -262,7 +262,7 @@ def test_hyperlink_citation_with_scores(sample_pages, source_scores):
 
 
 def test_bracket_citation_format(sample_pages):
-    """Test bracket citation format (used by /browse)."""
+    """Test bracket citation format."""
     sources_text, combined_text = format_pages_for_synthesis(
         sample_pages,
         CitationStyle.BRACKET,

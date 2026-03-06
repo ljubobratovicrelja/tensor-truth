@@ -3,8 +3,6 @@
 from .chat import (
     ChatRequest,
     ChatResponse,
-    IntentRequest,
-    IntentResponse,
     SourceNode,
     StreamDone,
     StreamSources,
@@ -101,8 +99,6 @@ __all__ = [
     # Chat
     "ChatRequest",
     "ChatResponse",
-    "IntentRequest",
-    "IntentResponse",
     "SourceNode",
     "StreamToken",
     "StreamSources",

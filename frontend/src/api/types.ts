@@ -224,18 +224,6 @@ export type StreamMessage =
   | StreamAgentProgress
   | StreamWebSearchSources;
 
-// Intent types
-export interface IntentRequest {
-  message: string;
-  recent_messages?: Array<{ role: string; content: string }>;
-}
-
-export interface IntentResponse {
-  intent: "chat" | "browse" | "search";
-  query?: string | null;
-  reason: string;
-}
-
 // Config types
 export interface OllamaConfig {
   base_url: string;
@@ -267,7 +255,6 @@ export interface ConversationConfig {
 export interface AgentConfig {
   max_iterations: number;
   min_pages_required: number;
-  enable_natural_language_agents: boolean;
   orchestrator_enabled: boolean;
 }
 

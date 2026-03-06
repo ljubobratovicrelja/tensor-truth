@@ -1,7 +1,7 @@
 """Service for creating and executing agents via factory registry.
 
 AgentService uses the agent factory registry to create and execute agents.
-Supports both built-in agents (router, function) and custom user agents.
+Supports built-in function agents and custom user agents.
 """
 
 import logging

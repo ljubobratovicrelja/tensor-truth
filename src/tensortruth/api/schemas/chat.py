@@ -29,23 +29,6 @@ class ChatResponse(BaseModel):
     metrics: Optional[Dict[str, Any]] = None
 
 
-class IntentRequest(BaseModel):
-    """Request body for intent classification."""
-
-    message: str = Field(..., min_length=1)
-    recent_messages: List[Dict[str, str]] = Field(
-        default_factory=list, description="Recent conversation history"
-    )
-
-
-class IntentResponse(BaseModel):
-    """Response for intent classification."""
-
-    intent: Literal["chat", "browse", "search"]
-    query: Optional[str] = None
-    reason: str
-
-
 # WebSocket message schemas
 class StreamToken(BaseModel):
     """WebSocket message for streaming token."""

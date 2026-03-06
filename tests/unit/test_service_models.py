@@ -1,7 +1,6 @@
 """Unit tests for service layer models."""
 
 from tensortruth.services.models import (
-    IntentResult,
     PDFMetadata,
     RAGChunk,
     RAGResponse,
@@ -106,43 +105,6 @@ class TestSessionInfo:
 
         assert info.session_id == "test-id"
         assert info.title == "From Dict"
-
-
-class TestIntentResult:
-    """Tests for IntentResult dataclass."""
-
-    def test_creation_chat(self):
-        """IntentResult can be created for chat intent."""
-        result = IntentResult(
-            intent="chat",
-            query=None,
-            reason="no_triggers",
-        )
-
-        assert result.intent == "chat"
-        assert result.query is None
-
-    def test_creation_browse(self):
-        """IntentResult can be created for browse intent."""
-        result = IntentResult(
-            intent="browse",
-            query="AI news",
-            reason="explicit_browse",
-        )
-
-        assert result.intent == "browse"
-        assert result.query == "AI news"
-
-    def test_creation_search(self):
-        """IntentResult can be created for search intent."""
-        result = IntentResult(
-            intent="search",
-            query="python features",
-            reason="explicit_search",
-        )
-
-        assert result.intent == "search"
-        assert result.query == "python features"
 
 
 class TestPDFMetadata:

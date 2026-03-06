@@ -197,3 +197,4 @@ class TestConfigAPI:
         assert "router_model" not in agent
         assert "function_agent_model" not in agent
         assert "intent_classifier_model" not in agent
+        assert "enable_natural_language_agents" not in agent

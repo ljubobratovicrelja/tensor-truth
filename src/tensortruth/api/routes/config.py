@@ -49,7 +49,6 @@ def _config_to_response(config) -> ConfigResponse:
         agent=AgentConfigSchema(
             max_iterations=config.agent.max_iterations,
             min_pages_required=config.agent.min_pages_required,
-            enable_natural_language_agents=config.agent.enable_natural_language_agents,
             orchestrator_enabled=config.agent.orchestrator_enabled,
         ),
         history_cleaning=HistoryCleaningConfigSchema(

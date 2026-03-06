@@ -280,12 +280,6 @@ class TestConfigServiceHelpers:
         assert model is not None
         assert isinstance(model, str)
 
-    def test_is_natural_language_agents_enabled(self, config_service: ConfigService):
-        """Check natural language agents enabled returns correct value."""
-        enabled = config_service.is_natural_language_agents_enabled()
-
-        assert enabled is True  # Default
-
 
 class TestHistoryCleaningConfig:
     """Tests for history cleaning configuration."""

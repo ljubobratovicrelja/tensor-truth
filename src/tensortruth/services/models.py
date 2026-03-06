@@ -97,18 +97,6 @@ class ProjectData:
 
 
 @dataclass
-class IntentResult:
-    """Result of intent classification.
-
-    Used to route user messages to appropriate handlers (chat, browse, search).
-    """
-
-    intent: Literal["chat", "browse", "search"]
-    query: Optional[str]
-    reason: str
-
-
-@dataclass
 class PDFMetadata:
     """Metadata for an uploaded PDF file."""
 

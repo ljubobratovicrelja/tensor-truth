@@ -91,34 +91,6 @@ class TestChatAPI:
         # LLM-only mode should have no metrics
         assert data.get("metrics") is None
 
-    @pytest.mark.asyncio
-    async def test_intent_classification(self, client, mock_session_paths):
-        """Test intent classification endpoint."""
-        # Create a session
-        create_response = await client.post("/api/sessions", json={})
-        session_id = create_response.json()["session_id"]
-
-        # Test intent classification with no triggers (should be chat)
-        response = await client.post(
-            f"/api/sessions/{session_id}/intent",
-            json={"message": "What is PyTorch?", "recent_messages": []},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["intent"] == "chat"
-        assert data["reason"] == "no_triggers"
-
-    @pytest.mark.asyncio
-    async def test_intent_classification_session_not_found(
-        self, client, mock_session_paths
-    ):
-        """Test intent classification with non-existent session."""
-        response = await client.post(
-            "/api/sessions/nonexistent/intent",
-            json={"message": "Hello", "recent_messages": []},
-        )
-        assert response.status_code == 404
-
 
 class TestChatAPIWithMockedRAG:
     """Test chat endpoints with mocked ChatService.

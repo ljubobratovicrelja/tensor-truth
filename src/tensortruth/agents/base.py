@@ -10,7 +10,7 @@ class Agent(ABC):
     """Base interface for all TensorTruth agents.
 
     All agents must implement this interface to work with AgentService.
-    Supports both router-based and function-based agents.
+    Supports function-based agents and custom agent types.
     """
 
     @abstractmethod

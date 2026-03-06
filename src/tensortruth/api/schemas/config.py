@@ -47,7 +47,6 @@ class AgentConfigSchema(BaseModel):
 
     max_iterations: int = 10
     min_pages_required: int = 3
-    enable_natural_language_agents: bool = True
     orchestrator_enabled: bool = True
 
 

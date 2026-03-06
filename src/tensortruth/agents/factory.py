@@ -27,7 +27,7 @@ class AgentFactoryRegistry:
         """Register an agent factory.
 
         Args:
-            agent_type: Type identifier (e.g., "router", "function")
+            agent_type: Type identifier (e.g., "function")
             factory: Callable that creates Agent instances
 
         Raises:

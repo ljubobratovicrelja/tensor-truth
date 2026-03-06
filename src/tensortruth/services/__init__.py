@@ -1,7 +1,7 @@
 """Service layer for TensorTruth business logic.
 
 This module provides services for session management, configuration,
-RAG queries, intent classification, and PDF handling.
+RAG queries, and PDF handling.
 """
 
 from .agent_service import AgentCallbacks, AgentService
@@ -10,9 +10,8 @@ from .chat_service import ChatResult, ChatService
 from .config_service import ConfigService
 from .document_service import DocumentService
 from .document_service import DocumentService as PDFService
-from .intent_service import IntentService
 from .model_manager import ModelManager
-from .models import IntentResult, ProjectData, SessionData, ToolProgress
+from .models import ProjectData, SessionData, ToolProgress
 from .orchestrator_service import OrchestratorService
 from .project_service import ProjectService
 from .rag_service import RAGService
@@ -29,8 +28,6 @@ __all__ = [
     "SessionService",
     "SessionData",
     "ConfigService",
-    "IntentService",
-    "IntentResult",
     "RAGService",
     "ProjectData",
     "ProjectService",

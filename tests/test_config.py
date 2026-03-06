@@ -71,7 +71,7 @@ class TestConfigSchema:
         """Test AgentConfig default values."""
         config = AgentConfig()
         assert config.max_iterations == 10
-        assert config.enable_natural_language_agents is True
+        assert config.orchestrator_enabled is True
 
     def test_agent_config_with_zero_max_iterations(self):
         """Test that zero max_iterations is rejected."""

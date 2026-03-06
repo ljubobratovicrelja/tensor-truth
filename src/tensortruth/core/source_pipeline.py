@@ -2,7 +2,7 @@
 
 This module provides SourceFetchPipeline, which handles the complete workflow
 for acquiring web sources: parallel fetching, content-based reranking, and
-context window fitting. Used by both /web command and browse agent.
+context window fitting. Used by /web command and the orchestrator.
 """
 
 import asyncio
@@ -40,7 +40,7 @@ class SourceFetchPipeline:
     3. Threshold filtering (reject low-relevance pages)
     4. Context window fitting (fill context from top-scored pages)
 
-    Used by both /web command and browse agent for consistency.
+    Used by /web command and the orchestrator for consistency.
 
     Example:
         >>> pipeline = SourceFetchPipeline(

@@ -1,4 +1,4 @@
-"""Unit tests for MCP browse agent."""
+"""Unit tests for MCP agent."""
 
 import pytest
 

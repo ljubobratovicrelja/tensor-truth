@@ -41,7 +41,7 @@ class TestAgentConfig:
         assert config.description == "Test agent"
         assert config.tools == ["tool1"]
         assert config.system_prompt == ""
-        assert config.agent_type == "router"  # Changed default
+        assert config.agent_type == "function"
         assert config.model is None
         assert config.max_iterations == 10
         assert config.factory_params == {}

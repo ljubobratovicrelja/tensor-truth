@@ -178,12 +178,3 @@ class ConfigService:
         """
         config = self.load()
         return config.llm.default_model
-
-    def is_natural_language_agents_enabled(self) -> bool:
-        """Check if natural language agent routing is enabled.
-
-        Returns:
-            True if enabled.
-        """
-        config = self.load()
-        return config.agent.enable_natural_language_agents

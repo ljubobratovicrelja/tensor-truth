@@ -153,10 +153,6 @@ class AgentConfig:
 
     enable_search_reranking: bool = True
 
-    # Natural language agent routing
-    # When enabled, messages with trigger words are classified to route to agents
-    enable_natural_language_agents: bool = True
-
     # Orchestrator (agentic chat) — when enabled, messages are routed through
     # the orchestrator agent which can call tools (RAG, web search, etc.).
     # Session-level setting overrides this global default.

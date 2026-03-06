@@ -1,9 +1,6 @@
 """Unified synthesis engine for LLM-based summarization of web research results.
 
-This module consolidates the duplicated summarization logic from:
-- /web command (web_search.py)
-- /browse agent (browse/agent.py)
-
+This module consolidates the summarization logic from web research commands.
 The engine supports different citation formats while maintaining a single
 source of truth for context management, prompt building, and streaming.
 """
@@ -26,7 +23,7 @@ class CitationStyle(str, Enum):
     """Citation format styles for synthesis output."""
 
     HYPERLINK = "hyperlink"  # [Title](url) - used by /web
-    BRACKET = "bracket"  # [Source N] - used by /browse
+    BRACKET = "bracket"  # [Source N] - numbered bracket citations
 
 
 class QueryType(str, Enum):
@@ -520,7 +517,7 @@ above.{custom_instruction_text}
 Begin your response:"""
 
     else:  # BRACKET
-        # Browse agent style - simpler with bracket citations
+        # Bracket style - simpler with numbered citations
         prompt = f"""Synthesize a comprehensive answer from the research results below.
 
 Query: {config.query}
@@ -552,7 +549,7 @@ async def synthesize_with_llm_stream(
     """Stream LLM synthesis from web sources.
 
     This is the core synthesis engine that handles context management,
-    page formatting, prompt building, and streaming for both /web and /browse.
+    page formatting, prompt building, and streaming.
 
     Args:
         llm: Pre-configured Ollama LLM instance

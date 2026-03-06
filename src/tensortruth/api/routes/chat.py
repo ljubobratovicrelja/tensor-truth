@@ -11,7 +11,6 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 
 from tensortruth.api.deps import (
     ChatServiceDep,
-    IntentServiceDep,
     ProjectServiceDep,
     SessionServiceDep,
     get_chat_service,
@@ -26,8 +25,6 @@ from tensortruth.api.routes.commands import registry as command_registry
 from tensortruth.api.schemas import (
     ChatRequest,
     ChatResponse,
-    IntentRequest,
-    IntentResponse,
     SourceNode,
 )
 from tensortruth.app_utils.paths import get_project_index_dir
@@ -827,24 +824,3 @@ async def websocket_chat(
             await websocket.send_json({"type": "error", "detail": str(e)})
         except Exception:
             pass
-
-
-@router.post("/sessions/{session_id}/intent", response_model=IntentResponse)
-async def classify_intent(
-    session_id: str,
-    body: IntentRequest,
-    session_service: SessionServiceDep,
-    intent_service: IntentServiceDep,
-) -> IntentResponse:
-    """Classify the intent of a message."""
-    data = session_service.load()
-    if session_id not in data.sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    result = intent_service.classify(body.message, body.recent_messages)
-
-    return IntentResponse(
-        intent=result.intent,
-        query=result.query,
-        reason=result.reason,
-    )

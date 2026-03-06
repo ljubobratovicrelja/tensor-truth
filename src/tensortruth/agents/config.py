@@ -98,7 +98,7 @@ class AgentConfig:
         description: Human-readable description shown in agent listings
         tools: List of tool names required by this agent
         system_prompt: System prompt that defines the agent's behavior
-        agent_type: Type of agent to create (extensible, e.g., "function", "react", "router")
+        agent_type: Type of agent to create (extensible, e.g., "function", "react")
         model: Optional model override (uses session model if not specified)
         max_iterations: Maximum reasoning iterations before stopping
         factory_params: Additional parameters passed to agent factory
@@ -108,7 +108,7 @@ class AgentConfig:
     description: str
     tools: List[str]
     system_prompt: str = ""
-    agent_type: str = "router"
+    agent_type: str = "function"
     model: Optional[str] = None
     max_iterations: int = 10
     factory_params: Dict[str, Any] = field(default_factory=dict)
