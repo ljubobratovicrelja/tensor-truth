@@ -215,6 +215,39 @@ class TestSourceFetchPipelineExecute:
             assert source.status == "failed"
             assert "Network error" in source.error
 
+    async def test_execute_updates_source_content_to_fitted(
+        self, pipeline_config, sample_search_results
+    ):
+        """After execute(), source.content should match the fitted/truncated content."""
+        pipeline = SourceFetchPipeline(**pipeline_config)
+
+        # Use long content that will be truncated by context fitting
+        long_content = "Word " * 5000  # ~25000 chars, likely exceeds context budget
+
+        with patch(
+            "tensortruth.core.source_pipeline.fetch_page_as_markdown"
+        ) as mock_fetch:
+            mock_fetch.side_effect = [
+                (long_content, "success", None),
+                ("# Short page", "success", None),
+                ("# Another page", "success", None),
+            ]
+
+            fitted_pages, sources, allocations = await pipeline.execute(
+                sample_search_results
+            )
+
+        # For sources that were fitted, content should match the fitted version
+        fitted_urls = {url for url, title, content in fitted_pages}
+        fitted_content_map = {url: content for url, title, content in fitted_pages}
+
+        for source in sources:
+            if source.url in fitted_urls:
+                assert source.content == fitted_content_map[source.url]
+                # If truncated, fitted content should be shorter than original
+                if source.url == "https://example.com/page1":
+                    assert len(source.content) <= len(long_content)
+
 
 @pytest.mark.unit
 @pytest.mark.asyncio

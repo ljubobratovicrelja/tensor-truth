@@ -551,9 +551,53 @@ class TestStreamTranslator:
         assert result.web_called is True
         assert result.web_count == 1
         assert result.sources[0]["score"] == 0.87
+        assert result.sources[0]["text"] == "Full content"
         assert result.sources[0]["metadata"]["source_url"] == "https://example.com"
         assert result.sources[0]["metadata"]["display_name"] == "Example Page"
         assert result.sources[0]["metadata"]["relevance_score"] == 0.87
+
+    def test_set_web_source_nodes_prefers_content_over_snippet(self):
+        """set_web_source_nodes should use content over snippet when both present."""
+        from tensortruth.core.source import SourceNode, SourceStatus, SourceType
+
+        translator = OrchestratorStreamTranslator()
+
+        node = SourceNode(
+            id="s1",
+            title="Page",
+            source_type=SourceType.WEB,
+            url="https://example.com",
+            content="Detailed fitted content from the page",
+            snippet="Short search snippet",
+            score=0.9,
+            status=SourceStatus.SUCCESS,
+            content_chars=200,
+        )
+        translator.set_web_source_nodes([node])
+
+        result = translator.finalize()
+        assert result.sources[0]["text"] == "Detailed fitted content from the page"
+
+    def test_set_web_source_nodes_falls_back_to_snippet(self):
+        """set_web_source_nodes should fall back to snippet when content is empty."""
+        from tensortruth.core.source import SourceNode, SourceStatus, SourceType
+
+        translator = OrchestratorStreamTranslator()
+
+        node = SourceNode(
+            id="s1",
+            title="Page",
+            source_type=SourceType.WEB,
+            url="https://example.com",
+            content="",
+            snippet="Search snippet fallback",
+            score=0.9,
+            status=SourceStatus.SUCCESS,
+        )
+        translator.set_web_source_nodes([node])
+
+        result = translator.finalize()
+        assert result.sources[0]["text"] == "Search snippet fallback"
 
     def test_set_web_source_nodes_replaces_json_parsed_sources(self):
         """set_web_source_nodes should replace any JSON-parsed web sources."""

@@ -131,8 +131,11 @@ class SourceFetchPipeline:
         # Step 3: Fit to context window
         fitted_pages, allocations = self._fit_to_context()
 
-        # Update sources with content_chars from allocations
+        # Update sources with fitted content and content_chars
+        fitted_content_map = {url: content for url, title, content in fitted_pages}
         for source in self.sources:
+            if source.url and source.url in fitted_content_map:
+                source.content = fitted_content_map[source.url]
             if source.url and source.url in allocations:
                 source.content_chars = allocations[source.url]
 
