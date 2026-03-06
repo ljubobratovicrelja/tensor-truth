@@ -59,7 +59,7 @@ sys.modules["pymupdf.layout"] = layout_mock
 # Create a mock pymupdf module with layout attribute and version
 pymupdf_mock = MagicMock()
 pymupdf_mock.layout = layout_mock
-pymupdf_mock.__version__ = "1.26.7"  # Match installed version
+pymupdf_mock.__version__ = "1.27.1"  # Match installed version
 sys.modules["pymupdf"] = pymupdf_mock
 
 # ============================================================================
