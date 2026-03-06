@@ -269,8 +269,14 @@ class TestConfigServiceHelpers:
     """Tests for helper methods."""
 
     @patch("tensortruth.core.ollama.os.environ.get", return_value=None)
-    def test_get_ollama_url(self, mock_env, config_service: ConfigService):
-        """Get ollama URL returns config value when no env var set."""
+    @patch(
+        "tensortruth.app_utils.config.load_config",
+        return_value=TensorTruthConfig.create_default(),
+    )
+    def test_get_ollama_url(
+        self, mock_load_config, mock_env, config_service: ConfigService
+    ):
+        """Get ollama URL returns default when no env var and no custom config."""
         url = config_service.get_ollama_url()
 
         assert url == "http://localhost:11434"

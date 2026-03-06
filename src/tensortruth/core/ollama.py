@@ -434,7 +434,7 @@ def get_tool_llm(
         base_url=base_url,
         temperature=0.7,
         context_window=context_window,
-        thinking=resolved_thinking,
+        thinking=resolved_thinking,  # type: ignore[arg-type]
         request_timeout=120.0,
         additional_kwargs={"num_ctx": context_window, "num_predict": -1},
     )

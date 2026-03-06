@@ -33,7 +33,6 @@ from llama_index.core.workflow.errors import WorkflowRuntimeError
 
 from tensortruth.agents.tool_output import describe_tool_call, extract_tool_text
 from tensortruth.core.ollama import (
-    check_thinking_support,
     get_orchestrator_llm,
     get_tool_llm,
     resolve_thinking,

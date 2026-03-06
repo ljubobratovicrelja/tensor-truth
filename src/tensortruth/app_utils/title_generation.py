@@ -17,13 +17,12 @@ from typing import Optional
 
 import aiohttp
 
-from tensortruth.core.ollama import get_ollama_url
-
 from .logging_config import logger
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _strip_markdown(text: str) -> str:
     """Strip common markdown syntax to plain text."""
