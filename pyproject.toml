@@ -46,6 +46,7 @@ dependencies = [
     "aiohttp",  # Async HTTP for better UI responsiveness
 
     # --- PDF Processing (session documents) ---
+    "PyMuPDF>=1.27.1",  # pymupdf4llm requires >= 1.27.1
     "pymupdf-layout", # AI-based layout analysis (import before pymupdf4llm!)
     "pymupdf4llm",    # PDF to markdown conversion (required for session PDFs)
     "marker-pdf",     # Advanced PDF conversion with math support
