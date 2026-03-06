@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from typing import (
     Any,
@@ -14,6 +15,7 @@ from typing import (
     Tuple,
     TypeVar,
 )
+from urllib.parse import urljoin, urlparse
 
 import aiohttp
 from bs4 import BeautifulSoup, Tag
@@ -1561,3 +1563,139 @@ async def web_search_async(
 
     # Step 4: Format final response (sources are returned separately now)
     return f"{summary}\n\n", sources
+
+
+# =============================================================================
+# Link Extraction & Metadata Fetching (Deep Browsing)
+# =============================================================================
+
+# Boilerplate URL path segments to filter out
+_BOILERPLATE_PATH_PATTERNS = re.compile(
+    r"/(edit|login|signup|sign[_-]?in|sign[_-]?up|register|logout|"
+    r"account|settings|preferences|privacy|terms|cookie|"
+    r"share|print|action=|Special:|User:|Talk:|Help:)",
+    re.IGNORECASE,
+)
+
+# Markdown link regex: [text](url)
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+
+
+def extract_links_from_markdown(
+    markdown: str,
+    base_url: str,
+    exclude_urls: set[str] | None = None,
+) -> list[tuple[str, str]]:
+    """Extract hyperlinks from markdown content.
+
+    Returns list of (anchor_text, absolute_url) tuples.
+    Filters: fragment-only, non-HTTP(S), already-fetched, boilerplate.
+    Deduplicates by URL, returns up to 15 links.
+    """
+    exclude = exclude_urls or set()
+    seen: set[str] = set()
+    results: list[tuple[str, str]] = []
+
+    for anchor, raw_url in _MD_LINK_RE.findall(markdown):
+        # Skip fragment-only links
+        if raw_url.startswith("#"):
+            continue
+
+        # Resolve relative URLs
+        absolute = urljoin(base_url, raw_url.split("#")[0])
+
+        # Only HTTP(S)
+        parsed = urlparse(absolute)
+        if parsed.scheme not in ("http", "https"):
+            continue
+
+        # Skip already-fetched
+        if absolute in exclude:
+            continue
+
+        # Skip boilerplate paths
+        if _BOILERPLATE_PATH_PATTERNS.search(parsed.path):
+            continue
+
+        # Deduplicate
+        if absolute in seen:
+            continue
+        seen.add(absolute)
+
+        # Clean anchor text
+        anchor_clean = anchor.strip()
+        if not anchor_clean or len(anchor_clean) > 200:
+            continue
+
+        results.append((anchor_clean, absolute))
+
+        if len(results) >= 15:
+            break
+
+    return results
+
+
+async def fetch_link_metadata(
+    links: list[tuple[str, str]],  # (anchor_text, url)
+    session: aiohttp.ClientSession,
+    max_links: int = 8,
+    timeout: int = 5,
+) -> list[dict]:
+    """Fetch <title> and <meta description> for candidate links in parallel.
+
+    Returns list of dicts:
+    {url, anchor_text, title, description, fetchable}
+
+    Only fetches the HTML <head> (stops reading after </head> or ~8KB).
+    """
+    candidates = links[:max_links]
+
+    async def _fetch_one(anchor_text: str, url: str) -> dict:
+        entry: dict = {
+            "url": url,
+            "anchor_text": anchor_text,
+            "title": "",
+            "description": "",
+            "fetchable": False,
+        }
+        try:
+            async with session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=timeout),
+                headers={"User-Agent": "Mozilla/5.0 (compatible; TensorTruth/1.0)"},
+                allow_redirects=True,
+            ) as resp:
+                if resp.status != 200:
+                    return entry
+                content_type = resp.headers.get("Content-Type", "")
+                if "text/html" not in content_type:
+                    return entry
+
+                # Read incrementally, stop after </head> or 8KB
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in resp.content.iter_chunked(2048):
+                    chunks.append(chunk)
+                    total += len(chunk)
+                    raw = b"".join(chunks)
+                    if b"</head>" in raw.lower() or total >= 8192:
+                        break
+
+                html_head = b"".join(chunks).decode("utf-8", errors="replace")
+                soup = BeautifulSoup(html_head, "html.parser")
+
+                title_tag = soup.find("title")
+                if title_tag and title_tag.string:
+                    entry["title"] = title_tag.string.strip()[:200]
+
+                meta_desc = soup.find("meta", attrs={"name": "description"})
+                if meta_desc and meta_desc.get("content"):
+                    entry["description"] = str(meta_desc["content"]).strip()[:300]
+
+                entry["fetchable"] = True
+        except Exception:
+            pass
+        return entry
+
+    tasks = [_fetch_one(anchor, url) for anchor, url in candidates]
+    return list(await asyncio.gather(*tasks))

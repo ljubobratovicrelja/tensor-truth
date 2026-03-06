@@ -220,6 +220,9 @@ class OrchestratorService:
         self._last_web_query: Optional[str] = None
         self._last_web_search_results: Optional[List[Dict[str, Any]]] = None
 
+        # Tracks all URLs fetched in this execution to exclude from link discovery
+        self._fetched_urls: set[str] = set()
+
     # ------------------------------------------------------------------
     # Tool assembly
     # ------------------------------------------------------------------
@@ -261,7 +264,15 @@ class OrchestratorService:
             return self._last_web_search_results
 
         def _web_result_cb(nodes: list) -> None:
-            self._last_web_sources = nodes
+            if self._last_web_sources is None:
+                self._last_web_sources = []
+            self._last_web_sources.extend(nodes)
+
+        def _fetched_urls_getter() -> set:
+            return self._fetched_urls
+
+        def _fetched_urls_updater(urls: List[str]) -> None:
+            self._fetched_urls.update(urls)
 
         # Resolve reranker config from session params
         reranker_model = self._session_params.get("reranker_model")
@@ -298,6 +309,8 @@ class OrchestratorService:
             web_search_results_setter=_web_results_setter,
             web_search_results_getter=_web_results_getter,
             web_result_callback=_web_result_cb,
+            fetched_urls_getter=_fetched_urls_getter,
+            fetched_urls_updater=_fetched_urls_updater,
         )
 
         # 2. Collect MCP tools from ToolService, filtering out already-wrapped built-ins
@@ -394,7 +407,13 @@ class OrchestratorService:
             "wrong, correct it and retry; if it is an internal error, report "
             "the issue and continue with other tools if possible.\n"
             "- To fetch multiple web pages, prefer fetch_pages_batch with a list of "
-            "URLs over calling fetch_page multiple times."
+            "URLs over calling fetch_page multiple times.\n"
+            '- After fetching pages, review the "Discovered links" section at the end of '
+            "the results. If the fetched page content already answers the user's question "
+            "well, proceed to your summary — do NOT follow links just because they exist. "
+            "Only follow links when the fetched content is clearly insufficient and a "
+            "discovered link looks like it would provide critical missing information. "
+            "Be mindful of your iteration budget. Do NOT re-fetch URLs already fetched."
         )
 
         # --- MCP tool routing ---
@@ -433,10 +452,11 @@ class OrchestratorService:
         # response minimal so it doesn't waste tokens on text that will be
         # discarded.
         sections.append(
-            "IMPORTANT: After you have called tools and gathered information, "
-            "respond with ONLY a very brief one-line summary of what you found "
-            "(e.g. 'Found 3 relevant sources about X.'). Do NOT write a "
-            "detailed answer — a separate synthesis step will handle that."
+            "IMPORTANT: After you have gathered sufficient information from "
+            "tools to answer the question, respond with ONLY a very brief "
+            "one-line summary of what you found (e.g. 'Found 3 relevant "
+            "sources about X.'). Do NOT write a detailed answer — a separate "
+            "synthesis step will handle that."
         )
 
         # --- Project metadata ---
@@ -684,6 +704,7 @@ class OrchestratorService:
         self._last_web_sources = None
         self._last_web_query = None
         self._last_web_search_results = None
+        self._fetched_urls = set()
 
         # Build a progress emitter that both stores phases locally and
         # forwards to the external emitter (if provided).

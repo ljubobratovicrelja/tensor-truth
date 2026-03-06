@@ -407,6 +407,8 @@ def create_web_search_tool(
 def create_fetch_page_tool(
     tool_service: ToolService,
     progress_emitter: ProgressEmitter,
+    fetched_urls_getter: Optional[Callable[[], set]] = None,
+    fetched_urls_updater: Optional[Callable[[List[str]], None]] = None,
 ) -> FunctionTool:
     """Create a fetch_page FunctionTool for the orchestrator.
 
@@ -445,7 +447,23 @@ def create_fetch_page_tool(
             logger.warning(f"fetch_page failed for {url}: {error_msg}")
             return f"Error: {error_msg}"
 
-        return extract_tool_text(result["data"])
+        content = extract_tool_text(result["data"])
+
+        # Track fetched URL
+        if fetched_urls_updater:
+            fetched_urls_updater([url])
+
+        # Discover links in fetched content
+        discovered_section = await _discover_links(
+            [(url, content)],
+            progress_emitter,
+            fetched_urls_getter,
+        )
+
+        if discovered_section:
+            content += "\n\n" + discovered_section
+
+        return content
 
     return FunctionTool.from_defaults(
         async_fn=fetch_page,
@@ -471,6 +489,8 @@ def create_fetch_pages_batch_tool(
     web_query_getter: Optional[Callable[[], Optional[str]]] = None,
     web_search_results_getter: Optional[Callable[[], Optional[List[Dict]]]] = None,
     web_result_callback: Optional[WebResultCallback] = None,
+    fetched_urls_getter: Optional[Callable[[], set]] = None,
+    fetched_urls_updater: Optional[Callable[[List[str]], None]] = None,
 ) -> FunctionTool:
     """Create a fetch_pages_batch FunctionTool for the orchestrator.
 
@@ -580,6 +600,10 @@ def create_fetch_pages_batch_tool(
         if web_result_callback and source_nodes:
             web_result_callback(source_nodes)
 
+        # Track fetched URLs
+        if fetched_urls_updater:
+            fetched_urls_updater(urls)
+
         # Emit completion progress
         await _emit(
             progress_emitter,
@@ -599,13 +623,34 @@ def create_fetch_pages_batch_tool(
         if not fitted_pages:
             return "No pages could be fetched or all were below relevance threshold."
 
+        # Build score lookup from source_nodes
+        score_by_url: Dict[str, float] = {}
+        for sn in source_nodes:
+            if sn.url and sn.score is not None:
+                score_by_url[sn.url] = sn.score
+
         parts = []
-        for url, title, content in fitted_pages:
-            header = f"## {title}\nSource: {url}\n"
+        for page_url, title, content in fitted_pages:
+            score = score_by_url.get(page_url)
+            score_str = f" | Relevance: {score:.2f}" if score is not None else ""
+            header = f"## {title}\nSource: {page_url}{score_str}\n"
             if len(content) < 500:
                 header += f"\n*Note: Limited content ({len(content)} chars)*\n"
             parts.append(f"{header}\n{content}")
-        return "\n\n---\n\n".join(parts)
+        output = "\n\n---\n\n".join(parts)
+
+        # Discover links in fetched pages
+        page_contents = [(page_url, content) for page_url, _, content in fitted_pages]
+        discovered_section = await _discover_links(
+            page_contents,
+            progress_emitter,
+            fetched_urls_getter,
+        )
+
+        if discovered_section:
+            output += "\n\n" + discovered_section
+
+        return output
 
     return FunctionTool.from_defaults(
         async_fn=fetch_pages_batch,
@@ -633,6 +678,77 @@ def _emit_sync(emitter: ProgressEmitter, progress: ToolProgress) -> None:
         pass
 
 
+async def _discover_links(
+    page_contents: List[tuple],  # [(url, content), ...]
+    progress_emitter: ProgressEmitter,
+    fetched_urls_getter: Optional[Callable[[], set]] = None,
+) -> str:
+    """Extract links from fetched pages and fetch metadata for top candidates.
+
+    Returns a formatted "Discovered links" section string, or empty string
+    if no links were found.
+    """
+    from tensortruth.utils.web_search import (
+        extract_links_from_markdown,
+        fetch_link_metadata,
+    )
+
+    exclude_urls = fetched_urls_getter() if fetched_urls_getter else set()
+
+    # Collect links from all pages, tracking which page they came from
+    all_links: List[tuple] = []  # (anchor_text, url, page_title_or_url)
+    seen_urls: set = set()
+    for page_url, content in page_contents:
+        links = extract_links_from_markdown(content, page_url, exclude_urls)
+        for anchor, link_url in links:
+            if link_url not in seen_urls:
+                seen_urls.add(link_url)
+                # Use domain as source identifier
+                source_domain = urlparse(page_url).netloc
+                all_links.append((anchor, link_url, source_domain))
+
+    if not all_links:
+        return ""
+
+    # Fetch metadata for top candidates
+    await _emit(
+        progress_emitter,
+        ToolProgress(
+            tool_id="fetch_pages_batch",
+            phase="inspecting_links",
+            message="Inspecting links from fetched pages...",
+        ),
+    )
+
+    import aiohttp
+
+    links_for_meta = [(anchor, url) for anchor, url, _ in all_links[:8]]
+    source_map = {url: source for _, url, source in all_links[:8]}
+
+    async with aiohttp.ClientSession() as session:
+        metadata = await fetch_link_metadata(links_for_meta, session)
+
+    # Format discovered links section
+    lines = ["### Discovered links in fetched pages"]
+    for i, meta in enumerate(metadata, 1):
+        title = meta.get("title") or meta["anchor_text"]
+        domain = urlparse(meta["url"]).netloc
+        desc = meta.get("description", "")
+        desc_str = f' — "{desc}"' if desc else " — No description available"
+        source = source_map.get(meta["url"], "")
+        lines.append(
+            f'{i}. "{title}" ({domain}){desc_str}\n'
+            f'   URL: {meta["url"]} | Found in: {source}'
+        )
+
+    lines.append(
+        "\nIf the above content does not fully answer the question, "
+        "you may call fetch_pages_batch with relevant URLs from this list."
+    )
+
+    return "\n".join(lines)
+
+
 def create_all_tool_wrappers(
     tool_service: ToolService,
     progress_emitter: ProgressEmitter,
@@ -651,33 +767,14 @@ def create_all_tool_wrappers(
     web_search_results_setter: Optional[Callable[[List[Dict]], None]] = None,
     web_search_results_getter: Optional[Callable[[], Optional[List[Dict]]]] = None,
     web_result_callback: Optional[WebResultCallback] = None,
+    fetched_urls_getter: Optional[Callable[[], set]] = None,
+    fetched_urls_updater: Optional[Callable[[List[str]], None]] = None,
 ) -> List[FunctionTool]:
     """Create all orchestrator tool wrappers at once.
 
     Convenience function that builds the full set of wrapped tools for
     the orchestrator, including the RAG query tool when a RAGService with
     a loaded engine is available.
-
-    Args:
-        tool_service: ToolService instance with loaded tools.
-        progress_emitter: Callable that receives ToolProgress updates.
-        rag_service: Optional RAGService. When provided and loaded, a
-            rag_query tool is included in the returned set.
-        session_params: Session engine parameters (forwarded to rag_query).
-        session_messages: Chat history (forwarded to rag_query for condensation).
-        rag_result_callback: Optional callback to receive the raw
-            RAGRetrievalResult for source extraction by the stream translator.
-        reranker_model: Optional reranker model for title/content reranking.
-        reranker_device: Device for reranker model.
-        title_threshold: Minimum score for title-stage reranking.
-        content_threshold: Minimum score for content-stage reranking.
-        context_window: Context window size in tokens.
-        custom_instructions: Optional custom instructions for reranking.
-        web_query_setter: Callback to store web search query.
-        web_query_getter: Callback to retrieve stored web search query.
-        web_search_results_setter: Callback to store web search results.
-        web_search_results_getter: Callback to retrieve stored web search results.
-        web_result_callback: Callback to emit SourceNode objects.
 
     Returns:
         List of FunctionTool wrappers. Always includes web_search, fetch_page,
@@ -709,7 +806,12 @@ def create_all_tool_wrappers(
                 web_query_setter=web_query_setter,
                 web_search_results_setter=web_search_results_setter,
             ),
-            create_fetch_page_tool(tool_service, progress_emitter),
+            create_fetch_page_tool(
+                tool_service,
+                progress_emitter,
+                fetched_urls_getter=fetched_urls_getter,
+                fetched_urls_updater=fetched_urls_updater,
+            ),
             create_fetch_pages_batch_tool(
                 tool_service,
                 progress_emitter,
@@ -721,6 +823,8 @@ def create_all_tool_wrappers(
                 web_query_getter=web_query_getter,
                 web_search_results_getter=web_search_results_getter,
                 web_result_callback=web_result_callback,
+                fetched_urls_getter=fetched_urls_getter,
+                fetched_urls_updater=fetched_urls_updater,
             ),
         ]
     )
