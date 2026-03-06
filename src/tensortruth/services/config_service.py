@@ -179,15 +179,6 @@ class ConfigService:
         config = self.load()
         return config.llm.default_model
 
-    def get_intent_classifier_model(self) -> str:
-        """Get the intent classifier model from config.
-
-        Returns:
-            Intent classifier model name.
-        """
-        config = self.load()
-        return config.agent.intent_classifier_model
-
     def is_natural_language_agents_enabled(self) -> bool:
         """Check if natural language agent routing is enabled.
 

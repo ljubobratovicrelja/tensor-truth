@@ -267,10 +267,7 @@ export interface ConversationConfig {
 export interface AgentConfig {
   max_iterations: number;
   min_pages_required: number;
-  router_model: string;
-  function_agent_model: string;
   enable_natural_language_agents: boolean;
-  intent_classifier_model: string;
   orchestrator_enabled: boolean;
 }
 

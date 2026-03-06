@@ -77,7 +77,6 @@ class SessionService:
                 "balance_strategy": config.rag.default_balance_strategy,
                 "embedding_model": config.rag.default_embedding_model,
                 "llm_device": "gpu",
-                "router_model": config.agent.router_model,
                 "orchestrator_enabled": config.agent.orchestrator_enabled,
             }
 

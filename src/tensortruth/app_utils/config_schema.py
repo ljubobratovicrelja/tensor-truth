@@ -3,11 +3,7 @@
 from dataclasses import asdict, dataclass, field, fields
 from typing import Dict, List, Optional
 
-from tensortruth.core.constants import (
-    DEFAULT_FUNCTION_AGENT_MODEL,
-    DEFAULT_MODEL,
-    DEFAULT_ROUTER_MODEL,
-)
+from tensortruth.core.constants import DEFAULT_MODEL
 
 
 @dataclass
@@ -155,17 +151,11 @@ class AgentConfig:
     # Higher values = more thorough research, but slower
     min_pages_required: int = 5
 
-    # Router-based agent configuration
-    router_model: str = DEFAULT_ROUTER_MODEL
-    function_agent_model: str = DEFAULT_FUNCTION_AGENT_MODEL
     enable_search_reranking: bool = True
 
     # Natural language agent routing
     # When enabled, messages with trigger words are classified to route to agents
     enable_natural_language_agents: bool = True
-
-    # Model for intent classification (should be fast, small model)
-    intent_classifier_model: str = "llama3.2:3b"
 
     # Orchestrator (agentic chat) — when enabled, messages are routed through
     # the orchestrator agent which can call tools (RAG, web search, etc.).
@@ -182,17 +172,6 @@ class AgentConfig:
         if self.min_pages_required < 1:
             raise ValueError(
                 f"min_pages_required must be at least 1, got {self.min_pages_required}"
-            )
-        if not self.router_model or not isinstance(self.router_model, str):
-            raise ValueError(
-                f"router_model must be a non-empty string, got {self.router_model!r}"
-            )
-        if not self.function_agent_model or not isinstance(
-            self.function_agent_model, str
-        ):
-            raise ValueError(
-                "function_agent_model must be a non-empty string, "
-                f"got {self.function_agent_model!r}"
             )
 
 

@@ -13,6 +13,7 @@ from tensortruth.app_utils.intent_classifier import (
     enhance_query_with_context,
     has_agent_triggers,
 )
+from tensortruth.core.constants import DEFAULT_MODEL
 
 from .models import IntentResult
 
@@ -27,7 +28,7 @@ class IntentService:
     def __init__(
         self,
         ollama_url: str = "http://localhost:11434",
-        classifier_model: str = "llama3.2:3b",
+        classifier_model: str = DEFAULT_MODEL,
     ):
         """Initialize intent service.
 

@@ -83,12 +83,6 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
   // Models
   const [ragModel, setRagModel] = useState(config.llm.default_model);
-  const [agentReasoningModel, setAgentReasoningModel] = useState(
-    config.agent.router_model
-  );
-  const [functionAgentModel, setFunctionAgentModel] = useState(
-    config.agent.function_agent_model
-  );
 
   // Generation
   const [temperature, setTemperature] = useState(config.llm.default_temperature);
@@ -158,8 +152,6 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   // Sync form state when config prop changes (e.g., after save)
   useEffect(() => {
     setRagModel(config.llm.default_model);
-    setAgentReasoningModel(config.agent.router_model);
-    setFunctionAgentModel(config.agent.function_agent_model);
     setTemperature(config.llm.default_temperature);
     setContextWindow(config.llm.default_context_window);
     setMaxTokens(config.llm.default_max_tokens);
@@ -247,13 +239,11 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     const models = modelsData?.models ?? [];
     const names = new Set(models.map((m) => m.name));
     const extras: string[] = [];
-    for (const val of [ragModel, agentReasoningModel, functionAgentModel]) {
-      if (val && !names.has(val) && !extras.includes(val)) {
-        extras.push(val);
-      }
+    if (ragModel && !names.has(ragModel) && !extras.includes(ragModel)) {
+      extras.push(ragModel);
     }
     return { models, extras };
-  }, [modelsData, ragModel, agentReasoningModel, functionAgentModel]);
+  }, [modelsData, ragModel]);
 
   // Detect when reinitialization completes
   useEffect(() => {
@@ -269,8 +259,6 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   const handleSave = async () => {
     await onSave({
       llm_default_model: ragModel,
-      agent_router_model: agentReasoningModel,
-      agent_function_agent_model: functionAgentModel,
       llm_default_temperature: temperature,
       llm_default_context_window: contextWindow,
       llm_default_max_tokens: maxTokens,
@@ -326,60 +314,14 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     <div className="space-y-6">
       {/* Models Section */}
       <div className="space-y-4">
-        <h3 className="text-sm font-medium">Models</h3>
+        <h3 className="text-sm font-medium">Model</h3>
         <div className="space-y-3">
           <div className="space-y-2">
             <Label>
-              RAG Model
-              <HelpTooltip text="Primary model for retrieval-augmented generation. Used when answering questions with document context." />
+              Model
+              <HelpTooltip text="Primary model used for chat, RAG, agents, and all LLM tasks." />
             </Label>
             <Select value={ragModel} onValueChange={setRagModel}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
-              <SelectContent>
-                {ollamaModelOptions.extras.map((name) => (
-                  <SelectItem key={name} value={name} className="text-muted-foreground">
-                    {name} (not installed)
-                  </SelectItem>
-                ))}
-                {ollamaModelOptions.models.map((model) => (
-                  <SelectItem key={model.name} value={model.name}>
-                    {model.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>
-              Reasoning Model
-              <HelpTooltip text="Model used by routing agents for step-by-step decisions (e.g., search, fetch, summarize). Smaller, fast models work well here." />
-            </Label>
-            <Select value={agentReasoningModel} onValueChange={setAgentReasoningModel}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
-              <SelectContent>
-                {ollamaModelOptions.extras.map((name) => (
-                  <SelectItem key={name} value={name} className="text-muted-foreground">
-                    {name} (not installed)
-                  </SelectItem>
-                ))}
-                {ollamaModelOptions.models.map((model) => (
-                  <SelectItem key={model.name} value={model.name}>
-                    {model.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>
-              Function Model
-              <HelpTooltip text="Model used by function agents that call tools autonomously via LLM tool-calling. Needs a model with good tool-use support." />
-            </Label>
-            <Select value={functionAgentModel} onValueChange={setFunctionAgentModel}>
               <SelectTrigger>
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>

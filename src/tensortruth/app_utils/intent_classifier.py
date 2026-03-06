@@ -12,6 +12,8 @@ from typing import Literal, Optional
 
 from llama_index.llms.ollama import Ollama
 
+from tensortruth.core.constants import DEFAULT_MODEL
+
 logger = logging.getLogger(__name__)
 
 # Trigger word patterns for pre-filtering
@@ -275,7 +277,7 @@ def detect_and_classify(
     recent_messages: list[dict],
     llm: Optional[Ollama] = None,
     ollama_url: str = "http://localhost:11434",
-    classifier_model: str = "llama3.2:3b",
+    classifier_model: str = DEFAULT_MODEL,
 ) -> IntentResult:
     """Main entry point: detect triggers and classify if needed.
 

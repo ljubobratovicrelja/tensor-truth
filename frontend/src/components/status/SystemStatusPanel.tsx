@@ -352,18 +352,6 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
                   <span className="font-medium">Default Model:</span>{" "}
                   <span className="font-mono">{config.llm.default_model}</span>
                 </div>
-                {config.agent.router_model && (
-                  <div>
-                    <span className="font-medium">Agent Reasoning:</span>{" "}
-                    <span className="font-mono">{config.agent.router_model}</span>
-                  </div>
-                )}
-                {config.agent.function_agent_model && (
-                  <div>
-                    <span className="font-medium">Function Agent:</span>{" "}
-                    <span className="font-mono">{config.agent.function_agent_model}</span>
-                  </div>
-                )}
               </div>
             </section>
           )}

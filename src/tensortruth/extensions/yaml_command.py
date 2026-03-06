@@ -286,10 +286,6 @@ class YamlAgentCommand(ToolCommand):
             "context_window": params.get(
                 "context_window", config.llm.default_context_window
             ),
-            "router_model": params.get("router_model", config.agent.router_model),
-            "function_agent_model": params.get(
-                "function_agent_model", config.agent.function_agent_model
-            ),
         }
 
         # Streaming callbacks

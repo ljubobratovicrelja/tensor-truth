@@ -25,7 +25,6 @@ import { Input } from "@/components/ui/input";
 import {
   useConfig,
   useUpdateSession,
-  useModels,
   useEmbeddingModels,
   useRerankers,
   useAddReranker,
@@ -69,7 +68,6 @@ export function SessionSettingsPanel({
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { data: config } = useConfig();
-  const { data: modelsData } = useModels();
   const { data: embeddingModelsData } = useEmbeddingModels();
   const { data: rerankersData } = useRerankers();
   const addReranker = useAddReranker();
@@ -100,8 +98,6 @@ export function SessionSettingsPanel({
   const [availableDevices, setAvailableDevices] = useState<string[]>(DEVICE_OPTIONS);
   const [maxHistoryTurns, setMaxHistoryTurns] = useState<number>(3);
   const [memoryTokenLimit, setMemoryTokenLimit] = useState<number>(4000);
-  const [routerModel, setRouterModel] = useState<string>("");
-  const [functionAgentModel, setFunctionAgentModel] = useState<string>("");
   const [orchestratorEnabled, setOrchestratorEnabled] = useState<boolean>(true);
 
   // Fetch available devices from backend
@@ -127,19 +123,6 @@ export function SessionSettingsPanel({
     const match = embeddingModelsData.models.find((m) => m.model_id === shortId);
     return match?.model_id ?? "";
   }, [embeddingModelsData, embeddingModel]);
-
-  // Include current config values in Ollama model options even if not installed
-  const ollamaModelOptions = useMemo(() => {
-    const models = modelsData?.models ?? [];
-    const names = new Set(models.map((m) => m.name));
-    const extras: string[] = [];
-    for (const val of [routerModel, functionAgentModel]) {
-      if (val && !names.has(val) && !extras.includes(val)) {
-        extras.push(val);
-      }
-    }
-    return { models, extras };
-  }, [modelsData, routerModel, functionAgentModel]);
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -179,11 +162,6 @@ export function SessionSettingsPanel({
         (currentParams.memory_token_limit as number) ??
           config.conversation.memory_token_limit
       );
-      setRouterModel((currentParams.router_model as string) ?? config.agent.router_model);
-      setFunctionAgentModel(
-        (currentParams.function_agent_model as string) ??
-          config.agent.function_agent_model
-      );
       setOrchestratorEnabled(
         (currentParams.orchestrator_enabled as boolean) ??
           config.agent.orchestrator_enabled
@@ -206,8 +184,6 @@ export function SessionSettingsPanel({
       embedding_model: embeddingModel,
       max_history_turns: maxHistoryTurns,
       memory_token_limit: memoryTokenLimit,
-      router_model: routerModel,
-      function_agent_model: functionAgentModel,
       orchestrator_enabled: orchestratorEnabled,
     };
 
@@ -570,52 +546,6 @@ export function SessionSettingsPanel({
                 </TooltipContent>
               )}
             </Tooltip>
-            <div className="space-y-2">
-              <Label>
-                Reasoning Model
-                <HelpTooltip text="Model used by routing agents for step-by-step decisions (e.g., search, fetch, summarize). Smaller, fast models work well here." />
-              </Label>
-              <Select value={routerModel} onValueChange={setRouterModel}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ollamaModelOptions.extras.map((name) => (
-                    <SelectItem key={name} value={name} className="text-muted-foreground">
-                      {name} (not installed)
-                    </SelectItem>
-                  ))}
-                  {ollamaModelOptions.models.map((model) => (
-                    <SelectItem key={model.name} value={model.name}>
-                      {model.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>
-                Function Model
-                <HelpTooltip text="Model used by function agents that call tools autonomously via LLM tool-calling. Needs a model with good tool-use support." />
-              </Label>
-              <Select value={functionAgentModel} onValueChange={setFunctionAgentModel}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ollamaModelOptions.extras.map((name) => (
-                    <SelectItem key={name} value={name} className="text-muted-foreground">
-                      {name} (not installed)
-                    </SelectItem>
-                  ))}
-                  {ollamaModelOptions.models.map((model) => (
-                    <SelectItem key={model.name} value={model.name}>
-                      {model.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           <Separator />

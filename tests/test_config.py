@@ -72,7 +72,6 @@ class TestConfigSchema:
         config = AgentConfig()
         assert config.max_iterations == 10
         assert config.enable_natural_language_agents is True
-        assert config.intent_classifier_model == "llama3.2:3b"
 
     def test_agent_config_with_zero_max_iterations(self):
         """Test that zero max_iterations is rejected."""

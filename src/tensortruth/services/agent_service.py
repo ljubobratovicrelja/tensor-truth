@@ -13,7 +13,7 @@ from llama_index.llms.ollama import Ollama
 
 from tensortruth.agents.config import AgentCallbacks, AgentConfig, AgentResult
 from tensortruth.agents.factory import get_agent_factory_registry
-from tensortruth.core.constants import DEFAULT_FUNCTION_AGENT_MODEL
+from tensortruth.core.constants import DEFAULT_MODEL
 from tensortruth.services.tool_service import ToolService
 
 if TYPE_CHECKING:
@@ -186,14 +186,8 @@ class AgentService:
         # Determine model (use `or` to skip None values from session params)
         if config.model:
             model = config.model
-        elif config.agent_type == "function":
-            model = (
-                session_params.get("function_agent_model")
-                or agent_cfg.get("function_agent_model")
-                or DEFAULT_FUNCTION_AGENT_MODEL
-            )
         else:
-            model = session_params.get("model") or DEFAULT_FUNCTION_AGENT_MODEL
+            model = session_params.get("model") or DEFAULT_MODEL
         context_window = session_params.get("context_window", 16384)
         ollama_url = session_params.get("ollama_url", "http://localhost:11434")
 
@@ -202,10 +196,6 @@ class AgentService:
 
         # Build factory params: live config defaults, then session overrides
         factory_params = {
-            "router_model": agent_cfg.get("router_model", "llama3.2:3b"),
-            "function_agent_model": agent_cfg.get(
-                "function_agent_model", DEFAULT_FUNCTION_AGENT_MODEL
-            ),
             "min_pages_required": agent_cfg.get("min_pages_required", 3),
             **session_params,
             **config.factory_params,

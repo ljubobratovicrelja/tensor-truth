@@ -280,12 +280,6 @@ class TestConfigServiceHelpers:
         assert model is not None
         assert isinstance(model, str)
 
-    def test_get_intent_classifier_model(self, config_service: ConfigService):
-        """Get intent classifier model returns correct value."""
-        model = config_service.get_intent_classifier_model()
-
-        assert model == "llama3.2:3b"
-
     def test_is_natural_language_agents_enabled(self, config_service: ConfigService):
         """Check natural language agents enabled returns correct value."""
         enabled = config_service.is_natural_language_agents_enabled()
@@ -343,25 +337,6 @@ class TestConfigUpdatePrefixStripping:
     ALL occurrences of "agent_", causing keys like "agent_function_agent_model"
     to resolve to "function_model" instead of "function_agent_model".
     """
-
-    def test_update_agent_function_agent_model(self, config_service: ConfigService):
-        """agent_function_agent_model strips only the first 'agent_' prefix."""
-        config = config_service.update(agent_function_agent_model="test-model:7b")
-        assert config.agent.function_agent_model == "test-model:7b"
-
-    def test_update_agent_function_agent_model_persists(
-        self, config_service: ConfigService, temp_config_file: Path
-    ):
-        """agent_function_agent_model update persists to disk."""
-        config_service.update(agent_function_agent_model="persisted-model:7b")
-
-        saved_data = yaml.safe_load(temp_config_file.read_text())
-        assert saved_data["agent"]["function_agent_model"] == "persisted-model:7b"
-
-    def test_update_agent_router_model(self, config_service: ConfigService):
-        """agent_router_model still works (no repeated prefix)."""
-        config = config_service.update(agent_router_model="router:3b")
-        assert config.agent.router_model == "router:3b"
 
     def test_update_unknown_key_is_ignored(self, config_service: ConfigService):
         """Unknown keys are silently ignored (with logging)."""
@@ -436,16 +411,17 @@ class TestConfigBackwardCompatibility:
             "agent": {
                 "max_iterations": 10,
                 "reasoning_model": "old-model:7b",  # removed field
-                "router_model": "llama3.2:3b",
-                "function_agent_model": "llama3.1:8b",
+                "router_model": "llama3.2:3b",  # removed field
+                "function_agent_model": "llama3.1:8b",  # removed field
             },
         }
         temp_config_file.write_text(yaml.safe_dump(old_config))
 
         config = config_service.load()
         assert config.agent.max_iterations == 10
-        assert config.agent.router_model == "llama3.2:3b"
         assert not hasattr(config.agent, "reasoning_model")
+        assert not hasattr(config.agent, "router_model")
+        assert not hasattr(config.agent, "function_agent_model")
 
     def test_from_dict_ignores_unknown_fields_in_all_sections(self):
         """from_dict ignores unknown fields in any config section."""

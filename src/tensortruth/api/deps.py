@@ -103,7 +103,7 @@ def get_intent_service() -> IntentService:
     config_service = get_config_service()
     return IntentService(
         ollama_url=config_service.get_ollama_url(),
-        classifier_model=config_service.get_intent_classifier_model(),
+        classifier_model=config_service.get_default_model(),
     )
 
 

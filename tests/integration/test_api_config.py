@@ -175,40 +175,10 @@ class TestConfigAPI:
         assert response.json()["rag"]["default_reranker"] == "BAAI/bge-reranker-base"
 
     @pytest.mark.asyncio
-    async def test_update_config_agent_function_agent_model(
+    async def test_api_response_no_removed_agent_fields(
         self, client, tmp_path, monkeypatch
     ):
-        """Test updating function_agent_model via API (regression for prefix bug)."""
-        config_file = tmp_path / "config.yaml"
-
-        from tensortruth.services import ConfigService
-
-        test_service = ConfigService(config_file=config_file)
-
-        def get_test_config_service():
-            return test_service
-
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_config_service", get_test_config_service
-        )
-
-        response = await client.patch(
-            "/api/config",
-            json={"updates": {"agent_function_agent_model": "custom-function:14b"}},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["agent"]["function_agent_model"] == "custom-function:14b"
-
-        # Verify it persisted
-        response = await client.get("/api/config")
-        assert response.json()["agent"]["function_agent_model"] == "custom-function:14b"
-
-    @pytest.mark.asyncio
-    async def test_api_response_no_agent_reasoning_model(
-        self, client, tmp_path, monkeypatch
-    ):
-        """API should not return agent.reasoning_model (dead code removed)."""
+        """API should not return removed agent model fields."""
         monkeypatch.setattr(
             "tensortruth.api.deps.ConfigService.__init__",
             lambda self, config_file=None: setattr(
@@ -222,4 +192,8 @@ class TestConfigAPI:
 
         response = await client.get("/api/config")
         assert response.status_code == 200
-        assert "reasoning_model" not in response.json()["agent"]
+        agent = response.json()["agent"]
+        assert "reasoning_model" not in agent
+        assert "router_model" not in agent
+        assert "function_agent_model" not in agent
+        assert "intent_classifier_model" not in agent

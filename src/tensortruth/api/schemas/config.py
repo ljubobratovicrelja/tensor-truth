@@ -4,6 +4,8 @@ from typing import Any, Dict
 
 from pydantic import BaseModel, Field
 
+from tensortruth.core.constants import DEFAULT_MODEL
+
 
 class OllamaConfigSchema(BaseModel):
     """Ollama service configuration."""
@@ -15,7 +17,7 @@ class OllamaConfigSchema(BaseModel):
 class LLMConfigSchema(BaseModel):
     """LLM generation defaults."""
 
-    default_model: str = "deepseek-r1:8b"
+    default_model: str = DEFAULT_MODEL
     default_temperature: float = 0.7
     default_context_window: int = 8192
     default_max_tokens: int = 4096
@@ -45,10 +47,7 @@ class AgentConfigSchema(BaseModel):
 
     max_iterations: int = 10
     min_pages_required: int = 3
-    router_model: str = "llama3.2:3b"
-    function_agent_model: str = "llama3.1:8b"
     enable_natural_language_agents: bool = True
-    intent_classifier_model: str = "llama3.2:3b"
     orchestrator_enabled: bool = True
 
 

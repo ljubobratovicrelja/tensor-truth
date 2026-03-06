@@ -39,7 +39,6 @@ def mock_config_service():
     config.rag.default_device = "cpu"
     config.rag.default_balance_strategy = "balanced"
     config.rag.default_embedding_model = "BAAI/bge-m3"
-    config.agent.router_model = "global-router"
     config.agent.orchestrator_enabled = True
 
     mock.load.return_value = config
