@@ -9,12 +9,13 @@ import logging
 # TYPE_CHECKING avoids circular import with ConfigService
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from llama_index.llms.ollama import Ollama
+from llama_index.core.llms import LLM
 
 from tensortruth.agents.config import AgentCallbacks, AgentConfig, AgentResult
 from tensortruth.agents.factory import get_agent_factory_registry
 from tensortruth.core.constants import DEFAULT_MODEL
 from tensortruth.core.ollama import get_ollama_url
+from tensortruth.core.providers import ProviderRegistry, create_llm
 from tensortruth.services.tool_service import ToolService
 
 if TYPE_CHECKING:
@@ -101,26 +102,37 @@ class AgentService:
         model: str,
         context_window: Optional[int] = None,
         ollama_url: Optional[str] = None,
-    ) -> Ollama:
-        """Create Ollama LLM (static for factory usage).
+        provider_id: Optional[str] = None,
+    ) -> LLM:
+        """Create LLM instance (static for factory usage).
 
         Args:
             model: Model name to use.
             context_window: Context window size (num_ctx).
-            ollama_url: Ollama base URL.
+            ollama_url: Ollama base URL (ignored for non-Ollama providers).
+            provider_id: Provider to use. Defaults to Ollama.
 
         Returns:
-            Configured Ollama LLM instance.
+            Configured LLM instance.
         """
-        base_url = ollama_url or get_ollama_url()
+        registry = ProviderRegistry.get_instance()
+        model_ref = registry.resolve_model(model, provider_id)
+
+        # For Ollama providers, apply URL override for backward compat
+        if model_ref.provider_type == "ollama":
+            if ollama_url:
+                model_ref.base_url = ollama_url
+            elif not provider_id:
+                # No explicit provider — use get_ollama_url() which handles
+                # config > OLLAMA_HOST > default precedence
+                model_ref.base_url = get_ollama_url()
+
         ctx_window = context_window or 16384
 
-        return Ollama(
-            model=model,
-            base_url=base_url,
+        return create_llm(
+            model_ref,
             temperature=0.2,
             context_window=ctx_window,
-            additional_kwargs={"num_ctx": ctx_window},
             request_timeout=120.0,
         )
 
@@ -129,19 +141,21 @@ class AgentService:
         model: str,
         context_window: Optional[int] = None,
         ollama_url: Optional[str] = None,
-    ) -> Ollama:
-        """Create Ollama LLM instance (instance method wrapping static version).
+        provider_id: Optional[str] = None,
+    ) -> LLM:
+        """Create LLM instance (instance method wrapping static version).
 
         Args:
             model: Model name to use.
             context_window: Context window size (num_ctx).
             ollama_url: Ollama base URL.
+            provider_id: Provider to use.
 
         Returns:
-            Configured Ollama LLM instance.
+            Configured LLM instance.
         """
         ollama_url = ollama_url or self._config.get("ollama_url") or get_ollama_url()
-        return self._create_llm_static(model, context_window, ollama_url)
+        return self._create_llm_static(model, context_window, ollama_url, provider_id)
 
     async def run(
         self,
@@ -189,9 +203,10 @@ class AgentService:
             model = session_params.get("model") or DEFAULT_MODEL
         context_window = session_params.get("context_window", 16384)
         ollama_url = session_params.get("ollama_url") or get_ollama_url()
+        provider_id = session_params.get("provider_id")
 
         # Create LLM
-        llm = self._create_llm(model, context_window, ollama_url)
+        llm = self._create_llm(model, context_window, ollama_url, provider_id)
 
         # Build factory params: live config defaults, then session overrides
         factory_params = {

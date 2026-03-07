@@ -321,27 +321,27 @@ class TestGetEmbedModel:
 class TestGetLLM:
     """Tests for get_llm function."""
 
-    @patch("tensortruth.rag_engine.Ollama")
-    def test_get_llm_defaults(self, mock_ollama_class):
+    @patch("tensortruth.rag_engine.create_llm")
+    def test_get_llm_defaults(self, mock_create_llm):
         """Test LLM initialization with default parameters."""
         from tensortruth.rag_engine import get_llm
 
         mock_llm = MagicMock()
-        mock_ollama_class.return_value = mock_llm
+        mock_create_llm.return_value = mock_llm
 
         params = {}
         result = get_llm(params)
 
         assert result == mock_llm
-        mock_ollama_class.assert_called_once()
+        mock_create_llm.assert_called_once()
 
-    @patch("tensortruth.rag_engine.Ollama")
-    def test_get_llm_custom_params(self, mock_ollama_class):
+    @patch("tensortruth.rag_engine.create_llm")
+    def test_get_llm_custom_params(self, mock_create_llm):
         """Test LLM initialization with custom parameters."""
         from tensortruth.rag_engine import get_llm
 
         mock_llm = MagicMock()
-        mock_ollama_class.return_value = mock_llm
+        mock_create_llm.return_value = mock_llm
 
         params = {
             "model": "llama2:7b",
@@ -354,25 +354,28 @@ class TestGetLLM:
         result = get_llm(params)
         assert result == mock_llm
 
-        call_kwargs = mock_ollama_class.call_args[1]
-        assert call_kwargs["model"] == "llama2:7b"
+        # Verify model_ref and kwargs were passed correctly
+        call_args = mock_create_llm.call_args
+        model_ref = call_args[0][0]
+        assert model_ref.model_name == "llama2:7b"
+        call_kwargs = call_args[1]
         assert call_kwargs["temperature"] == 0.5
         assert call_kwargs["context_window"] == 8192
 
-    @patch("tensortruth.rag_engine.Ollama")
-    def test_get_llm_cpu_mode(self, mock_ollama_class):
+    @patch("tensortruth.rag_engine.create_llm")
+    def test_get_llm_cpu_mode(self, mock_create_llm):
         """Test LLM initialization with CPU mode."""
         from tensortruth.rag_engine import get_llm
 
         mock_llm = MagicMock()
-        mock_ollama_class.return_value = mock_llm
+        mock_create_llm.return_value = mock_llm
 
         params = {"llm_device": "cpu"}
         result = get_llm(params)
         assert result == mock_llm
 
-        # Should set num_gpu to 0 for CPU mode
-        call_kwargs = mock_ollama_class.call_args[1]
+        # Should set num_gpu to 0 for CPU mode in additional_kwargs
+        call_kwargs = mock_create_llm.call_args[1]
         assert call_kwargs["additional_kwargs"]["num_gpu"] == 0
 
 

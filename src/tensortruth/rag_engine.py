@@ -26,12 +26,12 @@ from llama_index.core.vector_stores import (
     MetadataFilters,
 )
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.llms.ollama import Ollama
+from llama_index.core.llms import LLM
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 # Config import for model defaults
 from tensortruth.app_utils.config import load_config
-from tensortruth.core.ollama import get_ollama_url, resolve_thinking
+from tensortruth.core.providers import create_llm
 
 logger = logging.getLogger(__name__)
 
@@ -196,15 +196,20 @@ def get_embed_model(
     return manager.get_embedder(model_name=model_name, device=device)
 
 
-def get_llm(params: Dict[str, Any]) -> Ollama:
-    """Initialize Ollama LLM with configuration parameters.
+def get_llm(params: Dict[str, Any]) -> LLM:
+    """Initialize LLM with configuration parameters.
+
+    Supports both Ollama and OpenAI-compatible providers via the
+    ``provider_id`` session parameter.
 
     Args:
         params: Dictionary with model configuration
 
     Returns:
-        Ollama LLM instance
+        LlamaIndex LLM instance
     """
+    from tensortruth.core.providers import ProviderRegistry
+
     # Try to get model from params, then from config, then use default
     model_name = params.get("model")
     if model_name is None:
@@ -216,43 +221,45 @@ def get_llm(params: Dict[str, Any]) -> Ollama:
 
             model_name = DEFAULT_MODEL  # Fallback default
 
+    # Resolve model reference via provider registry
+    provider_id = params.get("provider_id")
+    registry = ProviderRegistry.get_instance()
+    model_ref = registry.resolve_model(model_name, provider_id)
+
     user_system_prompt = params.get("system_prompt", "").strip()
     device_mode = params.get("llm_device", "gpu")  # 'gpu' or 'cpu'
 
-    # Ollama specific options — always set num_ctx to match context_window
-    # so Ollama never reloads the model due to a context-size change.
     ctx_window = params.get("context_window", 16384)
-    ollama_options: dict = {"num_ctx": ctx_window}
 
-    # Force CPU if requested
-    if device_mode == "cpu":
-        print(f"Loading LLM {model_name} on: CPU (Forced)")
-        ollama_options["num_gpu"] = 0
-
-    # Resolve thinking: user preference from session params, or auto-detect
+    # Resolve thinking
     thinking_preference = params.get("thinking")
-    thinking_enabled = resolve_thinking(model_name, thinking_preference)
+    from tensortruth.core.providers import resolve_thinking as provider_resolve
 
-    # For thinking models, limit total tokens to prevent runaway reasoning
-    # For non-thinking models, use unlimited (-1) to prevent truncation
+    thinking_enabled = provider_resolve(model_ref, thinking_preference)
+
+    # Build additional kwargs (Ollama-specific options are handled internally)
+    additional: dict = {"num_ctx": ctx_window}
+    if device_mode == "cpu" and model_ref.provider_type == "ollama":
+        print(f"Loading LLM {model_name} on: CPU (Forced)")
+        additional["num_gpu"] = 0
+
     if thinking_enabled:
-        # Limit thinking models to ~4K tokens total (thinking + response)
-        # This prevents endless loops while allowing reasonable reasoning
-        ollama_options["num_predict"] = params.get("max_tokens", 4096)
+        additional["num_predict"] = params.get("max_tokens", 4096)
     else:
-        # Non-thinking models get unlimited to prevent truncation
-        ollama_options["num_predict"] = -1
+        additional["num_predict"] = -1
 
-    return Ollama(
-        model=model_name,
-        base_url=get_ollama_url(),
-        request_timeout=300.0,
-        temperature=params.get("temperature", 0.3),
-        context_window=ctx_window,
-        thinking=thinking_enabled,
-        additional_kwargs=ollama_options,
-        system_prompt=user_system_prompt,
-    )
+    extra_kwargs: Dict[str, Any] = {
+        "temperature": params.get("temperature", 0.3),
+        "context_window": ctx_window,
+        "request_timeout": 300.0,
+        "additional_kwargs": additional,
+    }
+    if model_ref.provider_type in ("ollama", "llama_cpp"):
+        extra_kwargs["thinking"] = thinking_enabled
+    if user_system_prompt:
+        extra_kwargs["system_prompt"] = user_system_prompt
+
+    return create_llm(model_ref, **extra_kwargs)
 
 
 def get_reranker(

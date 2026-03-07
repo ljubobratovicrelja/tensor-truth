@@ -8,7 +8,7 @@ for RAG retrieval or web search.
 
 import logging
 
-from llama_index.llms.ollama import Ollama
+from llama_index.core.llms import LLM
 
 from tensortruth.core.constants import (
     DEFAULT_MODEL,
@@ -19,11 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 def create_condenser_llm(
-    base_llm: Ollama,
+    base_llm: LLM,
     temperature: float = 0.0,
     thinking: bool = False,
     timeout: float = 30.0,
-) -> Ollama:
+) -> LLM:
     """Return the shared orchestrator LLM singleton for query condensation.
 
     Reuses the cached non-thinking LLM so that Ollama never sees a
@@ -31,13 +31,13 @@ def create_condenser_llm(
     singleton's temperature (0.2) is close enough to 0.0 for condensation.
 
     Args:
-        base_llm: The base Ollama LLM to derive model/url/context_window from.
+        base_llm: The base LLM to derive model/url/context_window from.
         temperature: Ignored (kept for API compatibility).
         thinking: Ignored (kept for API compatibility).
         timeout: Ignored (kept for API compatibility).
 
     Returns:
-        The shared orchestrator Ollama instance.
+        The shared orchestrator LLM instance.
     """
     from tensortruth.core.ollama import get_orchestrator_llm
 
@@ -49,7 +49,7 @@ def create_condenser_llm(
 
 
 def condense_query(
-    llm: Ollama,
+    llm: LLM,
     chat_history: str,
     question: str,
     prompt_template: str,

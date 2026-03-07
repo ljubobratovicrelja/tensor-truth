@@ -545,12 +545,12 @@ class TestSummarizeWithLLM:
             )
         ]
 
-        with patch("tensortruth.utils.web_search.Ollama") as mock_ollama_class:
+        with patch("tensortruth.utils.web_search.create_llm") as mock_create_llm:
             mock_llm = MagicMock()
             mock_response = MagicMock()
             mock_response.text = "### Summary\nThis is a test summary."
             mock_llm.acomplete = AsyncMock(return_value=mock_response)
-            mock_ollama_class.return_value = mock_llm
+            mock_create_llm.return_value = mock_llm
 
             result = await summarize_with_llm(
                 "test query",
@@ -580,12 +580,12 @@ class TestSummarizeWithLLM:
         long_content = "# Content\n\n" + ("Lorem ipsum dolor sit amet. " * 1000)
         pages = [("https://example.com", "Long Page", long_content)]
 
-        with patch("tensortruth.utils.web_search.Ollama") as mock_ollama_class:
+        with patch("tensortruth.utils.web_search.create_llm") as mock_create_llm:
             mock_llm = MagicMock()
             mock_response = MagicMock()
             mock_response.text = "Summary"
             mock_llm.acomplete = AsyncMock(return_value=mock_response)
-            mock_ollama_class.return_value = mock_llm
+            mock_create_llm.return_value = mock_llm
 
             await summarize_with_llm(
                 "test",
@@ -602,10 +602,10 @@ class TestSummarizeWithLLM:
         """Test handling of LLM errors."""
         pages = [("https://example.com", "Test", "# Content")]
 
-        with patch("tensortruth.utils.web_search.Ollama") as mock_ollama_class:
+        with patch("tensortruth.utils.web_search.create_llm") as mock_create_llm:
             mock_llm = MagicMock()
             mock_llm.acomplete.side_effect = Exception("LLM timeout")
-            mock_ollama_class.return_value = mock_llm
+            mock_create_llm.return_value = mock_llm
 
             result = await summarize_with_llm(
                 "test",
@@ -1413,14 +1413,14 @@ class TestGenerateNoSourcesExplanation:
         """Explanation includes original query."""
         from tensortruth.utils.web_search import generate_no_sources_explanation
 
-        with patch("tensortruth.utils.web_search.Ollama") as mock_ollama_class:
+        with patch("tensortruth.utils.web_search.create_llm") as mock_create_llm:
             mock_llm = MagicMock()
 
             async def mock_stream():
                 yield MagicMock(delta='No relevant sources found for "test query"')
 
             mock_llm.astream_complete = AsyncMock(return_value=mock_stream())
-            mock_ollama_class.return_value = mock_llm
+            mock_create_llm.return_value = mock_llm
 
             collected = []
             async for token in generate_no_sources_explanation(
@@ -1442,14 +1442,14 @@ class TestGenerateNoSourcesExplanation:
         """Explains the threshold values used."""
         from tensortruth.utils.web_search import generate_no_sources_explanation
 
-        with patch("tensortruth.utils.web_search.Ollama") as mock_ollama_class:
+        with patch("tensortruth.utils.web_search.create_llm") as mock_create_llm:
             mock_llm = MagicMock()
 
             async def mock_stream():
                 yield MagicMock(delta="Explanation")
 
             mock_llm.astream_complete = AsyncMock(return_value=mock_stream())
-            mock_ollama_class.return_value = mock_llm
+            mock_create_llm.return_value = mock_llm
 
             async for _ in generate_no_sources_explanation(
                 query="test",
@@ -1470,14 +1470,14 @@ class TestGenerateNoSourcesExplanation:
         """Shows what was rejected and why."""
         from tensortruth.utils.web_search import generate_no_sources_explanation
 
-        with patch("tensortruth.utils.web_search.Ollama") as mock_ollama_class:
+        with patch("tensortruth.utils.web_search.create_llm") as mock_create_llm:
             mock_llm = MagicMock()
 
             async def mock_stream():
                 yield MagicMock(delta="Explanation")
 
             mock_llm.astream_complete = AsyncMock(return_value=mock_stream())
-            mock_ollama_class.return_value = mock_llm
+            mock_create_llm.return_value = mock_llm
 
             async for _ in generate_no_sources_explanation(
                 query="test",

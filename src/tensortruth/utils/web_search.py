@@ -22,10 +22,9 @@ from bs4 import BeautifulSoup, Tag
 from ddgs import DDGS
 from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
-from llama_index.llms.ollama import Ollama
 from markdownify import markdownify as md
 
-from tensortruth.core.ollama import resolve_thinking
+from tensortruth.core.providers import ModelReference, create_llm, resolve_thinking
 from tensortruth.core.synthesis import (
     CitationStyle,
     SynthesisConfig,
@@ -370,15 +369,21 @@ Write a brief, helpful explanation (2-3 sentences) that:
 Keep it concise and actionable. Don't apologize excessively."""
 
     try:
-        thinking_enabled = resolve_thinking(model_name)
-
-        llm = Ollama(
-            model=model_name,
+        model_ref = ModelReference(
+            provider_id="ollama",
+            model_name=model_name,
+            display_name=model_name,
+            provider_type="ollama",
             base_url=ollama_url,
+        )
+        thinking_enabled = resolve_thinking(model_ref)
+
+        llm = create_llm(
+            model_ref,
             request_timeout=60.0,
             temperature=0.5,
             thinking=thinking_enabled,
-            additional_kwargs={"num_ctx": context_window},
+            context_window=context_window,
         )
 
         async for chunk in await llm.astream_complete(prompt):
@@ -1060,17 +1065,21 @@ Include relevant details and preserve all markdown links from sources.]
 Begin your response:"""
 
     try:
-        thinking_enabled = resolve_thinking(model_name)
-
-        # Create Ollama LLM (reuses already-loaded model in VRAM)
-        llm = Ollama(
-            model=model_name,
+        model_ref = ModelReference(
+            provider_id="ollama",
+            model_name=model_name,
+            display_name=model_name,
+            provider_type="ollama",
             base_url=ollama_url,
+        )
+        thinking_enabled = resolve_thinking(model_ref)
+
+        llm = create_llm(
+            model_ref,
             request_timeout=120.0,
             temperature=0.5,
             context_window=context_window,
             thinking=thinking_enabled,
-            additional_kwargs={"num_ctx": context_window},
         )
 
         # Generate summary
@@ -1438,15 +1447,20 @@ async def web_search_stream(
     )
 
     # Initialize LLM for synthesis
-    thinking_enabled = resolve_thinking(model_name)
-    llm = Ollama(
-        model=model_name,
+    model_ref = ModelReference(
+        provider_id="ollama",
+        model_name=model_name,
+        display_name=model_name,
+        provider_type="ollama",
         base_url=ollama_url,
+    )
+    thinking_enabled = resolve_thinking(model_ref)
+    llm = create_llm(
+        model_ref,
         request_timeout=120.0,
         temperature=0.3,
         context_window=context_window,
         thinking=thinking_enabled,
-        additional_kwargs={"num_ctx": context_window},
     )
 
     # Use core synthesis engine

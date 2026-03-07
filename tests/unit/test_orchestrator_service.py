@@ -296,7 +296,8 @@ class TestOrchestratorConfigToggle:
 
         session = {"params": {"orchestrator_enabled": True}}
         with patch(
-            "tensortruth.api.routes.chat.check_tool_call_support", return_value=True
+            "tensortruth.core.providers.ProviderRegistry.check_tool_support",
+            return_value=True,
         ):
             assert _is_orchestrator_enabled(session, "qwen3:32b") is True
 
@@ -313,7 +314,8 @@ class TestOrchestratorConfigToggle:
 
         session = {"params": {"orchestrator_enabled": True}}
         with patch(
-            "tensortruth.api.routes.chat.check_tool_call_support", return_value=False
+            "tensortruth.core.providers.ProviderRegistry.check_tool_support",
+            return_value=False,
         ):
             assert _is_orchestrator_enabled(session, "llama3.1:8b") is False
 
@@ -330,7 +332,8 @@ class TestOrchestratorConfigToggle:
 
         session = {"params": {}}
         with patch(
-            "tensortruth.api.routes.chat.check_tool_call_support", return_value=True
+            "tensortruth.core.providers.ProviderRegistry.check_tool_support",
+            return_value=True,
         ):
             assert _is_orchestrator_enabled(session, "qwen3:32b") is True
 
@@ -340,7 +343,7 @@ class TestOrchestratorConfigToggle:
 
         session = {"params": {"orchestrator_enabled": True}}
         with patch(
-            "tensortruth.api.routes.chat.check_tool_call_support",
+            "tensortruth.core.providers.ProviderRegistry.check_tool_support",
             side_effect=Exception("Network error"),
         ):
             assert _is_orchestrator_enabled(session, "qwen3:32b") is False
@@ -354,14 +357,18 @@ class TestOrchestratorConfigToggle:
 class TestLLMSingleton:
     """Tests for get_orchestrator_llm() caching behavior."""
 
+    def _reset_singletons(self):
+        """Reset the provider-level LLM singletons."""
+        import tensortruth.core.providers as providers_mod
+
+        providers_mod._orchestrator_llm_instance = None
+        providers_mod._orchestrator_llm_key = None
+
     def test_returns_same_instance_for_same_params(self):
         """Should return the same LLM instance for the same model/base_url."""
-        import tensortruth.core.ollama as ollama_mod
         from tensortruth.core.ollama import get_orchestrator_llm
 
-        # Reset singleton state
-        ollama_mod._orchestrator_llm_instance = None
-        ollama_mod._orchestrator_llm_key = None
+        self._reset_singletons()
 
         with patch("llama_index.llms.ollama.Ollama") as MockOllama:
             mock_instance = MagicMock()
@@ -375,18 +382,13 @@ class TestLLMSingleton:
             # Ollama constructor should only be called once
             assert MockOllama.call_count == 1
 
-        # Cleanup
-        ollama_mod._orchestrator_llm_instance = None
-        ollama_mod._orchestrator_llm_key = None
+        self._reset_singletons()
 
     def test_creates_new_instance_on_model_change(self):
         """Should create a new instance when the model name changes."""
-        import tensortruth.core.ollama as ollama_mod
         from tensortruth.core.ollama import get_orchestrator_llm
 
-        # Reset singleton state
-        ollama_mod._orchestrator_llm_instance = None
-        ollama_mod._orchestrator_llm_key = None
+        self._reset_singletons()
 
         with patch("llama_index.llms.ollama.Ollama") as MockOllama:
             mock1 = MagicMock()
@@ -399,17 +401,13 @@ class TestLLMSingleton:
             assert llm1 is not llm2
             assert MockOllama.call_count == 2
 
-        # Cleanup
-        ollama_mod._orchestrator_llm_instance = None
-        ollama_mod._orchestrator_llm_key = None
+        self._reset_singletons()
 
     def test_creates_new_instance_on_url_change(self):
         """Should create a new instance when the base_url changes."""
-        import tensortruth.core.ollama as ollama_mod
         from tensortruth.core.ollama import get_orchestrator_llm
 
-        ollama_mod._orchestrator_llm_instance = None
-        ollama_mod._orchestrator_llm_key = None
+        self._reset_singletons()
 
         with patch("llama_index.llms.ollama.Ollama") as MockOllama:
             mock1 = MagicMock()
@@ -422,8 +420,7 @@ class TestLLMSingleton:
             assert llm1 is not llm2
             assert MockOllama.call_count == 2
 
-        ollama_mod._orchestrator_llm_instance = None
-        ollama_mod._orchestrator_llm_key = None
+        self._reset_singletons()
 
 
 # ---------------------------------------------------------------
@@ -494,7 +491,7 @@ class TestExecuteFlow:
                 return_value=MagicMock(run=MagicMock(return_value=handler)),
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
         ):
@@ -531,7 +528,7 @@ class TestExecuteFlow:
                 return_value=MagicMock(run=MagicMock(return_value=handler)),
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
         ):
@@ -580,7 +577,7 @@ class TestExecuteFlow:
                 return_value=MagicMock(run=MagicMock(return_value=handler)),
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
         ):
@@ -629,7 +626,7 @@ class TestExecuteFlow:
                 return_value=MagicMock(run=MagicMock(return_value=handler)),
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
         ):
@@ -662,7 +659,7 @@ class TestExecuteFlow:
                 return_value=MagicMock(run=MagicMock(return_value=handler)),
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
         ):
@@ -709,7 +706,7 @@ class TestExecuteFlow:
                 return_value=MagicMock(run=MagicMock(return_value=handler)),
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
         ):
@@ -1074,7 +1071,7 @@ class TestMaxIterationsHandling:
                 return_value=MagicMock(run=MagicMock(return_value=handler)),
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
             patch(
@@ -1113,7 +1110,7 @@ class TestMaxIterationsHandling:
                 return_value=MagicMock(run=MagicMock(return_value=handler)),
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
         ):
@@ -1173,11 +1170,11 @@ class TestMaxIterationsHandling:
 
     def test_orchestrator_llm_no_nested_options(self):
         """Orchestrator LLM additional_kwargs must not nest options inside 'options'."""
-        import tensortruth.core.ollama as ollama_mod
+        import tensortruth.core.providers as providers_mod
         from tensortruth.core.ollama import get_orchestrator_llm
 
-        ollama_mod._orchestrator_llm_instance = None
-        ollama_mod._orchestrator_llm_key = None
+        providers_mod._orchestrator_llm_instance = None
+        providers_mod._orchestrator_llm_key = None
 
         with patch("llama_index.llms.ollama.Ollama") as MockOllama:
             MockOllama.return_value = MagicMock()
@@ -1187,16 +1184,16 @@ class TestMaxIterationsHandling:
             assert "options" not in kwargs["additional_kwargs"]
             assert "num_predict" in kwargs["additional_kwargs"]
 
-        ollama_mod._orchestrator_llm_instance = None
-        ollama_mod._orchestrator_llm_key = None
+        providers_mod._orchestrator_llm_instance = None
+        providers_mod._orchestrator_llm_key = None
 
     def test_orchestrator_llm_sets_num_ctx(self):
         """Orchestrator LLM additional_kwargs must contain num_ctx matching context_window."""
-        import tensortruth.core.ollama as ollama_mod
+        import tensortruth.core.providers as providers_mod
         from tensortruth.core.ollama import get_orchestrator_llm
 
-        ollama_mod._orchestrator_llm_instance = None
-        ollama_mod._orchestrator_llm_key = None
+        providers_mod._orchestrator_llm_instance = None
+        providers_mod._orchestrator_llm_key = None
 
         with patch("llama_index.llms.ollama.Ollama") as MockOllama:
             MockOllama.return_value = MagicMock()
@@ -1205,8 +1202,8 @@ class TestMaxIterationsHandling:
             kwargs = MockOllama.call_args[1]
             assert kwargs["additional_kwargs"]["num_ctx"] == 16384
 
-        ollama_mod._orchestrator_llm_instance = None
-        ollama_mod._orchestrator_llm_key = None
+        providers_mod._orchestrator_llm_instance = None
+        providers_mod._orchestrator_llm_key = None
 
 
 # ---------------------------------------------------------------
@@ -1310,7 +1307,7 @@ class TestTransientErrorHandling:
                 return_value=MagicMock(run=MagicMock(return_value=handler)),
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
             patch(
@@ -1370,7 +1367,7 @@ class TestTransientErrorHandling:
                 return_value=mock_agent,
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
             patch("asyncio.sleep", new_callable=AsyncMock),
@@ -1414,7 +1411,7 @@ class TestTransientErrorHandling:
                 return_value=mock_agent,
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
         ):
@@ -1451,7 +1448,7 @@ class TestTransientErrorHandling:
                 return_value=MagicMock(run=MagicMock(return_value=handler)),
             ),
             patch(
-                "tensortruth.services.orchestrator_service.get_orchestrator_llm",
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
         ):

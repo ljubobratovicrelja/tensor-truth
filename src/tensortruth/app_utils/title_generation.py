@@ -205,10 +205,57 @@ async def _generate_title_prompt_mode(
 # ---------------------------------------------------------------------------
 
 
+async def _generate_title_openai_mode(
+    text: str,
+    model_name: str,
+    base_url: str,
+    api_key: str,
+    context_window: int,
+) -> Optional[str]:
+    """Generate a title via OpenAI-compatible ``/chat/completions``."""
+    payload = {
+        "model": model_name,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Generate a concise 2-5 word title for this conversation. "
+                    "No markdown, no punctuation, no quotes. Just a short label."
+                ),
+            },
+            {"role": "user", "content": text[:1000]},
+        ],
+        "max_tokens": 30,
+        "temperature": 0.8,
+    }
+
+    headers: dict = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    timeout = aiohttp.ClientTimeout(total=15)
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                return None
+            try:
+                data = await resp.json()
+            except Exception:
+                return None
+
+    choices = data.get("choices", [])
+    if choices:
+        content = choices[0].get("message", {}).get("content", "")
+        return _clean_title(content)
+    return None
+
+
 async def generate_smart_title_async(
     text: str,
     model_name: Optional[str] = None,
     context_window: int = 16384,
+    provider_id: Optional[str] = None,
 ) -> str:
     """Generate a concise title using the session's model.
 
@@ -217,31 +264,54 @@ async def generate_smart_title_async(
 
     Args:
         text: The assistant response to derive a title from.
-        model_name: Ollama model name (from the session).  When *None* only
+        model_name: Model name (from the session).  When *None* only
             the text-truncation fallback is used.
         context_window: Context window size — passed as ``num_ctx`` to Ollama
             so the model is not reloaded with a different context size.
+        provider_id: Provider ID. Defaults to Ollama.
     """
     if not model_name:
         return _make_fallback_title(text)
 
-    from tensortruth.core.ollama import get_ollama_url
+    # Resolve provider to determine which path to use
+    from tensortruth.core.providers import ProviderRegistry
 
-    base_url = get_ollama_url()
+    registry = ProviderRegistry.get_instance()
+    model_ref = registry.resolve_model(model_name, provider_id)
 
     try:
-        supports_tools = await _check_tool_support_async(model_name, base_url)
-
-        if supports_tools:
-            logger.debug("Using tool mode for title generation with %s", model_name)
-            title = await _generate_title_tool_mode(
-                text, model_name, base_url, context_window
+        if model_ref.provider_type in ("openai_compatible", "llama_cpp"):
+            # OpenAI-compatible path
+            logger.debug(
+                "Using OpenAI-compatible mode for title generation with %s",
+                model_name,
+            )
+            title = await _generate_title_openai_mode(
+                text,
+                model_ref.model_name,
+                model_ref.base_url,
+                model_ref.api_key,
+                context_window,
             )
         else:
-            logger.debug("Using prompt mode for title generation with %s", model_name)
-            title = await _generate_title_prompt_mode(
-                text, model_name, base_url, context_window
-            )
+            # Ollama path (existing logic)
+            base_url = model_ref.base_url
+            supports_tools = await _check_tool_support_async(model_name, base_url)
+
+            if supports_tools:
+                logger.debug(
+                    "Using tool mode for title generation with %s", model_name
+                )
+                title = await _generate_title_tool_mode(
+                    text, model_name, base_url, context_window
+                )
+            else:
+                logger.debug(
+                    "Using prompt mode for title generation with %s", model_name
+                )
+                title = await _generate_title_prompt_mode(
+                    text, model_name, base_url, context_window
+                )
 
         if title:
             logger.debug("Title generation success: '%s'", title)

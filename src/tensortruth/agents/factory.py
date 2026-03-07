@@ -2,14 +2,14 @@
 
 from typing import Any, Callable, Dict, Sequence
 
+from llama_index.core.llms import LLM
 from llama_index.core.tools import FunctionTool
-from llama_index.llms.ollama import Ollama
 
 from tensortruth.agents.base import Agent
 from tensortruth.agents.config import AgentConfig
 
 AgentFactory = Callable[
-    [AgentConfig, Sequence[FunctionTool], Ollama, Dict[str, Any]], Agent
+    [AgentConfig, Sequence[FunctionTool], LLM, Dict[str, Any]], Agent
 ]
 
 
@@ -42,7 +42,7 @@ class AgentFactoryRegistry:
         agent_type: str,
         config: AgentConfig,
         tools: Sequence[FunctionTool],
-        llm: Ollama,
+        llm: LLM,
         session_params: Dict[str, Any],
     ) -> Agent:
         """Create agent via registered factory.
@@ -51,7 +51,7 @@ class AgentFactoryRegistry:
             agent_type: Type of agent to create
             config: Agent configuration
             tools: Tools available to the agent
-            llm: Ollama LLM instance
+            llm: LLM instance
             session_params: Session-specific parameters
 
         Returns:

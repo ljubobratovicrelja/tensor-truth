@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import AsyncGenerator, Dict, List, Optional, Tuple
 
-from llama_index.llms.ollama import Ollama
+from llama_index.core.llms import LLM
 
 logger = logging.getLogger(__name__)
 
@@ -542,7 +542,7 @@ Answer:"""
 
 
 async def synthesize_with_llm_stream(
-    llm: Ollama,
+    llm: LLM,
     config: SynthesisConfig,
     pages: List[Dict[str, str]],
 ) -> AsyncGenerator[str, None]:
@@ -552,7 +552,7 @@ async def synthesize_with_llm_stream(
     page formatting, prompt building, and streaming.
 
     Args:
-        llm: Pre-configured Ollama LLM instance
+        llm: Pre-configured LLM instance
         config: Synthesis configuration
         pages: List of page dicts with keys: url, title, content, status
 
