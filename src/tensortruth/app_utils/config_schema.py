@@ -18,7 +18,7 @@ class OllamaConfig:
 class LLMConfig:
     """LLM generation defaults."""
 
-    default_model: str = DEFAULT_MODEL
+    default_model: str = DEFAULT_MODEL  # empty = use first available Ollama model
     default_temperature: float = 0.7
     default_context_window: int = 8192
     default_max_tokens: int = 4096

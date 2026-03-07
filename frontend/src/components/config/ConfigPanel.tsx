@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ModelSelectContent } from "@/components/chat/ModelSelectContent";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -326,18 +327,24 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
               <SelectTrigger>
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
-              <SelectContent>
-                {ollamaModelOptions.extras.map((name) => (
-                  <SelectItem key={name} value={name} className="text-muted-foreground">
-                    {name} (not installed)
-                  </SelectItem>
-                ))}
-                {ollamaModelOptions.models.map((model) => (
-                  <SelectItem key={model.name} value={model.name}>
-                    {model.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+              <ModelSelectContent
+                models={ollamaModelOptions.models}
+                extraItems={
+                  ollamaModelOptions.extras.length > 0 ? (
+                    <>
+                      {ollamaModelOptions.extras.map((name) => (
+                        <SelectItem
+                          key={name}
+                          value={name}
+                          className="text-muted-foreground"
+                        >
+                          {name} (not installed)
+                        </SelectItem>
+                      ))}
+                    </>
+                  ) : undefined
+                }
+              />
             </Select>
           </div>
         </div>

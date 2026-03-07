@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Square, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { Select, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { ModelSelectContent } from "./ModelSelectContent";
 import { cn } from "@/lib/utils";
 import { useModels, useConfig, useCommandDetection, useThinkingSupport } from "@/hooks";
 import { ModuleSelector } from "./ModuleSelector";
@@ -56,7 +57,8 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const detection = useCommandDetection(message);
 
-  const activeModel = selectedModel || config?.llm.default_model || "";
+  const activeModel =
+    selectedModel || config?.llm.default_model || modelsData?.models[0]?.name || "";
   const thinkingSupport = useThinkingSupport(modelsData, activeModel);
 
   // Show autocomplete only if command detected AND no space after command name
@@ -202,27 +204,20 @@ export function ChatInput({
                     {selectedModel || config?.llm.default_model || "Model"}
                   </span>
                 </SelectTrigger>
-                <SelectContent position="popper" side="top" className="max-h-[300px]">
-                  <SelectItem value="__none__">
-                    <span className="text-muted-foreground">
-                      Default ({config?.llm.default_model || "..."})
-                    </span>
-                  </SelectItem>
-                  {modelsLoading ? (
-                    <SelectItem value="loading" disabled>
-                      Loading...
+                <ModelSelectContent
+                  models={modelsData?.models ?? []}
+                  isLoading={modelsLoading}
+                  position="popper"
+                  side="top"
+                  className="!max-h-[300px]"
+                  extraItems={
+                    <SelectItem value="__none__">
+                      <span className="text-muted-foreground">
+                        Default ({activeModel || "..."})
+                      </span>
                     </SelectItem>
-                  ) : (
-                    modelsData?.models
-                      .slice()
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((model) => (
-                        <SelectItem key={model.name} value={model.name}>
-                          {model.name}
-                        </SelectItem>
-                      ))
-                  )}
-                </SelectContent>
+                  }
+                />
               </Select>
             )}
             {onThinkingChange && thinkingSupport.thinking && (

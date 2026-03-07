@@ -3,7 +3,8 @@ import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Send, Bot, FolderKanban, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { Select, SelectTrigger } from "@/components/ui/select";
+import { ModelSelectContent } from "@/components/chat/ModelSelectContent";
 import { cn } from "@/lib/utils";
 import {
   useModels,
@@ -44,8 +45,9 @@ export function WelcomePage() {
   const hasSpaceAfterCommand = message.charAt(commandEndPos) === " ";
   const showAutocomplete = detection.hasCommand && !hasSpaceAfterCommand;
 
-  // Derive effective model: user selection or config default
-  const effectiveModel = selectedModel || config?.llm.default_model || "";
+  // Derive effective model: user selection, config default, or first available
+  const effectiveModel =
+    selectedModel || config?.llm.default_model || modelsData?.models[0]?.name || "";
 
   const {
     thinking,
@@ -121,7 +123,7 @@ export function WelcomePage() {
     }
   };
 
-  const canSend = message.trim().length > 0 && !isSubmitting;
+  const canSend = message.trim().length > 0 && !isSubmitting && !!effectiveModel;
 
   // Projects data
   const projects = projectsData?.projects ?? [];
@@ -202,24 +204,15 @@ export function WelcomePage() {
                 <Select value={selectedModel} onValueChange={handleModelSelect}>
                   <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
                     <Bot className="h-3.5 w-3.5" />
-                    <span className="text-xs">{effectiveModel || "Model"}</span>
+                    <span className="text-xs">{effectiveModel || "No model"}</span>
                   </SelectTrigger>
-                  <SelectContent position="popper" side="top" className="max-h-[300px]">
-                    {modelsLoading ? (
-                      <SelectItem value="loading" disabled>
-                        Loading...
-                      </SelectItem>
-                    ) : (
-                      modelsData?.models
-                        .slice()
-                        .sort((a, b) => a.name.localeCompare(b.name))
-                        .map((model) => (
-                          <SelectItem key={model.name} value={model.name}>
-                            {model.name}
-                          </SelectItem>
-                        ))
-                    )}
-                  </SelectContent>
+                  <ModelSelectContent
+                    models={modelsData?.models ?? []}
+                    isLoading={modelsLoading}
+                    position="popper"
+                    side="top"
+                    className="!max-h-[300px]"
+                  />
                 </Select>
                 {thinkingSupport.thinking && (
                   <ThinkingSelect
@@ -248,6 +241,11 @@ export function WelcomePage() {
             </div>
           </div>
 
+          {!modelsLoading && modelsData?.models.length === 0 && (
+            <p className="text-destructive text-center text-xs">
+              No Ollama models available. Start Ollama and pull a model to begin.
+            </p>
+          )}
           <p className="text-muted-foreground text-center text-xs">
             Press Enter to send, Shift+Enter for new line
           </p>

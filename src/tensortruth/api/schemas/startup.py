@@ -44,9 +44,8 @@ class EmbeddingMismatchSchema(BaseModel):
 class ModelsStatusSchema(BaseModel):
     """Ollama models availability status."""
 
-    required: List[str] = Field(..., description="Required model names")
-    available: List[str] = Field(..., description="All available models")
-    missing: List[str] = Field(..., description="Missing required models")
+    ollama_running: bool = Field(..., description="Ollama is reachable")
+    available: List[str] = Field(..., description="All available model names")
 
 
 class StartupStatusResponse(BaseModel):
@@ -55,7 +54,8 @@ class StartupStatusResponse(BaseModel):
     directories_ok: bool = Field(..., description="Required directories exist")
     config_ok: bool = Field(..., description="Configuration loaded successfully")
     indexes_ok: bool = Field(..., description="Indexes available")
-    models_ok: bool = Field(..., description="All required models available")
+    models_ok: bool = Field(..., description="Ollama running with at least one model")
+    ollama_running: bool = Field(..., description="Ollama is reachable")
     indexes_status: IndexesStatusSchema
     models_status: ModelsStatusSchema
     embedding_mismatch: Optional[EmbeddingMismatchSchema] = Field(

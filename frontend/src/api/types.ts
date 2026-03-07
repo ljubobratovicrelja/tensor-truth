@@ -438,9 +438,8 @@ export interface IndexesStatus {
 }
 
 export interface ModelsStatus {
-  required: string[];
+  ollama_running: boolean;
   available: string[];
-  missing: string[];
 }
 
 export interface EmbeddingMismatch {
@@ -455,6 +454,7 @@ export interface StartupStatusResponse {
   config_ok: boolean;
   indexes_ok: boolean;
   models_ok: boolean;
+  ollama_running: boolean;
   indexes_status: IndexesStatus;
   models_status: ModelsStatus;
   embedding_mismatch?: EmbeddingMismatch | null;

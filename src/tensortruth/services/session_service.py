@@ -64,8 +64,17 @@ class SessionService:
         try:
             config = config_service.load()
 
+            # Resolve default model: use config value if set, else first available
+            default_model = config.llm.default_model
+            if not default_model:
+                from tensortruth.core.ollama import get_available_models
+
+                available = get_available_models()
+                default_model = available[0] if available else ""
+
             # Define defaults from config
             defaults = {
+                "model": default_model,
                 "temperature": config.llm.default_temperature,
                 "context_window": config.llm.default_context_window,
                 "max_tokens": config.llm.default_max_tokens,

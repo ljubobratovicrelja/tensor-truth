@@ -8,17 +8,17 @@ import {
   Download,
   Server,
   AlertTriangle,
+  WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useStartupStatus, useDownloadIndexes, usePullModel } from "@/hooks/useStartup";
+import { useStartupStatus, useDownloadIndexes } from "@/hooks/useStartup";
 
 interface StartupInitializerProps {
   onComplete: () => void;
 }
 
 const DOWNLOAD_START_KEY = "tensortruth-download-start";
-const PULLING_START_KEY = "tensortruth-pulling-start";
 const INDEXES_SKIPPED_KEY = "tensortruth-indexes-skipped";
 
 export function StartupInitializer({ onComplete }: StartupInitializerProps) {
@@ -29,12 +29,8 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
   const [downloadStartTime, setDownloadStartTime] = useState<number | null>(null);
   const [downloadElapsedSeconds, setDownloadElapsedSeconds] = useState(0);
 
-  const [isPulling, setIsPulling] = useState(false);
-  const [pullingStartTime, setPullingStartTime] = useState<number | null>(null);
-  const [pullingElapsedSeconds, setPullingElapsedSeconds] = useState(0);
-
-  // Poll every 1s when downloading or pulling, otherwise every 5s
-  const pollingInterval = isDownloading || isPulling ? 1000 : 5000;
+  // Poll every 1s when downloading, otherwise every 5s
+  const pollingInterval = isDownloading ? 1000 : 5000;
   const {
     data: status,
     isLoading,
@@ -42,7 +38,6 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
     error,
   } = useStartupStatus({ pollingInterval });
   const downloadIndexes = useDownloadIndexes();
-  const pullModel = usePullModel();
 
   // Apply theme on mount from localStorage or system preference
   useEffect(() => {
@@ -87,17 +82,6 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
       // Clean up if indexes are now available
       localStorage.removeItem(DOWNLOAD_START_KEY);
     }
-
-    // Check if model pull was in progress before reload
-    const storedPullingStart = localStorage.getItem(PULLING_START_KEY);
-    if (storedPullingStart && !status.models_ok) {
-      const startTime = parseInt(storedPullingStart, 10);
-      setIsPulling(true);
-      setPullingStartTime(startTime);
-    } else if (status.models_ok) {
-      // Clean up if models are now available
-      localStorage.removeItem(PULLING_START_KEY);
-    }
   }, [status]);
 
   // Update elapsed time every second while downloading
@@ -113,20 +97,6 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
 
     return () => clearInterval(interval);
   }, [isDownloading, downloadStartTime]);
-
-  // Update elapsed time every second while pulling models
-  useEffect(() => {
-    if (!isPulling || !pullingStartTime) {
-      setPullingElapsedSeconds(0);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setPullingElapsedSeconds(Math.round((Date.now() - pullingStartTime) / 1000));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isPulling, pullingStartTime]);
 
   // Auto-complete when all resources are available
   useEffect(() => {
@@ -150,17 +120,6 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
     }
   }, [isDownloading, status?.indexes_ok, downloadStartTime]);
 
-  // Detect when models become available during pull
-  useEffect(() => {
-    if (isPulling && status?.models_ok) {
-      setIsPulling(false);
-      localStorage.removeItem(PULLING_START_KEY);
-      const elapsed = pullingStartTime ? Date.now() - pullingStartTime : 0;
-      const elapsedSeconds = Math.round(elapsed / 1000);
-      toast.success(`All models pulled successfully! (${elapsedSeconds}s)`);
-    }
-  }, [isPulling, status?.models_ok, pullingStartTime]);
-
   const handleSkipIndexes = () => {
     localStorage.setItem(INDEXES_SKIPPED_KEY, "true");
     setIndexesSkipped(true);
@@ -182,34 +141,6 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
         toast.error(`Failed to download indexes: ${error.message}`);
       },
     });
-  };
-
-  const handlePullAllModels = async () => {
-    if (!status?.models_status.missing.length) return;
-
-    const startTime = Date.now();
-    setIsPulling(true);
-    setPullingStartTime(startTime);
-    localStorage.setItem(PULLING_START_KEY, startTime.toString());
-
-    // Pull models sequentially
-    const missingModels = status.models_status.missing;
-    toast.info(
-      `Pulling ${missingModels.length} model(s). This may take several minutes.`
-    );
-
-    for (const modelName of missingModels) {
-      try {
-        await pullModel.mutateAsync({ model_name: modelName });
-      } catch (error) {
-        setIsPulling(false);
-        localStorage.removeItem(PULLING_START_KEY);
-        toast.error(
-          `Failed to pull model ${modelName}: ${error instanceof Error ? error.message : "Unknown error"}`
-        );
-        return;
-      }
-    }
   };
 
   // Loading state
@@ -283,7 +214,12 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
   }
 
   // Setup required for optional resources
-  if (status && ((!status.indexes_ok && !indexesSkipped) || !status.models_ok)) {
+  if (
+    status &&
+    ((!status.indexes_ok && !indexesSkipped) ||
+      !status.models_ok ||
+      !status.ollama_running)
+  ) {
     return (
       <div className="bg-background flex h-screen items-center justify-center px-4">
         <div className="w-full max-w-2xl space-y-6">
@@ -407,60 +343,81 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
           )}
 
           {/* Models Section */}
-          {!status.models_ok && status.models_status.missing.length > 0 && (
+          {!status.ollama_running && (
             <div className="bg-card rounded-lg border p-6">
-              <div className="mb-4 flex items-start gap-3">
-                <Server className="text-muted-foreground mt-1 h-5 w-5" />
+              <div className="mb-3 flex items-start gap-3">
+                <WifiOff className="text-destructive mt-1 h-5 w-5" />
                 <div className="flex-1">
-                  <h3 className="mb-1 text-lg font-semibold">Ollama Models</h3>
+                  <h3 className="mb-1 text-lg font-semibold">Ollama Not Reachable</h3>
                   <p className="text-muted-foreground mb-3 text-sm">
-                    The following models are required but not yet available:
+                    TensorTruth cannot connect to Ollama. Make sure it is installed and
+                    running.
                   </p>
-                  <div className="mb-4 space-y-1">
-                    {status.models_status.missing.map((modelName) => (
-                      <div key={modelName} className="flex items-center gap-2 text-sm">
-                        <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
-                          {modelName}
-                        </code>
-                      </div>
-                    ))}
+                  <div className="text-muted-foreground space-y-1 text-sm">
+                    <p>
+                      Start Ollama:{" "}
+                      <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
+                        ollama serve
+                      </code>
+                    </p>
+                    <p>
+                      To use a custom URL, set{" "}
+                      <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
+                        ollama.base_url
+                      </code>{" "}
+                      in{" "}
+                      <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
+                        ~/.tensortruth/config.yaml
+                      </code>
+                    </p>
                   </div>
                 </div>
               </div>
               <Button
-                onClick={handlePullAllModels}
-                disabled={isPulling}
+                onClick={() => window.location.reload()}
+                variant="outline"
                 className="w-full"
               >
-                {isPulling ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Pulling Models...
-                  </>
-                ) : (
-                  <>
-                    <Server className="mr-2 h-4 w-4" />
-                    Pull All Models
-                  </>
-                )}
+                Retry
               </Button>
-              {isPulling && (
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Pulling models...</span>
-                    <span className="text-muted-foreground font-mono">
-                      {pullingElapsedSeconds}s
-                    </span>
-                  </div>
-                  <div className="bg-secondary relative h-2 overflow-hidden rounded-full">
-                    <div className="from-primary/50 via-primary to-primary/50 absolute inset-0 animate-pulse bg-gradient-to-r" />
-                    <div className="via-primary/30 animate-shimmer absolute inset-0 bg-gradient-to-r from-transparent to-transparent" />
-                  </div>
-                  <p className="text-muted-foreground text-xs">
-                    This may take several minutes. Model sizes vary from 2GB to 8GB+.
+            </div>
+          )}
+
+          {status.ollama_running && !status.models_ok && (
+            <div className="bg-card rounded-lg border p-6">
+              <div className="mb-3 flex items-start gap-3">
+                <Server className="text-muted-foreground mt-1 h-5 w-5" />
+                <div className="flex-1">
+                  <h3 className="mb-1 text-lg font-semibold">No Ollama Models Found</h3>
+                  <p className="text-muted-foreground mb-3 text-sm">
+                    Ollama is running but has no models installed. Pull any model to get
+                    started.
                   </p>
+                  <div className="text-muted-foreground space-y-1 text-sm">
+                    <p>
+                      Example:{" "}
+                      <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
+                        ollama pull llama3.2
+                      </code>{" "}
+                      or{" "}
+                      <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
+                        ollama pull qwen2.5:7b
+                      </code>
+                    </p>
+                    <p className="text-xs">
+                      Models with tool support (llama3.1+, qwen2.5+, etc.) enable agentic
+                      orchestration — web search, MCP tools, and autonomous reasoning.
+                    </p>
+                  </div>
                 </div>
-              )}
+              </div>
+              <Button
+                onClick={() => window.location.reload()}
+                variant="outline"
+                className="w-full"
+              >
+                Reload after pulling
+              </Button>
             </div>
           )}
 
@@ -468,7 +425,10 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
             <div className="bg-card rounded-lg border p-6">
               <div className="flex items-center gap-3 text-green-600 dark:text-green-400">
                 <CheckCircle2 className="h-5 w-5" />
-                <span className="font-semibold">All Models Available</span>
+                <span className="font-semibold">
+                  Ollama ready — {status.models_status.available.length} model
+                  {status.models_status.available.length !== 1 ? "s" : ""} available
+                </span>
               </div>
             </div>
           )}

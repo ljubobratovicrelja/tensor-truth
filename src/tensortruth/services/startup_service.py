@@ -8,7 +8,6 @@ from tensortruth.app_utils.paths import (
     get_sessions_data_dir,
     get_user_data_dir,
 )
-from tensortruth.core.ollama import get_available_models
 from tensortruth.indexing.metadata import (
     get_available_embedding_models,
     sanitize_model_id,
@@ -168,47 +167,47 @@ class StartupService:
             logger.warning(f"Failed to check embedding model mismatch: {e}")
             return None
 
-    def check_ollama_models(self) -> Dict[str, List[str]]:
-        """Check if required Ollama models are available.
+    def check_ollama_models(self) -> Dict[str, Any]:
+        """Check Ollama reachability and available models.
 
         Returns:
             Dict with keys:
-            - required: List of required model names
-            - available: List of all available models
-            - missing: List of missing required models
+            - ollama_running: True if Ollama is reachable
+            - available: List of all available model names
+            - models_ok: True if Ollama is running and has at least one model
         """
         try:
-            config = self.config_service.load()
+            import requests as _requests
 
-            # Get unique required models (remove duplicates)
-            required_models = list(
-                dict.fromkeys(
-                    [
-                        config.llm.default_model,
-                    ]
-                )
-            )
+            from tensortruth.core.ollama import get_api_base
 
-            available_models = get_available_models()
-            missing_models = [m for m in required_models if m not in available_models]
+            response = _requests.get(f"{get_api_base()}/tags", timeout=2)
+            ollama_running = response.status_code == 200
+            if ollama_running:
+                data = response.json()
+                available_models = sorted(m["name"] for m in data.get("models", []))
+            else:
+                available_models = []
+
+            models_ok = ollama_running and len(available_models) > 0
 
             logger.debug(
-                f"Ollama models check: required={len(required_models)}, "
-                f"available={len(available_models)}, missing={len(missing_models)}"
+                f"Ollama check: running={ollama_running}, "
+                f"available={len(available_models)}, models_ok={models_ok}"
             )
 
             return {
-                "required": required_models,
+                "ollama_running": ollama_running,
                 "available": available_models,
-                "missing": missing_models,
+                "models_ok": models_ok,
             }
 
         except Exception as e:
-            logger.warning(f"Failed to check Ollama models: {e}")
+            logger.warning(f"Failed to check Ollama: {e}")
             return {
-                "required": [],
+                "ollama_running": False,
                 "available": [],
-                "missing": [],
+                "models_ok": False,
             }
 
     def check_startup_status(self, log: bool = False) -> Dict:
@@ -237,7 +236,7 @@ class StartupService:
         embedding_mismatch = self.check_embedding_model_mismatch()
 
         indexes_ok = indexes_status["has_content"]
-        models_ok = len(models_status["missing"]) == 0
+        models_ok = models_status["models_ok"]
 
         # Build warnings list
         warnings = []
@@ -254,11 +253,15 @@ class StartupService:
                     "Download indexes from HuggingFace Hub to enable RAG queries."
                 )
 
-        if not models_ok:
-            missing_list = ", ".join(models_status["missing"])
+        if not models_status["ollama_running"]:
             warnings.append(
-                f"Missing Ollama models: {missing_list}. "
-                f"Pull these models to enable all features."
+                "Ollama is not running or not reachable. "
+                "Start Ollama to enable LLM features."
+            )
+        elif not models_ok:
+            warnings.append(
+                "No Ollama models found. "
+                "Pull a model (e.g. `ollama pull llama3.2`) to get started."
             )
 
         # Add embedding model mismatch warning if applicable
@@ -274,6 +277,7 @@ class StartupService:
             "config_ok": config_ok,
             "indexes_ok": indexes_ok,
             "models_ok": models_ok,
+            "ollama_running": models_status["ollama_running"],
             "indexes_status": indexes_status,
             "models_status": models_status,
             "embedding_mismatch": embedding_mismatch,

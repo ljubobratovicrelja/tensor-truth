@@ -94,6 +94,7 @@ async def get_startup_status(
         config_ok=status["config_ok"],
         indexes_ok=status["indexes_ok"],
         models_ok=status["models_ok"],
+        ollama_running=status["ollama_running"],
         indexes_status=status["indexes_status"],
         models_status=status["models_status"],
         embedding_mismatch=status.get("embedding_mismatch"),

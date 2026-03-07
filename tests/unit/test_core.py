@@ -89,30 +89,50 @@ class TestOllamaModule:
         assert result is False
 
 
+def _mock_default_config():
+    """Mock config with the default Ollama URL (no user override)."""
+    m = MagicMock()
+    m.ollama.base_url = "http://localhost:11434"
+    return m
+
+
 @pytest.mark.unit
 class TestGetOllamaUrl:
-    """Tests for get_ollama_url() env var handling."""
+    """Tests for get_ollama_url() priority: config file > env var > default."""
 
+    # Config returns the default URL so env var logic is exercised.
+    @patch(
+        "tensortruth.app_utils.config.load_config", return_value=_mock_default_config()
+    )
     @patch("tensortruth.core.ollama.os.environ.get", return_value="0.0.0.0")
-    def test_bare_host_gets_default_port(self, mock_env):
+    def test_bare_host_gets_default_port(self, mock_env, mock_config):
         """OLLAMA_HOST=0.0.0.0 should become http://0.0.0.0:11434."""
         assert get_ollama_url() == "http://0.0.0.0:11434"
 
+    @patch(
+        "tensortruth.app_utils.config.load_config", return_value=_mock_default_config()
+    )
     @patch("tensortruth.core.ollama.os.environ.get", return_value="0.0.0.0:11434")
-    def test_host_with_port_preserved(self, mock_env):
+    def test_host_with_port_preserved(self, mock_env, mock_config):
         """OLLAMA_HOST=0.0.0.0:11434 should become http://0.0.0.0:11434."""
         assert get_ollama_url() == "http://0.0.0.0:11434"
 
+    @patch(
+        "tensortruth.app_utils.config.load_config", return_value=_mock_default_config()
+    )
     @patch("tensortruth.core.ollama.os.environ.get", return_value="myhost")
-    def test_bare_hostname_gets_default_port(self, mock_env):
+    def test_bare_hostname_gets_default_port(self, mock_env, mock_config):
         """OLLAMA_HOST=myhost should become http://myhost:11434."""
         assert get_ollama_url() == "http://myhost:11434"
 
     @patch(
+        "tensortruth.app_utils.config.load_config", return_value=_mock_default_config()
+    )
+    @patch(
         "tensortruth.core.ollama.os.environ.get",
         return_value="http://192.168.1.100:11434",
     )
-    def test_full_url_preserved(self, mock_env):
+    def test_full_url_preserved(self, mock_env, mock_config):
         """Full http URL should be returned as-is."""
         assert get_ollama_url() == "http://192.168.1.100:11434"
 
@@ -123,6 +143,16 @@ class TestGetOllamaUrl:
         # Should return config value or default, not crash
         assert url.startswith("http")
         assert "11434" in url
+
+    def test_config_beats_env_var(self, monkeypatch):
+        """Config file URL takes priority over OLLAMA_HOST env var."""
+        mock_config = MagicMock()
+        mock_config.ollama.base_url = "http://gx10:11434"
+        monkeypatch.setenv("OLLAMA_HOST", "localhost")
+        with patch(
+            "tensortruth.app_utils.config.load_config", return_value=mock_config
+        ):
+            assert get_ollama_url() == "http://gx10:11434"
 
 
 # ============================================================================

@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ModelSelectContent } from "@/components/chat/ModelSelectContent";
 import { Slider } from "@/components/ui/slider";
 import { useModels, useConfig } from "@/hooks";
 import type { ProjectResponse } from "@/api/types";
@@ -114,13 +115,7 @@ export function ProjectConfigPanel({ project, onUpdate }: ProjectConfigPanelProp
           <SelectTrigger className="text-xs">
             <SelectValue placeholder="Select model" />
           </SelectTrigger>
-          <SelectContent>
-            {modelsData?.models.map((m) => (
-              <SelectItem key={m.name} value={m.name} className="text-xs">
-                {m.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
+          <ModelSelectContent models={modelsData?.models ?? []} />
         </Select>
       </div>
 
