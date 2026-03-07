@@ -1,9 +1,25 @@
 """Configuration management for Tensor-Truth."""
 
+import os
+import re
+
 import yaml
 
 from tensortruth.app_utils.config_schema import TensorTruthConfig
 from tensortruth.app_utils.paths import get_user_data_dir
+
+
+def _expand_env_vars(value: str) -> str:
+    """Resolve ``${VAR_NAME}`` placeholders to environment variable values.
+
+    Unset variables resolve to an empty string.
+    """
+    return re.sub(
+        r"\$\{([^}]+)\}",
+        lambda m: os.environ.get(m.group(1), ""),
+        value,
+    )
+
 
 # Use the centralized user data directory from paths.py
 CONFIG_DIR = get_user_data_dir()
@@ -26,7 +42,12 @@ def load_config() -> TensorTruthConfig:
     try:
         with open(CONFIG_FILE, "r") as f:
             data = yaml.safe_load(f) or {}
-        return TensorTruthConfig.from_dict(data)
+        config = TensorTruthConfig.from_dict(data)
+        # Expand env vars in provider api_key fields
+        for provider in config.providers:
+            if provider.api_key:
+                provider.api_key = _expand_env_vars(provider.api_key)
+        return config
     except Exception:
         # If config is corrupted, return defaults
         return TensorTruthConfig.create_default()
