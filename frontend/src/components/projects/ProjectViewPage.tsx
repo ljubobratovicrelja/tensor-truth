@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Send, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { Select, SelectTrigger } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
@@ -15,6 +15,10 @@ import {
   thinkingToParam,
 } from "@/hooks";
 import { useChatStore } from "@/stores";
+import {
+  ModelSelectContent,
+  decodeModelValue,
+} from "@/components/chat/ModelSelectContent";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
 import { ThinkingSelect } from "@/components/chat/ThinkingSelect";
 import { SessionSettingsPanel } from "@/components/config/SessionSettingsPanel";
@@ -37,7 +41,20 @@ export function ProjectViewPage() {
 
   // Derive effective model: user selection, project config, or system default
   const projectModel = (project?.config?.model as string) || "";
-  const effectiveModel = selectedModel || projectModel || config?.llm.default_model || "";
+  const decodedSelected = selectedModel ? decodeModelValue(selectedModel) : null;
+  const effectiveModel =
+    decodedSelected?.modelName || projectModel || config?.llm.default_model || "";
+  const effectiveProviderId = (() => {
+    if (decodedSelected?.providerId) return decodedSelected.providerId;
+    // Resolve provider from project config or models list
+    const projectProviderId = project?.config?.provider_id as string | undefined;
+    if (projectProviderId) return projectProviderId;
+    if (effectiveModel && modelsData?.models) {
+      const info = modelsData.models.find((m) => m.name === effectiveModel);
+      if (info?.provider_id) return info.provider_id;
+    }
+    return "ollama";
+  })();
 
   const {
     thinking,
@@ -46,9 +63,10 @@ export function ProjectViewPage() {
     setThinking,
   } = useThinking({ modelsData, effectiveModel });
 
-  const handleModelSelect = (model: string) => {
-    setSelectedModel(model);
-    handleThinkingModelChange(model);
+  const handleModelSelect = (encodedValue: string) => {
+    setSelectedModel(encodedValue);
+    const { modelName } = decodeModelValue(encodedValue);
+    handleThinkingModelChange(modelName);
   };
 
   const handleSubmit = async () => {
@@ -61,6 +79,7 @@ export function ProjectViewPage() {
       const params: Record<string, unknown> = {
         ...sessionParams,
         model: effectiveModel,
+        provider_id: effectiveProviderId,
         ...(thinkingValue !== undefined && { thinking: thinkingValue }),
       };
 
@@ -172,22 +191,13 @@ export function ProjectViewPage() {
                     <Bot className="h-3.5 w-3.5" />
                     <span className="text-xs">{effectiveModel || "Model"}</span>
                   </SelectTrigger>
-                  <SelectContent position="popper" side="top" className="max-h-[300px]">
-                    {modelsLoading ? (
-                      <SelectItem value="loading" disabled>
-                        Loading...
-                      </SelectItem>
-                    ) : (
-                      modelsData?.models
-                        .slice()
-                        .sort((a, b) => a.name.localeCompare(b.name))
-                        .map((model) => (
-                          <SelectItem key={model.name} value={model.name}>
-                            {model.name}
-                          </SelectItem>
-                        ))
-                    )}
-                  </SelectContent>
+                  <ModelSelectContent
+                    models={modelsData?.models ?? []}
+                    isLoading={modelsLoading}
+                    position="popper"
+                    side="top"
+                    className="!max-h-[300px]"
+                  />
                 </Select>
                 {thinkingSupport.thinking && (
                   <ThinkingSelect

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Square, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { ModelSelectContent } from "./ModelSelectContent";
+import { ModelSelectContent, decodeModelValue } from "./ModelSelectContent";
 import { cn } from "@/lib/utils";
 import { useModels, useConfig, useCommandDetection, useThinkingSupport } from "@/hooks";
 import { ModuleSelector } from "./ModuleSelector";
@@ -57,9 +57,10 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const detection = useCommandDetection(message);
 
-  const activeModel =
-    selectedModel || config?.llm.default_model || modelsData?.models[0]?.name || "";
-  const thinkingSupport = useThinkingSupport(modelsData, activeModel);
+  const activeModelName = selectedModel
+    ? decodeModelValue(selectedModel).modelName
+    : config?.llm.default_model || modelsData?.models[0]?.name || "";
+  const thinkingSupport = useThinkingSupport(modelsData, activeModelName);
 
   // Show autocomplete only if command detected AND no space after command name
   // (hide when user is typing arguments, only show when typing command name)
@@ -201,7 +202,7 @@ export function ChatInput({
                 <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
                   <Bot className="h-3.5 w-3.5" />
                   <span className="text-xs">
-                    {selectedModel || config?.llm.default_model || "Model"}
+                    {activeModelName || config?.llm.default_model || "Model"}
                   </span>
                 </SelectTrigger>
                 <ModelSelectContent
@@ -213,7 +214,7 @@ export function ChatInput({
                   extraItems={
                     <SelectItem value="__none__">
                       <span className="text-muted-foreground">
-                        Default ({activeModel || "..."})
+                        Default ({activeModelName || "..."})
                       </span>
                     </SelectItem>
                   }

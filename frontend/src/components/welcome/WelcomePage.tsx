@@ -4,7 +4,10 @@ import { toast } from "sonner";
 import { Send, Bot, FolderKanban, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectTrigger } from "@/components/ui/select";
-import { ModelSelectContent } from "@/components/chat/ModelSelectContent";
+import {
+  ModelSelectContent,
+  decodeModelValue,
+} from "@/components/chat/ModelSelectContent";
 import { cn } from "@/lib/utils";
 import {
   useModels,
@@ -46,8 +49,18 @@ export function WelcomePage() {
   const showAutocomplete = detection.hasCommand && !hasSpaceAfterCommand;
 
   // Derive effective model: user selection, config default, or first available
+  const decodedSelected = selectedModel ? decodeModelValue(selectedModel) : null;
   const effectiveModel =
-    selectedModel || config?.llm.default_model || modelsData?.models[0]?.name || "";
+    decodedSelected?.modelName || config?.llm.default_model || modelsData?.models[0]?.name || "";
+  const effectiveProviderId = (() => {
+    if (decodedSelected?.providerId) return decodedSelected.providerId;
+    // Resolve provider from models list when using config default
+    if (effectiveModel && modelsData?.models) {
+      const info = modelsData.models.find((m) => m.name === effectiveModel);
+      if (info?.provider_id) return info.provider_id;
+    }
+    return "ollama";
+  })();
 
   const {
     thinking,
@@ -56,9 +69,10 @@ export function WelcomePage() {
     setThinking,
   } = useThinking({ modelsData, effectiveModel });
 
-  const handleModelSelect = (model: string) => {
-    setSelectedModel(model);
-    handleThinkingModelChange(model);
+  const handleModelSelect = (encodedValue: string) => {
+    setSelectedModel(encodedValue);
+    const { modelName } = decodeModelValue(encodedValue);
+    handleThinkingModelChange(modelName);
   };
 
   const handleSubmit = async (promptText?: string) => {
@@ -71,6 +85,7 @@ export function WelcomePage() {
       const params = {
         ...sessionParams,
         model: effectiveModel,
+        provider_id: effectiveProviderId,
         ...(thinkingValue !== undefined && { thinking: thinkingValue }),
       };
 

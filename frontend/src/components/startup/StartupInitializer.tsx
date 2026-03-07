@@ -218,7 +218,7 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
     status &&
     ((!status.indexes_ok && !indexesSkipped) ||
       !status.models_ok ||
-      !status.ollama_running)
+      (!status.ollama_running && status.models_status.providers_ok === false))
   ) {
     return (
       <div className="bg-background flex h-screen items-center justify-center px-4">
@@ -343,7 +343,7 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
           )}
 
           {/* Models Section */}
-          {!status.ollama_running && (
+          {!status.ollama_running && status.models_status.providers_ok === false && (
             <div className="bg-card rounded-lg border p-6">
               <div className="mb-3 flex items-start gap-3">
                 <WifiOff className="text-destructive mt-1 h-5 w-5" />
@@ -383,7 +383,7 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
             </div>
           )}
 
-          {status.ollama_running && !status.models_ok && (
+          {!status.models_ok && status.models_status.providers_ok === false && (
             <div className="bg-card rounded-lg border p-6">
               <div className="mb-3 flex items-start gap-3">
                 <Server className="text-muted-foreground mt-1 h-5 w-5" />

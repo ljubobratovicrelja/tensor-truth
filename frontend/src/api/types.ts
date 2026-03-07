@@ -308,6 +308,9 @@ export interface ModulesResponse {
 
 export interface ModelInfo {
   name: string;
+  provider_id: string;
+  provider_type: string;
+  display_name: string;
   size: number;
   modified_at: string;
   capabilities?: string[];
@@ -440,6 +443,7 @@ export interface IndexesStatus {
 export interface ModelsStatus {
   ollama_running: boolean;
   available: string[];
+  providers_ok?: boolean;
 }
 
 export interface EmbeddingMismatch {
