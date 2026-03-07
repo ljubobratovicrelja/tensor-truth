@@ -29,7 +29,8 @@ from tensortruth.api.schemas import (
 )
 from tensortruth.app_utils.paths import get_project_index_dir
 from tensortruth.app_utils.title_generation import generate_smart_title_async
-from tensortruth.core.ollama import check_tool_call_support, get_ollama_url
+from tensortruth.core.ollama import get_ollama_url
+from tensortruth.core.providers import ProviderRegistry
 from tensortruth.services import ProjectService, SessionService
 from tensortruth.services.models import ToolProgress
 from tensortruth.services.orchestrator_service import (
@@ -201,7 +202,7 @@ def _is_orchestrator_enabled(
 
     Args:
         session: Session dict with params.
-        model_name: The Ollama model name for the session. If None, the
+        model_name: The model name for the session. If None, the
             orchestrator is disabled.
 
     Returns:
@@ -217,7 +218,10 @@ def _is_orchestrator_enabled(
         return False
 
     try:
-        has_tools = check_tool_call_support(model_name)
+        provider_id = params.get("provider_id")
+        registry = ProviderRegistry.get_instance()
+        model_ref = registry.resolve_model(model_name, provider_id)
+        has_tools = registry.check_tool_support(model_ref)
     except Exception:
         logger.warning(
             "Failed to check tool-call support for model '%s', "
@@ -228,7 +232,7 @@ def _is_orchestrator_enabled(
 
     if not has_tools:
         logger.debug(
-            "Model '%s' does not support tool-calling, " "disabling orchestrator",
+            "Model '%s' does not support tool-calling, disabling orchestrator",
             model_name,
         )
         return False
@@ -262,8 +266,16 @@ async def _run_orchestrator_path(
     """
     params = context.params
     model_name = params.get("model")
-    base_url = params.get("ollama_url") or get_ollama_url()
     context_window = params.get("context_window", 16384)
+
+    # Resolve base_url from the provider registry (provider-agnostic)
+    provider_id = params.get("provider_id")
+    if provider_id:
+        registry = ProviderRegistry.get_instance()
+        model_ref = registry.resolve_model(model_name or "", provider_id)
+        base_url = model_ref.base_url
+    else:
+        base_url = params.get("ollama_url") or get_ollama_url()
 
     # Load config for module descriptions
     config_service = get_config_service()
@@ -413,7 +425,10 @@ async def _run_orchestrator_path(
     if needs_title and result.full_response:
         try:
             title = await generate_smart_title_async(
-                result.full_response, model_name, context_window
+                result.full_response,
+                model_name,
+                context_window,
+                provider_id=params.get("provider_id"),
             )
             fresh_data = session_service.load()
             fresh_data = session_service.update_title(
@@ -608,8 +623,14 @@ async def websocket_chat(
                             cmd_ctx = session.get("params", {}).get(
                                 "context_window", 16384
                             )
+                            cmd_provider = session.get("params", {}).get(
+                                "provider_id"
+                            )
                             title = await generate_smart_title_async(
-                                full_response, cmd_model, cmd_ctx
+                                full_response,
+                                cmd_model,
+                                cmd_ctx,
+                                provider_id=cmd_provider,
                             )
                             fresh_data = session_service.load()
                             fresh_data = session_service.update_title(
@@ -807,6 +828,7 @@ async def websocket_chat(
                             full_response,
                             model_name,
                             context.params.get("context_window", 16384),
+                            provider_id=context.params.get("provider_id"),
                         )
                         fresh_data = session_service.load()
                         fresh_data = session_service.update_title(

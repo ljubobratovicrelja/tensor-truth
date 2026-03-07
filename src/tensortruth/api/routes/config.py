@@ -125,6 +125,9 @@ async def get_model_capabilities(
     model: Optional[str] = Query(
         None, description="Model name to check capabilities for"
     ),
+    provider_id: Optional[str] = Query(
+        None, description="Provider ID (defaults to Ollama)"
+    ),
 ) -> ModelCapabilitiesResponse:
     """Check model capabilities relevant to configuration.
 
@@ -136,9 +139,12 @@ async def get_model_capabilities(
     if not model:
         return ModelCapabilitiesResponse()
 
-    from tensortruth.core.ollama import check_tool_call_support
+    from tensortruth.core.providers import ProviderRegistry
 
-    has_tools = check_tool_call_support(model)
+    registry = ProviderRegistry.get_instance()
+    model_ref = registry.resolve_model(model, provider_id)
+    has_tools = registry.check_tool_support(model_ref)
+
     return ModelCapabilitiesResponse(
         model=model,
         orchestrator_available=has_tools,
