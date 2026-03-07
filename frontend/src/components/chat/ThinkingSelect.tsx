@@ -19,7 +19,7 @@ export function ThinkingSelect({
       <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
         <Brain className="h-3.5 w-3.5" />
         <span className="text-xs">
-          {value === "auto" ? "Think" : value.charAt(0).toUpperCase() + value.slice(1)}
+          Think: {value.charAt(0).toUpperCase() + value.slice(1)}
         </span>
       </SelectTrigger>
       <SelectContent position="popper" side="top">

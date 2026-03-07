@@ -1,6 +1,17 @@
 import { useState, useMemo, useCallback } from "react";
 import type { ModelsResponse } from "@/api/types";
 
+const COOKIE_NAME = "thinking_preference";
+
+function readThinkingCookie(): string {
+  const match = document.cookie.match(/(?:^|; )thinking_preference=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "auto";
+}
+
+function writeThinkingCookie(value: string): void {
+  document.cookie = `${COOKIE_NAME}=${encodeURIComponent(value)}; max-age=${60 * 60 * 24 * 365}; path=/`;
+}
+
 interface ThinkingSupport {
   thinking: boolean;
   levels: boolean;
@@ -59,7 +70,7 @@ export function useThinking({
   modelsData,
   effectiveModel,
 }: UseThinkingOptions): UseThinkingReturn {
-  const [thinking, setThinkingState] = useState("auto");
+  const [thinking, setThinkingState] = useState(() => readThinkingCookie());
 
   const thinkingSupport = useMemo(
     () => getThinkingSupport(modelsData, effectiveModel),
@@ -75,6 +86,7 @@ export function useThinking({
         (!support.levels && ["low", "medium", "high"].includes(thinking))
       ) {
         setThinkingState("auto");
+        writeThinkingCookie("auto");
       }
     },
     [thinking, modelsData]
@@ -82,6 +94,7 @@ export function useThinking({
 
   const setThinking = useCallback((value: string) => {
     setThinkingState(value);
+    writeThinkingCookie(value);
   }, []);
 
   const thinkingParam = useMemo(() => thinkingToParam(thinking), [thinking]);
