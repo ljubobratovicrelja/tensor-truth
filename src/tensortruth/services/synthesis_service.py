@@ -24,7 +24,6 @@ from typing import (
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
 from tensortruth.core.ollama import (
-    check_thinking_support,
     get_tool_llm,
     resolve_thinking,
 )

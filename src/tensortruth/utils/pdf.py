@@ -279,10 +279,11 @@ def get_pdf_page_count(pdf_path: Union[str, Path]) -> int:
 
         # Check if it's actually a PDF (not HTML or other format)
         # PDF format strings can be "PDF", "PDF 1.4", "PDF 1.6", etc.
-        doc_format = doc.metadata.get("format", "").upper()
+        metadata = doc.metadata or {}
+        doc_format = metadata.get("format", "").upper()
         if doc_format and not doc_format.startswith("PDF"):
             logger.warning(
-                f"File is not a PDF (format: {doc.metadata.get('format')}): {pdf_path}"
+                f"File is not a PDF (format: {metadata.get('format')}): {pdf_path}"
             )
             doc.close()
             return 0
@@ -317,6 +318,8 @@ def pdf_has_extractable_text(
 
         for page_num in range(pages_to_check):
             page = doc[page_num]
+            if page is None:
+                continue
             text = page.get_text()
 
             # Count total characters (excluding whitespace)
