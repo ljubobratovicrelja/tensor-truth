@@ -41,7 +41,7 @@ def _make_synthesis_service(thinking=False):
     """Create a SynthesisService with mocked LLM and thinking support."""
     with (
         patch(
-            "tensortruth.services.synthesis_service.check_thinking_support",
+            "tensortruth.services.synthesis_service.resolve_thinking",
             return_value=thinking,
         ),
         patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
@@ -52,6 +52,7 @@ def _make_synthesis_service(thinking=False):
             model="test-model",
             base_url="http://localhost:11434",
             context_window=8192,
+            thinking=thinking,
         )
 
 
@@ -148,16 +149,16 @@ class TestSynthesisSingleton:
 
         with (
             patch(
-                "tensortruth.services.synthesis_service.check_thinking_support",
+                "tensortruth.services.synthesis_service.resolve_thinking",
                 return_value=False,
             ),
             patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
         ):
             svc1 = mod.get_synthesis_service(
-                "test-model", "http://localhost:11434", 8192
+                "test-model", "http://localhost:11434", 8192, thinking=False
             )
             svc2 = mod.get_synthesis_service(
-                "test-model", "http://localhost:11434", 8192
+                "test-model", "http://localhost:11434", 8192, thinking=False
             )
 
             assert svc1 is svc2
@@ -174,13 +175,17 @@ class TestSynthesisSingleton:
 
         with (
             patch(
-                "tensortruth.services.synthesis_service.check_thinking_support",
+                "tensortruth.services.synthesis_service.resolve_thinking",
                 return_value=False,
             ),
             patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
         ):
-            svc1 = mod.get_synthesis_service("model-a", "http://localhost:11434", 8192)
-            svc2 = mod.get_synthesis_service("model-b", "http://localhost:11434", 8192)
+            svc1 = mod.get_synthesis_service(
+                "model-a", "http://localhost:11434", 8192, thinking=False
+            )
+            svc2 = mod.get_synthesis_service(
+                "model-b", "http://localhost:11434", 8192, thinking=False
+            )
 
             assert svc1 is not svc2
 
@@ -195,24 +200,73 @@ class TestSynthesisSingleton:
 
         with (
             patch(
-                "tensortruth.services.synthesis_service.check_thinking_support",
+                "tensortruth.services.synthesis_service.resolve_thinking",
                 return_value=False,
             ),
             patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
         ):
-            svc1 = mod.get_synthesis_service("model-a", "http://localhost:11434", 8192)
-            svc2 = mod.get_synthesis_service("model-a", "http://remote:11434", 8192)
+            svc1 = mod.get_synthesis_service(
+                "model-a", "http://localhost:11434", 8192, thinking=False
+            )
+            svc2 = mod.get_synthesis_service(
+                "model-a", "http://remote:11434", 8192, thinking=False
+            )
 
             assert svc1 is not svc2
 
         mod._synthesis_service = None
         mod._synthesis_service_key = None
 
+    def test_creates_new_instance_on_thinking_change(self):
+        """thinking is part of the cache key — changing it rebuilds the instance."""
+        import tensortruth.services.synthesis_service as mod
+
+        mod._synthesis_service = None
+        mod._synthesis_service_key = None
+
+        with (
+            patch(
+                "tensortruth.services.synthesis_service.resolve_thinking",
+                side_effect=lambda model, pref: pref,
+            ),
+            patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
+        ):
+            svc1 = mod.get_synthesis_service(
+                "model-a", "http://localhost:11434", 8192, thinking=False
+            )
+            svc2 = mod.get_synthesis_service(
+                "model-a", "http://localhost:11434", 8192, thinking=True
+            )
+
+            assert svc1 is not svc2
+
+        mod._synthesis_service = None
+        mod._synthesis_service_key = None
+
+    def test_thinking_false_sets_thinking_supported_false(self):
+        """When thinking=False, _thinking_supported must be False even for capable models."""
+        with (
+            patch(
+                "tensortruth.services.synthesis_service.resolve_thinking",
+                return_value=False,
+            ),
+            patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
+        ):
+            from tensortruth.services.synthesis_service import SynthesisService
+
+            svc = SynthesisService(
+                model="qwen3:8b",
+                base_url="http://localhost:11434",
+                context_window=8192,
+                thinking=False,
+            )
+            assert svc.thinking_supported is False
+
     def test_synthesis_llm_no_nested_options(self):
         """Synthesis LLM additional_kwargs must not nest options inside 'options'."""
         with (
             patch(
-                "tensortruth.services.synthesis_service.check_thinking_support",
+                "tensortruth.services.synthesis_service.resolve_thinking",
                 return_value=False,
             ),
             patch("llama_index.llms.ollama.Ollama") as MockOllama,
@@ -224,6 +278,7 @@ class TestSynthesisSingleton:
                 model="test-model",
                 base_url="http://localhost:11434",
                 context_window=8192,
+                thinking=False,
             )
 
             kwargs = MockOllama.call_args[1]
@@ -243,7 +298,7 @@ class TestSynthesisSingleton:
         try:
             with (
                 patch(
-                    "tensortruth.services.synthesis_service.check_thinking_support",
+                    "tensortruth.services.synthesis_service.resolve_thinking",
                     return_value=False,
                 ),
                 patch("llama_index.llms.ollama.Ollama") as MockOllama,
@@ -255,6 +310,7 @@ class TestSynthesisSingleton:
                     model="test-model-numctx",
                     base_url="http://localhost:11434",
                     context_window=8192,
+                    thinking=False,
                 )
 
                 kwargs = MockOllama.call_args[1]
@@ -272,13 +328,17 @@ class TestSynthesisSingleton:
 
         with (
             patch(
-                "tensortruth.services.synthesis_service.check_thinking_support",
+                "tensortruth.services.synthesis_service.resolve_thinking",
                 return_value=False,
             ),
             patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
         ):
-            svc1 = mod.get_synthesis_service("model-a", "http://localhost:11434", 8192)
-            svc2 = mod.get_synthesis_service("model-a", "http://localhost:11434", 32768)
+            svc1 = mod.get_synthesis_service(
+                "model-a", "http://localhost:11434", 8192, thinking=False
+            )
+            svc2 = mod.get_synthesis_service(
+                "model-a", "http://localhost:11434", 32768, thinking=False
+            )
 
             assert svc1 is not svc2
 

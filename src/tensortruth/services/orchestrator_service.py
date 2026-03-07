@@ -965,8 +965,13 @@ class OrchestratorService:
             web_sources=self._last_web_sources,
         )
 
+        thinking_pref = self._session_params.get("thinking")
+        resolved_thinking = resolve_thinking(self._model, thinking_pref)
         synthesis = get_synthesis_service(
-            self._model, self._base_url, self._context_window
+            self._model,
+            self._base_url,
+            self._context_window,
+            thinking=resolved_thinking,
         )
         async for synth_event in synthesis.synthesize(
             prompt=prompt,

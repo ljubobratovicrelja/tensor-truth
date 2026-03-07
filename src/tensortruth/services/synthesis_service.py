@@ -15,13 +15,19 @@ from typing import (
     TYPE_CHECKING,
     AsyncGenerator,
     List,
+    Literal,
     Optional,
     Tuple,
+    Union,
 )
 
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
-from tensortruth.core.ollama import check_thinking_support, get_tool_llm
+from tensortruth.core.ollama import (
+    check_thinking_support,
+    get_tool_llm,
+    resolve_thinking,
+)
 from tensortruth.core.prompts import current_date_context
 from tensortruth.services.models import ToolProgress
 from tensortruth.services.orchestrator_service import (
@@ -40,34 +46,37 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _synthesis_service: Optional["SynthesisService"] = None
-_synthesis_service_key: Optional[Tuple[str, str, int]] = None
+_synthesis_service_key: Optional[Tuple[str, str, int, object]] = None
 
 
 def get_synthesis_service(
     model: str,
     base_url: str,
     context_window: int,
+    thinking: Optional[Union[bool, Literal["low", "medium", "high"]]] = None,
 ) -> "SynthesisService":
     """Get or create a cached SynthesisService singleton.
 
-    Keyed by ``(model, base_url, context_window)``.  When the key changes
-    the old instance is discarded and a new one is created.
+    Keyed by ``(model, base_url, context_window, thinking)``.  When the key
+    changes the old instance is discarded and a new one is created.
 
     Args:
         model: Ollama model name.
         base_url: Ollama server base URL.
         context_window: Context window size in tokens.
+        thinking: User thinking preference (``True``, ``False``, ``None``, or
+            a budget string like ``"low"``).  ``None`` means auto-detect.
 
     Returns:
         Cached SynthesisService instance.
     """
     global _synthesis_service, _synthesis_service_key
 
-    key = (model, base_url, context_window)
+    key = (model, base_url, context_window, thinking)
     if _synthesis_service is not None and _synthesis_service_key == key:
         return _synthesis_service
 
-    _synthesis_service = SynthesisService(model, base_url, context_window)
+    _synthesis_service = SynthesisService(model, base_url, context_window, thinking)
     _synthesis_service_key = key
 
     logger.info(
@@ -97,11 +106,14 @@ class SynthesisService:
         model: str,
         base_url: str,
         context_window: int,
+        thinking: Optional[Union[bool, Literal["low", "medium", "high"]]] = None,
     ):
         self._model = model
         self._base_url = base_url
         self._context_window = context_window
-        self._thinking_supported = check_thinking_support(model)
+        self._thinking_pref = thinking
+        resolved = resolve_thinking(model, thinking)
+        self._thinking_supported = bool(resolved)
         self._llm = self._create_llm()
 
     # ------------------------------------------------------------------
@@ -119,7 +131,10 @@ class SynthesisService:
 
     def _create_llm(self) -> "Ollama":
         """Get the shared tool LLM singleton for synthesis."""
-        return get_tool_llm(self._model, self._base_url, self._context_window)
+        resolved = resolve_thinking(self._model, self._thinking_pref)
+        return get_tool_llm(
+            self._model, self._base_url, self._context_window, thinking=resolved
+        )
 
     # ------------------------------------------------------------------
     # System prompt
