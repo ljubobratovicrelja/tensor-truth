@@ -148,7 +148,7 @@ export function WelcomePage() {
 
         {/* Chat Input */}
         <div className="space-y-4">
-          <div className="bg-muted/50 border-input relative overflow-visible rounded-2xl border shadow-sm transition-all duration-500">
+          <div className="bg-muted/50 border-input relative flex flex-col overflow-visible rounded-2xl border shadow-sm transition-all duration-500">
             {/* Command Autocomplete */}
             <CommandAutocomplete
               input={message}
@@ -175,14 +175,14 @@ export function WelcomePage() {
               placeholder="Ask anything about your documents..."
               disabled={isSubmitting}
               className={cn(
-                "min-h-[100px] w-full resize-none bg-transparent px-4 pt-4 pb-16 text-base",
+                "min-h-[100px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base",
                 "placeholder:text-muted-foreground focus:outline-none",
                 "disabled:cursor-not-allowed disabled:opacity-50"
               )}
             />
 
             {/* Bottom toolbar */}
-            <div className="absolute right-3 bottom-3 left-3 flex items-center justify-between">
+            <div className="flex items-center justify-between px-3 pb-3">
               {/* Left side - RAG config */}
               <div className="flex items-center gap-1">
                 {/* Module selector */}

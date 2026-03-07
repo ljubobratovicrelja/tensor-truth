@@ -74,7 +74,7 @@ export function ChatInput({
       textareaRef.current.style.height = "auto";
       const scrollHeight = textareaRef.current.scrollHeight;
       // Clamp between min (80px) and max (200px)
-      textareaRef.current.style.height = `${Math.max(80, Math.min(scrollHeight, 200))}px`;
+      textareaRef.current.style.height = `${Math.max(48, Math.min(scrollHeight, 200))}px`;
     }
   }, [message]);
 
@@ -134,7 +134,7 @@ export function ChatInput({
 
   return (
     <div className="space-y-2">
-      <div className="bg-muted/50 border-input relative rounded-2xl border">
+      <div className="bg-muted/50 border-input relative flex flex-col rounded-2xl border">
         {/* Command Autocomplete */}
         <CommandAutocomplete
           input={message}
@@ -162,14 +162,14 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           className={cn(
-            "w-full resize-none bg-transparent px-4 pt-4 pb-14 text-base",
+            "w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base",
             "placeholder:text-muted-foreground focus:outline-none"
           )}
           rows={1}
         />
 
         {/* Bottom toolbar */}
-        <div className="absolute right-2 bottom-2 left-2 flex items-center justify-between">
+        <div className="flex items-center justify-between px-2 pb-2">
           {/* Left side - module selector, session settings, and model selector */}
           <div className="flex items-center gap-1">
             {onModulesChange && (
