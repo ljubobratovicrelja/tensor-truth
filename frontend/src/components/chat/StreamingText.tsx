@@ -67,12 +67,11 @@ export function StreamingText({ content, isStreaming, className }: StreamingText
   );
 
   return (
-    <div className={cn("streaming-blocks", className)}>
+    <div className={cn("streaming-blocks", isStreaming && "is-streaming", className)}>
       {stableBlocks.map((block, i) => (
         <MemoizedMarkdown key={i} content={block} />
       ))}
       {unstableBlock && <MemoizedMarkdown content={unstableBlock} />}
-      {isStreaming && <span className="streaming-cursor" />}
     </div>
   );
 }

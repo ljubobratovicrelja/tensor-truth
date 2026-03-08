@@ -28,8 +28,93 @@ const rehypePlugins: PluggableList = [
   ],
 ];
 
-// Custom code component that renders %%BR%% placeholders as actual line breaks
+// Display names for common language identifiers
+const LANGUAGE_LABELS: Record<string, string> = {
+  js: "JavaScript",
+  jsx: "JavaScript (JSX)",
+  ts: "TypeScript",
+  tsx: "TypeScript (TSX)",
+  py: "Python",
+  python: "Python",
+  rb: "Ruby",
+  rs: "Rust",
+  go: "Go",
+  sh: "Shell",
+  bash: "Bash",
+  zsh: "Zsh",
+  fish: "Fish",
+  ps1: "PowerShell",
+  powershell: "PowerShell",
+  yml: "YAML",
+  yaml: "YAML",
+  md: "Markdown",
+  json: "JSON",
+  html: "HTML",
+  css: "CSS",
+  scss: "SCSS",
+  sql: "SQL",
+  graphql: "GraphQL",
+  dockerfile: "Dockerfile",
+  tf: "Terraform",
+  hcl: "HCL",
+  cpp: "C++",
+  "c++": "C++",
+  cs: "C#",
+  csharp: "C#",
+  kt: "Kotlin",
+  swift: "Swift",
+  java: "Java",
+  scala: "Scala",
+  php: "PHP",
+  lua: "Lua",
+  r: "R",
+  dart: "Dart",
+  toml: "TOML",
+  ini: "INI",
+  xml: "XML",
+  makefile: "Makefile",
+  cmake: "CMake",
+  zig: "Zig",
+  elixir: "Elixir",
+  erlang: "Erlang",
+  clojure: "Clojure",
+  haskell: "Haskell",
+  ocaml: "OCaml",
+  vim: "Vim",
+  plaintext: "Text",
+  text: "Text",
+  txt: "Text",
+};
+
+function getLangLabel(className?: string): string | null {
+  if (!className) return null;
+  const match = className.match(/language-(\S+)/);
+  if (!match) return null;
+  const lang = match[1].toLowerCase();
+  return LANGUAGE_LABELS[lang] ?? lang.charAt(0).toUpperCase() + lang.slice(1);
+}
+
+// Custom components for markdown rendering
 const markdownComponents: Components = {
+  pre({ children, ...props }) {
+    // Extract language from the child <code> element's className
+    let lang: string | null = null;
+    React.Children.forEach(children, (child) => {
+      if (React.isValidElement(child)) {
+        const childProps = child.props as { className?: string };
+        if (childProps.className) {
+          lang = getLangLabel(childProps.className);
+        }
+      }
+    });
+
+    return (
+      <pre {...props}>
+        {lang && <div className="code-lang-label">{lang}</div>}
+        {children}
+      </pre>
+    );
+  },
   code({ children, className, ...props }) {
     // Only process inline code (no className means not inside a <pre> from highlight)
     if (className) {

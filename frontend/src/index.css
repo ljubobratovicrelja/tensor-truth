@@ -223,6 +223,14 @@
     background: oklch(0.15 0 0) !important;
   }
 
+  .chat-markdown pre .code-lang-label {
+    @apply -mx-4 -mt-4 mb-3 px-4 py-1.5 text-xs font-medium tracking-wide;
+    color: oklch(0.6 0 0);
+    background: oklch(0.12 0 0);
+    border-bottom: 1px solid oklch(0.22 0 0);
+    border-radius: 0.75rem 0.75rem 0 0;
+  }
+
   .chat-markdown pre code {
     @apply text-sm leading-relaxed;
     background: transparent !important;
@@ -383,11 +391,58 @@
   }
 }
 
-/* Streaming cursor animation */
+/* Streaming cursor — appears inline after the deepest last text node */
 @layer components {
-  .streaming-cursor {
+  .streaming-blocks.is-streaming > .chat-markdown:last-child {
+    --cursor-bg: currentColor;
+  }
+
+  /* Shared cursor style */
+  .streaming-blocks.is-streaming > .chat-markdown:last-child ::after {
+    /* reset — only matched selectors below actually set content */
+  }
+
+  /* Paragraphs, headings, blockquotes — direct block children */
+  .streaming-blocks.is-streaming
+    > .chat-markdown:last-child
+    > :is(p, h1, h2, h3, h4, blockquote):last-child::after {
+    content: "";
     @apply ml-0.5 inline-block h-5 w-0.5 align-middle;
-    background: currentColor;
+    background: var(--cursor-bg);
+    animation: blink 1s step-end infinite;
+  }
+
+  /* Lists: cursor on the last <li> (plain text) */
+  .streaming-blocks.is-streaming
+    > .chat-markdown:last-child
+    > :is(ul, ol):last-child
+    > li:last-child::after {
+    content: "";
+    @apply ml-0.5 inline-block h-5 w-0.5 align-middle;
+    background: var(--cursor-bg);
+    animation: blink 1s step-end infinite;
+  }
+
+  /* Lists: when <li> wraps content in <p> */
+  .streaming-blocks.is-streaming
+    > .chat-markdown:last-child
+    > :is(ul, ol):last-child
+    > li:last-child
+    > p:last-child::after {
+    content: "";
+    @apply ml-0.5 inline-block h-5 w-0.5 align-middle;
+    background: var(--cursor-bg);
+    animation: blink 1s step-end infinite;
+  }
+
+  /* Code blocks: pre > code */
+  .streaming-blocks.is-streaming
+    > .chat-markdown:last-child
+    > pre:last-child
+    code::after {
+    content: "";
+    @apply ml-0.5 inline-block h-5 w-0.5 align-middle;
+    background: var(--cursor-bg);
     animation: blink 1s step-end infinite;
   }
 
