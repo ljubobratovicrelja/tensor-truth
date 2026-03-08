@@ -102,7 +102,7 @@ class TestSystemPromptComposition:
         tools = svc._build_tools(MagicMock())
         prompt = svc._build_system_prompt(tools)
 
-        assert "intelligent assistant" in prompt.lower()
+        assert "assistant powering tensortruth" in prompt.lower()
         assert "tools" in prompt.lower()
 
     def test_modules_appear_in_prompt(self, tool_service, rag_service_loaded):
