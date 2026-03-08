@@ -21,18 +21,18 @@ interface UseAutoScrollResult {
 }
 
 /**
- * Reusable auto-scroll hook that distinguishes user scroll from programmatic
- * scroll. Auto-scrolls to the bottom on content changes unless the user has
- * scrolled away.
+ * Reusable auto-scroll hook. Auto-scrolls to the bottom on content changes
+ * unless the user has scrolled away.
  *
  * Uses a ref + state dual-tracking pattern:
  * - Ref (`isScrolledAwayRef`) for synchronous checks inside effects (immediate,
  *   survives the React render cycle)
  * - State (`isScrolledAway`) for UI (scroll-to-bottom button visibility)
  *
- * Detects scroll **direction**: any upward user scroll disengages immediately,
- * even if still within the near-bottom threshold. Re-engage only happens when
- * the user scrolls back down to within the threshold.
+ * Detects scroll **direction**: any upward scroll disengages immediately,
+ * even if still within the near-bottom threshold. Programmatic scrolls always
+ * go downward (to max position), so they never trigger disengagement.
+ * Re-engage only happens when scrolling back down to within the threshold.
  */
 export function useAutoScroll({
   nearBottomThreshold = 50,
@@ -48,10 +48,6 @@ export function useAutoScroll({
   // Track last scroll position for direction detection
   const lastScrollTopRef = useRef(0);
 
-  // Flag: true while a programmatic scrollTop assignment is in-flight.
-  // Cleared in the next rAF (after the synchronous `scroll` event fires).
-  const isProgrammaticRef = useRef(false);
-
   // Helper: update both ref and state in sync
   const setScrolledAway = useCallback((value: boolean) => {
     isScrolledAwayRef.current = value;
@@ -62,8 +58,6 @@ export function useAutoScroll({
   // Passive scroll listener — direction-based user intent detection
   // ------------------------------------------------------------------
   const handleScroll = useCallback(() => {
-    if (isProgrammaticRef.current) return; // Ignore our own scrolls
-
     const el = containerRef.current;
     if (!el) return;
 
@@ -115,7 +109,6 @@ export function useAutoScroll({
     const el = containerRef.current;
     if (!el) return;
 
-    isProgrammaticRef.current = true;
     if (behavior === "instant") {
       el.scrollTop = el.scrollHeight;
     } else {
@@ -123,10 +116,6 @@ export function useAutoScroll({
     }
     // Update baseline so next user scroll detects direction correctly
     lastScrollTopRef.current = el.scrollTop;
-    // Clear the flag after the synchronous scroll event has fired
-    requestAnimationFrame(() => {
-      isProgrammaticRef.current = false;
-    });
   }, []);
 
   // ------------------------------------------------------------------
