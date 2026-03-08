@@ -121,6 +121,9 @@ class TestModulesAPI:
         """Test listing models when Ollama is available."""
         from unittest.mock import MagicMock
 
+        from tensortruth.app_utils.config_schema import ProviderConfig
+        from tensortruth.core.providers import ProviderRegistry
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
@@ -145,11 +148,25 @@ class TestModulesAPI:
             "tensortruth.api.deps.get_config_service", lambda: test_service
         )
 
-        response = await client.get("/api/models")
-        assert response.status_code == 200
-        models = response.json()["models"]
-        assert len(models) == 2
-        assert models[0]["name"] == "llama2:7b"
+        # Isolate registry so real user config doesn't leak in
+        ProviderRegistry.reset()
+        registry = ProviderRegistry.get_instance()
+        registry._providers = [
+            ProviderConfig(
+                id="ollama",
+                type="ollama",
+                base_url="http://localhost:11434",
+            )
+        ]
+
+        try:
+            response = await client.get("/api/models")
+            assert response.status_code == 200
+            models = response.json()["models"]
+            assert len(models) == 2
+            assert models[0]["name"] == "llama2:7b"
+        finally:
+            ProviderRegistry.reset()
 
 
 class TestEmbeddingModelModulesIntegration:

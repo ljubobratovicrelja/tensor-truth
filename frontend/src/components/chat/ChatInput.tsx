@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Square, Bot } from "lucide-react";
+import { Send, Square, Bot, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { ModelSelectContent, decodeModelValue } from "./ModelSelectContent";
@@ -65,10 +65,12 @@ export function ChatInput({
     isDragOver,
     dragProps,
     handlePaste,
+    addImageFiles,
     removeImage,
     detach,
     hasImages,
   } = useImageAttachment();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [autocompleteHasResults, setAutocompleteHasResults] = useState(false);
   const [selectOpen, setSelectOpen] = useState(false);
   const { data: modelsData, isLoading: modelsLoading } = useModels(
@@ -204,10 +206,35 @@ export function ChatInput({
           rows={1}
         />
 
+        {/* Hidden file input for image attachment */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            if (files.length > 0) addImageFiles(files);
+            e.target.value = "";
+          }}
+        />
+
         {/* Bottom toolbar */}
         <div className="flex items-center justify-between px-2 pb-2">
           {/* Left side - module selector, session settings, and model selector */}
           <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              title="Attach image"
+              disabled={isStreaming}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <ImagePlus className="h-4 w-4" />
+            </Button>
             {onModulesChange && (
               <ModuleSelector
                 selectedModules={selectedModules}

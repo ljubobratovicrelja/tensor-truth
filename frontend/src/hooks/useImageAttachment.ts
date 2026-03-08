@@ -127,6 +127,7 @@ export function useImageAttachment() {
     isDragOver,
     dragProps,
     handlePaste,
+    addImageFiles,
     removeImage,
     clearImages,
     detach,
