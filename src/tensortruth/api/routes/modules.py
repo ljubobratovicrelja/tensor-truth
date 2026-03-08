@@ -215,18 +215,50 @@ async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
                 )
 
         elif provider.type == "openai_compatible":
-            # Return statically-configured models
-            for m in provider.models:
-                name = m.get("name", "")
+            # Build a lookup from statically-configured models for capability enrichment
+            static_lookup = {
+                m.get("name", ""): m for m in provider.models if m.get("name")
+            }
+
+            # Prefer dynamic discovery; fall back to static-only list if server is unreachable
+            dynamic_names: list[str] = []
+            try:
+                base = provider.base_url.rstrip("/")
+                headers = {}
+                if provider.api_key:
+                    headers["Authorization"] = f"Bearer {provider.api_key}"
+                resp = requests.get(
+                    f"{base}/models", headers=headers, timeout=5, allow_redirects=False
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    model_list = data.get("data", []) if isinstance(data, dict) else []
+                    if isinstance(model_list, list):
+                        dynamic_names = [
+                            m.get("id", "") for m in model_list if m.get("id")
+                        ]
+            except Exception as e:
+                logger.warning(
+                    "Failed to fetch models from openai_compatible provider '%s': %s",
+                    provider.id,
+                    e,
+                )
+
+            # Use dynamic list if available, otherwise fall back to static config
+            names_to_use = (
+                dynamic_names if dynamic_names else list(static_lookup.keys())
+            )
+            for name in names_to_use:
                 if not name:
                     continue
+                static = static_lookup.get(name, {})
                 models.append(
                     ModelInfo(
                         name=name,
                         provider_id=provider.id,
                         provider_type="openai_compatible",
-                        display_name=m.get("display_name") or name,
-                        capabilities=m.get("capabilities", []),
+                        display_name=static.get("display_name") or name,
+                        capabilities=static.get("capabilities", []),
                     )
                 )
                 has_any_models = True

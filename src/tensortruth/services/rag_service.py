@@ -469,28 +469,39 @@ class RAGService:
         full_thinking = ""
         sent_generating_status = not thinking_enabled
 
-        for chunk in llm.stream_chat(messages):
-            # Extract thinking delta if present
-            thinking_delta = chunk.additional_kwargs.get("thinking_delta")
-            if thinking_delta:
-                full_thinking += thinking_delta
-                yield RAGChunk(thinking=thinking_delta)
-            elif not sent_generating_status and thinking_enabled:
-                # Transition from thinking to generating
-                yield RAGChunk(
-                    status="generating",
-                    progress=ToolProgress(
-                        tool_id="rag",
-                        phase="generating",
-                        message="Generating response...",
-                    ),
-                )
-                sent_generating_status = True
+        try:
+            for chunk in llm.stream_chat(messages):
+                # Extract thinking delta if present
+                thinking_delta = chunk.additional_kwargs.get("thinking_delta")
+                if thinking_delta:
+                    full_thinking += thinking_delta
+                    yield RAGChunk(thinking=thinking_delta)
+                elif not sent_generating_status and thinking_enabled:
+                    # Transition from thinking to generating
+                    yield RAGChunk(
+                        status="generating",
+                        progress=ToolProgress(
+                            tool_id="rag",
+                            phase="generating",
+                            message="Generating response...",
+                        ),
+                    )
+                    sent_generating_status = True
 
-            # Extract content delta
-            if chunk.delta:
-                full_response += chunk.delta
-                yield RAGChunk(text=chunk.delta)
+                # Extract content delta
+                if chunk.delta:
+                    full_response += chunk.delta
+                    yield RAGChunk(text=chunk.delta)
+
+        except Exception as e:
+            logger.error("LLM stream_chat failed: %s", e, exc_info=True)
+            error_text = (
+                f"**Error during generation:** `{e}`\n\n"
+                "The model returned an error while generating a response. "
+                "Check the server logs for details."
+            )
+            yield RAGChunk(text=error_text)
+            full_response = error_text
 
         # Yield final complete chunk with sources and metrics
         yield RAGChunk(

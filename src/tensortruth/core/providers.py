@@ -546,6 +546,10 @@ def _create_openai_like_llm(model_ref: ModelReference, **kwargs) -> LLM:
     if max_tokens and max_tokens > 0:
         llm_kwargs["max_tokens"] = max_tokens
 
+    # Enable function calling if model advertises tool support
+    if "tools" in model_ref.capabilities:
+        llm_kwargs.setdefault("is_function_calling_model", True)
+
     # Pass through remaining kwargs
     llm_kwargs.update(kwargs)
 

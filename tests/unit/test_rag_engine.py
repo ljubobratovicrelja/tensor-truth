@@ -364,17 +364,24 @@ class TestGetLLM:
 
     @patch("tensortruth.rag_engine.create_llm")
     def test_get_llm_cpu_mode(self, mock_create_llm):
-        """Test LLM initialization with CPU mode."""
+        """Test LLM initialization with CPU mode on an Ollama model.
+
+        num_gpu=0 is an Ollama-specific kwarg; it is only injected when the
+        resolved provider type is "ollama".  Pass an explicit Ollama model so
+        the test is independent of which providers happen to be configured.
+        """
         from tensortruth.rag_engine import get_llm
 
         mock_llm = MagicMock()
         mock_create_llm.return_value = mock_llm
 
-        params = {"llm_device": "cpu"}
+        # "ollama" is always registered as the default provider, so any bare
+        # model name (no provider prefix) resolves to provider_type="ollama".
+        params = {"model": "llama2:7b", "llm_device": "cpu"}
         result = get_llm(params)
         assert result == mock_llm
 
-        # Should set num_gpu to 0 for CPU mode in additional_kwargs
+        # num_gpu=0 must be present for Ollama CPU mode
         call_kwargs = mock_create_llm.call_args[1]
         assert call_kwargs["additional_kwargs"]["num_gpu"] == 0
 

@@ -118,7 +118,56 @@ def _probe_provider(ptype: str, base_url: str, api_key: str = "") -> dict:
     return result
 
 
-@router.get("/", response_model=ProviderListResponse)
+def _detect_and_store_model_capabilities(
+    config_service: Any,
+    provider_id: str,
+    base_url: str,
+    discovered_model_names: List[str],
+    existing_models: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Probe each discovered model for capabilities and persist to config.
+
+    Uses the llama.cpp ``/props`` endpoint, which works for both ``llama_cpp``
+    and ``openai_compatible`` providers backed by llama.cpp.  Returns silently
+    with empty capabilities for servers that don't expose ``/props``.
+    """
+    from tensortruth.core.llama_cpp import check_capabilities
+
+    existing_lookup = {m.get("name", ""): m for m in existing_models if m.get("name")}
+    updated: List[Dict[str, Any]] = []
+
+    for model_name in discovered_model_names:
+        prior = existing_lookup.get(model_name, {})
+        # Use existing capabilities if already set; otherwise auto-detect.
+        if prior.get("capabilities"):
+            caps = prior["capabilities"]
+        else:
+            caps = check_capabilities(base_url, model_name)
+        updated.append(
+            {
+                "name": model_name,
+                "display_name": prior.get("display_name", ""),
+                "capabilities": caps,
+            }
+        )
+        logger.info(
+            "Provider '%s' model '%s' capabilities: %s",
+            provider_id,
+            model_name,
+            caps or "(none detected)",
+        )
+
+    try:
+        config_service.update_provider(provider_id, models=updated)
+    except Exception as e:
+        logger.warning(
+            "Failed to persist model capabilities for '%s': %s", provider_id, e
+        )
+
+    return updated
+
+
+@router.get("", response_model=ProviderListResponse)
 def list_providers(config_service: ConfigServiceDep) -> ProviderListResponse:
     """List all configured providers with live connectivity status."""
     config = config_service.load()
@@ -142,7 +191,7 @@ def list_providers(config_service: ConfigServiceDep) -> ProviderListResponse:
     return ProviderListResponse(providers=providers)
 
 
-@router.post("/", response_model=ProviderResponse, status_code=201)
+@router.post("", response_model=ProviderResponse, status_code=201)
 def add_provider(
     body: ProviderCreateRequest, config_service: ConfigServiceDep
 ) -> ProviderResponse:
@@ -169,13 +218,26 @@ def add_provider(
     _reset_provider_registry()
 
     probe = _probe_provider(provider.type, provider.base_url, provider.api_key)
+
+    # Auto-detect capabilities for llama_cpp and openai_compatible providers and
+    # persist them to config so the model selector knows what each model supports.
+    detected_models = provider.models
+    if provider.type in ("llama_cpp", "openai_compatible") and probe["models"]:
+        detected_models = _detect_and_store_model_capabilities(
+            config_service,
+            provider.id,
+            provider.base_url,
+            probe["models"],
+            existing_models=body.models or [],
+        )
+
     return ProviderResponse(
         id=provider.id,
         type=provider.type,
         base_url=provider.base_url,
         api_key=_mask_api_key(provider.api_key),
         timeout=provider.timeout,
-        models=provider.models,
+        models=detected_models,
         status="connected" if probe["connected"] else "unreachable",
         model_count=len(probe["models"]),
     )
@@ -222,13 +284,30 @@ def update_provider(
         )
 
     probe = _probe_provider(provider.type, provider.base_url, provider.api_key)
+
+    # Re-detect capabilities when the URL changes (new server may have different models)
+    detected_models = provider.models
+    url_changed = body.base_url is not None
+    if (
+        url_changed
+        and provider.type in ("llama_cpp", "openai_compatible")
+        and probe["models"]
+    ):
+        detected_models = _detect_and_store_model_capabilities(
+            config_service,
+            provider.id,
+            provider.base_url,
+            probe["models"],
+            existing_models=body.models or [],
+        )
+
     return ProviderResponse(
         id=provider.id,
         type=provider.type,
         base_url=provider.base_url,
         api_key=_mask_api_key(provider.api_key),
         timeout=provider.timeout,
-        models=provider.models,
+        models=detected_models,
         status="connected" if probe["connected"] else "unreachable",
         model_count=len(probe["models"]),
     )
