@@ -1,7 +1,22 @@
-import { useState, useEffect, useMemo } from "react";
-import { Settings, Loader2, HelpCircle, RefreshCw, Plus } from "lucide-react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
+import {
+  Settings,
+  Loader2,
+  HelpCircle,
+  RefreshCw,
+  Plus,
+  Server,
+  Sparkles,
+  Search,
+  History,
+  Globe,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +53,7 @@ import {
   useStartupStatus,
   useModelActions,
 } from "@/hooks";
+import { useIsMobile } from "@/hooks/useMediaQuery";
 import { ProviderSetupPanel } from "@/components/providers/ProviderSetupPanel";
 import type { ConfigResponse } from "@/api/types";
 
@@ -58,6 +74,24 @@ interface ConfigFormProps {
   config: ConfigResponse;
   onSave: (updates: Record<string, unknown>) => Promise<void>;
   isSaving: boolean;
+}
+
+const TAB_GROUPS = [
+  { id: "providers", label: "Providers", icon: Server },
+  { id: "generation", label: "Generation", icon: Sparkles },
+  { id: "retrieval", label: "Retrieval", icon: Search },
+  { id: "history", label: "History", icon: History },
+  { id: "web-search", label: "Web Search", icon: Globe },
+  { id: "maintenance", label: "Maintenance", icon: Wrench },
+] as const;
+
+function SectionHeader({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
+  return (
+    <div className="flex items-center gap-2 pb-1">
+      <Icon className="text-muted-foreground h-4 w-4" />
+      <h3 className="text-sm font-semibold">{title}</h3>
+    </div>
+  );
 }
 
 const DEVICE_OPTIONS = ["cpu", "cuda", "mps"];
@@ -329,670 +363,702 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     });
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Providers Section */}
+  const isMobile = useIsMobile();
+
+  // --- Render closures for each tab ---
+
+  const renderProvidersSection = (): ReactNode => (
+    <div className="space-y-4">
       <div className="space-y-4">
-        <h3 className="text-sm font-medium">LLM Providers</h3>
+        <h4 className="text-sm font-medium">LLM Providers</h4>
         <ProviderSetupPanel mode="settings" />
       </div>
 
       <Separator />
 
-      {/* Models Section */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium">Model</h3>
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <Label>
-              Model
-              <HelpTooltip text="Primary model used for chat, RAG, agents, and all LLM tasks." />
-            </Label>
-            <Select
-              value={ragModel ? encodeModelValue(ragModelProvider, ragModel) : ragModel}
-              onValueChange={(v) => {
-                const { providerId, modelName } = decodeModelValue(v);
-                setRagModel(modelName);
-                setRagModelProvider(providerId);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
-              <ModelSelectContent
-                models={allModelOptions.models}
-                onLoadModel={handleLoadModel}
-                onUnloadModel={handleUnloadModel}
-                actionsInFlight={actionsInFlight}
-                extraItems={
-                  allModelOptions.extras.length > 0 ? (
-                    <>
-                      {allModelOptions.extras.map((name) => (
-                        <SelectItem
-                          key={name}
-                          value={encodeModelValue(ragModelProvider, name)}
-                          className="text-muted-foreground"
-                        >
-                          {name} (not installed)
-                        </SelectItem>
-                      ))}
-                    </>
-                  ) : undefined
-                }
-              />
-            </Select>
-          </div>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Generation Section */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium">Generation</h3>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Temperature</Label>
-              <span className="text-muted-foreground text-sm">{temperature}</span>
-            </div>
-            <Slider
-              value={[temperature]}
-              onValueChange={([v]) => setTemperature(v)}
-              min={0}
-              max={2}
-              step={0.1}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Context Window</Label>
-            <Select
-              value={String(contextWindow)}
-              onValueChange={(v) => setContextWindow(Number(v))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select context window" />
-              </SelectTrigger>
-              <SelectContent>
-                {CONTEXT_WINDOW_OPTIONS.map((size) => (
-                  <SelectItem key={size} value={String(size)}>
-                    {size.toLocaleString()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Max Tokens</Label>
-              <span className="text-muted-foreground text-sm">{maxTokens}</span>
-            </div>
-            <Slider
-              value={[maxTokens]}
-              onValueChange={([v]) => setMaxTokens(v)}
-              min={256}
-              max={16384}
-              step={256}
-            />
-          </div>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Retrieval Section */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium">Retrieval</h3>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>
-              Embedding Model
-              <HelpTooltip text="Model used for vector embeddings. Changing this switches to a different set of indexes." />
-            </Label>
-            <Select
-              value={embeddingModelSelectValue}
-              onValueChange={(selectedId) => {
-                const model = embeddingModelsData?.models.find(
-                  (m) => m.model_id === selectedId
-                );
-                if (model?.model_name) {
-                  setEmbeddingModel(model.model_name);
-                } else {
-                  console.warn(
-                    `Embedding model "${selectedId}" has no model_name; keeping current value`
-                  );
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select embedding model" />
-              </SelectTrigger>
-              <SelectContent>
-                {embeddingModelsData?.models.map((model) => (
-                  <SelectItem key={model.model_id} value={model.model_id}>
-                    {model.model_name || model.model_id} ({model.index_count} modules)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>
-              Reranker Model
-              <HelpTooltip text="Cross-encoder model that re-scores retrieved documents for better relevance ranking." />
-            </Label>
-            <div className="flex gap-2">
-              <Select value={reranker} onValueChange={setReranker}>
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Select reranker" />
-                </SelectTrigger>
-                <SelectContent>
-                  {rerankersData?.models.map((model) => (
-                    <SelectItem key={model.model} value={model.model}>
-                      {model.model}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Dialog open={addRerankerOpen} onOpenChange={setAddRerankerOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="icon" title="Add custom reranker">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Add Reranker Model</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>HuggingFace Model Path</Label>
-                      <Input
-                        value={newRerankerModel}
-                        onChange={(e) => setNewRerankerModel(e.target.value)}
-                        placeholder="e.g., BAAI/bge-reranker-v2-m3"
-                      />
-                      <p className="text-muted-foreground text-xs">
-                        Enter the full HuggingFace model path. The model will be validated
-                        before adding.
-                      </p>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setAddRerankerOpen(false);
-                          setNewRerankerModel("");
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          if (!newRerankerModel.trim()) return;
-                          addReranker.mutate(newRerankerModel.trim(), {
-                            onSuccess: (response) => {
-                              if (response.status === "added") {
-                                toast.success(`Reranker "${response.model}" added`);
-                                setReranker(response.model || newRerankerModel.trim());
-                                setAddRerankerOpen(false);
-                                setNewRerankerModel("");
-                              } else {
-                                toast.error(response.error || "Failed to add reranker");
-                              }
-                            },
-                            onError: (error) => {
-                              toast.error(`Failed to add reranker: ${error.message}`);
-                            },
-                          });
-                        }}
-                        disabled={addReranker.isPending || !newRerankerModel.trim()}
-                      >
-                        {addReranker.isPending ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Validating...
-                          </>
-                        ) : (
-                          "Add"
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Top N Sources</Label>
-              <span className="text-muted-foreground text-sm">{topN}</span>
-            </div>
-            <Slider
-              value={[topN]}
-              onValueChange={([v]) => setTopN(v)}
-              min={1}
-              max={20}
-              step={1}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Confidence Threshold</Label>
-              <span className="text-muted-foreground text-sm">
-                {confidenceThreshold.toFixed(2)}
-              </span>
-            </div>
-            <Slider
-              value={[confidenceThreshold]}
-              onValueChange={([v]) => setConfidenceThreshold(v)}
-              min={0}
-              max={1}
-              step={0.05}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Hard Cutoff</Label>
-              <span className="text-muted-foreground text-sm">
-                {confidenceCutoffHard.toFixed(2)}
-              </span>
-            </div>
-            <Slider
-              value={[confidenceCutoffHard]}
-              onValueChange={([v]) => setConfidenceCutoffHard(v)}
-              min={0}
-              max={1}
-              step={0.05}
-            />
-          </div>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Hardware Section */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium">Hardware</h3>
+      <div className="space-y-3">
+        <h4 className="text-sm font-medium">Model</h4>
         <div className="space-y-2">
-          <Label>RAG Device</Label>
-          <Select value={device} onValueChange={setDevice}>
+          <Label>
+            Model
+            <HelpTooltip text="Primary model used for chat, RAG, agents, and all LLM tasks." />
+          </Label>
+          <Select
+            value={ragModel ? encodeModelValue(ragModelProvider, ragModel) : ragModel}
+            onValueChange={(v) => {
+              const { providerId, modelName } = decodeModelValue(v);
+              setRagModel(modelName);
+              setRagModelProvider(providerId);
+            }}
+          >
             <SelectTrigger>
-              <SelectValue placeholder="Select device" />
+              <SelectValue placeholder="Select model" />
+            </SelectTrigger>
+            <ModelSelectContent
+              models={allModelOptions.models}
+              onLoadModel={handleLoadModel}
+              onUnloadModel={handleUnloadModel}
+              actionsInFlight={actionsInFlight}
+              extraItems={
+                allModelOptions.extras.length > 0 ? (
+                  <>
+                    {allModelOptions.extras.map((name) => (
+                      <SelectItem
+                        key={name}
+                        value={encodeModelValue(ragModelProvider, name)}
+                        className="text-muted-foreground"
+                      >
+                        {name} (not installed)
+                      </SelectItem>
+                    ))}
+                  </>
+                ) : undefined
+              }
+            />
+          </Select>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderGenerationSection = (): ReactNode => (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>Temperature</Label>
+          <span className="text-muted-foreground text-sm">{temperature}</span>
+        </div>
+        <Slider
+          value={[temperature]}
+          onValueChange={([v]) => setTemperature(v)}
+          min={0}
+          max={2}
+          step={0.1}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Context Window</Label>
+        <Select
+          value={String(contextWindow)}
+          onValueChange={(v) => setContextWindow(Number(v))}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select context window" />
+          </SelectTrigger>
+          <SelectContent>
+            {CONTEXT_WINDOW_OPTIONS.map((size) => (
+              <SelectItem key={size} value={String(size)}>
+                {size.toLocaleString()}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>Max Tokens</Label>
+          <span className="text-muted-foreground text-sm">{maxTokens}</span>
+        </div>
+        <Slider
+          value={[maxTokens]}
+          onValueChange={([v]) => setMaxTokens(v)}
+          min={256}
+          max={16384}
+          step={256}
+        />
+      </div>
+    </div>
+  );
+
+  const renderRetrievalSection = (): ReactNode => (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>
+          Embedding Model
+          <HelpTooltip text="Model used for vector embeddings. Changing this switches to a different set of indexes." />
+        </Label>
+        <Select
+          value={embeddingModelSelectValue}
+          onValueChange={(selectedId) => {
+            const model = embeddingModelsData?.models.find(
+              (m) => m.model_id === selectedId
+            );
+            if (model?.model_name) {
+              setEmbeddingModel(model.model_name);
+            } else {
+              console.warn(
+                `Embedding model "${selectedId}" has no model_name; keeping current value`
+              );
+            }
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select embedding model" />
+          </SelectTrigger>
+          <SelectContent>
+            {embeddingModelsData?.models.map((model) => (
+              <SelectItem key={model.model_id} value={model.model_id}>
+                {model.model_name || model.model_id} ({model.index_count} modules)
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>
+          Reranker Model
+          <HelpTooltip text="Cross-encoder model that re-scores retrieved documents for better relevance ranking." />
+        </Label>
+        <div className="flex gap-2">
+          <Select value={reranker} onValueChange={setReranker}>
+            <SelectTrigger className="flex-1">
+              <SelectValue placeholder="Select reranker" />
             </SelectTrigger>
             <SelectContent>
-              {availableDevices.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option.toUpperCase()}
+              {rerankersData?.models.map((model) => (
+                <SelectItem key={model.model} value={model.model}>
+                  {model.model}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <p className="text-muted-foreground text-xs">
-            Device for embedding model and reranker
-          </p>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Chat History Section */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium">Chat History</h3>
-        <p className="text-muted-foreground text-xs">
-          Control how much conversation history is included in prompts.
-        </p>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>
-                Max History Turns
-                <HelpTooltip text="Number of conversation turns to include in the prompt. 1 turn = 1 user query + 1 assistant response. Lower values = faster responses and lower cost." />
-              </Label>
-              <span className="text-muted-foreground text-sm">{maxHistoryTurns}</span>
-            </div>
-            <Slider
-              value={[maxHistoryTurns]}
-              onValueChange={([v]) => setMaxHistoryTurns(v)}
-              min={0}
-              max={10}
-              step={1}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>
-                Memory Token Limit
-                <HelpTooltip text="Maximum tokens stored in chat memory buffer. Acts as a safety backstop - if total history exceeds this, oldest messages are dropped. Usually the message count limit above is what matters." />
-              </Label>
-              <span className="text-muted-foreground text-sm">
-                {memoryTokenLimit.toLocaleString()}
-              </span>
-            </div>
-            <Slider
-              value={[Math.min(memoryTokenLimit, contextWindow)]}
-              onValueChange={([v]) => setMemoryTokenLimit(v)}
-              min={1000}
-              max={contextWindow}
-              step={1000}
-            />
-          </div>
-        </div>
-
-        <Separator className="my-4" />
-
-        <h4 className="text-sm font-medium">History Cleaning</h4>
-        <p className="text-muted-foreground text-xs">
-          Reduce token usage by cleaning chat history before sending to the LLM.
-        </p>
-        <div className="space-y-3">
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="history-cleaning-enabled"
-              checked={historyCleaningEnabled}
-              onCheckedChange={(checked) => setHistoryCleaningEnabled(checked === true)}
-            />
-            <Label htmlFor="history-cleaning-enabled" className="cursor-pointer">
-              Enable history cleaning
-              <HelpTooltip text="Master switch for all history cleaning operations." />
-            </Label>
-          </div>
-
-          <div className="ml-6 space-y-2">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="remove-emojis"
-                checked={removeEmojis}
-                disabled={!historyCleaningEnabled}
-                onCheckedChange={(checked) => setRemoveEmojis(checked === true)}
-              />
-              <Label
-                htmlFor="remove-emojis"
-                className={
-                  historyCleaningEnabled
-                    ? "cursor-pointer"
-                    : "text-muted-foreground cursor-not-allowed"
-                }
-              >
-                Remove emojis
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="remove-filler-phrases"
-                checked={removeFillerPhrases}
-                disabled={!historyCleaningEnabled}
-                onCheckedChange={(checked) => setRemoveFillerPhrases(checked === true)}
-              />
-              <Label
-                htmlFor="remove-filler-phrases"
-                className={
-                  historyCleaningEnabled
-                    ? "cursor-pointer"
-                    : "text-muted-foreground cursor-not-allowed"
-                }
-              >
-                Remove filler phrases
-                <HelpTooltip text="Removes common LLM pleasantries like 'Great question!' and 'Hope this helps!'" />
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="normalize-whitespace"
-                checked={normalizeWhitespace}
-                disabled={!historyCleaningEnabled}
-                onCheckedChange={(checked) => setNormalizeWhitespace(checked === true)}
-              />
-              <Label
-                htmlFor="normalize-whitespace"
-                className={
-                  historyCleaningEnabled
-                    ? "cursor-pointer"
-                    : "text-muted-foreground cursor-not-allowed"
-                }
-              >
-                Normalize whitespace
-                <HelpTooltip text="Collapses multiple spaces into single spaces (preserves indentation)." />
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="collapse-newlines"
-                checked={collapseNewlines}
-                disabled={!historyCleaningEnabled}
-                onCheckedChange={(checked) => setCollapseNewlines(checked === true)}
-              />
-              <Label
-                htmlFor="collapse-newlines"
-                className={
-                  historyCleaningEnabled
-                    ? "cursor-pointer"
-                    : "text-muted-foreground cursor-not-allowed"
-                }
-              >
-                Collapse excessive newlines
-                <HelpTooltip text="Reduces 3+ consecutive newlines to 2." />
-              </Label>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Web Search Section */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium">Web Search</h3>
-        <p className="text-muted-foreground text-xs">
-          Configure web search behavior and quality thresholds for /web commands.
-        </p>
-
-        {/* Search Limits */}
-        <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
-          <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            Search Limits
-          </h4>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">
-                Max Search Results
-                <HelpTooltip text="Maximum results to fetch from DuckDuckGo. Higher values = more candidates to choose from." />
-              </Label>
-              <span className="text-muted-foreground text-sm">{ddgMaxResults}</span>
-            </div>
-            <Slider
-              value={[ddgMaxResults]}
-              onValueChange={([v]) => setDdgMaxResults(v)}
-              min={5}
-              max={20}
-              step={1}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">
-                Max Pages to Fetch
-                <HelpTooltip text="Maximum pages to download and process. Higher values = more comprehensive results." />
-              </Label>
-              <span className="text-muted-foreground text-sm">{maxPagesToFetch}</span>
-            </div>
-            <Slider
-              value={[maxPagesToFetch]}
-              onValueChange={([v]) => setMaxPagesToFetch(v)}
-              min={1}
-              max={10}
-              step={1}
-            />
-          </div>
-        </div>
-
-        {/* Relevance Thresholds */}
-        <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
-          <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            Relevance Thresholds
-          </h4>
-          <p className="text-muted-foreground text-xs">
-            Sources below these thresholds are rejected. Lower = more lenient.
-          </p>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">
-                Title Threshold
-                <HelpTooltip text="Minimum relevance score for search result titles/snippets (0-50%). Sources below this are not fetched." />
-              </Label>
-              <span className="text-muted-foreground text-sm">
-                {(rerankTitleThreshold * 100).toFixed(0)}%
-              </span>
-            </div>
-            <Slider
-              value={[rerankTitleThreshold]}
-              onValueChange={([v]) => setRerankTitleThreshold(v)}
-              min={0}
-              max={0.5}
-              step={0.05}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">
-                Content Threshold
-                <HelpTooltip text="Minimum relevance score for fetched page content (0-50%). Sources below this are excluded from summary." />
-              </Label>
-              <span className="text-muted-foreground text-sm">
-                {(rerankContentThreshold * 100).toFixed(0)}%
-              </span>
-            </div>
-            <Slider
-              value={[rerankContentThreshold]}
-              onValueChange={([v]) => setRerankContentThreshold(v)}
-              min={0}
-              max={0.5}
-              step={0.05}
-            />
-          </div>
-        </div>
-
-        {/* Context Fitting */}
-        <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
-          <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            Context Fitting
-          </h4>
-          <p className="text-muted-foreground text-xs">
-            Control how source content is distributed within the context window.
-          </p>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">
-                Max Source Context
-                <HelpTooltip text="Maximum % of context window for a single source. Prevents one source from dominating." />
-              </Label>
-              <span className="text-muted-foreground text-sm">
-                {(maxSourceContextPct * 100).toFixed(0)}%
-              </span>
-            </div>
-            <Slider
-              value={[maxSourceContextPct]}
-              onValueChange={([v]) => setMaxSourceContextPct(v)}
-              min={0.05}
-              max={0.3}
-              step={0.01}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">
-                Input Context
-                <HelpTooltip text="% of context window for input (sources). Rest is reserved for LLM output." />
-              </Label>
-              <span className="text-muted-foreground text-sm">
-                {(inputContextPct * 100).toFixed(0)}%
-              </span>
-            </div>
-            <Slider
-              value={[inputContextPct]}
-              onValueChange={([v]) => setInputContextPct(v)}
-              min={0.4}
-              max={0.8}
-              step={0.05}
-            />
-          </div>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Maintenance Section */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium">Maintenance</h3>
-        <div className="space-y-3">
-          <div className="bg-muted/50 rounded-lg border p-4">
-            <div className="mb-3 flex items-start gap-2">
-              <RefreshCw className="text-muted-foreground mt-0.5 h-4 w-4" />
-              <div className="flex-1">
-                <h4 className="text-sm font-medium">Reinitialize Indexes</h4>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  Delete all existing vector indexes and download fresh copies from
-                  HuggingFace Hub. Use this to fix corrupted indexes or update to the
-                  latest version. (~3.9GB download)
-                </p>
-              </div>
-            </div>
-            <Button
-              onClick={handleReinitialize}
-              disabled={isReinitializing}
-              variant="outline"
-              size="sm"
-              className="w-full"
-            >
-              {isReinitializing ? (
-                <>
-                  <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                  Reinitializing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-3 w-3" />
-                  Reinitialize Indexes
-                </>
-              )}
-            </Button>
-            {isReinitializing && (
-              <div className="mt-3 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">
-                    Reinitialization in progress...
-                  </span>
-                  <span className="text-muted-foreground font-mono">
-                    {elapsedSeconds}s
-                  </span>
+          <Dialog open={addRerankerOpen} onOpenChange={setAddRerankerOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="icon" title="Add custom reranker">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Add Reranker Model</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>HuggingFace Model Path</Label>
+                  <Input
+                    value={newRerankerModel}
+                    onChange={(e) => setNewRerankerModel(e.target.value)}
+                    placeholder="e.g., BAAI/bge-reranker-v2-m3"
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Enter the full HuggingFace model path. The model will be validated
+                    before adding.
+                  </p>
                 </div>
-                <div className="bg-secondary relative h-1.5 overflow-hidden rounded-full">
-                  <div className="from-primary/50 via-primary to-primary/50 absolute inset-0 animate-pulse bg-gradient-to-r" />
-                  <div className="via-primary/30 animate-shimmer absolute inset-0 bg-gradient-to-r from-transparent to-transparent" />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setAddRerankerOpen(false);
+                      setNewRerankerModel("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!newRerankerModel.trim()) return;
+                      addReranker.mutate(newRerankerModel.trim(), {
+                        onSuccess: (response) => {
+                          if (response.status === "added") {
+                            toast.success(`Reranker "${response.model}" added`);
+                            setReranker(response.model || newRerankerModel.trim());
+                            setAddRerankerOpen(false);
+                            setNewRerankerModel("");
+                          } else {
+                            toast.error(response.error || "Failed to add reranker");
+                          }
+                        },
+                        onError: (error) => {
+                          toast.error(`Failed to add reranker: ${error.message}`);
+                        },
+                      });
+                    }}
+                    disabled={addReranker.isPending || !newRerankerModel.trim()}
+                  >
+                    {addReranker.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Validating...
+                      </>
+                    ) : (
+                      "Add"
+                    )}
+                  </Button>
                 </div>
-                <p className="text-muted-foreground text-xs">
-                  Deleting old indexes and downloading fresh copies. This may take several
-                  minutes.
-                </p>
               </div>
-            )}
-          </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>Top N Sources</Label>
+          <span className="text-muted-foreground text-sm">{topN}</span>
+        </div>
+        <Slider
+          value={[topN]}
+          onValueChange={([v]) => setTopN(v)}
+          min={1}
+          max={20}
+          step={1}
+        />
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>Confidence Threshold</Label>
+          <span className="text-muted-foreground text-sm">
+            {confidenceThreshold.toFixed(2)}
+          </span>
+        </div>
+        <Slider
+          value={[confidenceThreshold]}
+          onValueChange={([v]) => setConfidenceThreshold(v)}
+          min={0}
+          max={1}
+          step={0.05}
+        />
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>Hard Cutoff</Label>
+          <span className="text-muted-foreground text-sm">
+            {confidenceCutoffHard.toFixed(2)}
+          </span>
+        </div>
+        <Slider
+          value={[confidenceCutoffHard]}
+          onValueChange={([v]) => setConfidenceCutoffHard(v)}
+          min={0}
+          max={1}
+          step={0.05}
+        />
+      </div>
 
-      <div className="flex justify-end gap-2">
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            "Save Changes"
-          )}
-        </Button>
+      <Separator />
+
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium">Hardware</h4>
+        <Label>RAG Device</Label>
+        <Select value={device} onValueChange={setDevice}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select device" />
+          </SelectTrigger>
+          <SelectContent>
+            {availableDevices.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option.toUpperCase()}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-muted-foreground text-xs">
+          Device for embedding model and reranker
+        </p>
       </div>
     </div>
+  );
+
+  const renderHistorySection = (): ReactNode => (
+    <div className="space-y-4">
+      <p className="text-muted-foreground text-xs">
+        Control how much conversation history is included in prompts.
+      </p>
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>
+              Max History Turns
+              <HelpTooltip text="Number of conversation turns to include in the prompt. 1 turn = 1 user query + 1 assistant response. Lower values = faster responses and lower cost." />
+            </Label>
+            <span className="text-muted-foreground text-sm">{maxHistoryTurns}</span>
+          </div>
+          <Slider
+            value={[maxHistoryTurns]}
+            onValueChange={([v]) => setMaxHistoryTurns(v)}
+            min={0}
+            max={10}
+            step={1}
+          />
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>
+              Memory Token Limit
+              <HelpTooltip text="Maximum tokens stored in chat memory buffer. Acts as a safety backstop - if total history exceeds this, oldest messages are dropped. Usually the message count limit above is what matters." />
+            </Label>
+            <span className="text-muted-foreground text-sm">
+              {memoryTokenLimit.toLocaleString()}
+            </span>
+          </div>
+          <Slider
+            value={[Math.min(memoryTokenLimit, contextWindow)]}
+            onValueChange={([v]) => setMemoryTokenLimit(v)}
+            min={1000}
+            max={contextWindow}
+            step={1000}
+          />
+        </div>
+      </div>
+
+      <Separator className="my-4" />
+
+      <h4 className="text-sm font-medium">History Cleaning</h4>
+      <p className="text-muted-foreground text-xs">
+        Reduce token usage by cleaning chat history before sending to the LLM.
+      </p>
+      <div className="space-y-3">
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="history-cleaning-enabled"
+            checked={historyCleaningEnabled}
+            onCheckedChange={(checked) => setHistoryCleaningEnabled(checked === true)}
+          />
+          <Label htmlFor="history-cleaning-enabled" className="cursor-pointer">
+            Enable history cleaning
+            <HelpTooltip text="Master switch for all history cleaning operations." />
+          </Label>
+        </div>
+
+        <div className="ml-6 space-y-2">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="remove-emojis"
+              checked={removeEmojis}
+              disabled={!historyCleaningEnabled}
+              onCheckedChange={(checked) => setRemoveEmojis(checked === true)}
+            />
+            <Label
+              htmlFor="remove-emojis"
+              className={
+                historyCleaningEnabled
+                  ? "cursor-pointer"
+                  : "text-muted-foreground cursor-not-allowed"
+              }
+            >
+              Remove emojis
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="remove-filler-phrases"
+              checked={removeFillerPhrases}
+              disabled={!historyCleaningEnabled}
+              onCheckedChange={(checked) => setRemoveFillerPhrases(checked === true)}
+            />
+            <Label
+              htmlFor="remove-filler-phrases"
+              className={
+                historyCleaningEnabled
+                  ? "cursor-pointer"
+                  : "text-muted-foreground cursor-not-allowed"
+              }
+            >
+              Remove filler phrases
+              <HelpTooltip text="Removes common LLM pleasantries like 'Great question!' and 'Hope this helps!'" />
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="normalize-whitespace"
+              checked={normalizeWhitespace}
+              disabled={!historyCleaningEnabled}
+              onCheckedChange={(checked) => setNormalizeWhitespace(checked === true)}
+            />
+            <Label
+              htmlFor="normalize-whitespace"
+              className={
+                historyCleaningEnabled
+                  ? "cursor-pointer"
+                  : "text-muted-foreground cursor-not-allowed"
+              }
+            >
+              Normalize whitespace
+              <HelpTooltip text="Collapses multiple spaces into single spaces (preserves indentation)." />
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="collapse-newlines"
+              checked={collapseNewlines}
+              disabled={!historyCleaningEnabled}
+              onCheckedChange={(checked) => setCollapseNewlines(checked === true)}
+            />
+            <Label
+              htmlFor="collapse-newlines"
+              className={
+                historyCleaningEnabled
+                  ? "cursor-pointer"
+                  : "text-muted-foreground cursor-not-allowed"
+              }
+            >
+              Collapse excessive newlines
+              <HelpTooltip text="Reduces 3+ consecutive newlines to 2." />
+            </Label>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderWebSearchSection = (): ReactNode => (
+    <div className="space-y-4">
+      <p className="text-muted-foreground text-xs">
+        Configure web search behavior and quality thresholds for /web commands.
+      </p>
+
+      {/* Search Limits */}
+      <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
+        <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          Search Limits
+        </h4>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm">
+              Max Search Results
+              <HelpTooltip text="Maximum results to fetch from DuckDuckGo. Higher values = more candidates to choose from." />
+            </Label>
+            <span className="text-muted-foreground text-sm">{ddgMaxResults}</span>
+          </div>
+          <Slider
+            value={[ddgMaxResults]}
+            onValueChange={([v]) => setDdgMaxResults(v)}
+            min={5}
+            max={20}
+            step={1}
+          />
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm">
+              Max Pages to Fetch
+              <HelpTooltip text="Maximum pages to download and process. Higher values = more comprehensive results." />
+            </Label>
+            <span className="text-muted-foreground text-sm">{maxPagesToFetch}</span>
+          </div>
+          <Slider
+            value={[maxPagesToFetch]}
+            onValueChange={([v]) => setMaxPagesToFetch(v)}
+            min={1}
+            max={10}
+            step={1}
+          />
+        </div>
+      </div>
+
+      {/* Relevance Thresholds */}
+      <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
+        <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          Relevance Thresholds
+        </h4>
+        <p className="text-muted-foreground text-xs">
+          Sources below these thresholds are rejected. Lower = more lenient.
+        </p>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm">
+              Title Threshold
+              <HelpTooltip text="Minimum relevance score for search result titles/snippets (0-50%). Sources below this are not fetched." />
+            </Label>
+            <span className="text-muted-foreground text-sm">
+              {(rerankTitleThreshold * 100).toFixed(0)}%
+            </span>
+          </div>
+          <Slider
+            value={[rerankTitleThreshold]}
+            onValueChange={([v]) => setRerankTitleThreshold(v)}
+            min={0}
+            max={0.5}
+            step={0.05}
+          />
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm">
+              Content Threshold
+              <HelpTooltip text="Minimum relevance score for fetched page content (0-50%). Sources below this are excluded from summary." />
+            </Label>
+            <span className="text-muted-foreground text-sm">
+              {(rerankContentThreshold * 100).toFixed(0)}%
+            </span>
+          </div>
+          <Slider
+            value={[rerankContentThreshold]}
+            onValueChange={([v]) => setRerankContentThreshold(v)}
+            min={0}
+            max={0.5}
+            step={0.05}
+          />
+        </div>
+      </div>
+
+      {/* Context Fitting */}
+      <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
+        <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          Context Fitting
+        </h4>
+        <p className="text-muted-foreground text-xs">
+          Control how source content is distributed within the context window.
+        </p>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm">
+              Max Source Context
+              <HelpTooltip text="Maximum % of context window for a single source. Prevents one source from dominating." />
+            </Label>
+            <span className="text-muted-foreground text-sm">
+              {(maxSourceContextPct * 100).toFixed(0)}%
+            </span>
+          </div>
+          <Slider
+            value={[maxSourceContextPct]}
+            onValueChange={([v]) => setMaxSourceContextPct(v)}
+            min={0.05}
+            max={0.3}
+            step={0.01}
+          />
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm">
+              Input Context
+              <HelpTooltip text="% of context window for input (sources). Rest is reserved for LLM output." />
+            </Label>
+            <span className="text-muted-foreground text-sm">
+              {(inputContextPct * 100).toFixed(0)}%
+            </span>
+          </div>
+          <Slider
+            value={[inputContextPct]}
+            onValueChange={([v]) => setInputContextPct(v)}
+            min={0.4}
+            max={0.8}
+            step={0.05}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderMaintenanceSection = (): ReactNode => (
+    <div className="space-y-3">
+      <div className="bg-muted/50 rounded-lg border p-4">
+        <div className="mb-3 flex items-start gap-2">
+          <RefreshCw className="text-muted-foreground mt-0.5 h-4 w-4" />
+          <div className="flex-1">
+            <h4 className="text-sm font-medium">Reinitialize Indexes</h4>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Delete all existing vector indexes and download fresh copies from
+              HuggingFace Hub. Use this to fix corrupted indexes or update to the latest
+              version. (~3.9GB download)
+            </p>
+          </div>
+        </div>
+        <Button
+          onClick={handleReinitialize}
+          disabled={isReinitializing}
+          variant="outline"
+          size="sm"
+          className="w-full"
+        >
+          {isReinitializing ? (
+            <>
+              <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+              Reinitializing...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="mr-2 h-3 w-3" />
+              Reinitialize Indexes
+            </>
+          )}
+        </Button>
+        {isReinitializing && (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                Reinitialization in progress...
+              </span>
+              <span className="text-muted-foreground font-mono">{elapsedSeconds}s</span>
+            </div>
+            <div className="bg-secondary relative h-1.5 overflow-hidden rounded-full">
+              <div className="from-primary/50 via-primary to-primary/50 absolute inset-0 animate-pulse bg-gradient-to-r" />
+              <div className="via-primary/30 animate-shimmer absolute inset-0 bg-gradient-to-r from-transparent to-transparent" />
+            </div>
+            <p className="text-muted-foreground text-xs">
+              Deleting old indexes and downloading fresh copies. This may take several
+              minutes.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const saveButton = (
+    <Button onClick={handleSave} disabled={isSaving}>
+      {isSaving ? (
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Saving...
+        </>
+      ) : (
+        "Save Changes"
+      )}
+    </Button>
+  );
+
+  // --- Layouts ---
+
+  if (isMobile) {
+    return (
+      <div className="space-y-6">
+        <SectionHeader icon={Server} title="Providers" />
+        {renderProvidersSection()}
+        <Separator />
+        <SectionHeader icon={Sparkles} title="Generation" />
+        {renderGenerationSection()}
+        <Separator />
+        <SectionHeader icon={Search} title="Retrieval" />
+        {renderRetrievalSection()}
+        <Separator />
+        <SectionHeader icon={History} title="History" />
+        {renderHistorySection()}
+        <Separator />
+        <SectionHeader icon={Globe} title="Web Search" />
+        {renderWebSearchSection()}
+        <Separator />
+        <SectionHeader icon={Wrench} title="Maintenance" />
+        {renderMaintenanceSection()}
+        <div className="flex justify-end">{saveButton}</div>
+      </div>
+    );
+  }
+
+  return (
+    <Tabs defaultValue="providers" orientation="vertical" className="flex h-full">
+      <TabsList variant="line" className="w-44 shrink-0 border-r pr-2">
+        {TAB_GROUPS.map((tab) => (
+          <TabsTrigger key={tab.id} value={tab.id} className="justify-start gap-2">
+            <tab.icon className="h-4 w-4" />
+            {tab.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ScrollArea className="flex-1">
+          <div className="px-4 py-2">
+            <TabsContent value="providers">{renderProvidersSection()}</TabsContent>
+            <TabsContent value="generation">{renderGenerationSection()}</TabsContent>
+            <TabsContent value="retrieval">{renderRetrievalSection()}</TabsContent>
+            <TabsContent value="history">{renderHistorySection()}</TabsContent>
+            <TabsContent value="web-search">{renderWebSearchSection()}</TabsContent>
+            <TabsContent value="maintenance">{renderMaintenanceSection()}</TabsContent>
+          </div>
+        </ScrollArea>
+        <div className="flex justify-end border-t px-4 py-3">{saveButton}</div>
+      </div>
+    </Tabs>
   );
 }
 
@@ -1017,7 +1083,7 @@ export function ConfigPanel() {
           <Settings className="h-5 w-5" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+      <DialogContent className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden md:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
@@ -1027,12 +1093,14 @@ export function ConfigPanel() {
             <Loader2 className="h-6 w-6 animate-spin" />
           </div>
         ) : (
-          <ConfigForm
-            key={open ? "open" : "closed"}
-            config={config}
-            onSave={handleSave}
-            isSaving={updateConfig.isPending}
-          />
+          <div className="min-h-0 flex-1 overflow-y-auto md:overflow-hidden">
+            <ConfigForm
+              key={open ? "open" : "closed"}
+              config={config}
+              onSave={handleSave}
+              isSaving={updateConfig.isPending}
+            />
+          </div>
         )}
       </DialogContent>
     </Dialog>
