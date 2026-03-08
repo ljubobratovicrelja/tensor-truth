@@ -652,3 +652,88 @@ export interface ProjectSessionCreate {
   modules?: string[] | null;
   params?: Record<string, unknown>;
 }
+
+// MCP Server types
+export interface MCPServerResponse {
+  name: string;
+  type: string;
+  command: string | null;
+  args: string[];
+  url: string | null;
+  description: string | null;
+  env: Record<string, string> | null;
+  enabled: boolean;
+  builtin: boolean;
+  env_status: Record<string, boolean>;
+}
+
+export interface MCPServerListResponse {
+  servers: MCPServerResponse[];
+}
+
+export interface MCPServerCreateRequest {
+  name: string;
+  type: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  description?: string;
+  env?: Record<string, string>;
+  enabled?: boolean;
+}
+
+export interface MCPServerUpdateRequest {
+  type?: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  description?: string;
+  env?: Record<string, string>;
+  enabled?: boolean;
+}
+
+export interface MCPServerToggleRequest {
+  enabled: boolean;
+}
+
+export interface MCPServerPresetsResponse {
+  presets: Record<string, MCPServerCreateRequest>;
+}
+
+// Extension types
+export interface ExtensionResponse {
+  name: string;
+  type: string;
+  description: string;
+  filename: string;
+  requires_mcp: string | null;
+  mcp_available: boolean;
+}
+
+export interface ExtensionListResponse {
+  extensions: ExtensionResponse[];
+}
+
+export interface LibraryExtensionResponse extends ExtensionResponse {
+  installed: boolean;
+}
+
+export interface ExtensionLibraryResponse {
+  extensions: LibraryExtensionResponse[];
+}
+
+export interface ExtensionInstallRequest {
+  type: string;
+  filename: string;
+}
+
+export interface ExtensionInstallResponse {
+  installed: string[];
+  errors: string[];
+}
+
+export interface ReloadExtensionsResponse {
+  tools_loaded: number;
+  extensions_loaded: number;
+  errors: string[];
+}

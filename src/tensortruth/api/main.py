@@ -19,6 +19,8 @@ from tensortruth.api.routes import (
     commands,
     config,
     documents,
+    extensions,
+    mcp_servers,
     modules,
     pdfs,
     projects,
@@ -136,6 +138,52 @@ def create_app() -> FastAPI:
     app.include_router(system.router, prefix="/api/system", tags=["system"])
     app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
     app.include_router(tools.router, prefix="/api", tags=["tools"])
+    app.include_router(
+        mcp_servers.router, prefix="/api/mcp-servers", tags=["mcp-servers"]
+    )
+    app.include_router(extensions.router, prefix="/api/extensions", tags=["extensions"])
+
+    @app.post("/api/reload-extensions", tags=["extensions"])
+    async def reload_extensions():
+        """Reload MCP servers and user extensions without restarting."""
+        from tensortruth.api.deps import get_agent_service, get_tool_service
+        from tensortruth.api.routes.commands import registry as command_registry
+        from tensortruth.extensions import load_user_extensions
+
+        errors: list[str] = []
+
+        # 1. Reload tool service (re-creates MCP registry)
+        tool_service = get_tool_service()
+        try:
+            await tool_service.reload()
+        except Exception as e:
+            errors.append(f"Tool reload failed: {e}")
+
+        # 2. Clear user-registered commands and agents
+        command_registry.unregister_user_commands()
+        agent_service = get_agent_service()
+        agent_service.unregister_user_agents()
+
+        # 3. Re-load user extensions
+        extensions_loaded = 0
+        try:
+            ext_result = await load_user_extensions(
+                command_registry=command_registry,
+                agent_service=agent_service,
+                tool_service=tool_service,
+            )
+            extensions_loaded = ext_result.commands_loaded + ext_result.agents_loaded
+            if ext_result.errors:
+                for err in ext_result.errors:
+                    errors.append(str(err))
+        except Exception as e:
+            errors.append(f"Extension load failed: {e}")
+
+        return {
+            "tools_loaded": len(tool_service.tools),
+            "extensions_loaded": extensions_loaded,
+            "errors": errors,
+        }
 
     # WebSocket router at /ws (not under /api)
     app.include_router(chat.ws_router, tags=["websocket"])

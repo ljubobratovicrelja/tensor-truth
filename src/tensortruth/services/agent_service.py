@@ -81,6 +81,10 @@ class AgentService:
         self._agent_configs[config.name] = config
         logger.info(f"Registered agent: {config.name}")
 
+    def unregister_user_agents(self) -> None:
+        """Remove all user-registered agents, keeping the config empty for re-load."""
+        self._agent_configs.clear()
+
     def list_agents(self) -> List[Dict[str, Any]]:
         """List available agents for API.
 

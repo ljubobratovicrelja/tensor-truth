@@ -18,6 +18,9 @@ export const QUERY_KEYS = {
   task: (id: string) => ["tasks", id] as const,
   providers: ["providers"] as const,
   tasks: ["tasks"] as const,
+  mcpServers: ["mcp-servers"] as const,
+  extensions: ["extensions"] as const,
+  extensionLibrary: ["extension-library"] as const,
 };
 
 export const PROVIDER_TYPE_LABELS: Record<string, string> = {

@@ -94,6 +94,21 @@ class CommandRegistry:
         """
         return self.commands.get(name.lower())
 
+    def unregister_user_commands(self) -> None:
+        """Remove all user-registered commands, keeping only built-in ones.
+
+        Built-in commands are identified by being instances of classes defined
+        in this module (HelpCommand, WebSearchCommand).
+        """
+        builtin_types = (HelpCommand, WebSearchCommand)
+        to_remove = [
+            name
+            for name, cmd in self.commands.items()
+            if not isinstance(cmd, builtin_types)
+        ]
+        for name in to_remove:
+            del self.commands[name]
+
     def list_all(self) -> List[dict]:
         """List all unique commands (deduplicated by aliases).
 

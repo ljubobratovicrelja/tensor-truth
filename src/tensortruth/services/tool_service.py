@@ -243,6 +243,14 @@ class ToolService:
             f"({len(builtin)} built-in, {len(mcp_tools)} MCP)"
         )
 
+    async def reload(self) -> None:
+        """Reload all tools: close existing MCP connections, re-create registry, reload."""
+        await self._mcp_registry.close_all_connections()
+        self._mcp_registry = create_default_registry()
+        self._tools.clear()
+        self._loaded = False
+        await self.load_tools()
+
     def add_tool(self, tool: FunctionTool) -> None:
         """Add a tool after initial load (for user extensions).
 

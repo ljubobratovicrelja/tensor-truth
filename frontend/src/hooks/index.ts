@@ -18,3 +18,5 @@ export * from "./useThinking";
 export * from "./useProviders";
 export * from "./useModelActions";
 export * from "./useImageAttachment";
+export * from "./useMcpServers";
+export * from "./useExtensions";

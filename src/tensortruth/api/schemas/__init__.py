@@ -36,6 +36,21 @@ from .document import (
     TextUploadRequest,
     UrlUploadRequest,
 )
+from .extension import (
+    ExtensionInstallRequest,
+    ExtensionInstallResponse,
+    ExtensionLibraryResponse,
+    ExtensionListResponse,
+    ExtensionResponse,
+    LibraryExtensionResponse,
+)
+from .mcp_server import (
+    MCPServerCreateRequest,
+    MCPServerListResponse,
+    MCPServerResponse,
+    MCPServerToggleRequest,
+    MCPServerUpdateRequest,
+)
 from .pdf import (
     PDFListResponse,
     PDFMetadataResponse,
@@ -163,4 +178,17 @@ __all__ = [
     "TaskResponse",
     "TaskListResponse",
     "TaskSubmitResponse",
+    # MCP Server
+    "MCPServerResponse",
+    "MCPServerListResponse",
+    "MCPServerCreateRequest",
+    "MCPServerUpdateRequest",
+    "MCPServerToggleRequest",
+    # Extension
+    "ExtensionResponse",
+    "ExtensionListResponse",
+    "LibraryExtensionResponse",
+    "ExtensionLibraryResponse",
+    "ExtensionInstallRequest",
+    "ExtensionInstallResponse",
 ]

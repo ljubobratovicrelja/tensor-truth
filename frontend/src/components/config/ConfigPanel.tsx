@@ -11,6 +11,8 @@ import {
   History,
   Globe,
   Wrench,
+  Puzzle,
+  Blocks,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -55,6 +57,8 @@ import {
 } from "@/hooks";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 import { ProviderSetupPanel } from "@/components/providers/ProviderSetupPanel";
+import { McpServersSection } from "@/components/config/McpServersSection";
+import { ExtensionsSection } from "@/components/config/ExtensionsSection";
 import type { ConfigResponse } from "@/api/types";
 
 function HelpTooltip({ text }: { text: string }) {
@@ -82,6 +86,8 @@ const TAB_GROUPS = [
   { id: "retrieval", label: "Retrieval", icon: Search },
   { id: "history", label: "History", icon: History },
   { id: "web-search", label: "Web Search", icon: Globe },
+  { id: "mcp-servers", label: "MCP Servers", icon: Puzzle },
+  { id: "extensions", label: "Extensions", icon: Blocks },
   { id: "maintenance", label: "Maintenance", icon: Wrench },
 ] as const;
 
@@ -940,6 +946,10 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     </div>
   );
 
+  const renderMcpServersSection = (): ReactNode => <McpServersSection />;
+
+  const renderExtensionsSection = (): ReactNode => <ExtensionsSection />;
+
   const renderMaintenanceSection = (): ReactNode => (
     <div className="space-y-3">
       <div className="bg-muted/50 rounded-lg border p-4">
@@ -1028,6 +1038,12 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
         <SectionHeader icon={Globe} title="Web Search" />
         {renderWebSearchSection()}
         <Separator />
+        <SectionHeader icon={Puzzle} title="MCP Servers" />
+        {renderMcpServersSection()}
+        <Separator />
+        <SectionHeader icon={Blocks} title="Extensions" />
+        {renderExtensionsSection()}
+        <Separator />
         <SectionHeader icon={Wrench} title="Maintenance" />
         {renderMaintenanceSection()}
         <div className="flex justify-end">{saveButton}</div>
@@ -1053,6 +1069,8 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
             <TabsContent value="retrieval">{renderRetrievalSection()}</TabsContent>
             <TabsContent value="history">{renderHistorySection()}</TabsContent>
             <TabsContent value="web-search">{renderWebSearchSection()}</TabsContent>
+            <TabsContent value="mcp-servers">{renderMcpServersSection()}</TabsContent>
+            <TabsContent value="extensions">{renderExtensionsSection()}</TabsContent>
             <TabsContent value="maintenance">{renderMaintenanceSection()}</TabsContent>
           </div>
         </ScrollArea>
