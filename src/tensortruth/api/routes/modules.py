@@ -1,5 +1,6 @@
 """Modules and models listing endpoints."""
 
+import logging
 from typing import Dict, List
 
 import requests
@@ -8,6 +9,8 @@ from pydantic import BaseModel
 
 from tensortruth.api.deps import ConfigServiceDep
 from tensortruth.app_utils.paths import get_indexes_dir
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -28,12 +31,16 @@ class ModulesResponse(BaseModel):
 
 
 class ModelInfo(BaseModel):
-    """Information about an Ollama model."""
+    """Information about an available LLM model."""
 
     name: str
+    provider_id: str = "ollama"
+    provider_type: str = "ollama"
+    display_name: str = ""
     size: int = 0
     modified_at: str = ""
     capabilities: List[str] = []
+    status: str | None = None
 
 
 class ModelsResponse(BaseModel):
@@ -146,48 +153,138 @@ async def list_embedding_models(
 
 @router.get("/models", response_model=ModelsResponse)
 async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
-    """List available Ollama models."""
-    from tensortruth.core.ollama import get_model_info, supports_thinking_levels
+    """List available models from all configured providers."""
+    from tensortruth.core.ollama import supports_thinking_levels
+    from tensortruth.core.providers import ProviderRegistry
 
-    ollama_url = config_service.get_ollama_url()
+    registry = ProviderRegistry.get_instance()
 
-    try:
-        response = requests.get(f"{ollama_url}/api/tags", timeout=10)
-        response.raise_for_status()
-        data = response.json()
+    models = []
+    has_any_models = False
 
-        models = []
-        for model in data.get("models", []):
-            name = model.get("name", "")
-            info = get_model_info(name) if name else {}
-            capabilities = list(info.get("capabilities", []))
+    for provider in registry.providers:
+        if provider.type == "ollama":
+            # Query Ollama API for live model list with extra metadata
+            try:
+                base = provider.base_url.rstrip("/")
+                response = requests.get(f"{base}/api/tags", timeout=10)
+                response.raise_for_status()
+                data = response.json()
 
-            # Probe thinking level support for thinking-capable models
-            if "thinking" in capabilities and supports_thinking_levels(name):
-                capabilities.append("thinking_levels")
+                # Query loaded models for status
+                loaded_names: set = set()
+                try:
+                    ps_resp = requests.get(f"{base}/api/ps", timeout=2)
+                    if ps_resp.status_code == 200:
+                        for rm in ps_resp.json().get("models", []):
+                            loaded_names.add(rm.get("name", ""))
+                except Exception:
+                    pass  # If ps fails, all models show as unloaded
 
-            models.append(
-                ModelInfo(
-                    name=name,
-                    size=model.get("size", 0),
-                    modified_at=model.get("modified_at", ""),
-                    capabilities=capabilities,
+                for m in data.get("models", []):
+                    name = m.get("name", "")
+                    if not name:
+                        continue
+                    from tensortruth.core.ollama import get_model_info
+
+                    info = get_model_info(name)
+                    capabilities = list(info.get("capabilities", []))
+
+                    if "thinking" in capabilities and supports_thinking_levels(name):
+                        capabilities.append("thinking_levels")
+
+                    models.append(
+                        ModelInfo(
+                            name=name,
+                            provider_id=provider.id,
+                            provider_type="ollama",
+                            display_name=name,
+                            size=m.get("size", 0),
+                            modified_at=m.get("modified_at", ""),
+                            capabilities=capabilities,
+                            status="loaded" if name in loaded_names else "unloaded",
+                        )
+                    )
+                    has_any_models = True
+
+            except Exception as e:
+                logger.warning(
+                    "Failed to fetch models from Ollama provider '%s': %s",
+                    provider.id,
+                    e,
                 )
-            )
-        return ModelsResponse(models=models)
 
-    except requests.exceptions.ConnectionError:
+        elif provider.type == "openai_compatible":
+            # Return statically-configured models
+            for m in provider.models:
+                name = m.get("name", "")
+                if not name:
+                    continue
+                models.append(
+                    ModelInfo(
+                        name=name,
+                        provider_id=provider.id,
+                        provider_type="openai_compatible",
+                        display_name=m.get("display_name") or name,
+                        capabilities=m.get("capabilities", []),
+                    )
+                )
+                has_any_models = True
+
+        elif provider.type == "llama_cpp":
+            # Query llama.cpp router mode for dynamic model list
+            try:
+                from tensortruth.core.llama_cpp import (
+                    format_display_name,
+                )
+                from tensortruth.core.llama_cpp import (
+                    get_available_models as get_llama_cpp_models,
+                )
+
+                base = provider.base_url.rstrip("/")
+                server_models = get_llama_cpp_models(base)
+
+                # Build lookup from static config for capability enrichment
+                static_lookup = {}
+                for m in provider.models:
+                    name = m.get("name", "")
+                    if name:
+                        static_lookup[name] = m
+
+                for sm in server_models:
+                    model_id = sm.get("id", "")
+                    if not model_id:
+                        continue
+                    static = static_lookup.get(model_id, {})
+                    caps = static.get("capabilities", [])
+                    models.append(
+                        ModelInfo(
+                            name=model_id,
+                            provider_id=provider.id,
+                            provider_type="llama_cpp",
+                            display_name=(
+                                static.get("display_name")
+                                or format_display_name(model_id)
+                            ),
+                            capabilities=caps,
+                            status=sm.get("status", "unloaded"),
+                        )
+                    )
+                    has_any_models = True
+
+            except Exception as e:
+                logger.warning(
+                    "Failed to fetch models from llama.cpp provider '%s': %s",
+                    provider.id,
+                    e,
+                )
+
+    if not has_any_models and len(registry.providers) == 1:
+        # Single Ollama provider that is unreachable — raise for backward compat
+        ollama_url = registry.providers[0].base_url
         raise HTTPException(
             status_code=503,
             detail=f"Cannot connect to Ollama at {ollama_url}. Is Ollama running?",
         )
-    except requests.exceptions.Timeout:
-        raise HTTPException(
-            status_code=504,
-            detail=f"Timeout connecting to Ollama at {ollama_url}",
-        )
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Error fetching models from Ollama: {str(e)}",
-        )
+
+    return ModelsResponse(models=models)

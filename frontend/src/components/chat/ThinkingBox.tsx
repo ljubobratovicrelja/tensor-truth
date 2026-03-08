@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Brain, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MemoizedMarkdown } from "./MemoizedMarkdown";
@@ -20,6 +20,13 @@ function ThinkingBoxComponent({
   className,
 }: ThinkingBoxProps) {
   const [expanded, setExpanded] = useState(!isCollapsed);
+
+  // Auto-collapse when thinking completes (answer starts streaming)
+  // Same pattern as ToolPhaseIndicator — sync expanded state from prop transition
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (thinkingComplete) setExpanded(false);
+  }, [thinkingComplete]);
 
   // Thinking content is still streaming (not complete, not collapsed)
   const isThinkingStreaming = !isCollapsed && !thinkingComplete;

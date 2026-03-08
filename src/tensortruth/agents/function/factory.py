@@ -6,8 +6,8 @@ from typing import Any, Dict, Sequence
 from llama_index.core.agent.workflow.function_agent import (
     FunctionAgent as LIFunctionAgent,
 )
+from llama_index.core.llms import LLM
 from llama_index.core.tools import FunctionTool
-from llama_index.llms.ollama import Ollama
 
 from tensortruth.agents.base import Agent
 from tensortruth.agents.config import AgentConfig
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def create_function_agent(
     config: AgentConfig,
     tools: Sequence[FunctionTool],
-    llm: Ollama,
+    llm: LLM,
     session_params: Dict[str, Any],
 ) -> Agent:
     """Factory for creating FunctionAgent instances.
@@ -29,7 +29,7 @@ def create_function_agent(
     Args:
         config: Agent configuration
         tools: List of tools for the agent
-        llm: Ollama LLM instance
+        llm: LLM instance
         session_params: Session parameters (not used by FunctionAgent)
 
     Returns:
@@ -37,7 +37,7 @@ def create_function_agent(
     """
     logger.info(
         f"Creating FunctionAgent: name={config.name}, tools={config.tools}, "
-        f"model={llm.model}"
+        f"model={getattr(llm, 'model', 'unknown')}"
     )
 
     # Enhance system prompt with explicit tool list to prevent hallucination.

@@ -23,11 +23,10 @@ from typing import (
 
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
-from tensortruth.core.ollama import (
-    get_tool_llm,
-    resolve_thinking,
-)
 from tensortruth.core.prompts import current_date_context
+from tensortruth.core.providers import get_tool_llm as _providers_get_tool_llm
+from tensortruth.core.providers import resolve_model_from_params
+from tensortruth.core.providers import resolve_thinking as _providers_resolve_thinking
 from tensortruth.services.models import ToolProgress
 from tensortruth.services.orchestrator_service import (
     ModuleDescription,
@@ -36,7 +35,7 @@ from tensortruth.services.orchestrator_service import (
 from tensortruth.services.orchestrator_tool_wrappers import ProgressEmitter
 
 if TYPE_CHECKING:
-    from llama_index.llms.ollama import Ollama
+    from llama_index.core.llms import LLM
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +44,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _synthesis_service: Optional["SynthesisService"] = None
-_synthesis_service_key: Optional[Tuple[str, str, int, object]] = None
+_synthesis_service_key: Optional[Tuple[str, str, int, object, Optional[str]]] = None
 
 
 def get_synthesis_service(
@@ -53,6 +52,7 @@ def get_synthesis_service(
     base_url: str,
     context_window: int,
     thinking: Optional[Union[bool, Literal["low", "medium", "high"]]] = None,
+    provider_id: Optional[str] = None,
 ) -> "SynthesisService":
     """Get or create a cached SynthesisService singleton.
 
@@ -60,22 +60,25 @@ def get_synthesis_service(
     changes the old instance is discarded and a new one is created.
 
     Args:
-        model: Ollama model name.
-        base_url: Ollama server base URL.
+        model: Model name.
+        base_url: Server base URL.
         context_window: Context window size in tokens.
         thinking: User thinking preference (``True``, ``False``, ``None``, or
             a budget string like ``"low"``).  ``None`` means auto-detect.
+        provider_id: Provider ID for provider-aware model resolution.
 
     Returns:
         Cached SynthesisService instance.
     """
     global _synthesis_service, _synthesis_service_key
 
-    key = (model, base_url, context_window, thinking)
+    key = (model, base_url, context_window, thinking, provider_id)
     if _synthesis_service is not None and _synthesis_service_key == key:
         return _synthesis_service
 
-    _synthesis_service = SynthesisService(model, base_url, context_window, thinking)
+    _synthesis_service = SynthesisService(
+        model, base_url, context_window, thinking, provider_id=provider_id
+    )
     _synthesis_service_key = key
 
     logger.info(
@@ -106,12 +109,16 @@ class SynthesisService:
         base_url: str,
         context_window: int,
         thinking: Optional[Union[bool, Literal["low", "medium", "high"]]] = None,
+        provider_id: Optional[str] = None,
     ):
         self._model = model
         self._base_url = base_url
         self._context_window = context_window
         self._thinking_pref = thinking
-        resolved = resolve_thinking(model, thinking)
+
+        # Resolve model reference for provider-aware LLM creation
+        self._model_ref = resolve_model_from_params({"provider_id": provider_id}, model)
+        resolved = _providers_resolve_thinking(self._model_ref, thinking)
         self._thinking_supported = bool(resolved)
         self._llm = self._create_llm()
 
@@ -128,11 +135,11 @@ class SynthesisService:
     # LLM creation
     # ------------------------------------------------------------------
 
-    def _create_llm(self) -> "Ollama":
+    def _create_llm(self) -> "LLM":
         """Get the shared tool LLM singleton for synthesis."""
-        resolved = resolve_thinking(self._model, self._thinking_pref)
-        return get_tool_llm(
-            self._model, self._base_url, self._context_window, thinking=resolved
+        resolved = _providers_resolve_thinking(self._model_ref, self._thinking_pref)
+        return _providers_get_tool_llm(
+            self._model_ref, self._context_window, thinking=resolved
         )
 
     # ------------------------------------------------------------------

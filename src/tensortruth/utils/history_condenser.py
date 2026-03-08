@@ -7,8 +7,9 @@ for RAG retrieval or web search.
 """
 
 import logging
+from typing import Optional
 
-from llama_index.llms.ollama import Ollama
+from llama_index.core.llms import LLM
 
 from tensortruth.core.constants import (
     DEFAULT_MODEL,
@@ -19,37 +20,60 @@ logger = logging.getLogger(__name__)
 
 
 def create_condenser_llm(
-    base_llm: Ollama,
+    base_llm: LLM,
     temperature: float = 0.0,
     thinking: bool = False,
     timeout: float = 30.0,
-) -> Ollama:
+    provider_id: Optional[str] = None,
+) -> LLM:
     """Return the shared orchestrator LLM singleton for query condensation.
 
     Reuses the cached non-thinking LLM so that Ollama never sees a
     ``num_ctx`` change (which would trigger a model reload).  The
     singleton's temperature (0.2) is close enough to 0.0 for condensation.
 
+    When ``provider_id`` is given and is not ``"ollama"``, the model is
+    resolved via the :class:`ProviderRegistry` so that non-Ollama
+    providers are used correctly.
+
     Args:
-        base_llm: The base Ollama LLM to derive model/url/context_window from.
+        base_llm: The base LLM to derive model/url/context_window from.
         temperature: Ignored (kept for API compatibility).
         thinking: Ignored (kept for API compatibility).
         timeout: Ignored (kept for API compatibility).
+        provider_id: Optional provider ID for multi-provider support.
 
     Returns:
-        The shared orchestrator Ollama instance.
+        The shared orchestrator LLM instance.
     """
-    from tensortruth.core.ollama import get_orchestrator_llm
+    from tensortruth.core.providers import (
+        ProviderRegistry,
+        get_orchestrator_llm,
+    )
 
     model = getattr(base_llm, "model", DEFAULT_MODEL)
-    base_url = getattr(base_llm, "base_url", DEFAULT_OLLAMA_BASE_URL)
     context_window = getattr(base_llm, "context_window", 16384)
 
-    return get_orchestrator_llm(model, base_url, context_window)
+    if provider_id and provider_id != "ollama":
+        registry = ProviderRegistry.get_instance()
+        model_ref = registry.resolve_model(model, provider_id)
+    else:
+        from tensortruth.core.providers import ModelReference
+
+        base_url = getattr(base_llm, "base_url", DEFAULT_OLLAMA_BASE_URL)
+        model_ref = ModelReference(
+            provider_id="ollama",
+            model_name=model,
+            display_name=model,
+            provider_type="ollama",
+            base_url=base_url,
+        )
+
+    return get_orchestrator_llm(model_ref, context_window)
 
 
 def condense_query(
-    llm: Ollama,
+    llm: LLM,
     chat_history: str,
     question: str,
     prompt_template: str,

@@ -8,9 +8,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ModelSelectContent } from "@/components/chat/ModelSelectContent";
+import {
+  ModelSelectContent,
+  decodeModelValue,
+  encodeModelValue,
+} from "@/components/chat/ModelSelectContent";
 import { Slider } from "@/components/ui/slider";
-import { useModels, useConfig } from "@/hooks";
+import { useModels, useConfig, useModelActions } from "@/hooks";
 import type { ProjectResponse } from "@/api/types";
 
 const CONTEXT_WINDOW_OPTIONS = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
@@ -23,6 +27,7 @@ interface ProjectConfigPanelProps {
 export function ProjectConfigPanel({ project, onUpdate }: ProjectConfigPanelProps) {
   const { data: modelsData } = useModels();
   const { data: config } = useConfig();
+  const { actionsInFlight, handleLoadModel, handleUnloadModel } = useModelActions();
 
   const configRef = useRef(project.config);
   useEffect(() => {
@@ -45,16 +50,31 @@ export function ProjectConfigPanel({ project, onUpdate }: ProjectConfigPanelProp
 
   // Local model state so selection is instant (not waiting for server roundtrip)
   const [localModel, setLocalModel] = useState(serverModel);
+  const serverProviderId = (project.config.provider_id as string) ?? "";
+  const [localProviderId, setLocalProviderId] = useState(serverProviderId);
+
+  // Resolve provider from models list when not explicitly stored
+  const resolvedProviderId = (() => {
+    if (localProviderId) return localProviderId;
+    if (localModel && modelsData?.models) {
+      const info = modelsData.models.find((m) => m.name === localModel);
+      if (info?.provider_id) return info.provider_id;
+    }
+    return "ollama";
+  })();
 
   // Sync local prompt when project changes externally
   useEffect(() => {
     setLocalPrompt(systemPrompt);
   }, [systemPrompt]);
 
-  // Sync local model when server value changes
+  // Sync local model/provider when server value changes
   useEffect(() => {
     setLocalModel(serverModel);
   }, [serverModel]);
+  useEffect(() => {
+    setLocalProviderId(serverProviderId);
+  }, [serverProviderId]);
 
   const handlePromptChange = useCallback(
     (value: string) => {
@@ -106,16 +126,29 @@ export function ProjectConfigPanel({ project, onUpdate }: ProjectConfigPanelProp
       <div className="space-y-2">
         <Label className="text-xs">Model</Label>
         <Select
-          value={localModel || undefined}
+          value={
+            localModel ? encodeModelValue(resolvedProviderId, localModel) : undefined
+          }
           onValueChange={(v) => {
-            setLocalModel(v);
-            handleImmediateChange("model", v);
+            const { modelName, providerId } = decodeModelValue(v);
+            setLocalModel(modelName);
+            setLocalProviderId(providerId);
+            onUpdate({
+              ...configRef.current,
+              model: modelName,
+              provider_id: providerId,
+            });
           }}
         >
           <SelectTrigger className="text-xs">
             <SelectValue placeholder="Select model" />
           </SelectTrigger>
-          <ModelSelectContent models={modelsData?.models ?? []} />
+          <ModelSelectContent
+            models={modelsData?.models ?? []}
+            onLoadModel={handleLoadModel}
+            onUnloadModel={handleUnloadModel}
+            actionsInFlight={actionsInFlight}
+          />
         </Select>
       </div>
 

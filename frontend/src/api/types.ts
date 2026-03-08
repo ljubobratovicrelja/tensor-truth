@@ -308,9 +308,13 @@ export interface ModulesResponse {
 
 export interface ModelInfo {
   name: string;
+  provider_id: string;
+  provider_type: string;
+  display_name: string;
   size: number;
   modified_at: string;
   capabilities?: string[];
+  status?: "loaded" | "loading" | "unloaded" | null;
 }
 
 export interface ModelsResponse {
@@ -440,6 +444,7 @@ export interface IndexesStatus {
 export interface ModelsStatus {
   ollama_running: boolean;
   available: string[];
+  providers_ok?: boolean;
 }
 
 export interface EmbeddingMismatch {
@@ -485,6 +490,62 @@ export interface ModelPullResponse {
 export interface ReinitializeIndexesResponse {
   status: string;
   message: string;
+}
+
+// Provider types
+export interface ProviderResponse {
+  id: string;
+  type: string;
+  base_url: string;
+  api_key: string;
+  timeout: number;
+  models: Record<string, unknown>[];
+  status: string;
+  model_count: number;
+}
+
+export interface ProviderListResponse {
+  providers: ProviderResponse[];
+}
+
+export interface ProviderCreateRequest {
+  id: string;
+  type: string;
+  base_url: string;
+  api_key?: string;
+  timeout?: number;
+  models?: Record<string, unknown>[];
+}
+
+export interface ProviderUpdateRequest {
+  base_url?: string;
+  api_key?: string;
+  timeout?: number;
+  models?: Record<string, unknown>[];
+}
+
+export interface ProviderTestRequest {
+  type: string;
+  base_url: string;
+  api_key?: string;
+}
+
+export interface ProviderTestResponse {
+  success: boolean;
+  message: string;
+  models: string[];
+}
+
+export interface DiscoveredServer {
+  type: string;
+  base_url: string;
+  suggested_id: string;
+  model_count: number;
+  models: string[];
+}
+
+export interface DiscoverResponse {
+  servers: DiscoveredServer[];
 }
 
 // Reranker types

@@ -9,10 +9,11 @@ export function useModules() {
   });
 }
 
-export function useModels() {
+export function useModels(pollingInterval?: number | false) {
   return useQuery({
     queryKey: QUERY_KEYS.models,
     queryFn: listModels,
+    refetchInterval: pollingInterval,
   });
 }
 

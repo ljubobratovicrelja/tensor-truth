@@ -1,7 +1,7 @@
 """Configuration schema and default values for Tensor-Truth."""
 
 from dataclasses import asdict, dataclass, field, fields
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from tensortruth.core.constants import DEFAULT_MODEL
 
@@ -12,6 +12,18 @@ class OllamaConfig:
 
     base_url: str = "http://localhost:11434"
     timeout: int = 300
+
+
+@dataclass
+class ProviderConfig:
+    """Configuration for a single LLM provider."""
+
+    id: str  # "ollama", "vllm-server", "openrouter"
+    type: str = "ollama"  # "ollama" | "openai_compatible"
+    base_url: str = "http://localhost:11434"
+    api_key: str = ""  # Supports ${ENV_VAR} syntax
+    timeout: int = 300
+    models: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -240,11 +252,12 @@ class TensorTruthConfig:
     agent: AgentConfig
     history_cleaning: HistoryCleaningConfig
     web_search: WebSearchConfig
+    providers: List[ProviderConfig] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Convert config to dictionary for YAML serialization."""
-        return {
-            "ollama": asdict(self.ollama),
+        result = {
+            "providers": [asdict(p) for p in self.providers],
             "llm": asdict(self.llm),
             "rag": asdict(self.rag),
             "conversation": asdict(self.conversation),
@@ -252,12 +265,16 @@ class TensorTruthConfig:
             "history_cleaning": asdict(self.history_cleaning),
             "web_search": asdict(self.web_search),
         }
+        # Write ollama section for backward compatibility with external tools
+        result["ollama"] = asdict(self.ollama)
+        return result
 
     @staticmethod
     def _migrate_config_data(data: dict) -> dict:
         """Migrate old config format to new.
 
-        Handles the transition from ui/models groups to llm/rag/conversation.
+        Handles the transition from ui/models groups to llm/rag/conversation,
+        and from the flat ``ollama:`` section to the ``providers:`` list.
         """
         ui = data.pop("ui", {})
         models = data.pop("models", {})
@@ -295,6 +312,18 @@ class TensorTruthConfig:
         data["rag"] = rag
         data["conversation"] = conversation
 
+        # --- Migrate ollama → providers ---
+        if "providers" not in data:
+            ollama = data.get("ollama", {})
+            data["providers"] = [
+                {
+                    "id": "ollama",
+                    "type": "ollama",
+                    "base_url": ollama.get("base_url", "http://localhost:11434"),
+                    "timeout": ollama.get("timeout", 300),
+                }
+            ]
+
         return data
 
     @classmethod
@@ -309,11 +338,24 @@ class TensorTruthConfig:
         agent_data = data.get("agent", {})
         history_cleaning_data = data.get("history_cleaning", {})
         web_search_data = data.get("web_search", {})
+        providers_data = data.get("providers", [])
 
         def _filter(cls_, data_):
             """Filter dict to only include known dataclass fields."""
             known = {f.name for f in fields(cls_)}
             return {k: v for k, v in data_.items() if k in known}
+
+        # Parse providers list
+        providers = []
+        for p in providers_data:
+            providers.append(ProviderConfig(**_filter(ProviderConfig, p)))
+
+        # If no ollama_data but providers has an ollama entry, derive it
+        if not ollama_data and providers:
+            for p in providers:
+                if p.type == "ollama":
+                    ollama_data = {"base_url": p.base_url, "timeout": p.timeout}
+                    break
 
         return cls(
             ollama=OllamaConfig(**_filter(OllamaConfig, ollama_data)),
@@ -327,6 +369,7 @@ class TensorTruthConfig:
                 **_filter(HistoryCleaningConfig, history_cleaning_data)
             ),
             web_search=WebSearchConfig(**_filter(WebSearchConfig, web_search_data)),
+            providers=providers,
         )
 
     @classmethod
@@ -334,6 +377,15 @@ class TensorTruthConfig:
         """Create default configuration with smart device detection."""
         # Detect best default device for RAG
         default_device = cls._detect_default_device()
+
+        default_providers = [
+            ProviderConfig(
+                id="ollama",
+                type="ollama",
+                base_url="http://localhost:11434",
+                timeout=300,
+            )
+        ]
 
         return cls(
             ollama=OllamaConfig(),
@@ -349,6 +401,7 @@ class TensorTruthConfig:
             agent=AgentConfig(),
             history_cleaning=HistoryCleaningConfig(),
             web_search=WebSearchConfig(),
+            providers=default_providers,
         )
 
     @staticmethod

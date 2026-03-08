@@ -9,7 +9,7 @@ from typing import Any, List, Optional, Tuple, Union
 
 import yaml
 
-from tensortruth.app_utils.config_schema import TensorTruthConfig
+from tensortruth.app_utils.config_schema import ProviderConfig, TensorTruthConfig
 from tensortruth.app_utils.paths import get_user_data_dir
 
 logger = logging.getLogger(__name__)
@@ -175,6 +175,73 @@ class ConfigService:
         from tensortruth.core.ollama import get_ollama_url
 
         return get_ollama_url()
+
+    def add_provider(self, provider: ProviderConfig) -> TensorTruthConfig:
+        """Add a new provider to the configuration.
+
+        Args:
+            provider: ProviderConfig to add.
+
+        Returns:
+            Updated TensorTruthConfig.
+
+        Raises:
+            ValueError: If a provider with the same ID already exists.
+        """
+        config = self.load()
+        for p in config.providers:
+            if p.id == provider.id:
+                raise ValueError(f"Provider '{provider.id}' already exists")
+        config.providers.append(provider)
+        self.save(config)
+        return config
+
+    def update_provider(self, provider_id: str, **updates: Any) -> TensorTruthConfig:
+        """Update fields on an existing provider.
+
+        Args:
+            provider_id: ID of the provider to update.
+            **updates: Field values to update.
+
+        Returns:
+            Updated TensorTruthConfig.
+
+        Raises:
+            ValueError: If the provider is not found.
+        """
+        config = self.load()
+        for p in config.providers:
+            if p.id == provider_id:
+                for key, value in updates.items():
+                    if hasattr(p, key):
+                        setattr(p, key, value)
+                    else:
+                        logger.warning("Unknown provider field: '%s'", key)
+                self.save(config)
+                return config
+        raise ValueError(f"Provider '{provider_id}' not found")
+
+    def remove_provider(self, provider_id: str) -> TensorTruthConfig:
+        """Remove a provider from the configuration.
+
+        Args:
+            provider_id: ID of the provider to remove.
+
+        Returns:
+            Updated TensorTruthConfig.
+
+        Raises:
+            ValueError: If it's the last provider or not found.
+        """
+        config = self.load()
+        if len(config.providers) <= 1:
+            raise ValueError("Cannot remove the last provider")
+        original_len = len(config.providers)
+        config.providers = [p for p in config.providers if p.id != provider_id]
+        if len(config.providers) == original_len:
+            raise ValueError(f"Provider '{provider_id}' not found")
+        self.save(config)
+        return config
 
     def get_default_model(self) -> str:
         """Get the default RAG model from config.

@@ -6,13 +6,14 @@ import {
   CheckCircle2,
   AlertCircle,
   Download,
-  Server,
   AlertTriangle,
-  WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useStartupStatus, useDownloadIndexes } from "@/hooks/useStartup";
+import { useQueryClient } from "@tanstack/react-query";
+import { QUERY_KEYS } from "@/lib/constants";
+import { ProviderSetupPanel } from "@/components/providers/ProviderSetupPanel";
 
 interface StartupInitializerProps {
   onComplete: () => void;
@@ -22,6 +23,7 @@ const DOWNLOAD_START_KEY = "tensortruth-download-start";
 const INDEXES_SKIPPED_KEY = "tensortruth-indexes-skipped";
 
 export function StartupInitializer({ onComplete }: StartupInitializerProps) {
+  const queryClient = useQueryClient();
   const [indexesSkipped, setIndexesSkipped] = useState(
     () => localStorage.getItem(INDEXES_SKIPPED_KEY) === "true"
   );
@@ -218,7 +220,7 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
     status &&
     ((!status.indexes_ok && !indexesSkipped) ||
       !status.models_ok ||
-      !status.ollama_running)
+      (!status.ollama_running && status.models_status.providers_ok === false))
   ) {
     return (
       <div className="bg-background flex h-screen items-center justify-center px-4">
@@ -342,82 +344,15 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
             </Alert>
           )}
 
-          {/* Models Section */}
-          {!status.ollama_running && (
+          {/* Models / Providers Section */}
+          {!status.models_ok && (
             <div className="bg-card rounded-lg border p-6">
-              <div className="mb-3 flex items-start gap-3">
-                <WifiOff className="text-destructive mt-1 h-5 w-5" />
-                <div className="flex-1">
-                  <h3 className="mb-1 text-lg font-semibold">Ollama Not Reachable</h3>
-                  <p className="text-muted-foreground mb-3 text-sm">
-                    TensorTruth cannot connect to Ollama. Make sure it is installed and
-                    running.
-                  </p>
-                  <div className="text-muted-foreground space-y-1 text-sm">
-                    <p>
-                      Start Ollama:{" "}
-                      <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
-                        ollama serve
-                      </code>
-                    </p>
-                    <p>
-                      To use a custom URL, set{" "}
-                      <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
-                        ollama.base_url
-                      </code>{" "}
-                      in{" "}
-                      <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
-                        ~/.tensortruth/config.yaml
-                      </code>
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <Button
-                onClick={() => window.location.reload()}
-                variant="outline"
-                className="w-full"
-              >
-                Retry
-              </Button>
-            </div>
-          )}
-
-          {status.ollama_running && !status.models_ok && (
-            <div className="bg-card rounded-lg border p-6">
-              <div className="mb-3 flex items-start gap-3">
-                <Server className="text-muted-foreground mt-1 h-5 w-5" />
-                <div className="flex-1">
-                  <h3 className="mb-1 text-lg font-semibold">No Ollama Models Found</h3>
-                  <p className="text-muted-foreground mb-3 text-sm">
-                    Ollama is running but has no models installed. Pull any model to get
-                    started.
-                  </p>
-                  <div className="text-muted-foreground space-y-1 text-sm">
-                    <p>
-                      Example:{" "}
-                      <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
-                        ollama pull llama3.2
-                      </code>{" "}
-                      or{" "}
-                      <code className="bg-muted rounded px-1.5 py-0.5 text-xs">
-                        ollama pull qwen2.5:7b
-                      </code>
-                    </p>
-                    <p className="text-xs">
-                      Models with tool support (llama3.1+, qwen2.5+, etc.) enable agentic
-                      orchestration — web search, MCP tools, and autonomous reasoning.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <Button
-                onClick={() => window.location.reload()}
-                variant="outline"
-                className="w-full"
-              >
-                Reload after pulling
-              </Button>
+              <ProviderSetupPanel
+                mode="startup"
+                onProvidersReady={() => {
+                  queryClient.invalidateQueries({ queryKey: QUERY_KEYS.startup });
+                }}
+              />
             </div>
           )}
 
@@ -426,7 +361,7 @@ export function StartupInitializer({ onComplete }: StartupInitializerProps) {
               <div className="flex items-center gap-3 text-green-600 dark:text-green-400">
                 <CheckCircle2 className="h-5 w-5" />
                 <span className="font-semibold">
-                  Ollama ready — {status.models_status.available.length} model
+                  Models ready — {status.models_status.available.length} model
                   {status.models_status.available.length !== 1 ? "s" : ""} available
                 </span>
               </div>

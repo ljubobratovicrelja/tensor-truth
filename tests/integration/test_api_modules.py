@@ -81,6 +81,9 @@ class TestModulesAPI:
         """Test listing models when Ollama is not available."""
         import requests
 
+        from tensortruth.app_utils.config_schema import ProviderConfig
+        from tensortruth.core.providers import ProviderRegistry
+
         def mock_get(*args, **kwargs):
             raise requests.exceptions.ConnectionError("Connection refused")
 
@@ -95,9 +98,23 @@ class TestModulesAPI:
             "tensortruth.api.deps.get_config_service", lambda: test_service
         )
 
+        # Reset registry and force it to have a single Ollama provider
+        ProviderRegistry.reset()
+        registry = ProviderRegistry.get_instance()
+        registry._providers = [
+            ProviderConfig(
+                id="ollama",
+                type="ollama",
+                base_url="http://localhost:11434",
+            )
+        ]
+
         response = await client.get("/api/models")
         assert response.status_code == 503
         assert "Ollama" in response.json()["detail"]
+
+        # Cleanup
+        ProviderRegistry.reset()
 
     @pytest.mark.asyncio
     async def test_list_models_success(self, client, tmp_path, monkeypatch):

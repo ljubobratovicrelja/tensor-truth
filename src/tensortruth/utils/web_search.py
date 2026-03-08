@@ -20,12 +20,17 @@ from urllib.parse import urljoin, urlparse
 import aiohttp
 from bs4 import BeautifulSoup, Tag
 from ddgs import DDGS
+from llama_index.core.llms import LLM
 from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
-from llama_index.llms.ollama import Ollama
 from markdownify import markdownify as md
 
-from tensortruth.core.ollama import resolve_thinking
+from tensortruth.core.providers import (
+    ModelReference,
+    ProviderRegistry,
+    create_llm,
+    resolve_thinking,
+)
 from tensortruth.core.synthesis import (
     CitationStyle,
     SynthesisConfig,
@@ -39,6 +44,47 @@ from . import github_handler  # noqa: F401, E402
 from . import wikipedia_handler  # noqa: F401, E402
 from . import youtube_handler  # noqa: F401, E402
 from .domain_handlers import get_handler_for_url  # noqa: E402
+
+# =============================================================================
+# LLM Creation Helper
+# =============================================================================
+
+
+def _create_web_search_llm(
+    model_name: str,
+    ollama_url: str,
+    provider_id: Optional[str] = None,
+    context_window: int = 4096,
+    temperature: float = 0.3,
+    request_timeout: float = 60.0,
+) -> LLM:
+    """Create an LLM for web search, respecting provider selection.
+
+    When ``provider_id`` is given and is not ``"ollama"``, the model is
+    resolved via the :class:`ProviderRegistry` so that non-Ollama
+    providers are used correctly.  Otherwise the classic Ollama path is
+    taken.
+    """
+    if provider_id and provider_id != "ollama":
+        registry = ProviderRegistry.get_instance()
+        model_ref = registry.resolve_model(model_name, provider_id)
+    else:
+        model_ref = ModelReference(
+            provider_id="ollama",
+            model_name=model_name,
+            display_name=model_name,
+            provider_type="ollama",
+            base_url=ollama_url,
+        )
+    thinking_enabled = resolve_thinking(model_ref)
+    return create_llm(
+        model_ref,
+        request_timeout=request_timeout,
+        temperature=temperature,
+        thinking=thinking_enabled,
+        context_window=context_window,
+    )
+
 
 # =============================================================================
 # Reranking Utilities
@@ -308,6 +354,7 @@ async def generate_no_sources_explanation(
     model_name: str,
     ollama_url: str,
     context_window: int = 16384,
+    provider_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """Generate LLM explanation when no sources pass thresholds.
 
@@ -370,15 +417,13 @@ Write a brief, helpful explanation (2-3 sentences) that:
 Keep it concise and actionable. Don't apologize excessively."""
 
     try:
-        thinking_enabled = resolve_thinking(model_name)
-
-        llm = Ollama(
-            model=model_name,
-            base_url=ollama_url,
-            request_timeout=60.0,
+        llm = _create_web_search_llm(
+            model_name=model_name,
+            ollama_url=ollama_url,
+            provider_id=provider_id,
+            context_window=context_window,
             temperature=0.5,
-            thinking=thinking_enabled,
-            additional_kwargs={"num_ctx": context_window},
+            request_timeout=60.0,
         )
 
         async for chunk in await llm.astream_complete(prompt):
@@ -938,6 +983,7 @@ async def summarize_with_llm(
     progress_callback=None,
     context_window: Optional[int] = None,
     custom_instructions: Optional[str] = None,
+    provider_id: Optional[str] = None,
 ) -> str:
     """
     Use Ollama LLM to summarize web search findings.
@@ -1060,17 +1106,13 @@ Include relevant details and preserve all markdown links from sources.]
 Begin your response:"""
 
     try:
-        thinking_enabled = resolve_thinking(model_name)
-
-        # Create Ollama LLM (reuses already-loaded model in VRAM)
-        llm = Ollama(
-            model=model_name,
-            base_url=ollama_url,
-            request_timeout=120.0,
-            temperature=0.5,
+        llm = _create_web_search_llm(
+            model_name=model_name,
+            ollama_url=ollama_url,
+            provider_id=provider_id,
             context_window=context_window,
-            thinking=thinking_enabled,
-            additional_kwargs={"num_ctx": context_window},
+            temperature=0.5,
+            request_timeout=120.0,
         )
 
         # Generate summary
@@ -1100,6 +1142,7 @@ async def web_search_stream(
     rerank_content_threshold: float = 0.1,
     max_source_context_pct: float = 0.15,
     input_context_pct: float = 0.6,
+    provider_id: Optional[str] = None,
 ) -> AsyncGenerator[WebSearchChunk, None]:
     """
     Streaming web search that yields chunks like RAG does.
@@ -1388,6 +1431,7 @@ async def web_search_stream(
             model_name=model_name,
             ollama_url=ollama_url,
             context_window=context_window or 16384,
+            provider_id=provider_id,
         ):
             yield WebSearchChunk(token=token)
 
@@ -1438,15 +1482,13 @@ async def web_search_stream(
     )
 
     # Initialize LLM for synthesis
-    thinking_enabled = resolve_thinking(model_name)
-    llm = Ollama(
-        model=model_name,
-        base_url=ollama_url,
-        request_timeout=120.0,
-        temperature=0.3,
+    llm = _create_web_search_llm(
+        model_name=model_name,
+        ollama_url=ollama_url,
+        provider_id=provider_id,
         context_window=context_window,
-        thinking=thinking_enabled,
-        additional_kwargs={"num_ctx": context_window},
+        temperature=0.3,
+        request_timeout=120.0,
     )
 
     # Use core synthesis engine
@@ -1466,6 +1508,7 @@ async def web_search_async(
     progress_callback: Optional[ProgressCallback] = None,
     context_window: Optional[int] = None,
     custom_instructions: Optional[str] = None,
+    provider_id: Optional[str] = None,
 ) -> Tuple[str, List[WebSearchSource]]:
     """
     Complete web search pipeline: search -> fetch -> summarize.
@@ -1559,6 +1602,7 @@ async def web_search_async(
         progress_callback,
         context_window,
         custom_instructions,
+        provider_id=provider_id,
     )
 
     # Step 4: Format final response (sources are returned separately now)

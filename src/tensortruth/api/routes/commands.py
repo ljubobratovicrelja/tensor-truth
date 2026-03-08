@@ -224,6 +224,7 @@ class WebSearchCommand(ToolCommand):
                 rerank_content_threshold=ws_config.rerank_content_threshold,
                 max_source_context_pct=ws_config.max_source_context_pct,
                 input_context_pct=ws_config.input_context_pct,
+                provider_id=params.get("provider_id"),
             ):
                 if chunk.agent_progress:
                     # Send agent progress for search/fetch phases

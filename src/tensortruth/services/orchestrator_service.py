@@ -32,12 +32,15 @@ from llama_index.core.tools import FunctionTool
 from llama_index.core.workflow.errors import WorkflowRuntimeError
 
 from tensortruth.agents.tool_output import describe_tool_call, extract_tool_text
-from tensortruth.core.ollama import (
-    get_orchestrator_llm,
-    get_tool_llm,
-    resolve_thinking,
-)
 from tensortruth.core.prompts import current_date_context
+from tensortruth.core.providers import (
+    get_orchestrator_llm as _providers_get_orchestrator_llm,
+)
+from tensortruth.core.providers import get_tool_llm as _providers_get_tool_llm
+from tensortruth.core.providers import (
+    resolve_model_from_params,
+)
+from tensortruth.core.providers import resolve_thinking as _providers_resolve_thinking
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
 from tensortruth.services.orchestrator_tool_wrappers import (
     ProgressEmitter,
@@ -45,7 +48,7 @@ from tensortruth.services.orchestrator_tool_wrappers import (
 )
 
 if TYPE_CHECKING:
-    from llama_index.llms.ollama import Ollama
+    from llama_index.core.llms import LLM
 
     from tensortruth.services.rag_service import RAGService
     from tensortruth.services.tool_service import ToolService
@@ -192,6 +195,9 @@ class OrchestratorService:
         self._base_url = base_url
         self._context_window = context_window
         self._session_params = session_params or {}
+
+        # Resolve model reference once for provider-aware LLM creation
+        self._model_ref = resolve_model_from_params(self._session_params, model)
         self._session_messages = session_messages
         self._module_descriptions = module_descriptions or []
         self._custom_instructions = custom_instructions
@@ -199,7 +205,7 @@ class OrchestratorService:
         self._max_iterations = max_iterations
 
         # Built lazily on first execute()
-        self._llm: Optional["Ollama"] = None
+        self._llm: Optional["LLM"] = None
         self._agent: Optional[LIFunctionAgent] = None
         self._tools: Optional[List[FunctionTool]] = None
 
@@ -637,9 +643,9 @@ class OrchestratorService:
         )
 
         thinking_pref = self._session_params.get("thinking")
-        resolved = resolve_thinking(self._model, thinking_pref)
-        llm = get_tool_llm(
-            self._model, self._base_url, self._context_window, thinking=resolved
+        resolved = _providers_resolve_thinking(self._model_ref, thinking_pref)
+        llm = _providers_get_tool_llm(
+            self._model_ref, self._context_window, thinking=resolved
         )
         system_prompt = self._build_direct_system_prompt()
 
@@ -728,11 +734,10 @@ class OrchestratorService:
         tools = self._build_tools(_combined_emitter)
         self._tools = tools
 
-        # Get (or reuse) orchestrator LLM singleton
-        self._llm = get_orchestrator_llm(
-            model=self._model,
-            base_url=self._base_url,
-            context_window=self._context_window,
+        # Get (or reuse) orchestrator LLM singleton (provider-agnostic)
+        self._llm = _providers_get_orchestrator_llm(
+            self._model_ref,
+            self._context_window,
         )
 
         # Compose system prompt
@@ -939,7 +944,7 @@ class OrchestratorService:
         # so the user gets reasoning tokens. Otherwise, use the fast path.
         if not tools_called:
             thinking_pref = self._session_params.get("thinking")
-            resolved = resolve_thinking(self._model, thinking_pref)
+            resolved = _providers_resolve_thinking(self._model_ref, thinking_pref)
             if resolved:
                 async for direct_event in self._generate_direct_response(
                     prompt, llama_history, _combined_emitter
@@ -966,12 +971,13 @@ class OrchestratorService:
         )
 
         thinking_pref = self._session_params.get("thinking")
-        resolved_thinking = resolve_thinking(self._model, thinking_pref)
+        resolved_thinking = _providers_resolve_thinking(self._model_ref, thinking_pref)
         synthesis = get_synthesis_service(
             self._model,
             self._base_url,
             self._context_window,
             thinking=resolved_thinking,
+            provider_id=self._session_params.get("provider_id"),
         )
         async for synth_event in synthesis.synthesize(
             prompt=prompt,

@@ -181,7 +181,7 @@ function MessageItemComponent({
           {!isUser && messageToolSteps.length > 0 && (
             <ToolSteps
               steps={messageToolSteps}
-              defaultOpen={isStreaming && !message.content}
+              defaultOpen={isStreaming && !message.content && !thinkingContent}
             />
           )}
         </div>

@@ -51,6 +51,16 @@ from .project import (
     ProjectSessionCreate,
     ProjectUpdate,
 )
+from .provider import (
+    DiscoveredServer,
+    DiscoverResponse,
+    ProviderCreateRequest,
+    ProviderListResponse,
+    ProviderResponse,
+    ProviderTestRequest,
+    ProviderTestResponse,
+    ProviderUpdateRequest,
+)
 from .session import (
     MessageCreate,
     MessageResponse,
@@ -140,6 +150,15 @@ __all__ = [
     "ModelPullRequest",
     "ModelPullResponse",
     "ReinitializeIndexesResponse",
+    # Provider
+    "ProviderResponse",
+    "ProviderListResponse",
+    "ProviderCreateRequest",
+    "ProviderUpdateRequest",
+    "ProviderTestRequest",
+    "ProviderTestResponse",
+    "DiscoveredServer",
+    "DiscoverResponse",
     # Task
     "TaskResponse",
     "TaskListResponse",

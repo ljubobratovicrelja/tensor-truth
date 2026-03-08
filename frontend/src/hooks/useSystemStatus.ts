@@ -7,11 +7,13 @@ import {
   getMemoryInfo,
   getDevices,
   getOllamaStatus,
+  getLlamaCppStatus,
   getRAGStatus,
   restartEngine,
   type MemoryResponse,
   type DevicesResponse,
   type OllamaStatusResponse,
+  type LlamaCppStatusResponse,
   type RAGStatusResponse,
   type RestartEngineResponse,
 } from "@/api/system";
@@ -58,6 +60,23 @@ export function useOllamaStatus(enabled = true) {
   return useQuery<OllamaStatusResponse>({
     queryKey: ["system", "ollama", "status"],
     queryFn: getOllamaStatus,
+    refetchInterval: enabled ? 1000 : false,
+    staleTime: 800,
+    enabled,
+  });
+}
+
+/**
+ * Hook to fetch llama.cpp runtime status
+ *
+ * Refetches every second when enabled (panel open) for responsive updates
+ *
+ * @param enabled - Whether to enable polling (default: true)
+ */
+export function useLlamaCppStatus(enabled = true) {
+  return useQuery<LlamaCppStatusResponse>({
+    queryKey: ["system", "llama-cpp", "status"],
+    queryFn: getLlamaCppStatus,
     refetchInterval: enabled ? 1000 : false,
     staleTime: 800,
     enabled,

@@ -125,6 +125,185 @@ async def get_ollama_status() -> OllamaStatusResponse:
         return OllamaStatusResponse(running=False, models=[], info_lines=[])
 
 
+class LlamaCppModelInfo(BaseModel):
+    """Information about a llama.cpp model."""
+
+    name: str
+    display_name: str
+    status: str  # "loaded" | "loading" | "unloaded"
+
+
+class LlamaCppStatusResponse(BaseModel):
+    """Response schema for llama.cpp status endpoint."""
+
+    running: bool
+    models: List[LlamaCppModelInfo]
+    base_url: str
+
+
+class LlamaCppActionRequest(BaseModel):
+    """Request body for llama.cpp load/unload."""
+
+    model: str
+    provider_id: Optional[str] = None
+
+
+class LlamaCppActionResponse(BaseModel):
+    """Response for llama.cpp load/unload actions."""
+
+    success: bool
+    message: str
+
+
+@router.get("/llama-cpp/status", response_model=LlamaCppStatusResponse)
+async def get_llama_cpp_status() -> LlamaCppStatusResponse:
+    """Get llama.cpp runtime status and available models."""
+    from tensortruth.core.llama_cpp import (
+        check_health,
+        format_display_name,
+        get_available_models,
+    )
+    from tensortruth.core.providers import ProviderRegistry
+
+    registry = ProviderRegistry.get_instance()
+
+    # Find the first llama_cpp provider
+    provider = None
+    for p in registry.providers:
+        if p.type == "llama_cpp":
+            provider = p
+            break
+
+    if provider is None:
+        return LlamaCppStatusResponse(running=False, models=[], base_url="")
+
+    base = provider.base_url.rstrip("/")
+    healthy = check_health(base)
+
+    if not healthy:
+        return LlamaCppStatusResponse(running=False, models=[], base_url=base)
+
+    # Build static lookup for display names
+    static_lookup = {}
+    for m in provider.models:
+        name = m.get("name", "")
+        if name:
+            static_lookup[name] = m
+
+    server_models = get_available_models(base)
+    models = []
+    for sm in server_models:
+        model_id = sm.get("id", "")
+        if not model_id:
+            continue
+        static = static_lookup.get(model_id, {})
+        models.append(
+            LlamaCppModelInfo(
+                name=model_id,
+                display_name=static.get("display_name")
+                or format_display_name(model_id),
+                status=sm.get("status", "unloaded"),
+            )
+        )
+
+    return LlamaCppStatusResponse(running=True, models=models, base_url=base)
+
+
+@router.post("/llama-cpp/load", response_model=LlamaCppActionResponse)
+async def load_llama_cpp_model(req: LlamaCppActionRequest) -> LlamaCppActionResponse:
+    """Load a model into VRAM on the llama.cpp server."""
+    from tensortruth.core.llama_cpp import load_model
+    from tensortruth.core.providers import ProviderRegistry
+
+    registry = ProviderRegistry.get_instance()
+
+    provider = None
+    if req.provider_id:
+        provider = registry.get_provider(req.provider_id)
+    else:
+        for p in registry.providers:
+            if p.type == "llama_cpp":
+                provider = p
+                break
+
+    if provider is None or provider.type != "llama_cpp":
+        return LlamaCppActionResponse(
+            success=False, message="No llama_cpp provider found"
+        )
+
+    base = provider.base_url.rstrip("/")
+    ok = load_model(base, req.model)
+    if ok:
+        return LlamaCppActionResponse(success=True, message=f"Model {req.model} loaded")
+    return LlamaCppActionResponse(success=False, message=f"Failed to load {req.model}")
+
+
+@router.post("/llama-cpp/unload", response_model=LlamaCppActionResponse)
+async def unload_llama_cpp_model(req: LlamaCppActionRequest) -> LlamaCppActionResponse:
+    """Unload a model from VRAM on the llama.cpp server."""
+    from tensortruth.core.llama_cpp import unload_model
+    from tensortruth.core.providers import ProviderRegistry
+
+    registry = ProviderRegistry.get_instance()
+
+    provider = None
+    if req.provider_id:
+        provider = registry.get_provider(req.provider_id)
+    else:
+        for p in registry.providers:
+            if p.type == "llama_cpp":
+                provider = p
+                break
+
+    if provider is None or provider.type != "llama_cpp":
+        return LlamaCppActionResponse(
+            success=False, message="No llama_cpp provider found"
+        )
+
+    base = provider.base_url.rstrip("/")
+    ok = unload_model(base, req.model)
+    if ok:
+        return LlamaCppActionResponse(
+            success=True, message=f"Model {req.model} unloaded"
+        )
+    return LlamaCppActionResponse(
+        success=False, message=f"Failed to unload {req.model}"
+    )
+
+
+class OllamaActionRequest(BaseModel):
+    """Request body for Ollama load/unload."""
+
+    model: str
+    provider_id: Optional[str] = None
+
+
+@router.post("/ollama/load", response_model=LlamaCppActionResponse)
+async def load_ollama_model(req: OllamaActionRequest) -> LlamaCppActionResponse:
+    """Preload a model into Ollama's memory."""
+    from tensortruth.core.ollama import load_model
+
+    ok = load_model(req.model)
+    if ok:
+        return LlamaCppActionResponse(success=True, message=f"Model {req.model} loaded")
+    return LlamaCppActionResponse(success=False, message=f"Failed to load {req.model}")
+
+
+@router.post("/ollama/unload", response_model=LlamaCppActionResponse)
+async def unload_ollama_model(req: OllamaActionRequest) -> LlamaCppActionResponse:
+    """Unload a model from Ollama's memory."""
+    from tensortruth.core.ollama import stop_model
+
+    ok = stop_model(req.model)
+    if ok:
+        return LlamaCppActionResponse(
+            success=True, message=f"Model {req.model} unloaded"
+        )
+    return LlamaCppActionResponse(
+        success=False, message=f"Failed to unload {req.model}"
+    )
+
+
 class RAGModelStatus(BaseModel):
     """Status information for a RAG model."""
 

@@ -4,7 +4,10 @@ import { toast } from "sonner";
 import { Send, Bot, FolderKanban, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectTrigger } from "@/components/ui/select";
-import { ModelSelectContent } from "@/components/chat/ModelSelectContent";
+import {
+  ModelSelectContent,
+  decodeModelValue,
+} from "@/components/chat/ModelSelectContent";
 import { cn } from "@/lib/utils";
 import {
   useModels,
@@ -14,6 +17,7 @@ import {
   useCommandDetection,
   useThinking,
   thinkingToParam,
+  useModelActions,
 } from "@/hooks";
 import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
@@ -31,9 +35,13 @@ export function WelcomePage() {
   const [autocompleteHasResults, setAutocompleteHasResults] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { data: modelsData, isLoading: modelsLoading } = useModels();
+  const [selectOpen, setSelectOpen] = useState(false);
+  const { data: modelsData, isLoading: modelsLoading } = useModels(
+    selectOpen ? 2000 : false
+  );
   const { data: projectsData } = useProjects();
   const { data: config } = useConfig();
+  const { actionsInFlight, handleLoadModel, handleUnloadModel } = useModelActions();
   const createSession = useCreateSession();
   const navigate = useNavigate();
   const setPendingMessage = useChatStore((state) => state.setPendingUserMessage);
@@ -46,8 +54,21 @@ export function WelcomePage() {
   const showAutocomplete = detection.hasCommand && !hasSpaceAfterCommand;
 
   // Derive effective model: user selection, config default, or first available
+  const decodedSelected = selectedModel ? decodeModelValue(selectedModel) : null;
   const effectiveModel =
-    selectedModel || config?.llm.default_model || modelsData?.models[0]?.name || "";
+    decodedSelected?.modelName ||
+    config?.llm.default_model ||
+    modelsData?.models[0]?.name ||
+    "";
+  const effectiveProviderId = (() => {
+    if (decodedSelected?.providerId) return decodedSelected.providerId;
+    // Resolve provider from models list when using config default
+    if (effectiveModel && modelsData?.models) {
+      const info = modelsData.models.find((m) => m.name === effectiveModel);
+      if (info?.provider_id) return info.provider_id;
+    }
+    return "ollama";
+  })();
 
   const {
     thinking,
@@ -56,9 +77,10 @@ export function WelcomePage() {
     setThinking,
   } = useThinking({ modelsData, effectiveModel });
 
-  const handleModelSelect = (model: string) => {
-    setSelectedModel(model);
-    handleThinkingModelChange(model);
+  const handleModelSelect = (encodedValue: string) => {
+    setSelectedModel(encodedValue);
+    const { modelName } = decodeModelValue(encodedValue);
+    handleThinkingModelChange(modelName);
   };
 
   const handleSubmit = async (promptText?: string) => {
@@ -71,6 +93,7 @@ export function WelcomePage() {
       const params = {
         ...sessionParams,
         model: effectiveModel,
+        provider_id: effectiveProviderId,
         ...(thinkingValue !== undefined && { thinking: thinkingValue }),
       };
 
@@ -201,7 +224,11 @@ export function WelcomePage() {
                 />
 
                 {/* Model selector */}
-                <Select value={selectedModel} onValueChange={handleModelSelect}>
+                <Select
+                  value={selectedModel}
+                  onValueChange={handleModelSelect}
+                  onOpenChange={setSelectOpen}
+                >
                   <SelectTrigger className="hover:bg-muted h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs">
                     <Bot className="h-3.5 w-3.5" />
                     <span className="text-xs">{effectiveModel || "No model"}</span>
@@ -212,6 +239,9 @@ export function WelcomePage() {
                     position="popper"
                     side="top"
                     className="!max-h-[300px]"
+                    onLoadModel={handleLoadModel}
+                    onUnloadModel={handleUnloadModel}
+                    actionsInFlight={actionsInFlight}
                   />
                 </Select>
                 {thinkingSupport.thinking && (
@@ -243,7 +273,7 @@ export function WelcomePage() {
 
           {!modelsLoading && modelsData?.models.length === 0 && (
             <p className="text-destructive text-center text-xs">
-              No Ollama models available. Start Ollama and pull a model to begin.
+              No models available. Check that a provider is running and has models loaded.
             </p>
           )}
           <p className="text-muted-foreground text-center text-xs">

@@ -28,6 +28,7 @@ dependencies = [
     "llama-index>=0.10.0",
     "llama-index-core",
     "llama-index-llms-ollama",
+    "llama-index-llms-openai-like",
     "llama-index-embeddings-huggingface",
     "llama-index-vector-stores-chroma",
     "llama-index-readers-file",

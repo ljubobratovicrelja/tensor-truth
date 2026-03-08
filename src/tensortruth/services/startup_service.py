@@ -170,45 +170,104 @@ class StartupService:
     def check_ollama_models(self) -> Dict[str, Any]:
         """Check Ollama reachability and available models.
 
+        Also performs a basic connectivity check for openai_compatible providers.
+
         Returns:
             Dict with keys:
             - ollama_running: True if Ollama is reachable
             - available: List of all available model names
-            - models_ok: True if Ollama is running and has at least one model
+            - models_ok: True if ANY provider has reachable models
+            - providers_ok: True if any provider is reachable
         """
+        ollama_running = False
+        available_models: List[str] = []
+        providers_ok = False
+
         try:
             import requests as _requests
 
-            from tensortruth.core.ollama import get_api_base
+            from tensortruth.core.providers import ProviderRegistry
 
-            response = _requests.get(f"{get_api_base()}/tags", timeout=2)
-            ollama_running = response.status_code == 200
-            if ollama_running:
-                data = response.json()
-                available_models = sorted(m["name"] for m in data.get("models", []))
-            else:
-                available_models = []
+            registry = ProviderRegistry.get_instance()
 
-            models_ok = ollama_running and len(available_models) > 0
+            for provider in registry.providers:
+                if provider.type == "ollama":
+                    try:
+                        base = provider.base_url.rstrip("/")
+                        response = _requests.get(f"{base}/api/tags", timeout=2)
+                        if response.status_code == 200:
+                            ollama_running = True
+                            providers_ok = True
+                            data = response.json()
+                            available_models.extend(
+                                sorted(m["name"] for m in data.get("models", []))
+                            )
+                    except Exception:
+                        pass
 
-            logger.debug(
-                f"Ollama check: running={ollama_running}, "
-                f"available={len(available_models)}, models_ok={models_ok}"
-            )
+                elif provider.type == "llama_cpp":
+                    try:
+                        from tensortruth.core.llama_cpp import (
+                            check_health,
+                        )
+                        from tensortruth.core.llama_cpp import (
+                            get_available_models as get_llama_models,
+                        )
 
-            return {
-                "ollama_running": ollama_running,
-                "available": available_models,
-                "models_ok": models_ok,
-            }
+                        base = provider.base_url.rstrip("/")
+                        if check_health(base):
+                            providers_ok = True
+                            server_models = get_llama_models(base)
+                            available_models.extend(
+                                m["id"] for m in server_models if m.get("id")
+                            )
+                    except Exception:
+                        pass
+
+                elif provider.type == "openai_compatible":
+                    # Basic connectivity check
+                    try:
+                        base = provider.base_url.rstrip("/")
+                        headers: Dict[str, str] = {}
+                        if provider.api_key:
+                            headers["Authorization"] = f"Bearer {provider.api_key}"
+                        response = _requests.get(
+                            f"{base}/models", headers=headers, timeout=3
+                        )
+                        if response.status_code == 200:
+                            providers_ok = True
+                            # Count statically configured models as available
+                            for m in provider.models:
+                                name = m.get("name", "")
+                                if name:
+                                    available_models.append(name)
+                    except Exception:
+                        # Even without connectivity, statically configured models
+                        # are "available" in config
+                        if provider.models:
+                            providers_ok = True
+                            for m in provider.models:
+                                name = m.get("name", "")
+                                if name:
+                                    available_models.append(name)
 
         except Exception as e:
-            logger.warning(f"Failed to check Ollama: {e}")
-            return {
-                "ollama_running": False,
-                "available": [],
-                "models_ok": False,
-            }
+            logger.warning(f"Failed to check providers: {e}")
+
+        models_ok = len(available_models) > 0
+
+        logger.debug(
+            f"Provider check: ollama_running={ollama_running}, "
+            f"available={len(available_models)}, models_ok={models_ok}, "
+            f"providers_ok={providers_ok}"
+        )
+
+        return {
+            "ollama_running": ollama_running,
+            "available": available_models,
+            "models_ok": models_ok,
+            "providers_ok": providers_ok,
+        }
 
     def check_startup_status(self, log: bool = False) -> Dict:
         """Perform all startup checks and build comprehensive status.

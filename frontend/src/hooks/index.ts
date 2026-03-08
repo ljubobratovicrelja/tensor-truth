@@ -15,3 +15,5 @@ export * from "./useDocuments";
 export * from "./useTasks";
 export * from "./useAutoScroll";
 export * from "./useThinking";
+export * from "./useProviders";
+export * from "./useModelActions";

@@ -4,25 +4,18 @@ import logging
 import os
 import uuid
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union, cast
 
 import requests
 
 if TYPE_CHECKING:
-    from llama_index.llms.ollama import Ollama
+    from llama_index.core.llms import LLM as Ollama
 
 logger = logging.getLogger(__name__)
 
-# Module-level singletons for LLM instances.
-# Keyed by (model, base_url, context_window) so they are replaced when
-# session configuration changes.  All instances always set num_ctx in
-# additional_kwargs to prevent Ollama from reloading the model when the
-# context size differs between calls.
-_orchestrator_llm_instance: Optional[Any] = None
-_orchestrator_llm_key: Optional[Tuple[str, str, int]] = None
 
-_tool_llm_instance: Optional[Any] = None
-_tool_llm_key: Optional[Tuple[str, str, int, Union[bool, str, None]]] = None
+# LLM singletons are now managed by core.providers (ProviderRegistry).
+# The functions below (get_orchestrator_llm, get_tool_llm) are thin wrappers.
 
 
 _DEFAULT_OLLAMA_URL = "http://localhost:11434"
@@ -40,12 +33,20 @@ def get_ollama_url() -> str:
         Ollama base URL string
     """
     # 1. Check Config File (highest priority — explicit app config beats system env)
+    # Read from providers list first, fall back to legacy ollama section
     config_url = None
     try:
         from tensortruth.app_utils.config import load_config
 
         config = load_config()
-        config_url = config.ollama.base_url.rstrip("/")
+        # Prefer the first Ollama-type provider in the providers list
+        for p in config.providers:
+            if p.type == "ollama":
+                config_url = p.base_url.rstrip("/")
+                break
+        # Fall back to legacy ollama section
+        if not config_url:
+            config_url = config.ollama.base_url.rstrip("/")
     except Exception:
         pass
 
@@ -151,6 +152,42 @@ def stop_model(model_name: str) -> bool:
         return True
     except Exception as e:
         logger.error(f"Failed to stop {model_name}: {e}")
+        return False
+
+
+def load_model(
+    model_name: str,
+    keep_alive: str = "5m",
+    num_ctx: Optional[int] = None,
+) -> bool:
+    """Preload a model into Ollama's memory via empty generate request.
+
+    Args:
+        model_name: The model to load.
+        keep_alive: How long to keep the model in memory.
+        num_ctx: Context window size. If None, reads from config defaults.
+    """
+    try:
+        if num_ctx is None:
+            try:
+                from tensortruth.app_utils.config import load_config
+
+                num_ctx = load_config().llm.default_context_window
+            except Exception:
+                num_ctx = 8192
+
+        payload: Dict[str, Any] = {
+            "model": model_name,
+            "keep_alive": keep_alive,
+            "prompt": "",
+            "options": {"num_ctx": num_ctx},
+        }
+        response = requests.post(
+            f"{get_api_base()}/generate", json=payload, timeout=120
+        )
+        return response.status_code == 200
+    except Exception as e:
+        logger.error(f"Failed to load {model_name}: {e}")
         return False
 
 
@@ -335,14 +372,7 @@ def get_orchestrator_llm(
 ) -> "Ollama":
     """Get or create a cached Ollama LLM instance for orchestrator use.
 
-    Returns an Ollama instance with thinking disabled, intended for fast
-    tool-calling decisions in the orchestrator agent.  Also suitable for
-    query condensation and other low-temperature auxiliary tasks.
-
-    The instance is cached as a module-level singleton keyed by
-    ``(model, base_url, context_window)``.  ``num_ctx`` is always set in
-    ``additional_kwargs`` so that Ollama never sees a context-size change
-    between requests (which would trigger a costly model reload).
+    Backward-compatible wrapper that delegates to ``core.providers``.
 
     Args:
         model: Ollama model name (e.g., "qwen3:32b").
@@ -350,38 +380,21 @@ def get_orchestrator_llm(
         context_window: Context window size for the model.
 
     Returns:
-        Cached Ollama LLM instance with thinking=False.
+        Cached LLM instance with thinking=False.
     """
-    global _orchestrator_llm_instance, _orchestrator_llm_key
-
-    key = (model, base_url, context_window)
-
-    if _orchestrator_llm_instance is not None and _orchestrator_llm_key == key:
-        return _orchestrator_llm_instance
-
-    from llama_index.llms.ollama import Ollama
-
-    logger.info(
-        "Creating orchestrator LLM singleton: model=%s, base_url=%s, "
-        "context_window=%d",
-        model,
-        base_url,
-        context_window,
+    from tensortruth.core.providers import (
+        ModelReference,
     )
+    from tensortruth.core.providers import get_orchestrator_llm as _providers_get
 
-    _orchestrator_llm_instance = Ollama(
-        model=model,
+    ref = ModelReference(
+        provider_id="ollama",
+        model_name=model,
+        display_name=model,
+        provider_type="ollama",
         base_url=base_url,
-        temperature=0.2,
-        context_window=context_window,
-        thinking=False,
-        request_timeout=120.0,
-        additional_kwargs={"num_ctx": context_window, "num_predict": -1},
     )
-    _patch_parallel_tool_calls(_orchestrator_llm_instance)
-    _orchestrator_llm_key = key
-
-    return _orchestrator_llm_instance
+    return _providers_get(ref, context_window)
 
 
 def get_tool_llm(
@@ -392,55 +405,30 @@ def get_tool_llm(
 ) -> "Ollama":
     """Get or create a cached thinking-enabled Ollama LLM for tool/synthesis use.
 
-    Returns an Ollama instance with thinking enabled (when the model supports
-    it), intended for synthesis, RAG generation, and other content-producing
-    calls.  Shares the same ``num_ctx`` as the orchestrator LLM so Ollama
-    keeps the model loaded without reloading.
+    Backward-compatible wrapper that delegates to ``core.providers``.
 
     Args:
         model: Ollama model name.
         base_url: Ollama server base URL.
         context_window: Context window size for the model.
-        thinking: Resolved thinking preference. When ``None`` (default),
-            auto-detects via ``check_thinking_support()``.
+        thinking: Resolved thinking preference.
 
     Returns:
-        Cached Ollama LLM instance with thinking enabled (if supported).
+        Cached LLM instance with thinking enabled (if supported).
     """
-    global _tool_llm_instance, _tool_llm_key
-
-    resolved_thinking: Union[bool, str, None] = (
-        thinking if thinking is not None else check_thinking_support(model)
+    from tensortruth.core.providers import (
+        ModelReference,
     )
+    from tensortruth.core.providers import get_tool_llm as _providers_get
 
-    key = (model, base_url, context_window, resolved_thinking)
-
-    if _tool_llm_instance is not None and _tool_llm_key == key:
-        return _tool_llm_instance
-
-    from llama_index.llms.ollama import Ollama
-
-    logger.info(
-        "Creating tool LLM singleton: model=%s, base_url=%s, "
-        "context_window=%d, thinking=%s",
-        model,
-        base_url,
-        context_window,
-        resolved_thinking,
-    )
-
-    _tool_llm_instance = Ollama(
-        model=model,
+    ref = ModelReference(
+        provider_id="ollama",
+        model_name=model,
+        display_name=model,
+        provider_type="ollama",
         base_url=base_url,
-        temperature=0.7,
-        context_window=context_window,
-        thinking=resolved_thinking,  # type: ignore[arg-type]
-        request_timeout=120.0,
-        additional_kwargs={"num_ctx": context_window, "num_predict": -1},
     )
-    _tool_llm_key = key
-
-    return _tool_llm_instance
+    return _providers_get(ref, context_window, thinking=thinking)
 
 
 def get_model_info(model_name: str) -> Dict[str, Any]:

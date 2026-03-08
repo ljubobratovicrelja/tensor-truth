@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { DocumentDialog } from "@/components/documents";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
+import { decodeModelValue, encodeModelValue } from "./ModelSelectContent";
 
 export function ChatContainer() {
   const { sessionId: urlSessionId, projectId } = useParams<{
@@ -176,12 +177,25 @@ export function ChatContainer() {
     );
   };
 
-  const handleModelChange = (model: string | null) => {
+  const handleModelChange = (encodedValue: string | null) => {
     if (!urlSessionId) return;
     const currentParams = sessionData?.params ?? {};
+
+    let model: string | null = null;
+    let providerId: string | undefined;
+    if (encodedValue) {
+      const decoded = decodeModelValue(encodedValue);
+      model = decoded.modelName;
+      providerId = decoded.providerId;
+    }
+
     let newParams = model
-      ? { ...currentParams, model }
-      : Object.fromEntries(Object.entries(currentParams).filter(([k]) => k !== "model"));
+      ? { ...currentParams, model, provider_id: providerId || "ollama" }
+      : Object.fromEntries(
+          Object.entries(currentParams).filter(
+            ([k]) => k !== "model" && k !== "provider_id"
+          )
+        );
 
     // Reset thinking if incompatible with new model
     if (model && newParams.thinking !== undefined) {
@@ -226,7 +240,20 @@ export function ChatContainer() {
   };
 
   const currentModules = sessionData?.modules ?? [];
-  const currentModel = (sessionData?.params?.model as string) || undefined;
+  const currentModelName = (sessionData?.params?.model as string) || undefined;
+  const currentProviderId = (() => {
+    const stored = sessionData?.params?.provider_id as string | undefined;
+    if (stored) return stored;
+    // Resolve provider from models list for sessions without provider_id
+    if (currentModelName && modelsData?.models) {
+      const info = modelsData.models.find((m) => m.name === currentModelName);
+      if (info?.provider_id) return info.provider_id;
+    }
+    return "ollama";
+  })();
+  const currentModel = currentModelName
+    ? encodeModelValue(currentProviderId, currentModelName)
+    : undefined;
   const currentThinking = paramToThinking(sessionData?.params?.thinking);
 
   return (

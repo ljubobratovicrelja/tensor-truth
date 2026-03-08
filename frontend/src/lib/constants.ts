@@ -16,5 +16,19 @@ export const QUERY_KEYS = {
   indexingConfig: (projectId: string) =>
     ["projects", projectId, "indexing-config"] as const,
   task: (id: string) => ["tasks", id] as const,
+  providers: ["providers"] as const,
   tasks: ["tasks"] as const,
+};
+
+export const PROVIDER_TYPE_LABELS: Record<string, string> = {
+  ollama: "Ollama",
+  llama_cpp: "llama.cpp",
+  openai_compatible: "OpenAI-compatible",
+};
+
+export const PROVIDER_TYPE_COLORS: Record<string, string> = {
+  ollama: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  llama_cpp: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  openai_compatible:
+    "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
 };

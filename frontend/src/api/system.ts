@@ -75,6 +75,70 @@ export async function getRAGStatus(): Promise<RAGStatusResponse> {
   return apiGet<RAGStatusResponse>("/system/rag/status");
 }
 
+export interface LlamaCppModelInfo {
+  name: string;
+  display_name: string;
+  status: string;
+}
+
+export interface LlamaCppStatusResponse {
+  running: boolean;
+  models: LlamaCppModelInfo[];
+  base_url: string;
+}
+
+export interface LlamaCppActionResponse {
+  success: boolean;
+  message: string;
+}
+
+/**
+ * Get llama.cpp runtime status and available models
+ */
+export async function getLlamaCppStatus(): Promise<LlamaCppStatusResponse> {
+  return apiGet<LlamaCppStatusResponse>("/system/llama-cpp/status");
+}
+
+/**
+ * Load a model on the llama.cpp server
+ */
+export async function loadLlamaCppModel(
+  model: string,
+  providerId?: string
+): Promise<LlamaCppActionResponse> {
+  return apiPost<LlamaCppActionResponse>("/system/llama-cpp/load", {
+    model,
+    provider_id: providerId,
+  });
+}
+
+/**
+ * Unload a model from the llama.cpp server
+ */
+export async function unloadLlamaCppModel(
+  model: string,
+  providerId?: string
+): Promise<LlamaCppActionResponse> {
+  return apiPost<LlamaCppActionResponse>("/system/llama-cpp/unload", {
+    model,
+    provider_id: providerId,
+  });
+}
+
+/**
+ * Load a model on an Ollama server
+ */
+export async function loadOllamaModel(model: string): Promise<LlamaCppActionResponse> {
+  return apiPost<LlamaCppActionResponse>("/system/ollama/load", { model });
+}
+
+/**
+ * Unload a model from an Ollama server
+ */
+export async function unloadOllamaModel(model: string): Promise<LlamaCppActionResponse> {
+  return apiPost<LlamaCppActionResponse>("/system/ollama/unload", { model });
+}
+
 export interface RestartEngineResponse {
   success: boolean;
   message: string;

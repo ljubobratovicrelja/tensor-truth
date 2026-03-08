@@ -21,7 +21,7 @@ from typing import (
 
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
 from llama_index.core.chat_engine import CondensePlusContextChatEngine
-from llama_index.llms.ollama import Ollama
+from llama_index.core.llms import LLM
 
 if TYPE_CHECKING:
     from llama_index.core.retrievers import BaseRetriever
@@ -91,7 +91,7 @@ class RAGService:
         self._chat_history_service = chat_history_service
 
         # Cache frequently accessed components to avoid repeated private access
-        self._llm: Optional[Ollama] = None
+        self._llm: Optional[LLM] = None
         self._retriever: Optional[BaseRetriever] = None
 
     @property
@@ -161,7 +161,7 @@ class RAGService:
         # Cache components - single point of private access (acceptable during init)
         # LlamaIndex CondensePlusContextChatEngine uses private attrs
         # Cast to expected types since we know the engine configuration
-        self._llm = cast(Ollama, self._engine._llm)
+        self._llm = cast(LLM, self._engine._llm)
         self._retriever = self._engine._retriever
 
         self._current_modules = modules
@@ -290,7 +290,10 @@ class RAGService:
                 logger.info(f"History length: {len(history.messages)} messages")
 
                 template_str = getattr(condenser, "template", str(condenser))
-                condenser_llm = create_condenser_llm(llm)
+                condenser_llm = create_condenser_llm(
+                    llm,
+                    provider_id=effective_params.get("provider_id"),
+                )
 
                 condensed_question = condense_query(
                     llm=condenser_llm,
@@ -542,7 +545,10 @@ class RAGService:
         condenser = getattr(self._engine, "_condense_prompt_template", None)
         if condenser and not history.is_empty and llm is not None:
             template_str = getattr(condenser, "template", str(condenser))
-            condenser_llm = create_condenser_llm(llm)
+            condenser_llm = create_condenser_llm(
+                llm,
+                provider_id=effective_params.get("provider_id"),
+            )
             condensed_question = condense_query(
                 llm=condenser_llm,
                 chat_history=chat_history_str,
@@ -656,17 +662,17 @@ class RAGService:
 
         return full_response
 
-    def get_llm(self) -> Optional[Ollama]:
+    def get_llm(self) -> Optional[LLM]:
         """Get the underlying LLM instance from the engine.
 
         Useful for direct LLM access without the full RAG pipeline.
 
         Returns:
-            Ollama LLM instance or None if engine not loaded.
+            LLM instance or None if engine not loaded.
         """
         return self._llm
 
-    def get_llm_from_params(self, params: Dict[str, Any]) -> Ollama:
+    def get_llm_from_params(self, params: Dict[str, Any]) -> LLM:
         """Create an LLM instance from parameters without loading full engine.
 
         Useful for operations that only need the LLM without loading the full engine.
@@ -675,7 +681,7 @@ class RAGService:
             params: Engine parameters.
 
         Returns:
-            Ollama LLM instance.
+            LLM instance.
         """
         return get_llm(params)
 

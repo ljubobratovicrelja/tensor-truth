@@ -21,10 +21,12 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { LoadedModelCard } from "./LoadedModelCard";
 import { MemoryMonitor } from "./MemoryMonitor";
 import {
   useDevices,
   useOllamaStatus,
+  useLlamaCppStatus,
   useRAGStatus,
   useSessionStats,
   useConfig,
@@ -38,10 +40,12 @@ interface SystemStatusPanelProps {
 
 export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
   const [isOpen, setIsOpen] = React.useState(false);
+
   const { activeSessionId } = useSessionStore();
 
   const { data: devicesData, isLoading: devicesLoading } = useDevices();
   const { data: ollamaData, isLoading: ollamaLoading } = useOllamaStatus(isOpen);
+  const { data: llamaCppData, isLoading: llamaCppLoading } = useLlamaCppStatus(isOpen);
   const { data: ragData, isLoading: ragLoading } = useRAGStatus(isOpen);
   const { data: sessionStats, isLoading: sessionStatsLoading } = useSessionStats(
     activeSessionId,
@@ -220,7 +224,7 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
                         </span>
                         <span
                           className="text-muted-foreground cursor-help text-xs"
-                          title="Estimated tokens (characters ÷ 4)"
+                          title="Estimated tokens (characters / 4)"
                         >
                           ~{formatNumber(sessionStats.compiled_history_tokens_estimate)}{" "}
                           tokens
@@ -297,27 +301,16 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
                 </div>
 
                 {ollamaData?.running && ollamaData.models.length > 0 && (
-                  <div className="text-muted-foreground space-y-2 text-xs">
+                  <div className="space-y-2">
                     {ollamaData.models.map((model, idx) => (
-                      <div key={idx} className="rounded border p-2">
-                        <div className="flex items-center justify-between">
-                          <p className="font-mono text-sm">{model.name}</p>
-                          {model.context_length != null && model.context_length > 0 && (
-                            <Badge variant="outline" className="text-xs">
-                              {formatNumber(model.context_length)} ctx
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="mt-1 flex gap-3">
-                          {model.size_vram_gb > 0 && (
-                            <span>VRAM: {model.size_vram_gb.toFixed(2)} GB</span>
-                          )}
-                          {model.size_gb > 0 && (
-                            <span>Size: {model.size_gb.toFixed(2)} GB</span>
-                          )}
-                          {model.parameters && <span>{model.parameters}</span>}
-                        </div>
-                      </div>
+                      <LoadedModelCard
+                        key={idx}
+                        name={model.name}
+                        vramGb={model.size_vram_gb}
+                        sizeGb={model.size_gb}
+                        parameters={model.parameters}
+                        contextLength={model.context_length}
+                      />
                     ))}
                   </div>
                 )}
@@ -339,6 +332,75 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
               </div>
             )}
           </section>
+
+          {/* llama.cpp Status — only shown when a provider is configured */}
+          {llamaCppData && llamaCppData.base_url && (
+            <>
+              <Separator />
+
+              <section className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Server className="text-muted-foreground h-4 w-4" />
+                  <h3 className="text-foreground text-sm font-semibold">
+                    llama.cpp Runtime
+                  </h3>
+                </div>
+
+                {llamaCppLoading ? (
+                  <div className="bg-muted h-16 w-full animate-pulse rounded" />
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={llamaCppData.running ? "default" : "destructive"}>
+                        {llamaCppData.running ? "Online" : "Offline"}
+                      </Badge>
+                      {llamaCppData.running &&
+                        (() => {
+                          const loadedCount = llamaCppData.models.filter(
+                            (m) => m.status === "loaded"
+                          ).length;
+                          return loadedCount > 0 ? (
+                            <span className="text-muted-foreground text-xs">
+                              {loadedCount} model(s) loaded
+                            </span>
+                          ) : null;
+                        })()}
+                    </div>
+
+                    {llamaCppData.running &&
+                      (() => {
+                        const loadedModels = llamaCppData.models.filter(
+                          (m) => m.status === "loaded"
+                        );
+                        return loadedModels.length > 0 ? (
+                          <div className="space-y-2">
+                            {loadedModels.map((model, idx) => (
+                              <LoadedModelCard key={idx} name={model.display_name} />
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground text-xs">
+                            No models currently loaded
+                          </p>
+                        );
+                      })()}
+
+                    {!llamaCppData.running && (
+                      <p className="text-muted-foreground text-xs">
+                        llama.cpp server is not reachable
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="text-muted-foreground mt-2 space-y-1 text-xs">
+                  <p>
+                    <span className="font-medium">Base URL:</span> {llamaCppData.base_url}
+                  </p>
+                </div>
+              </section>
+            </>
+          )}
 
           <Separator />
 

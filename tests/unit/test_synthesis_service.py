@@ -41,7 +41,7 @@ def _make_synthesis_service(thinking=False):
     """Create a SynthesisService with mocked LLM and thinking support."""
     with (
         patch(
-            "tensortruth.services.synthesis_service.resolve_thinking",
+            "tensortruth.services.synthesis_service._providers_resolve_thinking",
             return_value=thinking,
         ),
         patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
@@ -149,7 +149,7 @@ class TestSynthesisSingleton:
 
         with (
             patch(
-                "tensortruth.services.synthesis_service.resolve_thinking",
+                "tensortruth.services.synthesis_service._providers_resolve_thinking",
                 return_value=False,
             ),
             patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
@@ -175,7 +175,7 @@ class TestSynthesisSingleton:
 
         with (
             patch(
-                "tensortruth.services.synthesis_service.resolve_thinking",
+                "tensortruth.services.synthesis_service._providers_resolve_thinking",
                 return_value=False,
             ),
             patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
@@ -200,7 +200,7 @@ class TestSynthesisSingleton:
 
         with (
             patch(
-                "tensortruth.services.synthesis_service.resolve_thinking",
+                "tensortruth.services.synthesis_service._providers_resolve_thinking",
                 return_value=False,
             ),
             patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
@@ -226,7 +226,7 @@ class TestSynthesisSingleton:
 
         with (
             patch(
-                "tensortruth.services.synthesis_service.resolve_thinking",
+                "tensortruth.services.synthesis_service._providers_resolve_thinking",
                 side_effect=lambda model, pref: pref,
             ),
             patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
@@ -247,7 +247,7 @@ class TestSynthesisSingleton:
         """When thinking=False, _thinking_supported must be False even for capable models."""
         with (
             patch(
-                "tensortruth.services.synthesis_service.resolve_thinking",
+                "tensortruth.services.synthesis_service._providers_resolve_thinking",
                 return_value=False,
             ),
             patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),
@@ -266,7 +266,7 @@ class TestSynthesisSingleton:
         """Synthesis LLM additional_kwargs must not nest options inside 'options'."""
         with (
             patch(
-                "tensortruth.services.synthesis_service.resolve_thinking",
+                "tensortruth.services.synthesis_service._providers_resolve_thinking",
                 return_value=False,
             ),
             patch("llama_index.llms.ollama.Ollama") as MockOllama,
@@ -287,18 +287,18 @@ class TestSynthesisSingleton:
 
     def test_synthesis_llm_sets_num_ctx(self):
         """Synthesis LLM additional_kwargs must contain num_ctx matching context_window."""
-        import tensortruth.core.ollama as ollama_mod
+        import tensortruth.core.providers as providers_mod
 
         # Reset tool LLM singleton so Ollama constructor is actually called
-        old_instance = ollama_mod._tool_llm_instance
-        old_key = ollama_mod._tool_llm_key
-        ollama_mod._tool_llm_instance = None
-        ollama_mod._tool_llm_key = None
+        old_instance = providers_mod._tool_llm_instance
+        old_key = providers_mod._tool_llm_key
+        providers_mod._tool_llm_instance = None
+        providers_mod._tool_llm_key = None
 
         try:
             with (
                 patch(
-                    "tensortruth.services.synthesis_service.resolve_thinking",
+                    "tensortruth.services.synthesis_service._providers_resolve_thinking",
                     return_value=False,
                 ),
                 patch("llama_index.llms.ollama.Ollama") as MockOllama,
@@ -316,8 +316,8 @@ class TestSynthesisSingleton:
                 kwargs = MockOllama.call_args[1]
                 assert kwargs["additional_kwargs"]["num_ctx"] == 8192
         finally:
-            ollama_mod._tool_llm_instance = old_instance
-            ollama_mod._tool_llm_key = old_key
+            providers_mod._tool_llm_instance = old_instance
+            providers_mod._tool_llm_key = old_key
 
     def test_creates_new_instance_on_context_window_change(self):
         """context_window is part of the cache key — changing it rebuilds."""
@@ -328,7 +328,7 @@ class TestSynthesisSingleton:
 
         with (
             patch(
-                "tensortruth.services.synthesis_service.resolve_thinking",
+                "tensortruth.services.synthesis_service._providers_resolve_thinking",
                 return_value=False,
             ),
             patch("llama_index.llms.ollama.Ollama", return_value=MagicMock()),

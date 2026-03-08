@@ -16,7 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ModelSelectContent } from "@/components/chat/ModelSelectContent";
+import {
+  ModelSelectContent,
+  decodeModelValue,
+  encodeModelValue,
+} from "@/components/chat/ModelSelectContent";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -32,7 +36,9 @@ import {
   useAddReranker,
   useReinitializeIndexes,
   useStartupStatus,
+  useModelActions,
 } from "@/hooks";
+import { ProviderSetupPanel } from "@/components/providers/ProviderSetupPanel";
 import type { ConfigResponse } from "@/api/types";
 
 function HelpTooltip({ text }: { text: string }) {
@@ -66,6 +72,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   const { data: rerankersData } = useRerankers();
   const addReranker = useAddReranker();
   const reinitializeIndexes = useReinitializeIndexes();
+  const { actionsInFlight, handleLoadModel, handleUnloadModel } = useModelActions();
 
   // Add reranker dialog state
   const [addRerankerOpen, setAddRerankerOpen] = useState(false);
@@ -82,8 +89,9 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     pollingInterval ? { pollingInterval } : undefined
   );
 
-  // Models
+  // Models — track provider alongside model name for correct Select matching
   const [ragModel, setRagModel] = useState(config.llm.default_model);
+  const [ragModelProvider, setRagModelProvider] = useState("ollama");
 
   // Generation
   const [temperature, setTemperature] = useState(config.llm.default_temperature);
@@ -234,9 +242,18 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     return match?.model_id ?? "";
   }, [embeddingModelsData, embeddingModel]);
 
-  // Include current config values in Ollama model options even if not installed,
+  // Resolve which provider the current model belongs to
+  useEffect(() => {
+    if (!modelsData?.models.length || !ragModel) return;
+    const match = modelsData.models.find((m) => m.name === ragModel);
+    if (match) {
+      setRagModelProvider(match.provider_id || "ollama");
+    }
+  }, [modelsData, ragModel]);
+
+  // Include current config values in model options even if not installed,
   // so the Select always shows the current value instead of appearing empty.
-  const ollamaModelOptions = useMemo(() => {
+  const allModelOptions = useMemo(() => {
     const models = modelsData?.models ?? [];
     const names = new Set(models.map((m) => m.name));
     const extras: string[] = [];
@@ -314,6 +331,14 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
 
   return (
     <div className="space-y-6">
+      {/* Providers Section */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium">LLM Providers</h3>
+        <ProviderSetupPanel mode="settings" />
+      </div>
+
+      <Separator />
+
       {/* Models Section */}
       <div className="space-y-4">
         <h3 className="text-sm font-medium">Model</h3>
@@ -323,19 +348,29 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
               Model
               <HelpTooltip text="Primary model used for chat, RAG, agents, and all LLM tasks." />
             </Label>
-            <Select value={ragModel} onValueChange={setRagModel}>
+            <Select
+              value={ragModel ? encodeModelValue(ragModelProvider, ragModel) : ragModel}
+              onValueChange={(v) => {
+                const { providerId, modelName } = decodeModelValue(v);
+                setRagModel(modelName);
+                setRagModelProvider(providerId);
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
               <ModelSelectContent
-                models={ollamaModelOptions.models}
+                models={allModelOptions.models}
+                onLoadModel={handleLoadModel}
+                onUnloadModel={handleUnloadModel}
+                actionsInFlight={actionsInFlight}
                 extraItems={
-                  ollamaModelOptions.extras.length > 0 ? (
+                  allModelOptions.extras.length > 0 ? (
                     <>
-                      {ollamaModelOptions.extras.map((name) => (
+                      {allModelOptions.extras.map((name) => (
                         <SelectItem
                           key={name}
-                          value={name}
+                          value={encodeModelValue(ragModelProvider, name)}
                           className="text-muted-foreground"
                         >
                           {name} (not installed)
