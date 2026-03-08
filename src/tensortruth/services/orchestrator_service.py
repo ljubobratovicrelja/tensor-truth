@@ -458,11 +458,11 @@ class OrchestratorService:
         # response minimal so it doesn't waste tokens on text that will be
         # discarded.
         sections.append(
-            "IMPORTANT: After you have gathered sufficient information from "
-            "tools to answer the question, respond with ONLY a very brief "
-            "one-line summary of what you found (e.g. 'Found 3 relevant "
-            "sources about X.'). Do NOT write a detailed answer — a separate "
-            "synthesis step will handle that."
+            "CRITICAL: After gathering information from tools, respond with "
+            "AT MOST one short sentence summarizing what you found (e.g. "
+            "'Found 3 sources about X.'). Do NOT analyze, explain, or answer "
+            "the question — a separate synthesis step does that. Any detailed "
+            "response you write will be DISCARDED."
         )
 
         # --- Project metadata ---
@@ -766,6 +766,8 @@ class OrchestratorService:
         )
 
         # --- Phase 1: Tool routing (non-thinking orchestrator LLM) ---
+        reasoning_chars = 0
+        MAX_REASONING_CHARS = 300  # ~75 tokens, enough for a brief summary
         tools_called: List[str] = []
         tool_steps: List[Dict[str, Any]] = []
         tool_results_context: List[str] = []
@@ -903,7 +905,9 @@ class OrchestratorService:
                             agent_final_response += event.delta
                             agent_deltas.append(event.delta)
                             if tools_called:
-                                yield OrchestratorEvent(reasoning=event.delta)
+                                reasoning_chars += len(event.delta)
+                                if reasoning_chars <= MAX_REASONING_CHARS:
+                                    yield OrchestratorEvent(reasoning=event.delta)
 
                 # Await the agent handler to completion
                 response = await handler
