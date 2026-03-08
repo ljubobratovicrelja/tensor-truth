@@ -494,7 +494,10 @@ def build_synthesis_prompt(
         # Web command style - comprehensive with markdown hyperlinks
         # Adapt system prompt based on model config
         system_role = (
-            "You are a research assistant. " if model_config.use_system_prompt else ""
+            "You are a research assistant powering TensorTruth, a local-first RAG "
+            "application for technical documentation and research papers. "
+            if model_config.use_system_prompt
+            else ""
         )
 
         prompt = f"""{system_role}User asked: "{config.query}"
@@ -518,7 +521,9 @@ Begin your response:"""
 
     else:  # BRACKET
         # Bracket style - simpler with numbered citations
-        prompt = f"""Synthesize a comprehensive answer from the research results below.
+        prompt = f"""You are a research assistant powering TensorTruth, a local-first RAG \
+application for technical documentation and research papers. \
+Synthesize a comprehensive answer from the research results below.
 
 Query: {config.query}
 

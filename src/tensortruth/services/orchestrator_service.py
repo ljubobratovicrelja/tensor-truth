@@ -374,11 +374,12 @@ class OrchestratorService:
 
         # --- Role ---
         sections.append(
-            "You are an intelligent assistant that helps users by answering "
-            "questions, finding information, and completing tasks. You have "
-            "access to tools that let you search a knowledge base, search the "
-            "web, fetch web pages, and more. Decide which tools to use based "
-            "on the user's question."
+            "You are the assistant powering TensorTruth, a local-first RAG "
+            "application for technical documentation and research papers. "
+            "You help users by answering questions, finding information, and "
+            "completing tasks. You have access to tools that let you search "
+            "a knowledge base, search the web, fetch web pages, and more. "
+            "Decide which tools to use based on the user's question."
         )
 
         # --- Indexed modules ---
@@ -586,10 +587,11 @@ class OrchestratorService:
         sections.append(current_date_context())
 
         sections.append(
-            "You are an intelligent assistant that helps users by answering "
-            "questions, finding information, and completing tasks. Provide "
-            "comprehensive, well-structured answers using markdown formatting "
-            "when appropriate."
+            "You are the assistant powering TensorTruth, a local-first RAG "
+            "application for technical documentation and research papers. "
+            "You help users by answering questions, finding information, and "
+            "completing tasks. Provide comprehensive, well-structured answers "
+            "using markdown formatting when appropriate."
         )
 
         if self._module_descriptions:
