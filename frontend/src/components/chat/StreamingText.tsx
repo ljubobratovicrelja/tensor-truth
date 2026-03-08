@@ -1,12 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { StreamingBlockRenderer } from "./StreamingBlockRenderer";
-import {
-  parseMarkdownBlocks,
-  finalizeState,
-  initialParserState,
-  type ParserState,
-} from "@/lib/markdownBlockParser";
+import { MemoizedMarkdown } from "./MemoizedMarkdown";
+import { splitMarkdown, EMPTY_RESULT, type SplitResult } from "@/lib/markdownSplitter";
 
 interface StreamingTextProps {
   content: string;
@@ -15,68 +10,69 @@ interface StreamingTextProps {
 }
 
 /**
- * Component that renders text with progressive markdown blocks.
- *
- * - Parses content into logical markdown blocks
- * - Renders completed blocks with markdown formatting and animation
- * - Up to 2 blocks can animate concurrently for smoother appearance
- * - Keeps block-by-block rendering permanently (isolates parsing errors)
- * - Works for both streaming and non-streaming (historical) content
+ * Hook that coalesces streaming content updates and splits markdown
+ * into stable/unstable blocks at most once per animation frame.
  */
-export function StreamingText({ content, isStreaming, className }: StreamingTextProps) {
-  // Track if this message was ever streamed (vs loaded as history)
-  // If it started as non-streaming with content, it's historical - no animations
-  const [shouldAnimate] = useState(() => isStreaming === true || !content);
+function useStreamingSplit(content: string, isStreaming: boolean): SplitResult {
+  // For non-streaming (historical) messages, compute directly via useMemo
+  const staticResult = useMemo(
+    () => (content && !isStreaming ? splitMarkdown(content) : null),
+    [content, isStreaming]
+  );
 
-  // Lazy initial state: for non-streaming content, parse everything upfront
-  const [parserState, setParserState] = useState<ParserState>(() => {
-    if (!isStreaming && content) {
-      const parsed = parseMarkdownBlocks(initialParserState, content);
-      return finalizeState(parsed);
-    }
-    return initialParserState;
-  });
-  const prevContentRef = useRef(!isStreaming && content ? content : "");
-  const wasStreamingRef = useRef(isStreaming);
+  // Streaming state: updated via rAF coalescing
+  const [streamResult, setStreamResult] = useState<SplitResult>(EMPTY_RESULT);
+  const pendingRef = useRef(content);
+  const rafRef = useRef(0);
 
-  // Process new tokens as they arrive during streaming
   useEffect(() => {
-    if (isStreaming && content !== prevContentRef.current) {
-      // Calculate what's new since last update
-      const newToken = content.slice(prevContentRef.current.length);
-      prevContentRef.current = content;
-
-      if (newToken) {
-        setParserState((prev) => parseMarkdownBlocks(prev, newToken));
+    if (!isStreaming) {
+      // Cancel any pending rAF when streaming stops
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
       }
+      return;
     }
+
+    pendingRef.current = content;
+    if (rafRef.current) return; // coalesce — just update ref, skip scheduling
+
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      setStreamResult(splitMarkdown(pendingRef.current));
+    });
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
+    };
   }, [content, isStreaming]);
 
-  // Reset state when starting new stream
-  useEffect(() => {
-    if (isStreaming && content === "" && prevContentRef.current !== "") {
-      queueMicrotask(() => {
-        setParserState(initialParserState);
-        prevContentRef.current = "";
-      });
-    }
-  }, [isStreaming, content]);
+  return staticResult ?? streamResult;
+}
 
-  // Handle transition when streaming ends - finalize pending content
-  useEffect(() => {
-    if (wasStreamingRef.current && !isStreaming) {
-      // Finalize any pending content
-      queueMicrotask(() => setParserState((prev) => finalizeState(prev)));
-    }
-    wasStreamingRef.current = isStreaming;
-  }, [isStreaming]);
+/**
+ * Component that renders streaming text with progressive markdown blocks.
+ *
+ * Uses remark AST splitting: all blocks except the last are stable (cached,
+ * never re-rendered). The last block is unstable and re-renders each frame
+ * to show partial content immediately — no hidden pending buffer.
+ */
+export function StreamingText({ content, isStreaming, className }: StreamingTextProps) {
+  const { stableBlocks, unstableBlock } = useStreamingSplit(
+    content,
+    isStreaming ?? false
+  );
 
-  // Keep block-by-block rendering permanently - no final re-render needed
-  // This isolates any math/parsing errors to individual blocks
-  // Animate if this was ever a streaming message (not historical)
   return (
-    <div className={cn("chat-markdown max-w-none", className)}>
-      <StreamingBlockRenderer parserState={parserState} animate={shouldAnimate} />
+    <div className={cn("streaming-blocks", className)}>
+      {stableBlocks.map((block, i) => (
+        <MemoizedMarkdown key={i} content={block} />
+      ))}
+      {unstableBlock && <MemoizedMarkdown content={unstableBlock} />}
+      {isStreaming && <span className="streaming-cursor" />}
     </div>
   );
 }

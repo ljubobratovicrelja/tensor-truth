@@ -372,16 +372,13 @@
    * We restore them for intermediate blocks, keeping first/last behavior at the
    * stream boundaries so the message start/end stays flush.
    */
-  .streaming-blocks > :not(:first-child) .chat-markdown > p:first-child {
+  .streaming-blocks > .chat-markdown:not(:first-child) > p:first-child {
     margin-top: 0.75rem;
   }
-  .streaming-blocks > :not(:last-child) .chat-markdown > p:last-child {
+  .streaming-blocks > .chat-markdown:not(:last-child) > p:last-child {
     margin-bottom: 0.75rem;
   }
-  .streaming-blocks
-    > :not(:first-child)
-    .chat-markdown
-    > :is(h1, h2, h3, h4):first-child {
+  .streaming-blocks > .chat-markdown:not(:first-child) > :is(h1, h2, h3, h4):first-child {
     margin-top: 1.5rem;
   }
 }
@@ -417,62 +414,5 @@
 
   .animate-shimmer {
     animation: shimmer 2s infinite;
-  }
-
-  /* Streaming text transition animations */
-  @keyframes fade-out {
-    from {
-      opacity: 1;
-    }
-    to {
-      opacity: 0;
-    }
-  }
-
-  @keyframes fade-in {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-
-  .animate-fade-out {
-    animation: fade-out 200ms ease-out forwards;
-  }
-
-  .animate-fade-in {
-    animation: fade-in 200ms ease-out forwards;
-  }
-
-  /* Block reveal animation (alternative to typewriter) */
-  @keyframes block-reveal {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .animate-block-reveal {
-    animation: block-reveal 200ms ease-out forwards;
-  }
-
-  /* Block fade-in animation (for math blocks) */
-  @keyframes block-fade-in {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-
-  .animate-block-fade-in {
-    animation: block-fade-in 300ms ease-out forwards;
   }
 }

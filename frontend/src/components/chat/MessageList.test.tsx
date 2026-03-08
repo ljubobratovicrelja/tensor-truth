@@ -12,6 +12,12 @@ vi.mock("@/hooks", () => ({
     scrollRef: vi.fn(),
   }),
   useIsMobile: () => false,
+  useAutoScroll: () => ({
+    scrollRef: vi.fn(),
+    isScrolledAway: false,
+    scrollToBottom: vi.fn(),
+    reEngage: vi.fn(),
+  }),
 }));
 
 vi.mock("@/stores", () => ({
