@@ -43,6 +43,7 @@ export function ChatContainer() {
     confidenceLevel,
     streamingReasoning,
     pendingUserImages,
+    pendingAttachedImages,
   } = useChatStore();
   const autoSendTriggered = useRef(false);
   const prevSessionIdRef = useRef<string | undefined>(undefined);
@@ -141,20 +142,32 @@ export function ChatContainer() {
   // Wait for session data to confirm session exists before sending
   useEffect(() => {
     const shouldAutoSend = searchParams.get("autoSend") === "true";
+    const hasPendingContent =
+      pendingUserMessage || (pendingAttachedImages && pendingAttachedImages.length > 0);
     if (
       shouldAutoSend &&
-      pendingUserMessage &&
+      hasPendingContent &&
       urlSessionId &&
       sessionData && // Wait for session to be loaded
       !autoSendTriggered.current
     ) {
       autoSendTriggered.current = true;
       // Use ref to get the latest sendMessage function
-      sendMessageRef.current(pendingUserMessage);
+      sendMessageRef.current(
+        pendingUserMessage || "",
+        pendingAttachedImages ?? undefined
+      );
       // Clear the autoSend param from URL
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, pendingUserMessage, urlSessionId, sessionData, setSearchParams]);
+  }, [
+    searchParams,
+    pendingUserMessage,
+    pendingAttachedImages,
+    urlSessionId,
+    sessionData,
+    setSearchParams,
+  ]);
 
   if (!urlSessionId) {
     return (

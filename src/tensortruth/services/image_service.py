@@ -1,8 +1,10 @@
 """Image storage service for chat image attachments."""
 
 import base64
+import binascii
 import logging
 import mimetypes
+import re
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -28,6 +30,12 @@ MIME_TO_EXT = {
     "image/gif": ".gif",
     "image/webp": ".webp",
 }
+
+# Backend size limit (20MB) — generous server-side guard; frontend enforces 10MB
+MAX_IMAGE_BYTES = 20 * 1024 * 1024
+
+# Valid image ID pattern: 32 hex chars (uuid4 without hyphens)
+_IMAGE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 def _get_images_dir(session_id: str) -> Path:
@@ -68,7 +76,17 @@ class ImageService:
         images_dir = _get_images_dir(session_id)
         image_path = images_dir / f"{image_id}{ext}"
 
-        image_data = base64.b64decode(image_b64)
+        try:
+            image_data = base64.b64decode(image_b64)
+        except binascii.Error:
+            raise ValueError("Invalid base64 image data")
+
+        if len(image_data) > MAX_IMAGE_BYTES:
+            raise ValueError(
+                f"Image too large: {len(image_data)} bytes "
+                f"(limit {MAX_IMAGE_BYTES} bytes)"
+            )
+
         image_path.write_bytes(image_data)
 
         logger.info(
@@ -90,6 +108,9 @@ class ImageService:
         Returns:
             Path to the image file, or None if not found.
         """
+        if not _IMAGE_ID_RE.match(image_id):
+            return None
+
         images_dir = _get_images_dir(session_id)
         matches = list(images_dir.glob(f"{image_id}.*"))
         if matches:

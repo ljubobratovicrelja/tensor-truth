@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Send, Bot, FolderKanban, Plus } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Select, SelectTrigger } from "@/components/ui/select";
 import {
@@ -18,10 +19,12 @@ import {
   useThinking,
   thinkingToParam,
   useModelActions,
+  useImageAttachment,
 } from "@/hooks";
 import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
 import { CommandAutocomplete } from "@/components/chat/CommandAutocomplete";
+import { ImagePreviewStrip } from "@/components/chat/ImagePreviewStrip";
 import { ThinkingSelect } from "@/components/chat/ThinkingSelect";
 import { SessionSettingsPanel } from "@/components/config";
 import type { CommandDefinition } from "@/types/commands";
@@ -34,6 +37,15 @@ export function WelcomePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [autocompleteHasResults, setAutocompleteHasResults] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const {
+    attachedImages,
+    isDragOver,
+    dragProps,
+    handlePaste,
+    removeImage,
+    detach,
+    hasImages,
+  } = useImageAttachment();
 
   const [selectOpen, setSelectOpen] = useState(false);
   const { data: modelsData, isLoading: modelsLoading } = useModels(
@@ -45,6 +57,9 @@ export function WelcomePage() {
   const createSession = useCreateSession();
   const navigate = useNavigate();
   const setPendingMessage = useChatStore((state) => state.setPendingUserMessage);
+  const setPendingAttachedImages = useChatStore(
+    (state) => state.setPendingAttachedImages
+  );
   const detection = useCommandDetection(message);
 
   // Show autocomplete only if command detected AND no space after command name
@@ -85,7 +100,7 @@ export function WelcomePage() {
 
   const handleSubmit = async (promptText?: string) => {
     const text = promptText ?? message.trim();
-    if (!text || isSubmitting) return;
+    if ((!text && !hasImages) || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
@@ -104,6 +119,11 @@ export function WelcomePage() {
 
       // Set the pending message so it shows immediately in chat
       setPendingMessage(text);
+      if (hasImages) {
+        // Detach images before navigation to prevent blob URL revocation on unmount
+        const images = detach();
+        setPendingAttachedImages(images);
+      }
 
       // Navigate to the new chat session
       navigate(`/chat/${result.session_id}?autoSend=true`);
@@ -146,7 +166,8 @@ export function WelcomePage() {
     }
   };
 
-  const canSend = message.trim().length > 0 && !isSubmitting && !!effectiveModel;
+  const canSend =
+    (message.trim().length > 0 || hasImages) && !isSubmitting && !!effectiveModel;
 
   // Projects data
   const projects = projectsData?.projects ?? [];
@@ -171,7 +192,13 @@ export function WelcomePage() {
 
         {/* Chat Input */}
         <div className="space-y-4">
-          <div className="bg-muted/50 border-input relative flex flex-col overflow-visible rounded-2xl border shadow-sm transition-all duration-500">
+          <div
+            className={cn(
+              "bg-muted/50 border-input relative flex flex-col overflow-visible rounded-2xl border shadow-sm transition-all duration-500",
+              isDragOver && "ring-primary ring-2"
+            )}
+            {...dragProps}
+          >
             {/* Command Autocomplete */}
             <CommandAutocomplete
               input={message}
@@ -190,11 +217,15 @@ export function WelcomePage() {
               }}
             />
 
+            {/* Image preview strip — above textarea */}
+            <ImagePreviewStrip images={attachedImages} onRemove={removeImage} />
+
             <textarea
               ref={textareaRef}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder="Ask anything about your documents..."
               disabled={isSubmitting}
               className={cn(

@@ -432,7 +432,7 @@ class RAGService:
         if images and messages:
             last_msg = messages[-1]
             if last_msg.role == MessageRole.USER:
-                blocks = [TextBlock(text=last_msg.content or "")]
+                blocks: list = [TextBlock(text=last_msg.content or "")]
                 for img in images:
                     blocks.append(
                         ImageBlock(

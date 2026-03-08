@@ -8,6 +8,7 @@ import type {
   StreamAgentProgress,
   ToolStep,
 } from "@/api/types";
+import type { AttachedImage } from "@/hooks/useWebSocket";
 
 export type PipelineStatus =
   | "loading_models"
@@ -29,6 +30,8 @@ interface ChatStore {
   error: string | null;
   pendingUserMessage: string | null;
   pendingUserImages: (ImageRef & { previewUrl?: string })[] | null;
+  /** Full AttachedImage objects for auto-send from welcome page */
+  pendingAttachedImages: AttachedImage[] | null;
 
   // Agent/tool progress
   streamingToolSteps: (ToolStep & { status: "calling" | "completed" | "failed" })[];
@@ -47,6 +50,7 @@ interface ChatStore {
   setMetrics: (metrics: RetrievalMetrics | null) => void;
   finishStreaming: (content: string, confidenceLevel: string) => void;
   setPendingUserMessage: (message: string | null) => void;
+  setPendingAttachedImages: (images: AttachedImage[] | null) => void;
   clearPendingUserMessage: () => void;
   setError: (error: string) => void;
   reset: () => void;
@@ -71,6 +75,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   error: null,
   pendingUserMessage: null,
   pendingUserImages: null,
+  pendingAttachedImages: null,
   streamingToolSteps: [],
   agentProgress: null,
   toolPhase: null,
@@ -126,11 +131,15 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingReasoning: "",
       pendingUserMessage: null,
       pendingUserImages: null,
+      pendingAttachedImages: null,
     }),
 
   setPendingUserMessage: (message) => set({ pendingUserMessage: message }),
 
-  clearPendingUserMessage: () => set({ pendingUserMessage: null }),
+  setPendingAttachedImages: (images) => set({ pendingAttachedImages: images }),
+
+  clearPendingUserMessage: () =>
+    set({ pendingUserMessage: null, pendingAttachedImages: null }),
 
   setError: (error) =>
     set({
@@ -142,6 +151,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingReasoning: "",
       pendingUserMessage: null,
       pendingUserImages: null,
+      pendingAttachedImages: null,
     }),
 
   reset: () =>

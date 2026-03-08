@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Square, Bot, X } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Send, Square, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { ModelSelectContent, decodeModelValue } from "./ModelSelectContent";
+import { ImagePreviewStrip } from "./ImagePreviewStrip";
 import { cn } from "@/lib/utils";
 import {
   useModels,
@@ -10,6 +11,7 @@ import {
   useCommandDetection,
   useThinkingSupport,
   useModelActions,
+  useImageAttachment,
 } from "@/hooks";
 import { ModuleSelector } from "./ModuleSelector";
 import { ThinkingSelect } from "./ThinkingSelect";
@@ -18,10 +20,6 @@ import { CommandAutocomplete } from "./CommandAutocomplete";
 import type { CommandDefinition } from "@/types/commands";
 import type { DocumentInfo } from "@/api/types";
 import type { AttachedImage } from "@/hooks/useWebSocket";
-
-const MAX_IMAGES = 4;
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 interface ChatInputProps {
   onSend: (message: string, images?: AttachedImage[]) => void;
@@ -62,8 +60,15 @@ export function ChatInput({
   isProjectSession,
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
-  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
-  const [isDragOver, setIsDragOver] = useState(false);
+  const {
+    attachedImages,
+    isDragOver,
+    dragProps,
+    handlePaste,
+    removeImage,
+    detach,
+    hasImages,
+  } = useImageAttachment();
   const [autocompleteHasResults, setAutocompleteHasResults] = useState(false);
   const [selectOpen, setSelectOpen] = useState(false);
   const { data: modelsData, isLoading: modelsLoading } = useModels(
@@ -78,81 +83,6 @@ export function ChatInput({
     ? decodeModelValue(selectedModel).modelName
     : config?.llm.default_model || modelsData?.models[0]?.name || "";
   const thinkingSupport = useThinkingSupport(modelsData, activeModelName);
-
-  // --- Image attachment helpers ---
-  const addImageFiles = useCallback(
-    (files: File[]) => {
-      const imageFiles = files.filter(
-        (f) => ALLOWED_IMAGE_TYPES.includes(f.type) && f.size <= MAX_IMAGE_SIZE
-      );
-      const remaining = MAX_IMAGES - attachedImages.length;
-      const toAdd = imageFiles.slice(0, remaining);
-
-      const newImages: AttachedImage[] = toAdd.map((file) => ({
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: URL.createObjectURL(file),
-        mimetype: file.type,
-      }));
-      setAttachedImages((prev) => [...prev, ...newImages]);
-    },
-    [attachedImages.length]
-  );
-
-  const removeImage = useCallback((id: string) => {
-    setAttachedImages((prev) => {
-      const img = prev.find((i) => i.id === id);
-      if (img) URL.revokeObjectURL(img.previewUrl);
-      return prev.filter((i) => i.id !== id);
-    });
-  }, []);
-
-  // Cleanup preview URLs on unmount
-  useEffect(() => {
-    return () => {
-      attachedImages.forEach((img) => URL.revokeObjectURL(img.previewUrl));
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      const files = Array.from(e.dataTransfer.files);
-      addImageFiles(files);
-    },
-    [addImageFiles]
-  );
-
-  const handlePaste = useCallback(
-    (e: React.ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-
-      const imageFiles: File[] = [];
-      for (const item of items) {
-        if (item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) imageFiles.push(file);
-        }
-      }
-      if (imageFiles.length > 0) {
-        addImageFiles(imageFiles);
-      }
-    },
-    [addImageFiles]
-  );
 
   // Show autocomplete only if command detected AND no space after command name
   // (hide when user is typing arguments, only show when typing command name)
@@ -173,10 +103,12 @@ export function ChatInput({
 
   const handleSend = () => {
     const trimmed = message.trim();
-    if ((trimmed || attachedImages.length > 0) && !isStreaming) {
-      onSend(trimmed, attachedImages.length > 0 ? attachedImages : undefined);
+    if ((trimmed || hasImages) && !isStreaming) {
+      // Detach images (clear state without revoking blob URLs) so the
+      // pending message display can still use the preview URLs.
+      const images = hasImages ? detach() : undefined;
+      onSend(trimmed, images);
       setMessage("");
-      setAttachedImages([]);
     }
   };
 
@@ -224,8 +156,7 @@ export function ChatInput({
     }
   };
 
-  const canSend =
-    (message.trim().length > 0 || attachedImages.length > 0) && !isStreaming;
+  const canSend = (message.trim().length > 0 || hasImages) && !isStreaming;
 
   return (
     <div className="space-y-2">
@@ -234,10 +165,7 @@ export function ChatInput({
           "bg-muted/50 border-input relative flex flex-col rounded-2xl border",
           isDragOver && "ring-primary ring-2"
         )}
-        onDragOver={handleDragOver}
-        onDragEnter={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        {...dragProps}
       >
         {/* Command Autocomplete */}
         <CommandAutocomplete
@@ -258,6 +186,9 @@ export function ChatInput({
           }}
         />
 
+        {/* Image preview strip — above textarea */}
+        <ImagePreviewStrip images={attachedImages} onRemove={removeImage} />
+
         {/* Textarea */}
         <textarea
           ref={textareaRef}
@@ -272,28 +203,6 @@ export function ChatInput({
           )}
           rows={1}
         />
-
-        {/* Image preview strip */}
-        {attachedImages.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto px-3 py-2">
-            {attachedImages.map((img) => (
-              <div key={img.id} className="relative shrink-0">
-                <img
-                  src={img.previewUrl}
-                  alt={img.file.name}
-                  className="h-16 w-16 rounded-lg border object-cover"
-                />
-                <button
-                  onClick={() => removeImage(img.id)}
-                  className="bg-background/80 hover:bg-destructive hover:text-destructive-foreground absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border text-xs shadow-sm"
-                  title="Remove image"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* Bottom toolbar */}
         <div className="flex items-center justify-between px-2 pb-2">

@@ -783,7 +783,7 @@ class OrchestratorService:
                     )
                     from llama_index.core.base.llms.types import TextBlock as _TextBlock
 
-                    _blocks = [_TextBlock(text=prompt)]
+                    _blocks: list = [_TextBlock(text=prompt)]
                     for _img in images:
                         _blocks.append(
                             _ImageBlock(

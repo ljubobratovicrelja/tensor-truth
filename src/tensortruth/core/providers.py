@@ -451,9 +451,9 @@ def _get_ollama_model_info(base_url: str, model_name: str) -> Dict[str, Any]:
 
     cached = _model_info_cache.get(cache_key)
     if cached is not None:
-        ts, result = cached
+        ts, cached_result = cached
         if now - ts < _MODEL_INFO_TTL:
-            return result
+            return cached_result
 
     import requests as _req
 
