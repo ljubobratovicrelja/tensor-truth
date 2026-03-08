@@ -1045,8 +1045,8 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
           </TabsTrigger>
         ))}
       </TabsList>
-      <div className="flex min-h-0 flex-1 flex-col">
-        <ScrollArea className="flex-1">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <ScrollArea className="flex-1 overflow-y-auto">
           <div className="px-4 py-2">
             <TabsContent value="providers">{renderProvidersSection()}</TabsContent>
             <TabsContent value="generation">{renderGenerationSection()}</TabsContent>
@@ -1083,7 +1083,7 @@ export function ConfigPanel() {
           <Settings className="h-5 w-5" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden md:max-w-3xl">
+      <DialogContent className="flex h-[85vh] w-full max-w-lg flex-col overflow-hidden md:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
