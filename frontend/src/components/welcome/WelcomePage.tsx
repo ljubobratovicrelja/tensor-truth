@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Send, Bot, FolderKanban, Plus } from "lucide-react";
@@ -50,14 +50,13 @@ const SUBTITLES = [
   "What's buried in your files today?",
 ];
 
+// Pick random title/subtitle once at module load time (stable across re-renders)
+const initialTitle = TITLES[Math.floor(Math.random() * TITLES.length)];
+const initialSubtitle = SUBTITLES[Math.floor(Math.random() * SUBTITLES.length)];
+
 export function WelcomePage() {
-  const [title, subtitle] = useMemo(
-    () => [
-      TITLES[Math.floor(Math.random() * TITLES.length)],
-      SUBTITLES[Math.floor(Math.random() * SUBTITLES.length)],
-    ],
-    []
-  );
+  const title = initialTitle;
+  const subtitle = initialSubtitle;
   const [message, setMessage] = useState("");
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");

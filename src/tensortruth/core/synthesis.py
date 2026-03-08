@@ -360,7 +360,14 @@ def build_fusion_instructions() -> str:
 - Synthesize overlapping information into cohesive paragraphs
 - Cite multiple sources together when they agree: [Source A](url1), [Source B](url2)
 - Note conflicts explicitly: "Source A suggests X, while Source B indicates Y."
-- Integrate information naturally rather than reporting source-by-source"""
+- Integrate information naturally rather than reporting source-by-source
+
+**IMAGES:**
+- Source content may contain images as ![alt](url) markdown syntax.
+- Include up to 3 relevant images that directly illustrate key points.
+- Place images near the text they support.
+- Only use image URLs from the provided sources; never invent URLs.
+- If no relevant images are available, do not mention their absence."""
 
 
 def format_pages_for_synthesis(

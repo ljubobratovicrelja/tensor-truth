@@ -96,6 +96,19 @@ function getLangLabel(className?: string): string | null {
 
 // Custom components for markdown rendering
 const markdownComponents: Components = {
+  img({ src, alt, ...props }) {
+    return (
+      <img
+        src={src}
+        alt={alt || ""}
+        loading="lazy"
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).style.display = "none";
+        }}
+        {...props}
+      />
+    );
+  },
   pre({ children, ...props }) {
     // Extract language from the child <code> element's className
     let lang: string | null = null;

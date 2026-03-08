@@ -12,6 +12,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Tuple,
     TypeVar,
 )
@@ -613,7 +614,92 @@ async def search_duckduckgo(
         return []
 
 
-def clean_html_for_content(soup: BeautifulSoup | Tag) -> BeautifulSoup | Tag:
+# Patterns for tracking/ad image URLs
+_TRACKING_IMG_PATTERNS = re.compile(
+    r"doubleclick|pixel|tracker|1x1|spacer|facebook\.com/tr|"
+    r"analytics|beacon|adserver|adsystem",
+    re.I,
+)
+
+# Patterns for noise alt text
+_NOISE_ALT_PATTERNS = re.compile(
+    r"^(logo|icon|avatar|banner|advertisement|ad|arrow|bullet|spacer)$", re.I
+)
+
+# Structural containers to skip images from
+_SKIP_IMG_PARENTS = {"nav", "header", "footer", "aside", "form"}
+
+
+def extract_content_images(
+    soup: BeautifulSoup | Tag, base_url: str, max_images: int = 5
+) -> Set[Tag]:
+    """Extract meaningful content images from HTML, filtering out noise.
+
+    Identifies images that are likely part of the main content (not ads,
+    tracking pixels, icons, or navigation elements).
+
+    Args:
+        soup: Parsed HTML content element.
+        base_url: Base URL for resolving relative image sources.
+        max_images: Maximum number of images to preserve.
+
+    Returns:
+        Set of img Tag objects to preserve during cleaning.
+    """
+    preserved: Set[Tag] = set()
+
+    for img in soup.find_all("img"):
+        if len(preserved) >= max_images:
+            break
+
+        src = str(img.get("src", "") or "")
+
+        # Skip data URIs
+        if src.startswith("data:"):
+            continue
+
+        # Skip images without src
+        if not src:
+            continue
+
+        # Skip images inside structural containers
+        if any(parent.name in _SKIP_IMG_PARENTS for parent in img.parents):
+            continue
+
+        # Skip small images (explicit width/height attributes)
+        skip = False
+        for dim in ("width", "height"):
+            val = str(img.get(dim, "")).rstrip("px")
+            if val.isdigit() and int(val) < 100:
+                skip = True
+                break
+        if skip:
+            continue
+
+        # Skip tracking/ad images
+        srcset = str(img.get("srcset", "") or "")
+        full_src = srcset + " " + src
+        if _TRACKING_IMG_PATTERNS.search(full_src):
+            continue
+
+        # Skip noise alt text
+        alt = str(img.get("alt", "") or "")
+        if alt and _NOISE_ALT_PATTERNS.match(alt.strip()):
+            continue
+
+        # Resolve relative URLs to absolute
+        if not src.startswith(("http://", "https://")):
+            img["src"] = urljoin(base_url, src)
+
+        preserved.add(img)
+
+    return preserved
+
+
+def clean_html_for_content(
+    soup: BeautifulSoup | Tag,
+    preserve_images: Optional[Set[Tag]] = None,
+) -> BeautifulSoup | Tag:
     """
     Aggressively clean HTML to extract main content.
 
@@ -622,15 +708,25 @@ def clean_html_for_content(soup: BeautifulSoup | Tag) -> BeautifulSoup | Tag:
 
     Args:
         soup: BeautifulSoup object
+        preserve_images: Optional set of img Tag objects to keep.
+            When None (default), all images are stripped for backward
+            compatibility.
 
     Returns:
         Cleaned BeautifulSoup object
     """
+    _preserve = preserve_images or set()
+
     # 1. Remove scripts, styles, and visual-only elements
     for tag in soup.find_all(
-        ["script", "style", "iframe", "img", "svg", "noscript", "link", "meta"]
+        ["script", "style", "iframe", "svg", "noscript", "link", "meta"]
     ):
         tag.decompose()
+
+    # 1b. Remove img tags not in the preserve set
+    for tag in soup.find_all("img"):
+        if tag not in _preserve:
+            tag.decompose()
 
     # 2. Remove navigation and UI elements
     for tag in soup.find_all(["nav", "header", "footer", "aside", "form", "button"]):
@@ -748,8 +844,11 @@ async def fetch_generic_html(
             logger.warning(f"{error_msg} in {url}")
             return None, "parse_error", error_msg
 
-        # Clean HTML
-        content = clean_html_for_content(content)
+        # Extract content images before cleaning
+        images_to_keep = extract_content_images(content, url)
+
+        # Clean HTML (preserving selected images)
+        content = clean_html_for_content(content, preserve_images=images_to_keep)
 
         # Convert to markdown
         markdown = md(str(content), heading_style="ATX", code_language="python")

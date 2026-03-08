@@ -207,7 +207,12 @@ class SynthesisService:
             "Do not invent sources.\n"
             "- If sources conflict, note which source says what with citations.\n"
             "- If the tool results are insufficient to fully answer the "
-            "question, say so and provide what you can."
+            "question, say so and provide what you can.\n"
+            "- Source content may contain images as ![alt](url) markdown syntax. "
+            "Include up to 3 relevant images that directly illustrate key points. "
+            "Place images near the text they support. "
+            "Only use image URLs from the provided sources; never invent URLs. "
+            "If no relevant images are available, do not mention their absence."
         )
 
         # --- Project metadata ---

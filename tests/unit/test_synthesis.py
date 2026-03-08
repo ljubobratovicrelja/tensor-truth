@@ -9,6 +9,7 @@ from tensortruth.core.synthesis import (
     CitationStyle,
     QueryType,
     SynthesisConfig,
+    build_fusion_instructions,
     build_synthesis_prompt,
     detect_query_type,
     fit_sources_to_context,
@@ -792,3 +793,28 @@ async def test_all_pages_failed(mock_llm):
 
     full_response = "".join(result_tokens)
     assert "No pages" in full_response or "could not" in full_response.lower()
+
+
+# =============================================================================
+# Image Instructions in Prompts
+# =============================================================================
+
+
+def test_fusion_instructions_contain_image_guidance():
+    """Test that fusion instructions include image handling rules."""
+    instructions = build_fusion_instructions()
+    assert "![alt](url)" in instructions
+    assert "up to 3" in instructions
+    assert "never invent URLs" in instructions
+
+
+def test_synthesis_prompt_contains_image_guidance():
+    """Test that the full synthesis prompt includes image instructions."""
+    config = SynthesisConfig(
+        query="solar system planets",
+        context_window=16384,
+        citation_style=CitationStyle.HYPERLINK,
+    )
+    prompt = build_synthesis_prompt(config, "sources", "content")
+    assert "IMAGES" in prompt
+    assert "![alt](url)" in prompt

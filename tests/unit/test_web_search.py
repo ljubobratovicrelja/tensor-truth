@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 from tensortruth.utils.web_search import (
     clean_html_for_content,
+    extract_content_images,
     fetch_page_as_markdown,
     fetch_pages_parallel,
     search_duckduckgo,
@@ -281,6 +282,195 @@ class TestCleanHtmlForContent:
         paragraphs = cleaned.find_all("p")
         assert len(paragraphs) == 1
         assert "Real content" in paragraphs[0].get_text()
+
+
+# ============================================================================
+# Tests for extract_content_images
+# ============================================================================
+
+
+@pytest.mark.unit
+class TestExtractContentImages:
+    """Tests for image extraction and filtering."""
+
+    def test_extract_content_images_basic(self):
+        """Test basic image extraction from article content."""
+        html = """
+        <article>
+            <p>Some text</p>
+            <img src="https://example.com/photo.jpg" alt="A photo">
+            <p>More text</p>
+            <img src="https://example.com/diagram.png" alt="A diagram">
+        </article>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        images = extract_content_images(soup, "https://example.com")
+        assert len(images) == 2
+
+    def test_extract_content_images_filters_small(self):
+        """Test that small images (width/height < 100) are skipped."""
+        html = """
+        <div>
+            <img src="https://example.com/tiny.png" width="50" height="50" alt="tiny">
+            <img src="https://example.com/small.png" width="80" alt="small">
+            <img src="https://example.com/big.png" width="400" height="300" alt="big">
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        images = extract_content_images(soup, "https://example.com")
+        assert len(images) == 1
+        img = list(images)[0]
+        assert "big.png" in img["src"]
+
+    def test_extract_content_images_filters_data_uri(self):
+        """Test that data: URIs are skipped."""
+        html = """
+        <div>
+            <img src="data:image/png;base64,iVBOR..." alt="inline">
+            <img src="https://example.com/real.jpg" alt="real">
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        images = extract_content_images(soup, "https://example.com")
+        assert len(images) == 1
+        assert "real.jpg" in list(images)[0]["src"]
+
+    def test_extract_content_images_filters_tracking(self):
+        """Test that tracking/ad images are skipped."""
+        html = """
+        <div>
+            <img src="https://doubleclick.net/pixel.gif" alt="">
+            <img src="https://facebook.com/tr?ev=PageView" alt="">
+            <img src="https://example.com/1x1.gif" alt="">
+            <img src="https://example.com/content.jpg" alt="content">
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        images = extract_content_images(soup, "https://example.com")
+        assert len(images) == 1
+        assert "content.jpg" in list(images)[0]["src"]
+
+    def test_extract_content_images_filters_noise_alt(self):
+        """Test that images with noise alt text (logo, icon, etc.) are skipped."""
+        html = """
+        <div>
+            <img src="https://example.com/logo.png" alt="logo">
+            <img src="https://example.com/icon.svg" alt="icon">
+            <img src="https://example.com/photo.jpg" alt="A scenic landscape">
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        images = extract_content_images(soup, "https://example.com")
+        assert len(images) == 1
+        assert "photo.jpg" in list(images)[0]["src"]
+
+    def test_extract_content_images_resolves_relative_urls(self):
+        """Test that relative URLs are resolved to absolute."""
+        html = """
+        <div>
+            <img src="/images/photo.jpg" alt="photo">
+            <img src="gallery/pic.png" alt="pic">
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        images = extract_content_images(soup, "https://example.com/page/")
+        srcs = {img["src"] for img in images}
+        assert "https://example.com/images/photo.jpg" in srcs
+        assert "https://example.com/page/gallery/pic.png" in srcs
+
+    def test_extract_content_images_max_cap(self):
+        """Test that max_images cap is respected."""
+        imgs = "".join(
+            f'<img src="https://example.com/img{i}.jpg" alt="img{i}">'
+            for i in range(10)
+        )
+        html = f"<div>{imgs}</div>"
+        soup = BeautifulSoup(html, "html.parser")
+        images = extract_content_images(soup, "https://example.com", max_images=3)
+        assert len(images) == 3
+
+    def test_extract_content_images_skips_nav_header_footer(self):
+        """Test that images inside nav/header/footer/aside are skipped."""
+        html = """
+        <div>
+            <nav><img src="https://example.com/nav.png" alt="nav"></nav>
+            <header><img src="https://example.com/header.png" alt="hdr"></header>
+            <article>
+                <img src="https://example.com/content.jpg" alt="content">
+            </article>
+            <footer><img src="https://example.com/footer.png" alt="ftr"></footer>
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        images = extract_content_images(soup, "https://example.com")
+        assert len(images) == 1
+        assert "content.jpg" in list(images)[0]["src"]
+
+
+@pytest.mark.unit
+class TestCleanHtmlPreservesImages:
+    """Tests for image preservation in clean_html_for_content."""
+
+    def test_clean_html_preserves_selected_images(self):
+        """Test that preserve_images keeps specified img tags."""
+        html = """
+        <div>
+            <img src="https://example.com/keep.jpg" alt="keep">
+            <img src="https://example.com/remove.jpg" alt="remove">
+            <p>Content here</p>
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        keep_img = soup.find("img", alt="keep")
+        cleaned = clean_html_for_content(soup, preserve_images={keep_img})
+        remaining_imgs = cleaned.find_all("img")
+        assert len(remaining_imgs) == 1
+        assert remaining_imgs[0]["alt"] == "keep"
+
+    def test_clean_html_strips_all_images_by_default(self):
+        """Test backward compat: no preserve_images strips all images."""
+        html = """
+        <div>
+            <img src="https://example.com/a.jpg" alt="a">
+            <img src="https://example.com/b.jpg" alt="b">
+            <p>Content here</p>
+        </div>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        cleaned = clean_html_for_content(soup)
+        assert cleaned.find("img") is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestFetchGenericHtmlImages:
+    """Integration test for image preservation in fetch_generic_html."""
+
+    async def test_fetch_generic_html_includes_images_in_markdown(self):
+        """Test that fetched HTML with images produces markdown with ![alt](url)."""
+        mock_session = AsyncMock()
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        long_text = "This is substantial content. " * 30
+        mock_response.text = AsyncMock(return_value=f"""<html><body><main>
+            <h1>Article Title</h1>
+            <p>{long_text}</p>
+            <img src="https://example.com/photo.jpg" alt="A nice photo">
+            <p>{long_text}</p>
+        </main></body></html>""")
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_cm)
+
+        from tensortruth.utils.web_search import fetch_generic_html
+
+        markdown, status, error = await fetch_generic_html(
+            "https://example.com/article", mock_session
+        )
+
+        assert status == "success"
+        assert "![A nice photo](https://example.com/photo.jpg)" in markdown
 
 
 # ============================================================================
