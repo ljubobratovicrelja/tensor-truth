@@ -119,6 +119,8 @@ export interface StreamDone {
   content: string;
   confidence_level: string;
   title_pending?: boolean;
+  input_tokens?: number;
+  output_tokens?: number;
 }
 
 export interface StreamError {

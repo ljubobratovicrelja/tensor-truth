@@ -13,6 +13,7 @@ import type {
   RetrievalMetrics,
   SourceNode,
 } from "@/api/types";
+import type { ResponseStats } from "@/stores/chatStore";
 
 interface MessageItemProps {
   message: MessageResponse;
@@ -30,6 +31,8 @@ interface MessageItemProps {
   sessionId?: string;
   /** Pending image preview URLs (optimistic UI before save) */
   pendingImages?: (ImageRef & { previewUrl?: string })[];
+  /** Generation stats (shown after streaming completes on the last message) */
+  responseStats?: ResponseStats | null;
 }
 
 function MessageItemComponent({
@@ -42,6 +45,7 @@ function MessageItemComponent({
   isStreaming,
   sessionId,
   pendingImages,
+  responseStats,
 }: MessageItemProps) {
   const isUser = message.role === "user";
   const messageSources = sources ?? (message.sources as SourceNode[] | undefined);
@@ -219,6 +223,13 @@ function MessageItemComponent({
             />
           )}
         </div>
+        {!isUser && !isStreaming && responseStats != null && (
+          <div className="text-muted-foreground mt-1 px-1 text-xs">
+            {responseStats.inputTokens} input tokens, {responseStats.outputTokens} output, took{" "}
+            {responseStats.totalTimeSec}s
+            {responseStats.tps != null && <> ({responseStats.tps} tok/s)</>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -239,6 +250,7 @@ export const MessageItem = memo(MessageItemComponent, (prev, next) => {
     prev.toolSteps === next.toolSteps &&
     prev.confidenceLevel === next.confidenceLevel &&
     prev.sessionId === next.sessionId &&
-    prev.pendingImages === next.pendingImages
+    prev.pendingImages === next.pendingImages &&
+    prev.responseStats === next.responseStats
   );
 });

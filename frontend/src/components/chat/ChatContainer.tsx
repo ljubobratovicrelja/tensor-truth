@@ -44,6 +44,7 @@ export function ChatContainer() {
     streamingReasoning,
     pendingUserImages,
     pendingAttachedImages,
+    lastResponseStats,
   } = useChatStore();
   const autoSendTriggered = useRef(false);
   const prevSessionIdRef = useRef<string | undefined>(undefined);
@@ -299,6 +300,7 @@ export function ChatContainer() {
         confidenceLevel={confidenceLevel}
         streamingReasoning={streamingReasoning || undefined}
         pendingUserImages={pendingUserImages}
+        lastResponseStats={lastResponseStats}
       />
       {error && (
         <div className="border-destructive bg-destructive/10 text-destructive border-t py-2 text-sm">

@@ -169,7 +169,10 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
             case "done":
               fullContent = data.content;
               confidenceLevel = data.confidence_level;
-              finishStreaming(fullContent, confidenceLevel);
+              finishStreaming(fullContent, confidenceLevel, {
+                inputTokens: data.input_tokens ?? 0,
+                outputTokens: data.output_tokens ?? 0,
+              });
 
               // Refetch messages from server (backend already saved them)
               queryClient.invalidateQueries({

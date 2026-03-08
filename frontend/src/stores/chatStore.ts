@@ -10,6 +10,13 @@ import type {
 } from "@/api/types";
 import type { AttachedImage } from "@/hooks/useWebSocket";
 
+export interface ResponseStats {
+  inputTokens: number;
+  outputTokens: number;
+  totalTimeSec: number;
+  tps: number | null;
+}
+
 export type PipelineStatus =
   | "loading_models"
   | "retrieving"
@@ -39,6 +46,13 @@ interface ChatStore {
   toolPhase: StreamToolPhase | null;
   streamingReasoning: string;
 
+  // Response stats tracking
+  streamingRequestTime: number | null;
+  streamingStartTime: number | null;
+  streamingCharCount: number;
+  streamingInputCharCount: number;
+  lastResponseStats: ResponseStats | null;
+
   startStreaming: (
     userMessage: string,
     images?: (ImageRef & { previewUrl?: string })[]
@@ -48,7 +62,11 @@ interface ChatStore {
   setStatus: (status: PipelineStatus) => void;
   setSources: (sources: SourceNode[], sourceTypes?: string[]) => void;
   setMetrics: (metrics: RetrievalMetrics | null) => void;
-  finishStreaming: (content: string, confidenceLevel: string) => void;
+  finishStreaming: (
+    content: string,
+    confidenceLevel: string,
+    backendTokens?: { inputTokens: number; outputTokens: number }
+  ) => void;
   setPendingUserMessage: (message: string | null) => void;
   setPendingAttachedImages: (images: AttachedImage[] | null) => void;
   clearPendingUserMessage: () => void;
@@ -80,6 +98,11 @@ export const useChatStore = create<ChatStore>((set) => ({
   agentProgress: null,
   toolPhase: null,
   streamingReasoning: "",
+  streamingRequestTime: null,
+  streamingStartTime: null,
+  streamingCharCount: 0,
+  streamingInputCharCount: 0,
+  lastResponseStats: null,
 
   startStreaming: (
     userMessage: string,
@@ -101,11 +124,18 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingToolSteps: [],
       agentProgress: null,
       toolPhase: null,
+      streamingRequestTime: Date.now(),
+      streamingStartTime: null,
+      streamingCharCount: 0,
+      streamingInputCharCount: userMessage.length,
+      lastResponseStats: null,
     }),
 
   appendToken: (token) =>
     set((state) => ({
       streamingContent: state.streamingContent + token,
+      streamingStartTime: state.streamingStartTime ?? Date.now(),
+      streamingCharCount: state.streamingCharCount + token.length,
     })),
 
   appendThinking: (thinking) =>
@@ -120,18 +150,39 @@ export const useChatStore = create<ChatStore>((set) => ({
 
   setMetrics: (metrics) => set({ streamingMetrics: metrics }),
 
-  finishStreaming: (content, confidenceLevel) =>
-    set({
-      isStreaming: false,
-      streamingContent: content,
-      confidenceLevel,
-      pipelineStatus: null,
-      toolPhase: null,
-      streamingThinking: "",
-      streamingReasoning: "",
-      pendingUserMessage: null,
-      pendingUserImages: null,
-      pendingAttachedImages: null,
+  finishStreaming: (content, confidenceLevel, backendTokens) =>
+    set((state) => {
+      const now = Date.now();
+      const genElapsed = state.streamingStartTime
+        ? (now - state.streamingStartTime) / 1000
+        : null;
+      const totalTimeSec = state.streamingRequestTime
+        ? Math.round(((now - state.streamingRequestTime) / 1000) * 10) / 10
+        : 0;
+      // Prefer backend-provided counts; fall back to char estimation
+      const outputTokens = backendTokens?.outputTokens ?? Math.round(state.streamingCharCount / 4);
+      const inputTokens = backendTokens?.inputTokens ?? Math.round(state.streamingInputCharCount / 4);
+      const tps =
+        genElapsed && outputTokens > 0
+          ? Math.round((outputTokens / genElapsed) * 10) / 10
+          : null;
+      return {
+        isStreaming: false,
+        streamingContent: content,
+        confidenceLevel,
+        pipelineStatus: null,
+        toolPhase: null,
+        streamingThinking: "",
+        streamingReasoning: "",
+        pendingUserMessage: null,
+        pendingUserImages: null,
+        pendingAttachedImages: null,
+        streamingRequestTime: null,
+        streamingStartTime: null,
+        streamingCharCount: 0,
+        streamingInputCharCount: 0,
+        lastResponseStats: { inputTokens, outputTokens, totalTimeSec, tps },
+      };
     }),
 
   setPendingUserMessage: (message) => set({ pendingUserMessage: message }),

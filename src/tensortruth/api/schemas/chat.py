@@ -54,6 +54,8 @@ class StreamDone(BaseModel):
     type: Literal["done"] = "done"
     content: str
     confidence_level: str = "normal"
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
 
 
 class StreamThinking(BaseModel):

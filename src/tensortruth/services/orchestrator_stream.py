@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from tensortruth.core.source import SourceNode as CoreSourceNode
 from tensortruth.core.source_converter import SourceConverter
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
+from tensortruth.services.orchestrator_service import CHARS_PER_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,8 @@ class OrchestratorStreamResult:
     source_types: List[str] = field(default_factory=list)
     rag_count: int = 0
     web_count: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 def translate_event(event: Any) -> Optional[Dict[str, Any]]:
@@ -295,6 +298,8 @@ class OrchestratorStreamTranslator:
         # Determine confidence level
         confidence = self._derive_confidence()
 
+        output_tokens = len(self._full_response) // CHARS_PER_TOKEN
+
         return OrchestratorStreamResult(
             full_response=self._full_response,
             full_thinking=self._full_thinking,
@@ -307,6 +312,7 @@ class OrchestratorStreamTranslator:
             source_types=source_types,
             rag_count=len(self._rag_sources),
             web_count=len(self._web_sources),
+            output_tokens=output_tokens,
         )
 
     def build_sources_message(self) -> Optional[Dict[str, Any]]:
@@ -342,20 +348,26 @@ class OrchestratorStreamTranslator:
     def build_done_message(
         self,
         title_pending: bool = False,
+        input_chars: int = 0,
     ) -> Dict[str, Any]:
         """Build the ``done`` WebSocket message.
 
         Args:
             title_pending: Whether a title generation is pending.
+            input_chars: Total character count of prompt + chat history,
+                used to estimate input token count.
 
         Returns:
             Done message dict.
         """
         result = self.finalize()
+        input_tokens = input_chars // CHARS_PER_TOKEN
         msg: Dict[str, Any] = {
             "type": "done",
             "content": result.full_response,
             "confidence_level": result.confidence_level,
+            "input_tokens": input_tokens,
+            "output_tokens": result.output_tokens,
         }
         if title_pending:
             msg["title_pending"] = True

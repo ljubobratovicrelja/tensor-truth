@@ -17,7 +17,7 @@ import type {
 } from "@/api/types";
 import { ToolSteps } from "./ToolSteps";
 import type { ToolStepWithStatus } from "./ToolSteps";
-import type { PipelineStatus } from "@/stores/chatStore";
+import type { PipelineStatus, ResponseStats } from "@/stores/chatStore";
 
 interface MessageListProps {
   sessionId: string;
@@ -35,6 +35,7 @@ interface MessageListProps {
   confidenceLevel?: string | null;
   streamingReasoning?: string;
   pendingUserImages?: (ImageRef & { previewUrl?: string })[] | null;
+  lastResponseStats?: ResponseStats | null;
 }
 
 export function MessageList({
@@ -53,6 +54,7 @@ export function MessageList({
   confidenceLevel,
   streamingReasoning,
   pendingUserImages,
+  lastResponseStats,
 }: MessageListProps) {
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
   const isMobile = useIsMobile();
@@ -198,6 +200,11 @@ export function MessageList({
                 key={`${sessionId}-${index}`}
                 message={message}
                 sessionId={sessionId}
+                responseStats={
+                  index === messages.length - 1 && message.role === "assistant"
+                    ? lastResponseStats
+                    : null
+                }
               />
             ))}
             {/* Show pending message only if not already in fetched messages (dedup) */}

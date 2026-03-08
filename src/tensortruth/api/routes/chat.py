@@ -35,6 +35,7 @@ from tensortruth.services import ProjectService, SessionService
 from tensortruth.services.image_service import ImageService
 from tensortruth.services.models import ToolProgress
 from tensortruth.services.orchestrator_service import (
+    CHARS_PER_TOKEN,
     OrchestratorService,
     load_module_descriptions,
 )
@@ -394,8 +395,13 @@ async def _run_orchestrator_path(
     if sources_msg is not None:
         await websocket.send_json(sources_msg)
 
+    # Estimate total input chars: current prompt + all history messages
+    input_chars = len(context.prompt) + sum(
+        len(str(m.get("content") or "")) for m in context.session_messages
+    )
+
     # Send done message
-    done_msg = translator.build_done_message(title_pending=needs_title)
+    done_msg = translator.build_done_message(title_pending=needs_title, input_chars=input_chars)
     await websocket.send_json(done_msg)
 
     # Finalize to get accumulated result data for saving
@@ -831,12 +837,17 @@ async def websocket_chat(
                     )
 
                 # Send completion
+                direct_input_chars = len(context.prompt) + sum(
+                    len(str(m.get("content") or "")) for m in context.session_messages
+                )
                 await websocket.send_json(
                     {
                         "type": "done",
                         "content": full_response,
                         "confidence_level": confidence_level,
                         "title_pending": needs_title,
+                        "input_tokens": direct_input_chars // CHARS_PER_TOKEN,
+                        "output_tokens": len(full_response) // CHARS_PER_TOKEN,
                     }
                 )
 
