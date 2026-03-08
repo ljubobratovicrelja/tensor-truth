@@ -161,12 +161,9 @@ export function ChatInput({
   const canSend = (message.trim().length > 0 || hasImages) && !isStreaming;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       <div
-        className={cn(
-          "bg-muted/50 border-input relative flex flex-col rounded-2xl border",
-          isDragOver && "ring-primary ring-2"
-        )}
+        className={cn("relative flex flex-col", isDragOver && "ring-primary ring-2")}
         {...dragProps}
       >
         {/* Command Autocomplete */}
@@ -200,8 +197,8 @@ export function ChatInput({
           onPaste={handlePaste}
           placeholder={placeholder}
           className={cn(
-            "w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base",
-            "placeholder:text-muted-foreground focus:outline-none"
+            "w-full resize-none border-0 bg-transparent px-1 pt-1 pb-2 text-base shadow-none",
+            "placeholder:text-muted-foreground focus:ring-0 focus:outline-none"
           )}
           rows={1}
         />
@@ -221,7 +218,7 @@ export function ChatInput({
         />
 
         {/* Bottom toolbar */}
-        <div className="flex items-center justify-between px-2 pb-2">
+        <div className="flex items-center justify-between px-0 pb-1">
           {/* Left side - module selector, session settings, and model selector */}
           <div className="flex items-center gap-1">
             <Button
@@ -323,7 +320,7 @@ export function ChatInput({
           </div>
         </div>
       </div>
-      <p className="text-muted-foreground text-center text-xs">
+      <p className="text-muted-foreground hidden text-center text-xs md:block">
         Press Enter to send, Shift+Enter for new line
       </p>
     </div>
