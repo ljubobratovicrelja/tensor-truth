@@ -160,8 +160,10 @@ export const useChatStore = create<ChatStore>((set) => ({
         ? Math.round(((now - state.streamingRequestTime) / 1000) * 10) / 10
         : 0;
       // Prefer backend-provided counts; fall back to char estimation
-      const outputTokens = backendTokens?.outputTokens ?? Math.round(state.streamingCharCount / 4);
-      const inputTokens = backendTokens?.inputTokens ?? Math.round(state.streamingInputCharCount / 4);
+      const outputTokens =
+        backendTokens?.outputTokens ?? Math.round(state.streamingCharCount / 4);
+      const inputTokens =
+        backendTokens?.inputTokens ?? Math.round(state.streamingInputCharCount / 4);
       const tps =
         genElapsed && outputTokens > 0
           ? Math.round((outputTokens / genElapsed) * 10) / 10

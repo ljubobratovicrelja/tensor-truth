@@ -401,7 +401,9 @@ async def _run_orchestrator_path(
     )
 
     # Send done message
-    done_msg = translator.build_done_message(title_pending=needs_title, input_chars=input_chars)
+    done_msg = translator.build_done_message(
+        title_pending=needs_title, input_chars=input_chars
+    )
     await websocket.send_json(done_msg)
 
     # Finalize to get accumulated result data for saving
