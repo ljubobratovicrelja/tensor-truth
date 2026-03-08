@@ -6,17 +6,27 @@
 [![Tests](https://github.com/ljubobratovicrelja/tensor-truth/actions/workflows/tests.yml/badge.svg)](https://github.com/ljubobratovicrelja/tensor-truth/actions/workflows/tests.yml)
 
 
-A local RAG pipeline for reducing hallucinations in LLMs by indexing technical documentation and research papers. Built for personal use on local hardware, shared here in case others find it useful. Web UI is built with React, with high level of configurability for the pipeline.
+A local-first RAG application purpose-built for technical documentation and research papers. While many tools let you "chat with your PDFs," TensorTruth focuses on retrieval quality — using hierarchical chunking with auto-merging retrieval and cross-encoder reranking to get better answers from small local models.
 
-> **Note:** For the moment, this is very much a hobby project. The app has no authentication or multi-user support and is designed to run locally on your own machine. If there's interest in production-ready deployment features, I can add them (feel free to make a request via issues).
+It includes specialized ingestion for Sphinx/Doxygen API docs, arXiv papers (with metadata extraction), and textbooks (with TOC-based chapter splitting), alongside configurable chunking strategies tuned per content type. The result is a RAG pipeline that meaningfully reduces hallucinations on technical queries, even with 7-8B parameter models.
 
-## What It Does
+> **Note:** The app has no authentication or multi-user support and is designed to run on a single machine. Contributions and testing on different hardware are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Indexes technical documentation and research papers into vector databases, then uses retrieval-augmented generation to ground LLM responses in source material. Uses hierarchical node parsing with auto-merging retrieval and cross-encoder reranking to balance accuracy and context window constraints.
+## Why This Over Other Tools
+
+There are excellent local chat UIs — Open WebUI, AnythingLLM, llama.cpp's built-in web UI — many of which now support agentic tool-calling, MCP, and basic document upload. TensorTruth doesn't try to replace those for general chat. It focuses on a specific gap: **high-quality retrieval from large, complex technical knowledge bases**.
+
+What's different in practice:
+- **Hierarchical chunking with auto-merging retrieval** — documents are parsed into a multi-level node hierarchy. At query time, if enough child nodes from the same parent match, the system merges up to the parent for richer context. This avoids the "lost in the middle" problem of flat chunking while keeping retrieval precise.
+- **Cross-encoder reranking** — retrieved chunks are reranked by a cross-encoder model (BGE-reranker-v2-m3 by default) before being sent to the LLM, significantly improving relevance over embedding similarity alone.
+- **Format-aware document ingestion** — Sphinx and Doxygen API docs are crawled via their inventory files, preserving module structure. arXiv papers are fetched with full metadata. Textbooks are split by table-of-contents into chapters. This structure carries through to the index.
+- **Configurable chunking strategies** — choose between hierarchical (fast, good for uniform docs), semantic (embedding-aware splits at natural boundaries), or semantic-hierarchical (two-pass: semantic split then hierarchical) per index. Tune chunk sizes, overlap, and breakpoint thresholds for your content type.
+
+Beyond retrieval, TensorTruth also supports agentic orchestration, multiple LLM providers, project-based knowledge management, and a YAML extension system — but the retrieval pipeline is the core of what it does.
 
 ## Quick Start
 
-Install the tool via PyPI. But before you do, I advise you prep the environment because of large volume of dependencies (use Python 3.11+):
+Prepare a Python 3.11+ environment (recommended due to the large dependency tree):
 
 ```bash
 python -m venv venv
@@ -30,15 +40,13 @@ conda create -n tensor-truth python=3.11
 conda activate tensor-truth
 ```
 
-If using CUDA, make sure to first install the appropriate PyTorch version from [pytorch.org](https://pytorch.org/get-started/locally/). I used torch 2.9 and CUDA 12.8 in environments with CUDA.
-
-If not, just install tensor-truth via pip, which includes CPU-only PyTorch.
+If using CUDA, install the appropriate PyTorch version first from [pytorch.org](https://pytorch.org/get-started/locally/) (tested with torch 2.9 + CUDA 12.8). Otherwise, pip will pull CPU-only PyTorch automatically.
 
 ```bash
 pip install tensor-truth
 ```
 
-Make sure [ollama](https://ollama.com/) is installed and set up. Start the server:
+You need at least one LLM provider. The simplest option is [Ollama](https://ollama.com/):
 ```bash
 ollama serve
 ```
@@ -48,19 +56,60 @@ Run the app:
 tensor-truth
 ```
 
-On first launch, the app will prompt you to download pre-built indexes from HuggingFace Hub (takes a few minutes). A small qwen2.5:0.5b model will also be pulled for assigning automatic titles to chats.
+On first launch, the web UI will offer to download pre-built indexes from HuggingFace Hub and guide you through connecting to your LLM provider.
+
+## LLM Providers
+
+TensorTruth supports three provider types. Configure them in `~/.tensortruth/config.yaml` under the `providers` section, or manage them through the web UI's settings panel (which includes auto-discovery for local servers).
+
+### Ollama (default)
+
+Works out of the box when Ollama is running locally. Models are discovered automatically.
+
+```yaml
+providers:
+  - id: ollama
+    type: ollama
+    base_url: http://localhost:11434
+```
+
+### OpenAI-Compatible APIs
+
+Connects to vLLM, Groq, Together AI, LocalAI, or any service that implements the OpenAI API. Requires a static model list since these endpoints don't always publish available models.
+
+```yaml
+providers:
+  - id: groq
+    type: openai_compatible
+    base_url: https://api.groq.com/openai/v1
+    api_key: ${GROQ_API_KEY}    # environment variable expansion
+    models:
+      - name: llama-3.3-70b-versatile
+        display_name: Llama 3.3 70B
+        capabilities: ["tools"]
+        context_window: 131072
+```
+
+### llama.cpp
+
+Connects to a local [llama.cpp](https://github.com/ggml-org/llama.cpp) server, including router mode for serving multiple models. Models and capabilities are discovered automatically.
+
+```yaml
+providers:
+  - id: llama-cpp
+    type: llama_cpp
+    base_url: http://localhost:8080
+```
+
+The web UI groups models by provider in the model selector, with separate sections for models that support agentic tool-calling and those that don't.
 
 ## Docker Deployment
 
-For easier deployment without managing virtual environments or CUDA installations, a pre-built Docker image is available on Docker Hub. This approach is useful if you want to avoid setting up PyTorch with CUDA manually, though you still need a machine with NVIDIA GPU and drivers installed.
+A pre-built Docker image avoids manual CUDA/PyTorch setup (NVIDIA GPU and drivers still required):
 
-**Pull the image:**
 ```bash
 docker pull ljubobratovicrelja/tensor-truth:latest
-```
 
-**Run the container:**
-```bash
 docker run -d \
   --name tensor-truth \
   --gpus all \
@@ -72,53 +121,34 @@ docker run -d \
 
 Access the app at **http://localhost:8000**
 
-**See [DOCKER.md](docs/DOCKER.md) for complete Docker documentation, troubleshooting, and advanced usage.**
+**See [docs/DOCKER.md](docs/DOCKER.md) for complete Docker documentation, troubleshooting, and advanced usage.**
 
+## Projects
 
-## Data Storage
+Projects let you organize documents and conversations into topic-specific knowledge bases. Create a project, upload documents, and start chatting with context scoped to that project's knowledge.
 
-All user data (chat history, presets, indexes) is stored in `~/.tensortruth` on macOS/Linux or `%USERPROFILE%\.tensortruth` on Windows. This keeps your working directory clean while maintaining persistent state across sessions.
+**Supported document types:**
+- **PDF files** — uploaded and converted to markdown for indexing
+- **Web URLs** — fetched and converted to markdown automatically
+- **arXiv papers** — looked up by arXiv ID with automatic metadata extraction and PDF download
+- **Text/Markdown files** — indexed directly
 
-Pre-built indexes are hosted on [HuggingFace Hub](https://huggingface.co/datasets/ljubobratovicrelja/tensor-truth-indexes) and can be downloaded through the web UI on first launch.
+Each project maintains its own vector index, built incrementally as documents are added. Projects also support attaching modules from the global catalog (pre-built indexes) alongside project-specific documents.
 
-For index contents, see [config/sources.json](config/sources.json). This is a curated list of useful libraries and research papers. Fork and customize as needed.
-
-## Requirements
-
-Tested on:
-- MacBook M1 Max (32GB unified memory)
-- Desktop with RTX 3090 Ti (24GB VRAM)
-
-If you encounter memory issues, consider running smaller models. Also keep track of what models are loaded in Ollama, as they consume GPU VRAM, and tend to stuck in memory until Ollama is restarted.
-
-
-### Recommended Models
-
-Any Ollama model works, but I recommend these for best balance of performance and capability with RAG:
-
-**General Purpose:**
-```bash
-ollama pull deepseek-r1:8b     # Balanced
-ollama pull deepseek-r1:14b    # More capable
-```
-Note that, even though pure Ollama can run deepseek-r1:32b, with RAG workflow it is likely to struggle on 24GB 3090 for e.g.
-
-**Code/Technical Docs:**
-
-For coding, deepseek-coder-v2 is a strong choice:
-```bash
-ollama pull deepseek-coder-v2:16b 
-```
-Or, the smaller qwen2.5-coder, holds up well with API docs on coding aid.
-```bash
-ollama pull qwen2.5-coder:7b 
-````
+Project configuration (model, parameters, active modules) is inherited by all chat sessions within that project, with per-session overrides available.
 
 ## Agentic Mode & Web Search
 
-When **agentic mode** is enabled (the default for models that support tool-calling), every message is routed through an orchestrator agent that autonomously decides what to do: query the knowledge base, search the web, fetch pages, call MCP tools, or just respond directly. The agent loops internally — calling a tool, inspecting the result, deciding whether more information is needed, and repeating until it has a complete answer.
+When **agentic mode** is enabled (the default for models that support tool-calling), every message is routed through an orchestrator agent that autonomously decides what to do. The agent loops internally — calling a tool, inspecting the result, deciding whether more information is needed, and repeating until it has a complete answer (up to 10 iterations).
 
-This replaces the need for explicit slash commands for most workflows. Just ask a question and the orchestrator figures out how to answer it:
+The orchestrator has access to these tools:
+- **`rag_query`** — search the indexed knowledge base with retrieval, reranking, and confidence scoring
+- **`web_search`** — search the web via DuckDuckGo
+- **`fetch_page`** — fetch a single web page and convert to markdown (supports Wikipedia, GitHub, arXiv, YouTube)
+- **`fetch_pages_batch`** — fetch multiple URLs in parallel with content-stage reranking
+- **MCP tools** — any tools from configured MCP servers or extensions
+
+Just ask a question and the orchestrator figures out how to answer it:
 
 ```
 What is flash attention and how does PyTorch implement it?
@@ -127,9 +157,7 @@ Compare Adam vs AdamW optimizer convergence properties
 
 The orchestrator streams real-time progress to the UI — you see which tools are being called, what's being searched, and when synthesis begins. Sources from both RAG and web are combined and cited in the response.
 
-Agentic mode is **on by default**, but it relies on the model's native tool-calling ability. Larger models (`qwen3:8b`, `llama3.1:8b` and above) handle it well; smaller models (`llama3.2:3b` and below) tend to produce broken tool calls or loop unproductively. If your system is limited to small models, you're better off disabling agentic mode in the session settings and using explicit slash commands (`/web`, `/arxiv`, etc.) instead.
-
-The toggle is per-session in the session settings panel. It is automatically disabled for models that don't support tool-calling at all (e.g., `deepseek-r1`), falling back to the direct RAG pipeline.
+Agentic mode relies on the model's native tool-calling ability. Larger models (`qwen3:8b`, `llama3.1:8b` and above) handle it well; smaller models tend to produce broken tool calls or loop unproductively. The toggle is per-session in the session settings panel. It is automatically disabled for models that don't support tool-calling (e.g., `deepseek-r1`), falling back to the direct RAG pipeline.
 
 The `/web` slash command is still available for explicit web-only searches:
 
@@ -146,19 +174,48 @@ cp extension_library/commands/arxiv.yaml ~/.tensortruth/commands/
 
 The repository includes ready-to-use extensions in the [`extension_library/`](extension_library/) directory — for example, [Context7](https://github.com/upstash/context7) integration for live library docs. arXiv search (`search_arxiv`, `get_arxiv_paper`) is built-in and needs no extension or MCP server; the extension library just provides optional `/arxiv` and `/arxiv_paper` slash command wrappers. For the full guide (YAML schema, template variables, Python extensions, MCP setup), see **[docs/EXTENSIONS.md](docs/EXTENSIONS.md)**.
 
-## Development
+## Data Storage
 
-For frontend development, the React UI runs as a separate Vite dev server with hot-reload, proxying API calls to the backend:
+All user data (chat history, projects, indexes) is stored in `~/.tensortruth` on macOS/Linux or `%USERPROFILE%\.tensortruth` on Windows. This keeps your working directory clean while maintaining persistent state across sessions.
 
+Pre-built indexes are hosted on [HuggingFace Hub](https://huggingface.co/datasets/ljubobratovicrelja/tensor-truth-indexes) and can be downloaded through the web UI on first launch.
+
+For index contents, see [config/sources.json](config/sources.json). This is a curated list of useful libraries and research papers. Fork and customize as needed.
+
+## Requirements
+
+Tested on:
+- MacBook M1 Max (32GB unified memory)
+- Desktop with RTX 3090 Ti (24GB VRAM)
+- ASUS Ascent DX10
+
+If you encounter memory issues, consider running smaller models. Keep track of what models are loaded in Ollama, as they consume GPU VRAM and tend to stay in memory until Ollama is restarted.
+
+
+### Recommended Models
+
+Any model from a configured provider works. For Ollama, these offer a good balance of performance and capability with RAG:
+
+**General Purpose (with tool-calling for agentic mode):**
 ```bash
-# Terminal 1: Start the API server with auto-reload
-tensor-truth --reload
-
-# Terminal 2: Start the React dev server (port 5173)
-tensor-truth-ui
+ollama pull qwen3:8b           # Good tool-calling support
+ollama pull llama3.1:8b        # Solid all-around
 ```
 
-The production `tensor-truth` command serves the bundled React frontend directly from port 8000 — no separate frontend process needed.
+**Reasoning (no tool-calling — uses direct RAG pipeline):**
+```bash
+ollama pull deepseek-r1:8b     # Balanced
+ollama pull deepseek-r1:14b    # More capable
+```
+
+Note that with RAG context in the prompt, VRAM requirements increase compared to plain chat. A 24GB GPU may struggle with 32B+ parameter models in RAG mode.
+
+**Code/Technical Docs:**
+
+```bash
+ollama pull deepseek-coder-v2:16b   # Strong for code
+ollama pull qwen2.5-coder:7b        # Smaller, holds up well with API docs
+```
 
 ## Building Your Own Indexes
 
@@ -179,9 +236,9 @@ tensor-truth-docs --type papers --category foundation_models --arxiv-ids 1706.03
 tensor-truth-build --modules foundation_models        # Build vector index
 ```
 
-**Session PDFs:**
+**In-App Document Upload:**
 
-Upload PDFs directly in the web UI to create per-session indexes. Only standard PDF files are supported currently.
+Upload documents directly in the web UI — either in a project or in a chat session. Supports PDF files, web URLs, arXiv papers (by ID), and plain text/markdown. Documents are converted and indexed automatically.
 
 ### Detailed Documentation
 
@@ -191,11 +248,35 @@ For comprehensive guides on building custom indexes, see [docs/INDEXES.md](docs/
 - Chunk size optimization strategies
 - Advanced workflows and troubleshooting
 
+## Development
+
+For frontend development, the React UI runs as a separate Vite dev server with hot-reload, proxying API calls to the backend:
+
+```bash
+# Terminal 1: Start the API server with auto-reload
+tensor-truth --reload
+
+# Terminal 2: Start the React dev server (port 5173)
+tensor-truth-ui
+```
+
+The production `tensor-truth` command serves the bundled React frontend directly from port 8000 — no separate frontend process needed.
+
+## Roadmap
+
+The focus going forward is on retrieval quality while staying within consumer hardware budgets (8-24GB VRAM, running the LLM + embeddings + reranker on the same GPU):
+
+- **Graph-enhanced retrieval** — integrating lightweight graph RAG approaches (LazyGraphRAG, SpaCy-based entity extraction) that don't require large models for indexing
+- **Retrieval evaluation** — automated metrics (faithfulness, relevancy, hit rate) to guide chunking and pipeline tuning instead of relying on manual testing
+- **Selective multimodal retrieval** — visual document retrieval for tables, diagrams, and equations where text-based chunking falls short, using models that fit consumer VRAM (e.g., ColPali at ~6GB)
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
-Built for personal use but released publicly. Provided as-is with no warranty.
 
 ## Disclaimer & Content Ownership
 
