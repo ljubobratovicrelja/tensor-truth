@@ -48,6 +48,9 @@ export function useAutoScroll({
   // Track last scroll position for direction detection
   const lastScrollTopRef = useRef(0);
 
+  // Flag to suppress scroll-handler during programmatic scrolls
+  const isProgrammaticRef = useRef(false);
+
   // Helper: update both ref and state in sync
   const setScrolledAway = useCallback((value: boolean) => {
     isScrolledAwayRef.current = value;
@@ -62,6 +65,14 @@ export function useAutoScroll({
     if (!el) return;
 
     const { scrollTop, scrollHeight, clientHeight } = el;
+
+    // Skip handling for programmatic scrolls — clear flag synchronously
+    if (isProgrammaticRef.current) {
+      isProgrammaticRef.current = false;
+      lastScrollTopRef.current = scrollTop;
+      return;
+    }
+
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
     const scrollingUp = scrollTop < lastScrollTopRef.current;
     lastScrollTopRef.current = scrollTop;
@@ -109,6 +120,7 @@ export function useAutoScroll({
     const el = containerRef.current;
     if (!el) return;
 
+    isProgrammaticRef.current = true;
     if (behavior === "instant") {
       el.scrollTop = el.scrollHeight;
     } else {

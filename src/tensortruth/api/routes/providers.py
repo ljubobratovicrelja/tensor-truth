@@ -97,10 +97,21 @@ def _probe_provider(ptype: str, base_url: str, api_key: str = "") -> dict:
             headers: Dict[str, str] = {}
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
-            resp = _requests.get(
-                f"{base}/models", headers=headers, timeout=1, allow_redirects=False
-            )
-            if resp.status_code == 200:
+            # Try /v1/models first, fall back to /models
+            resp = None
+            for models_path in (f"{base}/v1/models", f"{base}/models"):
+                try:
+                    resp = _requests.get(
+                        models_path,
+                        headers=headers,
+                        timeout=3,
+                        allow_redirects=False,
+                    )
+                    if resp.status_code == 200:
+                        break
+                except Exception:
+                    continue
+            if resp is not None and resp.status_code == 200:
                 result["connected"] = True
                 try:
                     data = resp.json()

@@ -205,6 +205,11 @@ export const useChatStore = create<ChatStore>((set) => ({
       pendingUserMessage: null,
       pendingUserImages: null,
       pendingAttachedImages: null,
+      lastResponseStats: null,
+      streamingRequestTime: null,
+      streamingStartTime: null,
+      streamingCharCount: 0,
+      streamingInputCharCount: 0,
     }),
 
   reset: () =>
@@ -222,6 +227,11 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingToolSteps: [],
       agentProgress: null,
       toolPhase: null,
+      lastResponseStats: null,
+      streamingRequestTime: null,
+      streamingStartTime: null,
+      streamingCharCount: 0,
+      streamingInputCharCount: 0,
       // Note: pendingUserMessage is NOT cleared here - it's needed for auto-send
       // from welcome page. It's cleared by finishStreaming, setError, or explicitly.
     }),

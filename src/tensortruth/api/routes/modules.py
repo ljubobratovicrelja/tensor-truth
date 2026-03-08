@@ -227,10 +227,21 @@ async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
                 headers = {}
                 if provider.api_key:
                     headers["Authorization"] = f"Bearer {provider.api_key}"
-                resp = requests.get(
-                    f"{base}/models", headers=headers, timeout=5, allow_redirects=False
-                )
-                if resp.status_code == 200:
+                # Try /v1/models first, fall back to /models
+                resp = None
+                for models_path in (f"{base}/v1/models", f"{base}/models"):
+                    try:
+                        resp = requests.get(
+                            models_path,
+                            headers=headers,
+                            timeout=5,
+                            allow_redirects=False,
+                        )
+                        if resp.status_code == 200:
+                            break
+                    except Exception:
+                        continue
+                if resp is not None and resp.status_code == 200:
                     data = resp.json()
                     model_list = data.get("data", []) if isinstance(data, dict) else []
                     if isinstance(model_list, list):

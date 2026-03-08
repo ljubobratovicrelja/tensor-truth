@@ -176,6 +176,9 @@ class OrchestratorStreamTranslator:
         # Store raw RAGRetrievalResult when available (set externally)
         self._rag_retrieval_result: Optional[RAGRetrievalResult] = None
 
+        # Cached finalize() result to avoid recomputation
+        self._finalized_result: Optional[OrchestratorStreamResult] = None
+
     def set_rag_retrieval_result(self, result: RAGRetrievalResult) -> None:
         """Inject a RAGRetrievalResult for proper source extraction.
 
@@ -279,6 +282,9 @@ class OrchestratorStreamTranslator:
         Returns:
             OrchestratorStreamResult with all accumulated data.
         """
+        if self._finalized_result is not None:
+            return self._finalized_result
+
         # Re-extract RAG sources if the RAGRetrievalResult was injected
         # after event processing (the normal flow: set_rag_retrieval_result
         # is called after the event loop completes).
@@ -300,7 +306,7 @@ class OrchestratorStreamTranslator:
 
         output_tokens = len(self._full_response) // CHARS_PER_TOKEN
 
-        return OrchestratorStreamResult(
+        result = OrchestratorStreamResult(
             full_response=self._full_response,
             full_thinking=self._full_thinking,
             sources=all_sources,
@@ -314,6 +320,8 @@ class OrchestratorStreamTranslator:
             web_count=len(self._web_sources),
             output_tokens=output_tokens,
         )
+        self._finalized_result = result
+        return result
 
     def build_sources_message(self) -> Optional[Dict[str, Any]]:
         """Build the batched sources WebSocket message.

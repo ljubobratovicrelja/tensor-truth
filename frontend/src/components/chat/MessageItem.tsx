@@ -223,13 +223,16 @@ function MessageItemComponent({
             />
           )}
         </div>
-        {!isUser && !isStreaming && responseStats != null && (
-          <div className="text-muted-foreground mt-1 px-1 text-xs">
-            {responseStats.inputTokens} input tokens, {responseStats.outputTokens} output,
-            took {responseStats.totalTimeSec}s
-            {responseStats.tps != null && <> ({responseStats.tps} tok/s)</>}
-          </div>
-        )}
+        {!isUser &&
+          !isStreaming &&
+          responseStats != null &&
+          (responseStats.inputTokens > 0 || responseStats.outputTokens > 0) && (
+            <div className="text-muted-foreground mt-1 px-1 text-xs">
+              {responseStats.inputTokens} input tokens, {responseStats.outputTokens}{" "}
+              output, took {responseStats.totalTimeSec}s
+              {responseStats.tps != null && <> ({responseStats.tps} tok/s)</>}
+            </div>
+          )}
       </div>
     </div>
   );
