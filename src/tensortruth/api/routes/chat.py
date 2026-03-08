@@ -32,6 +32,7 @@ from tensortruth.app_utils.title_generation import generate_smart_title_async
 from tensortruth.core.ollama import get_ollama_url
 from tensortruth.core.providers import ProviderRegistry, resolve_model_from_params
 from tensortruth.services import ProjectService, SessionService
+from tensortruth.services.image_service import ImageService
 from tensortruth.services.models import ToolProgress
 from tensortruth.services.orchestrator_service import (
     OrchestratorService,
@@ -63,6 +64,7 @@ class ChatContext:
     params: Dict[str, Any]
     session_messages: List[Dict[str, Any]]
     additional_index_paths: List[str] = field(default_factory=list)
+    images: List[Dict[str, Any]] = field(default_factory=list)
 
     @classmethod
     def from_session(
@@ -370,6 +372,7 @@ async def _run_orchestrator_path(
         prompt=context.prompt,
         chat_history=context.session_messages,
         progress_emitter=_sync_progress_emitter,
+        images=context.images or None,
     ):
         msg = translator.process_event(event)
         if msg is not None:
@@ -525,10 +528,12 @@ async def websocket_chat(
             try:
                 request = json.loads(message)
                 prompt = request.get("prompt", "")
+                raw_images = request.get("images", [])
             except json.JSONDecodeError:
                 prompt = message
+                raw_images = []
 
-            if not prompt:
+            if not prompt and not raw_images:
                 await websocket.send_json(
                     {
                         "type": "error",
@@ -536,6 +541,39 @@ async def websocket_chat(
                     }
                 )
                 continue
+
+            # Default to a space prompt when only images are sent
+            if not prompt:
+                prompt = "Describe this image."
+
+            # Save images to disk and build metadata + raw data lists
+            image_refs: List[Dict[str, Any]] = []
+            images_for_llm: List[Dict[str, str]] = []
+            if raw_images:
+                image_service = ImageService()
+                for img in raw_images:
+                    img_data = img.get("data", "")
+                    img_mime = img.get("mimetype", "image/png")
+                    img_filename = img.get("filename", "image.png")
+                    try:
+                        img_id = image_service.save_image(
+                            session_id, img_data, img_mime, img_filename
+                        )
+                        image_refs.append(
+                            {
+                                "id": img_id,
+                                "mimetype": img_mime,
+                                "filename": img_filename,
+                            }
+                        )
+                        images_for_llm.append(
+                            {
+                                "data": img_data,
+                                "mimetype": img_mime,
+                            }
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to save image: %s", e)
 
             # Detect command in prompt (/ must be at start or after whitespace)
             command_match = re.search(r"(?<!\S)/(\w+)(?:\s+(.+))?", prompt)
@@ -671,12 +709,14 @@ async def websocket_chat(
                     pdf_service,
                     project_service=project_service,
                 )
+            context.images = images_for_llm
 
-            # Add user message
+            # Add user message (with image refs if present)
+            user_message: Dict[str, Any] = {"role": "user", "content": prompt}
+            if image_refs:
+                user_message["images"] = image_refs
             data = session_service.load()
-            data = session_service.add_message(
-                session_id, {"role": "user", "content": prompt}, data
-            )
+            data = session_service.add_message(session_id, user_message, data)
             session_service.save(data)
 
             # Check if we need to generate a title (first message in session)
@@ -725,6 +765,7 @@ async def websocket_chat(
                     params=context.params,
                     session_messages=context.session_messages,
                     additional_index_paths=context.additional_index_paths,
+                    images=context.images or None,
                 )
 
                 # Iterate generator in thread pool to prevent blocking event loop

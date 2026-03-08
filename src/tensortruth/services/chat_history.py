@@ -205,6 +205,17 @@ class ChatHistoryService:
             # Convert content to string if needed
             content_str = str(content) if not isinstance(content, str) else content
 
+            # Append image placeholders for messages with images
+            images = msg.get("images")
+            if images and isinstance(images, list):
+                placeholders = [
+                    f"[Image: {img.get('filename', 'image')}]"
+                    for img in images
+                    if isinstance(img, dict)
+                ]
+                if placeholders:
+                    content_str = content_str + "\n" + "\n".join(placeholders)
+
             valid_messages.append(ChatHistoryMessage(role=role, content=content_str))
 
         # Apply turn-based limits

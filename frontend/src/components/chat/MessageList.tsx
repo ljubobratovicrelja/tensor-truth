@@ -9,6 +9,7 @@ import { useScrollDirection, useIsMobile, useAutoScroll } from "@/hooks";
 import { useUIStore } from "@/stores";
 import { cn } from "@/lib/utils";
 import type {
+  ImageRef,
   MessageResponse,
   RetrievalMetrics,
   SourceNode,
@@ -33,6 +34,7 @@ interface MessageListProps {
   agentProgress?: StreamAgentProgress | null;
   confidenceLevel?: string | null;
   streamingReasoning?: string;
+  pendingUserImages?: (ImageRef & { previewUrl?: string })[] | null;
 }
 
 export function MessageList({
@@ -50,6 +52,7 @@ export function MessageList({
   agentProgress,
   confidenceLevel,
   streamingReasoning,
+  pendingUserImages,
 }: MessageListProps) {
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
   const isMobile = useIsMobile();
@@ -191,14 +194,22 @@ export function MessageList({
         ) : (
           <div className="space-y-2">
             {messages.map((message, index) => (
-              <MessageItem key={`${sessionId}-${index}`} message={message} />
+              <MessageItem
+                key={`${sessionId}-${index}`}
+                message={message}
+                sessionId={sessionId}
+              />
             ))}
             {/* Show pending message only if not already in fetched messages (dedup) */}
             {pendingUserMessage &&
               !messages.some(
                 (m) => m.role === "user" && m.content === pendingUserMessage
               ) && (
-                <MessageItem message={{ role: "user", content: pendingUserMessage }} />
+                <MessageItem
+                  message={{ role: "user", content: pendingUserMessage }}
+                  sessionId={sessionId}
+                  pendingImages={pendingUserImages ?? undefined}
+                />
               )}
             {/* Streaming: show unified activity box before content appears.
                 Thinking is displayed inside ToolPhaseIndicator (via StreamingIndicator)

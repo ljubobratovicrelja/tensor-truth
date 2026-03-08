@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type {
+  ImageRef,
   RetrievalMetrics,
   SourceNode,
   StreamToolProgress,
@@ -27,6 +28,7 @@ interface ChatStore {
   pipelineStatus: PipelineStatus;
   error: string | null;
   pendingUserMessage: string | null;
+  pendingUserImages: (ImageRef & { previewUrl?: string })[] | null;
 
   // Agent/tool progress
   streamingToolSteps: (ToolStep & { status: "calling" | "completed" | "failed" })[];
@@ -34,7 +36,10 @@ interface ChatStore {
   toolPhase: StreamToolPhase | null;
   streamingReasoning: string;
 
-  startStreaming: (userMessage: string) => void;
+  startStreaming: (
+    userMessage: string,
+    images?: (ImageRef & { previewUrl?: string })[]
+  ) => void;
   appendToken: (token: string) => void;
   appendThinking: (thinking: string) => void;
   setStatus: (status: PipelineStatus) => void;
@@ -65,12 +70,16 @@ export const useChatStore = create<ChatStore>((set) => ({
   pipelineStatus: null,
   error: null,
   pendingUserMessage: null,
+  pendingUserImages: null,
   streamingToolSteps: [],
   agentProgress: null,
   toolPhase: null,
   streamingReasoning: "",
 
-  startStreaming: (userMessage: string) =>
+  startStreaming: (
+    userMessage: string,
+    images?: (ImageRef & { previewUrl?: string })[]
+  ) =>
     set({
       isStreaming: true,
       streamingContent: "",
@@ -83,6 +92,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       pipelineStatus: null,
       error: null,
       pendingUserMessage: userMessage,
+      pendingUserImages: images ?? null,
       streamingToolSteps: [],
       agentProgress: null,
       toolPhase: null,
@@ -115,6 +125,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingThinking: "",
       streamingReasoning: "",
       pendingUserMessage: null,
+      pendingUserImages: null,
     }),
 
   setPendingUserMessage: (message) => set({ pendingUserMessage: message }),
@@ -130,6 +141,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingThinking: "",
       streamingReasoning: "",
       pendingUserMessage: null,
+      pendingUserImages: null,
     }),
 
   reset: () =>

@@ -7,7 +7,12 @@ import type { ToolStepWithStatus } from "./ToolSteps";
 import { ThinkingBox } from "./ThinkingBox";
 import { StreamingText } from "./StreamingText";
 import { MemoizedMarkdown } from "./MemoizedMarkdown";
-import type { MessageResponse, RetrievalMetrics, SourceNode } from "@/api/types";
+import type {
+  ImageRef,
+  MessageResponse,
+  RetrievalMetrics,
+  SourceNode,
+} from "@/api/types";
 
 interface MessageItemProps {
   message: MessageResponse;
@@ -21,6 +26,10 @@ interface MessageItemProps {
   confidenceLevel?: string;
   /** Whether this message is currently being streamed */
   isStreaming?: boolean;
+  /** Session ID for constructing image URLs */
+  sessionId?: string;
+  /** Pending image preview URLs (optimistic UI before save) */
+  pendingImages?: (ImageRef & { previewUrl?: string })[];
 }
 
 function MessageItemComponent({
@@ -31,6 +40,8 @@ function MessageItemComponent({
   toolSteps,
   confidenceLevel,
   isStreaming,
+  sessionId,
+  pendingImages,
 }: MessageItemProps) {
   const isUser = message.role === "user";
   const messageSources = sources ?? (message.sources as SourceNode[] | undefined);
@@ -158,6 +169,29 @@ function MessageItemComponent({
             <span>{isUser ? "You" : "Assistant"}</span>
           </div>
 
+          {/* Render images for user messages */}
+          {isUser && (message.images || pendingImages) && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {(pendingImages || message.images)?.map((img) => {
+                // Use previewUrl (blob URL) for pending images, server URL for saved
+                const src =
+                  "previewUrl" in img && (img as { previewUrl?: string }).previewUrl
+                    ? (img as { previewUrl: string }).previewUrl
+                    : sessionId
+                      ? `/api/sessions/${sessionId}/images/${img.id}`
+                      : undefined;
+                return (
+                  <img
+                    key={img.id}
+                    src={src}
+                    alt={img.filename}
+                    className="max-h-48 max-w-[200px] rounded-lg object-contain"
+                  />
+                );
+              })}
+            </div>
+          )}
+
           {/* Always use StreamingText for assistant messages to isolate parsing errors per-block */}
           {!isUser ? (
             <div ref={contentRef}>
@@ -203,6 +237,8 @@ export const MessageItem = memo(MessageItemComponent, (prev, next) => {
     prev.sources === next.sources &&
     prev.metrics === next.metrics &&
     prev.toolSteps === next.toolSteps &&
-    prev.confidenceLevel === next.confidenceLevel
+    prev.confidenceLevel === next.confidenceLevel &&
+    prev.sessionId === next.sessionId &&
+    prev.pendingImages === next.pendingImages
   );
 });

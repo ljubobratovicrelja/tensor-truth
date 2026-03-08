@@ -686,6 +686,7 @@ class OrchestratorService:
         prompt: str,
         chat_history: Optional[List[Dict[str, Any]]] = None,
         progress_emitter: Optional[ProgressEmitter] = None,
+        images: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[OrchestratorEvent, None]:
         """Execute the orchestrator for a user prompt.
 
@@ -699,6 +700,8 @@ class OrchestratorService:
                 the context window budget.
             progress_emitter: Optional callback for forwarding ToolProgress
                 events to the WebSocket layer. Also captured by tool wrappers.
+            images: Optional list of image dicts with "data" (base64) and
+                "mimetype" keys for multimodal input.
 
         Yields:
             OrchestratorEvent instances (tokens, tool calls, tool phases).
@@ -771,8 +774,29 @@ class OrchestratorService:
 
         for attempt in range(max_attempts):
             try:
+                # Build user message — multimodal if images provided
+                if images:
+                    import base64 as _b64
+
+                    from llama_index.core.base.llms.types import (
+                        ImageBlock as _ImageBlock,
+                    )
+                    from llama_index.core.base.llms.types import TextBlock as _TextBlock
+
+                    _blocks = [_TextBlock(text=prompt)]
+                    for _img in images:
+                        _blocks.append(
+                            _ImageBlock(
+                                image=_b64.b64decode(_img["data"]),
+                                image_mimetype=_img["mimetype"],
+                            )
+                        )
+                    user_msg = ChatMessage(role=MessageRole.USER, blocks=_blocks)
+                else:
+                    user_msg = prompt  # type: ignore[assignment]
+
                 handler = agent.run(
-                    user_msg=prompt,
+                    user_msg=user_msg,
                     chat_history=llama_history if llama_history else None,
                     max_iterations=self._max_iterations,
                 )

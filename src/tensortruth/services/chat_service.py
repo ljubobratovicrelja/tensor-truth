@@ -89,6 +89,7 @@ class ChatService:
         params: Dict[str, Any],
         session_messages: Optional[List[Dict[str, Any]]] = None,
         additional_index_paths: Optional[List[str]] = None,
+        images: Optional[List[Dict[str, str]]] = None,
     ) -> Generator[RAGChunk, None, RAGResponse]:
         """Execute chat query through the unified pipeline (streaming).
 
@@ -131,7 +132,10 @@ class ChatService:
 
         return (
             yield from self._rag_service.query(
-                prompt, params, session_messages=session_messages
+                prompt,
+                params,
+                session_messages=session_messages,
+                images=images,
             )
         )
 

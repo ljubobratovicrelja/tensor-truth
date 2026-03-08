@@ -40,6 +40,7 @@ class TestChatService:
             "Hello",
             {"temperature": 0.7},
             session_messages=[],
+            images=None,
         )
 
     def test_routes_to_rag_when_modules_present(self):
@@ -66,6 +67,7 @@ class TestChatService:
             "Hello",
             {},
             session_messages=[{"role": "user", "content": "previous"}],
+            images=None,
         )
 
     def test_routes_to_rag_when_pdf_index_present(self):
@@ -92,6 +94,7 @@ class TestChatService:
             "Hello",
             {},
             session_messages=[],
+            images=None,
         )
 
     def test_calls_load_engine_when_needs_reload(self):
@@ -179,6 +182,7 @@ class TestChatService:
             "second",
             {},
             session_messages=messages,
+            images=None,
         )
 
     def test_returns_generator_from_rag_service(self):
@@ -329,6 +333,7 @@ class TestChatServiceExecute:
             "Hello",
             {"model": "llama3"},
             session_messages=[],
+            images=None,
         )
 
     @patch("tensortruth.services.chat_service.SourceConverter")

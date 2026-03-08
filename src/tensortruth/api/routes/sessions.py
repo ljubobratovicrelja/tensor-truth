@@ -1,6 +1,7 @@
 """Session management endpoints."""
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 
 from tensortruth.api.deps import (
     ChatHistoryServiceDep,
@@ -23,6 +24,7 @@ from tensortruth.app_utils.history_cleaner import (
     clean_history_content,
 )
 from tensortruth.app_utils.paths import get_session_dir
+from tensortruth.services.image_service import ImageService
 
 router = APIRouter()
 
@@ -160,10 +162,22 @@ async def get_messages(
                 metrics=msg.get("metrics"),
                 tool_steps=msg.get("tool_steps"),
                 confidence_level=msg.get("confidence_level"),
+                images=msg.get("images"),
             )
             for msg in messages
         ]
     )
+
+
+@router.get("/{session_id}/images/{image_id}")
+async def get_image(session_id: str, image_id: str) -> FileResponse:
+    """Serve a stored chat image."""
+    image_service = ImageService()
+    image_path = image_service.get_image_path(session_id, image_id)
+    if image_path is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+    media_type = image_service.get_mimetype(image_path)
+    return FileResponse(path=str(image_path), media_type=media_type)
 
 
 @router.get("/{session_id}/stats", response_model=SessionStatsResponse)

@@ -42,6 +42,7 @@ export function ChatContainer() {
     streamingToolSteps,
     confidenceLevel,
     streamingReasoning,
+    pendingUserImages,
   } = useChatStore();
   const autoSendTriggered = useRef(false);
   const prevSessionIdRef = useRef<string | undefined>(undefined);
@@ -163,8 +164,11 @@ export function ChatContainer() {
     );
   }
 
-  const handleSend = (message: string) => {
-    sendMessage(message);
+  const handleSend = (
+    message: string,
+    images?: import("@/hooks/useWebSocket").AttachedImage[]
+  ) => {
+    sendMessage(message, images);
   };
 
   const handleModulesChange = (modules: string[]) => {
@@ -281,6 +285,7 @@ export function ChatContainer() {
         agentProgress={agentProgress}
         confidenceLevel={confidenceLevel}
         streamingReasoning={streamingReasoning || undefined}
+        pendingUserImages={pendingUserImages}
       />
       {error && (
         <div className="border-destructive bg-destructive/10 text-destructive border-t py-2 text-sm">

@@ -51,6 +51,14 @@ class MessageCreate(BaseModel):
     content: str
 
 
+class ImageRef(BaseModel):
+    """Reference to a stored chat image."""
+
+    id: str
+    mimetype: str
+    filename: str
+
+
 class MessageResponse(BaseModel):
     """Response for a single message."""
 
@@ -61,6 +69,7 @@ class MessageResponse(BaseModel):
     metrics: Optional[Dict[str, Any]] = None
     tool_steps: Optional[List[Dict[str, Any]]] = None
     confidence_level: Optional[str] = None
+    images: Optional[List[Dict[str, Any]]] = None
 
 
 class MessagesResponse(BaseModel):

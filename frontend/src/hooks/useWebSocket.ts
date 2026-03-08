@@ -5,6 +5,13 @@ import { useChatStore } from "@/stores";
 import { QUERY_KEYS } from "@/lib/constants";
 import type { StreamMessage } from "@/api/types";
 
+export interface AttachedImage {
+  id: string;
+  file: File;
+  previewUrl: string;
+  mimetype: string;
+}
+
 interface UseWebSocketChatOptions {
   sessionId: string | null;
   onError?: (error: string) => void;
@@ -45,7 +52,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
   }, [sessionId, reset]);
 
   const sendMessage = useCallback(
-    async (message: string) => {
+    async (message: string, images?: AttachedImage[]) => {
       if (!sessionId) return;
 
       // Close any existing connection
@@ -57,8 +64,43 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       // Reset manual close flag for new connection
       manualCloseRef.current = false;
 
+      // Build image refs for optimistic UI (include previewUrl for pending display)
+      const imageRefs = images?.map((img) => ({
+        id: img.id,
+        mimetype: img.mimetype,
+        filename: img.file.name,
+        previewUrl: img.previewUrl,
+      }));
+
       // Start streaming state with user message for optimistic UI
-      startStreaming(message);
+      startStreaming(message, imageRefs);
+
+      // Convert images to base64 for WS payload
+      let imagePayloads: { data: string; mimetype: string; filename: string }[] = [];
+      if (images && images.length > 0) {
+        imagePayloads = await Promise.all(
+          images.map(
+            (img) =>
+              new Promise<{ data: string; mimetype: string; filename: string }>(
+                (resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const result = reader.result as string;
+                    // Strip "data:image/png;base64," prefix
+                    const base64 = result.split(",")[1] || result;
+                    resolve({
+                      data: base64,
+                      mimetype: img.mimetype,
+                      filename: img.file.name,
+                    });
+                  };
+                  reader.onerror = reject;
+                  reader.readAsDataURL(img.file);
+                }
+              )
+          )
+        );
+      }
 
       // Create new WebSocket connection
       const ws = createWebSocket(sessionId);
@@ -70,8 +112,12 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       let didReceiveThinking = false;
 
       ws.onopen = () => {
-        // Send the prompt
-        ws.send(JSON.stringify({ prompt: message }));
+        // Send the prompt (with images if present)
+        const payload: Record<string, unknown> = { prompt: message };
+        if (imagePayloads.length > 0) {
+          payload.images = imagePayloads;
+        }
+        ws.send(JSON.stringify(payload));
       };
 
       ws.onmessage = (event) => {

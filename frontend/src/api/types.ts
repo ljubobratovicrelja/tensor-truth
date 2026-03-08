@@ -31,6 +31,12 @@ export interface MessageCreate {
   content: string;
 }
 
+export interface ImageRef {
+  id: string;
+  mimetype: string;
+  filename: string;
+}
+
 export interface MessageResponse {
   role: string;
   content: string;
@@ -39,6 +45,7 @@ export interface MessageResponse {
   metrics?: RetrievalMetrics | null;
   tool_steps?: ToolStep[] | null;
   confidence_level?: string | null;
+  images?: ImageRef[] | null;
 }
 
 export interface MessagesResponse {

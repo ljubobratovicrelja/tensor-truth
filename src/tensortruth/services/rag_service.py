@@ -4,6 +4,7 @@ This service wraps the existing rag_engine module with lifecycle management
 and a cleaner interface for the UI layer.
 """
 
+import base64
 import json
 import logging
 from pathlib import Path
@@ -19,7 +20,12 @@ from typing import (
     cast,
 )
 
-from llama_index.core.base.llms.types import ChatMessage, MessageRole
+from llama_index.core.base.llms.types import (
+    ChatMessage,
+    ImageBlock,
+    MessageRole,
+    TextBlock,
+)
 from llama_index.core.chat_engine import CondensePlusContextChatEngine
 from llama_index.core.llms import LLM
 
@@ -210,6 +216,7 @@ class RAGService:
         prompt: str,
         params: Optional[Dict[str, Any]] = None,
         session_messages: Optional[List[Dict[str, Any]]] = None,
+        images: Optional[List[Dict[str, str]]] = None,
     ) -> Generator[RAGChunk, None, RAGResponse]:
         """Execute a streaming query through the unified pipeline.
 
@@ -420,6 +427,20 @@ class RAGService:
             messages = chat_history + [
                 ChatMessage(role=MessageRole.USER, content=formatted_prompt)
             ]
+
+        # Attach image blocks to the last user message if images are present
+        if images and messages:
+            last_msg = messages[-1]
+            if last_msg.role == MessageRole.USER:
+                blocks = [TextBlock(text=last_msg.content or "")]
+                for img in images:
+                    blocks.append(
+                        ImageBlock(
+                            image=base64.b64decode(img["data"]),
+                            image_mimetype=img["mimetype"],
+                        )
+                    )
+                messages[-1] = ChatMessage(role=MessageRole.USER, blocks=blocks)
 
         # Phase 4: Check if model supports thinking and start generation
         thinking_enabled = getattr(llm, "thinking", False)
