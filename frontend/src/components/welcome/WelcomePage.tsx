@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Send, Bot, FolderKanban, Plus } from "lucide-react";
@@ -29,7 +29,35 @@ import { ThinkingSelect } from "@/components/chat/ThinkingSelect";
 import { SessionSettingsPanel } from "@/components/config";
 import type { CommandDefinition } from "@/types/commands";
 
+const TITLES = [
+  "What would you like to know?",
+  "What's on your mind?",
+  "Ready when you are",
+  "Let's dig in",
+  "Go ahead, ask anything",
+];
+
+const SUBTITLES = [
+  "Search, ask, and explore your knowledge base",
+  "Your documents, one question away",
+  "Turn your files into answers",
+  "Chat with your data",
+  "All your knowledge, instantly searchable",
+  "From documents to insights in seconds",
+  "The answers are in there somewhere",
+  "Ask away, your docs are ready",
+  "Your personal research assistant",
+  "What's buried in your files today?",
+];
+
 export function WelcomePage() {
+  const [title, subtitle] = useMemo(
+    () => [
+      TITLES[Math.floor(Math.random() * TITLES.length)],
+      SUBTITLES[Math.floor(Math.random() * SUBTITLES.length)],
+    ],
+    []
+  );
   const [message, setMessage] = useState("");
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
@@ -183,11 +211,9 @@ export function WelcomePage() {
             <img src="/logo.png" alt="TensorTruth" className="h-24 w-24" />
           </div>
           <h1 className="text-foreground text-3xl font-semibold tracking-tight">
-            What would you like to know?
+            {title}
           </h1>
-          <p className="text-muted-foreground mt-2 text-base">
-            Ask questions about your documents with AI-powered retrieval
-          </p>
+          <p className="text-muted-foreground mt-2 text-base">{subtitle}</p>
         </div>
 
         {/* Chat Input */}
