@@ -399,49 +399,44 @@
     --cursor-bg: currentColor;
   }
 
-  /* Shared cursor style */
-  .streaming-blocks.is-streaming > .chat-markdown:last-child ::after {
-    /* reset — only matched selectors below actually set content */
-  }
-
+  /* ── Shared cursor mixin (applied via content:"" on each selector) ── */
   /* Paragraphs, headings, blockquotes — direct block children */
   .streaming-blocks.is-streaming
     > .chat-markdown:last-child
-    > :is(p, h1, h2, h3, h4, blockquote):last-child::after {
-    content: "";
-    @apply ml-0.5 inline-block h-5 w-0.5 align-middle;
-    background: var(--cursor-bg);
-    animation: blink 1s step-end infinite;
-  }
-
-  /* Lists: cursor on the last <li> (plain text) */
+    > :is(p, h1, h2, h3, h4, blockquote):last-child::after,
+  /* Lists: leaf li (no nested sub-list), plain text */
   .streaming-blocks.is-streaming
     > .chat-markdown:last-child
-    > :is(ul, ol):last-child
-    > li:last-child::after {
-    content: "";
-    @apply ml-0.5 inline-block h-5 w-0.5 align-middle;
-    background: var(--cursor-bg);
-    animation: blink 1s step-end infinite;
-  }
-
-  /* Lists: when <li> wraps content in <p> */
+    :is(ul, ol):last-child
+    > li:last-child:not(:has(> ul, > ol))::after,
+  /* Lists: leaf li with <p> wrapper */
   .streaming-blocks.is-streaming
     > .chat-markdown:last-child
-    > :is(ul, ol):last-child
-    > li:last-child
-    > p:last-child::after {
-    content: "";
-    @apply ml-0.5 inline-block h-5 w-0.5 align-middle;
-    background: var(--cursor-bg);
-    animation: blink 1s step-end infinite;
-  }
-
-  /* Code blocks: pre > code */
+    :is(ul, ol):last-child
+    > li:last-child:not(:has(> ul, > ol))
+    > p:last-child::after,
+  /* Code blocks (wrapped in div.group\/code by copy-button wrapper) */
+  .streaming-blocks.is-streaming
+    > .chat-markdown:last-child
+    > .group\/code:last-child
+    pre
+    code::after,
+  /* Code blocks (bare pre, fallback) */
   .streaming-blocks.is-streaming
     > .chat-markdown:last-child
     > pre:last-child
-    code::after {
+    code::after,
+  /* Tables: last cell in last row */
+  .streaming-blocks.is-streaming
+    > .chat-markdown:last-child
+    > table:last-child
+    tr:last-child
+    > :is(td, th):last-child::after,
+  /* Details/summary */
+  .streaming-blocks.is-streaming
+    > .chat-markdown:last-child
+    > details:last-child
+    > *:last-child::after {
     content: "";
     @apply ml-0.5 inline-block h-5 w-0.5 align-middle;
     background: var(--cursor-bg);
