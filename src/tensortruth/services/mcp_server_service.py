@@ -56,6 +56,38 @@ MCP_SERVER_PRESETS: dict[str, dict[str, Any]] = {
         "description": "HuggingFace — models, datasets, papers, spaces",
         "enabled": True,
     },
+    "playwright": {
+        "name": "playwright",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@playwright/mcp@latest"],
+        "description": "Playwright — browser automation for JS-heavy sites",
+        "enabled": True,
+    },
+    "memory": {
+        "name": "memory",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-memory"],
+        "description": "Knowledge Graph — persistent entity and relationship memory",
+        "enabled": True,
+    },
+    "scholarly-research": {
+        "name": "scholarly-research",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "scholarly-research-mcp"],
+        "description": "Scholarly Research — PubMed, Google Scholar, ArXiv, JSTOR",
+        "enabled": True,
+    },
+    "wikipedia": {
+        "name": "wikipedia",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "wikipedia-mcp"],
+        "description": "Wikipedia — direct article search and retrieval",
+        "enabled": True,
+    },
 }
 
 

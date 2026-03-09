@@ -221,7 +221,14 @@ class TestPresets:
         assert "context7" in presets
         assert "github" in presets
         assert "huggingface" in presets
+        assert "playwright" in presets
+        assert "memory" in presets
+        assert "scholarly-research" in presets
+        assert "wikipedia" in presets
+        assert len(presets) == 7
         assert presets["context7"]["command"] == "npx"
+        assert presets["playwright"]["command"] == "npx"
+        assert presets["wikipedia"]["command"] == "npx"
 
 
 class TestGetConfiguredServerNames:
