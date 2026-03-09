@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Send, Bot, FolderKanban, Plus } from "lucide-react";
@@ -88,6 +88,17 @@ export function WelcomePage() {
     (state) => state.setPendingAttachedImages
   );
   const detection = useCommandDetection(message);
+
+  // Auto-resize textarea: grows up to 3× its base height, but
+  // never exceeds 40% of the viewport to stay usable on small screens.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const baseHeight = 100; // matches min-h-[100px]
+    const maxHeight = Math.min(baseHeight * 3, window.innerHeight * 0.4);
+    el.style.height = `${Math.max(baseHeight, Math.min(el.scrollHeight, maxHeight))}px`;
+  }, [message]);
 
   // Show autocomplete only if command detected AND no space after command name
   const commandEndPos =

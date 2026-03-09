@@ -1,4 +1,4 @@
-import { memo, useState, useRef } from "react";
+import { memo, useState, useRef, useEffect } from "react";
 import { User, Bot, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourcesList } from "./SourceCard";
@@ -95,7 +95,17 @@ function MessageItemComponent({
   })();
 
   const [copied, setCopied] = useState(false);
+  const [userMsgExpanded, setUserMsgExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const userContentRef = useRef<HTMLDivElement>(null);
+  const [userMsgOverflows, setUserMsgOverflows] = useState(false);
+  const USER_MSG_COLLAPSED_PX = 200;
+
+  // Detect whether the user message content overflows the collapsed height
+  useEffect(() => {
+    if (!isUser || !userContentRef.current) return;
+    setUserMsgOverflows(userContentRef.current.scrollHeight > USER_MSG_COLLAPSED_PX);
+  }, [isUser, message.content]);
 
   const handleCopy = async (e: React.MouseEvent) => {
     const content = message.content;
@@ -160,7 +170,7 @@ function MessageItemComponent({
       <div
         className={cn(
           "group min-w-0 space-y-2",
-          isUser ? "md:max-w-[50%]" : "w-full md:max-w-[80%]"
+          isUser ? "md:max-w-[80%]" : "w-full md:max-w-[80%]"
         )}
       >
         {/* Show thinking box for assistant messages */}
@@ -236,10 +246,29 @@ function MessageItemComponent({
             </div>
           ) : (
             <div ref={contentRef}>
-              <MemoizedMarkdown
-                content={message.content}
-                className="chat-markdown-user"
-              />
+              <div
+                ref={userContentRef}
+                className="overflow-hidden transition-[max-height] duration-300"
+                style={{
+                  maxHeight:
+                    userMsgOverflows && !userMsgExpanded
+                      ? `${USER_MSG_COLLAPSED_PX}px`
+                      : undefined,
+                }}
+              >
+                <MemoizedMarkdown
+                  content={message.content}
+                  className="chat-markdown-user"
+                />
+              </div>
+              {userMsgOverflows && (
+                <button
+                  onClick={() => setUserMsgExpanded((v) => !v)}
+                  className="text-primary-foreground/70 hover:text-primary-foreground mt-1 text-xs font-medium"
+                >
+                  {userMsgExpanded ? "Show less" : "Show more"}
+                </button>
+              )}
             </div>
           )}
           {!isUser && savedApprovalRequests.length > 0 && (

@@ -9,7 +9,32 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import { Copy, Check } from "lucide-react";
 import { cn, convertLatexDelimiters, preprocessTableCodeBlocks } from "@/lib/utils";
+
+/** Small copy button rendered in the top-right corner of fenced code blocks. */
+function CodeCopyButton({ preRef }: { preRef: React.RefObject<HTMLPreElement | null> }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    const code = preRef.current?.querySelector("code");
+    if (!code) return;
+    navigator.clipboard.writeText(code.textContent ?? "").then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="text-muted-foreground hover:text-foreground absolute top-2 right-2 rounded p-1 opacity-0 transition-opacity group-hover/code:opacity-100 focus:opacity-100"
+      title="Copy code"
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
 
 interface MemoizedMarkdownProps {
   content: string;
@@ -160,30 +185,37 @@ function MarkdownImage(props: React.ImgHTMLAttributes<HTMLImageElement>) {
   return <MarkdownImageInner key={props.src} {...props} />;
 }
 
+/** Fenced code block wrapper with language label and copy button. */
+function CodeBlockPre({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) {
+  const preRef = useRef<HTMLPreElement>(null);
+
+  let lang: string | null = null;
+  React.Children.forEach(children, (child) => {
+    if (React.isValidElement(child)) {
+      const childProps = child.props as { className?: string };
+      if (childProps.className) {
+        lang = getLangLabel(childProps.className);
+      }
+    }
+  });
+
+  return (
+    <div className="group/code relative">
+      <pre ref={preRef} {...props}>
+        {lang && <div className="code-lang-label">{lang}</div>}
+        {children}
+      </pre>
+      <CodeCopyButton preRef={preRef} />
+    </div>
+  );
+}
+
 // Custom components for markdown rendering
 const markdownComponents: Components = {
   img({ src, alt, ...props }) {
     return <MarkdownImage src={src} alt={alt} {...props} />;
   },
-  pre({ children, ...props }) {
-    // Extract language from the child <code> element's className
-    let lang: string | null = null;
-    React.Children.forEach(children, (child) => {
-      if (React.isValidElement(child)) {
-        const childProps = child.props as { className?: string };
-        if (childProps.className) {
-          lang = getLangLabel(childProps.className);
-        }
-      }
-    });
-
-    return (
-      <pre {...props}>
-        {lang && <div className="code-lang-label">{lang}</div>}
-        {children}
-      </pre>
-    );
-  },
+  pre: CodeBlockPre,
   code({ children, className, ...props }) {
     // Only process inline code (no className means not inside a <pre> from highlight)
     if (className) {
