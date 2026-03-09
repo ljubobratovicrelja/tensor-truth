@@ -294,7 +294,9 @@ export const useChatStore = create<ChatStore>((set) => ({
   resolveApprovalRequest: (proposalId, outcome) =>
     set((state) => ({
       approvalRequests: state.approvalRequests.map((r) =>
-        r.proposal_id === proposalId ? { ...r, _outcome: outcome } as StreamApprovalRequest : r
+        r.proposal_id === proposalId
+          ? ({ ...r, _outcome: outcome } as StreamApprovalRequest)
+          : r
       ),
     })),
 }));

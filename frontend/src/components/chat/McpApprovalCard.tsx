@@ -107,10 +107,10 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
   };
 
   return (
-    <div className="my-2 rounded-lg border border-border bg-card p-3 shadow-sm">
+    <div className="border-border bg-card my-2 rounded-lg border p-3 shadow-sm">
       {/* Header */}
-      <div className="flex items-center gap-2 mb-2">
-        <Server className="h-4 w-4 text-muted-foreground" />
+      <div className="mb-2 flex items-center gap-2">
+        <Server className="text-muted-foreground h-4 w-4" />
         <span
           className={cn(
             "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
@@ -120,14 +120,14 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
           <ActionIcon className="h-3 w-3" />
           {actionLabel}
         </span>
-        <span className="font-medium text-sm">{request.target_name}</span>
+        <span className="text-sm font-medium">{request.target_name}</span>
         {status === "loading" && (
-          <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-muted-foreground" />
+          <Loader2 className="text-muted-foreground ml-auto h-3.5 w-3.5 animate-spin" />
         )}
         {(status === "approved" || status === "rejected") && (
           <span
             className={cn(
-              "ml-auto text-xs font-medium rounded-md px-2 py-0.5",
+              "ml-auto rounded-md px-2 py-0.5 text-xs font-medium",
               status === "approved"
                 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                 : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
@@ -139,11 +139,11 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
       </div>
 
       {/* Summary */}
-      <p className="text-sm text-muted-foreground mb-2">{request.summary}</p>
+      <p className="text-muted-foreground mb-2 text-sm">{request.summary}</p>
 
       {/* Config details (for add/update) */}
       {request.action !== "remove" && (
-        <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 mb-2 space-y-0.5 font-mono">
+        <div className="text-muted-foreground bg-muted/50 mb-2 space-y-0.5 rounded p-2 font-mono text-xs">
           {config.type && <div>Type: {String(config.type)}</div>}
           {config.command && (
             <div>
@@ -154,18 +154,13 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
           {config.url && <div>URL: {String(config.url)}</div>}
           {config.description && <div>Description: {String(config.description)}</div>}
           {config.env && typeof config.env === "object" && (
-            <div>
-              Env:{" "}
-              {Object.keys(config.env as Record<string, string>).join(", ")}
-            </div>
+            <div>Env: {Object.keys(config.env as Record<string, string>).join(", ")}</div>
           )}
         </div>
       )}
 
       {/* Error message */}
-      {error && (
-        <p className="text-xs text-red-600 dark:text-red-400 mb-2">{error}</p>
-      )}
+      {error && <p className="mb-2 text-xs text-red-600 dark:text-red-400">{error}</p>}
 
       {/* Buttons */}
       {status === "pending" && (
@@ -173,7 +168,7 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
           <button
             onClick={handleApprove}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-50"
           >
             <Check className="h-3 w-3" />
             Approve
@@ -181,7 +176,7 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
           <button
             onClick={handleReject}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
+            className="border-border text-muted-foreground hover:bg-muted inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium disabled:opacity-50"
           >
             <X className="h-3 w-3" />
             Reject
