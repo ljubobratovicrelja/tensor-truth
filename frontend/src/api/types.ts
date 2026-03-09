@@ -265,6 +265,7 @@ export interface AgentConfig {
   max_iterations: number;
   min_pages_required: number;
   orchestrator_enabled: boolean;
+  show_orchestrator_reasoning: boolean;
 }
 
 export interface ModelCapabilitiesResponse {

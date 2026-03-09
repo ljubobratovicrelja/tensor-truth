@@ -48,6 +48,7 @@ class AgentConfigSchema(BaseModel):
     max_iterations: int = 10
     min_pages_required: int = 3
     orchestrator_enabled: bool = True
+    show_orchestrator_reasoning: bool = False
 
 
 class HistoryCleaningConfigSchema(BaseModel):

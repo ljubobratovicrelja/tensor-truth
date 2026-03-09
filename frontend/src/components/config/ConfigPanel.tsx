@@ -180,6 +180,11 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     config.conversation.memory_token_limit
   );
 
+  // Orchestrator reasoning
+  const [showOrchestratorReasoning, setShowOrchestratorReasoning] = useState(
+    config.agent.show_orchestrator_reasoning
+  );
+
   // Web Search
   const [ddgMaxResults, setDdgMaxResults] = useState(config.web_search.ddg_max_results);
   const [maxPagesToFetch, setMaxPagesToFetch] = useState(
@@ -223,6 +228,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     setRerankContentThreshold(config.web_search.rerank_content_threshold);
     setMaxSourceContextPct(config.web_search.max_source_context_pct);
     setInputContextPct(config.web_search.input_context_pct);
+    setShowOrchestratorReasoning(config.agent.show_orchestrator_reasoning);
   }, [config]);
 
   // Fetch available devices from backend
@@ -340,6 +346,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
       web_search_rerank_content_threshold: rerankContentThreshold,
       web_search_max_source_context_pct: maxSourceContextPct,
       web_search_input_context_pct: inputContextPct,
+      agent_show_orchestrator_reasoning: showOrchestratorReasoning,
     });
   };
 
@@ -472,6 +479,20 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
           max={16384}
           step={256}
         />
+      </div>
+
+      <Separator />
+
+      <div className="flex items-center space-x-2">
+        <Checkbox
+          id="show-orchestrator-reasoning"
+          checked={showOrchestratorReasoning}
+          onCheckedChange={(checked) => setShowOrchestratorReasoning(checked === true)}
+        />
+        <Label htmlFor="show-orchestrator-reasoning" className="cursor-pointer">
+          Show orchestrator reasoning
+          <HelpTooltip text="Stream the orchestrator's internal reasoning into the UI during the analyzing phase. Useful for debugging." />
+        </Label>
       </div>
     </div>
   );

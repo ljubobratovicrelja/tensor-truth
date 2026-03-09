@@ -466,7 +466,8 @@ class TestExecuteFlow:
 
     @pytest.mark.asyncio
     async def test_yields_token_events(self, tool_service, rag_service_not_loaded):
-        """Token deltas from FunctionAgent should yield OrchestratorEvent(token=...)."""
+        """Token deltas from FunctionAgent should yield OrchestratorEvent(token=...)
+        via the synthesis service (no-tools path)."""
         from llama_index.core.agent.workflow import AgentStream
 
         svc = _create_service(tool_service, rag_service_not_loaded)
@@ -485,6 +486,13 @@ class TestExecuteFlow:
 
         handler = _make_awaitable_handler(stream_events, "Hello world")
 
+        # Mock synthesis service to yield token events
+        async def _synth_gen(*_a, **_k):
+            yield OrchestratorEvent(token="Hello world")
+
+        mock_synth_svc = MagicMock()
+        mock_synth_svc.synthesize = _synth_gen
+
         with (
             patch(
                 "tensortruth.services.orchestrator_service.LIFunctionAgent",
@@ -493,6 +501,10 @@ class TestExecuteFlow:
             patch(
                 "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
+            ),
+            patch(
+                "tensortruth.services.synthesis_service.get_synthesis_service",
+                return_value=mock_synth_svc,
             ),
         ):
             events = []
@@ -1361,6 +1373,13 @@ class TestTransientErrorHandling:
         mock_agent = MagicMock()
         mock_agent.run = MagicMock(side_effect=lambda **kwargs: make_handler())
 
+        # Mock synthesis service for the no-tools path after retry success
+        async def _synth_gen(*_a, **_k):
+            yield OrchestratorEvent(token="Success!")
+
+        mock_synth_svc = MagicMock()
+        mock_synth_svc.synthesize = _synth_gen
+
         with (
             patch(
                 "tensortruth.services.orchestrator_service.LIFunctionAgent",
@@ -1371,6 +1390,10 @@ class TestTransientErrorHandling:
                 return_value=MagicMock(),
             ),
             patch("asyncio.sleep", new_callable=AsyncMock),
+            patch(
+                "tensortruth.services.synthesis_service.get_synthesis_service",
+                return_value=mock_synth_svc,
+            ),
         ):
             events = []
             async for event in svc.execute("Hello"):
@@ -1462,3 +1485,132 @@ class TestTransientErrorHandling:
         assert (
             "temporary issue" in error_text.lower() or "try again" in error_text.lower()
         )
+
+
+# ---------------------------------------------------------------
+# Orchestrator reasoning visibility config
+# ---------------------------------------------------------------
+
+
+class TestReasoningVisibilityConfig:
+    """Tests for show_orchestrator_reasoning config flag."""
+
+    @pytest.mark.asyncio
+    async def test_reasoning_not_yielded_when_config_disabled(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """With show_orchestrator_reasoning=False (default), AgentStream
+        deltas on the no-tools path should NOT be yielded as reasoning."""
+        from llama_index.core.agent.workflow import AgentStream
+
+        svc = _create_service(tool_service, rag_service_not_loaded)
+
+        event1 = AgentStream(
+            delta="I think", response="", current_agent_name="orchestrator"
+        )
+        event2 = AgentStream(
+            delta=" about it", response="", current_agent_name="orchestrator"
+        )
+
+        async def stream_events():
+            yield event1
+            yield event2
+
+        handler = _make_awaitable_handler(stream_events, "I think about it")
+
+        # Mock config with show_orchestrator_reasoning=False
+        mock_config = MagicMock()
+        mock_config.load.return_value.agent.show_orchestrator_reasoning = False
+
+        # Mock synthesis to yield a simple token
+        async def _synth_gen(*_a, **_k):
+            yield OrchestratorEvent(token="Hello!")
+
+        mock_synth_svc = MagicMock()
+        mock_synth_svc.synthesize = _synth_gen
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_service.LIFunctionAgent",
+                return_value=MagicMock(run=MagicMock(return_value=handler)),
+            ),
+            patch(
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "tensortruth.api.deps.get_config_service",
+                return_value=mock_config,
+            ),
+            patch(
+                "tensortruth.services.synthesis_service.get_synthesis_service",
+                return_value=mock_synth_svc,
+            ),
+        ):
+            events = []
+            async for event in svc.execute("Hi"):
+                events.append(event)
+
+        reasoning_events = [e for e in events if e.reasoning is not None]
+        assert len(reasoning_events) == 0
+
+    @pytest.mark.asyncio
+    async def test_reasoning_yielded_when_config_enabled(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """With show_orchestrator_reasoning=True, AgentStream deltas on the
+        no-tools path should be yielded as reasoning events."""
+        from llama_index.core.agent.workflow import AgentStream
+
+        svc = _create_service(tool_service, rag_service_not_loaded)
+
+        event1 = AgentStream(
+            delta="Thinking", response="", current_agent_name="orchestrator"
+        )
+        event2 = AgentStream(
+            delta=" hard", response="", current_agent_name="orchestrator"
+        )
+
+        async def stream_events():
+            yield event1
+            yield event2
+
+        handler = _make_awaitable_handler(stream_events, "Thinking hard")
+
+        # Mock config with show_orchestrator_reasoning=True
+        mock_config = MagicMock()
+        mock_config.load.return_value.agent.show_orchestrator_reasoning = True
+
+        # Mock synthesis to yield a simple token
+        async def _synth_gen(*_a, **_k):
+            yield OrchestratorEvent(token="Hello!")
+
+        mock_synth_svc = MagicMock()
+        mock_synth_svc.synthesize = _synth_gen
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_service.LIFunctionAgent",
+                return_value=MagicMock(run=MagicMock(return_value=handler)),
+            ),
+            patch(
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "tensortruth.api.deps.get_config_service",
+                return_value=mock_config,
+            ),
+            patch(
+                "tensortruth.services.synthesis_service.get_synthesis_service",
+                return_value=mock_synth_svc,
+            ),
+        ):
+            events = []
+            async for event in svc.execute("Hi"):
+                events.append(event)
+
+        reasoning_events = [e for e in events if e.reasoning is not None]
+        assert len(reasoning_events) == 2
+        reasoning_text = "".join(e.reasoning for e in reasoning_events)
+        assert reasoning_text == "Thinking hard"

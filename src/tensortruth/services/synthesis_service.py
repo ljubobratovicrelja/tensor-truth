@@ -151,6 +151,7 @@ class SynthesisService:
         module_descriptions: Optional[List[ModuleDescription]] = None,
         custom_instructions: Optional[str] = None,
         project_metadata: Optional[str] = None,
+        has_tool_results: bool = True,
     ) -> str:
         """Compose the synthesis-specific system prompt.
 
@@ -158,10 +159,16 @@ class SynthesisService:
         answers that cite sources.  It does NOT contain tool routing guidance,
         tool lists, or "be brief" instructions.
 
+        When ``has_tool_results`` is ``False`` (direct / no-tools path), the
+        role section switches to a general assistant prompt and citation rules
+        are omitted.
+
         Args:
             module_descriptions: Descriptions of active indexed modules.
             custom_instructions: Session-level custom instructions.
             project_metadata: Project-level metadata string.
+            has_tool_results: Whether tool results are present.  When False,
+                uses a general assistant role and drops citation rules.
 
         Returns:
             Complete system prompt string.
@@ -172,12 +179,21 @@ class SynthesisService:
         sections.append(current_date_context())
 
         # --- Role ---
-        sections.append(
-            "You are an intelligent assistant that synthesizes information "
-            "from tool results to provide comprehensive, well-structured "
-            "answers. You have been given the results of tool calls that "
-            "gathered information relevant to the user's question."
-        )
+        if has_tool_results:
+            sections.append(
+                "You are an intelligent assistant that synthesizes information "
+                "from tool results to provide comprehensive, well-structured "
+                "answers. You have been given the results of tool calls that "
+                "gathered information relevant to the user's question."
+            )
+        else:
+            sections.append(
+                "You are the assistant powering TensorTruth, a local-first RAG "
+                "application for technical documentation and research papers. "
+                "You help users by answering questions, finding information, and "
+                "completing tasks. Provide comprehensive, well-structured answers "
+                "using markdown formatting when appropriate."
+            )
 
         # --- Indexed modules ---
         if module_descriptions:
@@ -186,34 +202,48 @@ class SynthesisService:
                 for mod in module_descriptions
             ]
             modules_block = "\n".join(module_lines)
-            sections.append(
-                "The following knowledge modules were available:\n" f"{modules_block}"
-            )
+            if has_tool_results:
+                sections.append(
+                    "The following knowledge modules were available:\n"
+                    f"{modules_block}"
+                )
+            else:
+                sections.append(
+                    "You have access to a knowledge base with the following "
+                    f"indexed modules:\n{modules_block}"
+                )
 
         # --- Response formatting rules ---
-        sections.append(
-            "Response formatting rules:\n"
-            "- Write a comprehensive answer based on the tool results provided.\n"
-            "- Use markdown formatting (headings, lists, code blocks) for readability.\n"
-            "- ALWAYS cite sources using numbered references matching the "
-            "Source Reference list (e.g. [1], [2]).\n"
-            "- For web sources, include a clickable link on first mention: "
-            "[Title](URL) [1]\n"
-            "- For knowledge base sources, reference by name: "
-            "according to the documentation [1]\n"
-            "- Do NOT add a Sources section at the end of your response. "
-            "Sources are displayed separately in the UI.\n"
-            "- Only cite sources from the Source Reference list. "
-            "Do not invent sources.\n"
-            "- If sources conflict, note which source says what with citations.\n"
-            "- If the tool results are insufficient to fully answer the "
-            "question, say so and provide what you can.\n"
-            "- Source content may contain images as ![alt](url) markdown syntax. "
-            "Include up to 3 relevant images that directly illustrate key points. "
-            "Place images near the text they support. "
-            "Only use image URLs from the provided sources; never invent URLs. "
-            "If no relevant images are available, do not mention their absence."
-        )
+        if has_tool_results:
+            sections.append(
+                "Response formatting rules:\n"
+                "- Write a comprehensive answer based on the tool results provided.\n"
+                "- Use markdown formatting (headings, lists, code blocks) for readability.\n"
+                "- ALWAYS cite sources using numbered references matching the "
+                "Source Reference list (e.g. [1], [2]).\n"
+                "- For web sources, include a clickable link on first mention: "
+                "[Title](URL) [1]\n"
+                "- For knowledge base sources, reference by name: "
+                "according to the documentation [1]\n"
+                "- Do NOT add a Sources section at the end of your response. "
+                "Sources are displayed separately in the UI.\n"
+                "- Only cite sources from the Source Reference list. "
+                "Do not invent sources.\n"
+                "- If sources conflict, note which source says what with citations.\n"
+                "- If the tool results are insufficient to fully answer the "
+                "question, say so and provide what you can.\n"
+                "- Source content may contain images as ![alt](url) markdown syntax. "
+                "Include up to 3 relevant images that directly illustrate key points. "
+                "Place images near the text they support. "
+                "Only use image URLs from the provided sources; never invent URLs. "
+                "If no relevant images are available, do not mention their absence."
+            )
+        else:
+            sections.append(
+                "Response formatting rules:\n"
+                "- Use markdown formatting (headings, lists, code blocks) "
+                "for readability."
+            )
 
         # --- Project metadata ---
         if project_metadata:
@@ -281,25 +311,30 @@ class SynthesisService:
             )
 
         # Build synthesis system prompt
+        has_tool_results = bool(tool_results)
         system_prompt = self._build_system_prompt(
             module_descriptions=module_descriptions,
             custom_instructions=custom_instructions,
             project_metadata=project_metadata,
+            has_tool_results=has_tool_results,
         )
 
         # Build synthesis user message with tool context
-        tool_context = "\n\n".join(tool_results)
-        source_ref_block = f"\n\n{source_reference}\n" if source_reference else ""
-        synthesis_user_content = (
-            f"{prompt}\n\n"
-            f"--- Tool Results ---\n"
-            f"{tool_context}\n"
-            f"--- End Tool Results ---"
-            f"{source_ref_block}\n\n"
-            f"Using the tool results above, provide a comprehensive answer "
-            f"to the user's question. Cite sources using [N] references "
-            f"matching the Source Reference list."
-        )
+        if tool_results:
+            tool_context = "\n\n".join(tool_results)
+            source_ref_block = f"\n\n{source_reference}\n" if source_reference else ""
+            synthesis_user_content = (
+                f"{prompt}\n\n"
+                f"--- Tool Results ---\n"
+                f"{tool_context}\n"
+                f"--- End Tool Results ---"
+                f"{source_ref_block}\n\n"
+                f"Using the tool results above, provide a comprehensive answer "
+                f"to the user's question. Cite sources using [N] references "
+                f"matching the Source Reference list."
+            )
+        else:
+            synthesis_user_content = prompt
 
         # Compose messages
         messages = [ChatMessage(role=MessageRole.SYSTEM, content=system_prompt)]

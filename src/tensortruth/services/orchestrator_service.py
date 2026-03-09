@@ -36,7 +36,6 @@ from tensortruth.core.prompts import current_date_context
 from tensortruth.core.providers import (
     get_orchestrator_llm as _providers_get_orchestrator_llm,
 )
-from tensortruth.core.providers import get_tool_llm as _providers_get_tool_llm
 from tensortruth.core.providers import (
     resolve_model_from_params,
 )
@@ -572,113 +571,6 @@ class OrchestratorService:
     # Direct response generation (thinking-enabled, no tools)
     # ------------------------------------------------------------------
 
-    def _build_direct_system_prompt(self) -> str:
-        """Compose a system prompt for direct (no-tool) response generation.
-
-        Similar to the orchestrator system prompt but without tool routing,
-        tool lists, or synthesis/citation rules. Used when the orchestrator
-        decided no tools are needed and we re-generate with thinking enabled.
-
-        Returns:
-            System prompt string.
-        """
-        sections: List[str] = []
-
-        sections.append(current_date_context())
-
-        sections.append(
-            "You are the assistant powering TensorTruth, a local-first RAG "
-            "application for technical documentation and research papers. "
-            "You help users by answering questions, finding information, and "
-            "completing tasks. Provide comprehensive, well-structured answers "
-            "using markdown formatting when appropriate."
-        )
-
-        if self._module_descriptions:
-            module_lines = [
-                f"- {mod.name}: {mod.display_name} ({mod.doc_type})"
-                for mod in self._module_descriptions
-            ]
-            modules_block = "\n".join(module_lines)
-            sections.append(
-                "You have access to a knowledge base with the following indexed "
-                f"modules:\n{modules_block}"
-            )
-
-        if self._project_metadata:
-            sections.append(f"Project context:\n{self._project_metadata}")
-
-        if self._custom_instructions:
-            sections.append(
-                f"Additional instructions from the user:\n{self._custom_instructions}"
-            )
-
-        return "\n\n".join(sections)
-
-    async def _generate_direct_response(
-        self,
-        prompt: str,
-        chat_history: List[ChatMessage],
-        progress_emitter: ProgressEmitter,
-    ) -> AsyncGenerator[OrchestratorEvent, None]:
-        """Re-generate a direct response with thinking enabled.
-
-        Called when the orchestrator decided no tools are needed. Uses the
-        thinking-enabled tool LLM to produce both reasoning tokens and the
-        final answer — matching the quality of the synthesis path.
-
-        Args:
-            prompt: The original user prompt.
-            chat_history: Budgeted chat history as ChatMessage objects.
-            progress_emitter: Callback for progress events.
-
-        Yields:
-            OrchestratorEvent instances (thinking and token events).
-        """
-        # Emit thinking phase
-        progress_emitter(
-            ToolProgress(
-                tool_id="orchestrator",
-                phase="thinking",
-                message="Thinking...",
-            )
-        )
-
-        thinking_pref = self._session_params.get("thinking")
-        resolved = _providers_resolve_thinking(self._model_ref, thinking_pref)
-        llm = _providers_get_tool_llm(
-            self._model_ref, self._context_window, thinking=resolved
-        )
-        system_prompt = self._build_direct_system_prompt()
-
-        messages = [ChatMessage(role=MessageRole.SYSTEM, content=system_prompt)]
-        messages.extend(chat_history)
-        messages.append(ChatMessage(role=MessageRole.USER, content=prompt))
-
-        sent_generating_phase = False
-
-        try:
-            async for chunk in await llm.astream_chat(messages):
-                thinking_delta = chunk.additional_kwargs.get("thinking_delta")
-                if thinking_delta:
-                    yield OrchestratorEvent(thinking=thinking_delta)
-                elif chunk.delta:
-                    if not sent_generating_phase:
-                        progress_emitter(
-                            ToolProgress(
-                                tool_id="orchestrator",
-                                phase="generating",
-                                message="Generating response...",
-                            )
-                        )
-                        sent_generating_phase = True
-                    yield OrchestratorEvent(token=chunk.delta)
-        except Exception as e:
-            logger.error("Direct response generation failed: %s", e, exc_info=True)
-            yield OrchestratorEvent(
-                token=f"I encountered an error generating the response: {e}"
-            )
-
     # ------------------------------------------------------------------
     # Main execution
     # ------------------------------------------------------------------
@@ -715,6 +607,15 @@ class OrchestratorService:
         self._last_web_query = None
         self._last_web_search_results = None
         self._fetched_urls = set()
+
+        # Load configurable reasoning visibility flag
+        try:
+            from tensortruth.api.deps import get_config_service
+
+            _agent_config = get_config_service().load().agent
+            show_reasoning = _agent_config.show_orchestrator_reasoning
+        except Exception:
+            show_reasoning = False
 
         # Build a progress emitter that both stores phases locally and
         # forwards to the external emitter (if provided).
@@ -898,13 +799,11 @@ class OrchestratorService:
                         # between tool calls — show it in the reasoning box.
                         # If no tools have been called yet, this might be the
                         # final answer (agent responding directly) — DON'T show
-                        # it as reasoning or the user sees the response in the
-                        # wrong place (reasoning box) and then it "dumps" into
-                        # the message area when done.
+                        # it as reasoning unless show_reasoning is enabled.
                         if event.delta:
                             agent_final_response += event.delta
                             agent_deltas.append(event.delta)
-                            if tools_called:
+                            if tools_called or show_reasoning:
                                 reasoning_chars += len(event.delta)
                                 if reasoning_chars <= MAX_REASONING_CHARS:
                                     yield OrchestratorEvent(reasoning=event.delta)
@@ -969,36 +868,20 @@ class OrchestratorService:
                 return
 
         # --- Phase 2: Response generation ---
-        # If no tools were called, the orchestrator answered directly. When
-        # thinking is supported, re-generate with the thinking-enabled LLM
-        # so the user gets reasoning tokens. Otherwise, use the fast path.
-        if not tools_called:
-            thinking_pref = self._session_params.get("thinking")
-            resolved = _providers_resolve_thinking(self._model_ref, thinking_pref)
-            if resolved:
-                async for direct_event in self._generate_direct_response(
-                    prompt, llama_history, _combined_emitter
-                ):
-                    yield direct_event
-            else:
-                for delta in agent_deltas:
-                    yield OrchestratorEvent(token=delta)
-            logger.info(
-                "Orchestrator execution complete (direct): 0 tools, %d chars",
-                len(agent_final_response),
-            )
-            return
-
-        # Tools were called — delegate to the synthesis service for a
-        # comprehensive final answer (always two-phase when tools are called).
+        # Route through the synthesis service for both tools-called and
+        # no-tools paths.  The synthesizer handles empty tool_results by
+        # switching to a general assistant prompt without citation rules.
         from tensortruth.services.synthesis_service import get_synthesis_service
 
-        # Build structured source reference for citation guidance
-        source_reference = build_source_reference(
-            tool_results_context,
-            rag_result=self._last_rag_result,
-            web_sources=self._last_web_sources,
-        )
+        # Build structured source reference for citation guidance (only
+        # meaningful when tools were called).
+        source_reference = None
+        if tools_called:
+            source_reference = build_source_reference(
+                tool_results_context,
+                rag_result=self._last_rag_result,
+                web_sources=self._last_web_sources,
+            )
 
         thinking_pref = self._session_params.get("thinking")
         resolved_thinking = _providers_resolve_thinking(self._model_ref, thinking_pref)
@@ -1022,8 +905,10 @@ class OrchestratorService:
             yield synth_event
 
         logger.info(
-            "Orchestrator execution complete: %d tools called",
+            "Orchestrator execution complete%s: %d tools called, prompt_len=%d",
+            " (direct)" if not tools_called else "",
             len(tools_called),
+            len(prompt),
         )
 
     # ------------------------------------------------------------------

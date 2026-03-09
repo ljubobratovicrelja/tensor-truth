@@ -171,6 +171,10 @@ class AgentConfig:
     # Hard-disabled if the active model lacks tool-calling capability.
     orchestrator_enabled: bool = True
 
+    # Show orchestrator's internal reasoning in the UI during the
+    # "analyzing" phase.  Dev/debug feature, off by default.
+    show_orchestrator_reasoning: bool = False
+
     def __post_init__(self):
         """Validate configuration values."""
         if self.max_iterations <= 0:

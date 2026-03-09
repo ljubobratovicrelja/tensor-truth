@@ -602,3 +602,88 @@ class TestSynthesize:
         assert len(user_msgs) >= 1
         user_content = str(user_msgs[-1].content)
         assert "Source Reference ---" not in user_content
+
+
+# ---------------------------------------------------------------
+# No-tool-results path (direct response via synthesizer)
+# ---------------------------------------------------------------
+
+
+class TestNoToolResultsPath:
+    """Tests for synthesis when no tool results are provided (direct path)."""
+
+    def test_synthesis_prompt_direct_role_when_no_tool_results(self):
+        """When has_tool_results=False, the role should be the general assistant."""
+        svc = _make_synthesis_service()
+        prompt = svc._build_system_prompt(has_tool_results=False)
+
+        assert "TensorTruth" in prompt
+        assert "local-first RAG" in prompt
+        # Should NOT contain the synthesis-specific role
+        assert "synthesizes information" not in prompt
+        assert "tool results" not in prompt.split("Response formatting")[0]
+
+    def test_synthesis_prompt_no_citation_rules_when_no_tool_results(self):
+        """When has_tool_results=False, citation guidance should be absent."""
+        svc = _make_synthesis_service()
+        prompt = svc._build_system_prompt(has_tool_results=False)
+
+        assert "cite sources" not in prompt.lower()
+        assert "Source Reference" not in prompt
+        assert "[1]" not in prompt
+        # But markdown formatting rule should still be present
+        assert "markdown" in prompt.lower()
+
+    def test_synthesis_prompt_modules_phrasing_differs_for_no_tools(self):
+        """Module description phrasing should differ for no-tools path."""
+        svc = _make_synthesis_service()
+        modules = [
+            ModuleDescription(
+                name="test_mod",
+                display_name="Test Module",
+                doc_type="paper",
+            ),
+        ]
+
+        prompt_tools = svc._build_system_prompt(
+            module_descriptions=modules, has_tool_results=True
+        )
+        prompt_direct = svc._build_system_prompt(
+            module_descriptions=modules, has_tool_results=False
+        )
+
+        assert "knowledge modules were available" in prompt_tools
+        assert "knowledge base with the following" in prompt_direct
+        # Both should contain the module itself
+        assert "test_mod" in prompt_tools
+        assert "test_mod" in prompt_direct
+
+    @pytest.mark.asyncio
+    async def test_synthesize_raw_prompt_when_no_tool_results(self):
+        """When tool_results is empty, user message should be just the prompt."""
+        svc = _make_synthesis_service(thinking=False)
+
+        captured_messages = []
+
+        async def _capture_gen(*_a, **_k):
+            return
+            yield  # pragma: no cover
+
+        async def _capture_and_return(messages):
+            captured_messages.extend(messages)
+            return _capture_gen()
+
+        svc._llm.astream_chat = _capture_and_return
+
+        async for _ in svc.synthesize(
+            prompt="Hello there!",
+            chat_history=[],
+            tool_results=[],
+        ):
+            pass
+
+        user_msgs = [m for m in captured_messages if str(m.role) == "MessageRole.USER"]
+        assert len(user_msgs) == 1
+        user_content = str(user_msgs[0].content)
+        assert user_content == "Hello there!"
+        assert "Tool Results" not in user_content
