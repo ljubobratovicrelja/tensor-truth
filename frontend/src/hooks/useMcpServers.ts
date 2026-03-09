@@ -9,7 +9,11 @@ import {
 } from "@/api/mcp-servers";
 import { reloadExtensions } from "@/api/extensions";
 import { QUERY_KEYS } from "@/lib/constants";
-import type { MCPServerCreateRequest, MCPServerUpdateRequest } from "@/api/types";
+import type {
+  MCPServerCreateRequest,
+  MCPServerListResponse,
+  MCPServerUpdateRequest,
+} from "@/api/types";
 
 export function useMcpServers() {
   return useQuery({
@@ -53,10 +57,31 @@ export function useUpdateMcpServer() {
 }
 
 export function useDeleteMcpServer() {
+  const queryClient = useQueryClient();
   const invalidateAndReload = useInvalidateAndReload();
   return useMutation({
     mutationFn: (name: string) => deleteMcpServer(name),
-    onSuccess: () => invalidateAndReload(),
+    onMutate: async (name) => {
+      await queryClient.cancelQueries({ queryKey: QUERY_KEYS.mcpServers });
+      const previous = queryClient.getQueryData(QUERY_KEYS.mcpServers);
+      queryClient.setQueryData<MCPServerListResponse | undefined>(
+        QUERY_KEYS.mcpServers,
+        (old) => {
+          if (!old?.servers) return old;
+          return {
+            ...old,
+            servers: old.servers.filter((s) => s.name !== name),
+          };
+        }
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(QUERY_KEYS.mcpServers, context.previous);
+      }
+    },
+    onSettled: () => invalidateAndReload(),
   });
 }
 

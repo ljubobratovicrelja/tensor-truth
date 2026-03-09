@@ -18,7 +18,10 @@ router = APIRouter()
 
 
 def _get_service() -> ExtensionLibraryService:
-    return ExtensionLibraryService()
+    from tensortruth.app_utils.config import load_config
+
+    config = load_config()
+    return ExtensionLibraryService(catalog_url=config.extension_catalog_url)
 
 
 def _raise_for_value_error(e: ValueError) -> None:
@@ -41,7 +44,11 @@ async def list_extensions():
 async def list_library():
     """List all extensions available in the library."""
     service = _get_service()
-    extensions = service.list_library()
+    try:
+        extensions = service.list_library()
+    except Exception:
+        logger.warning("Failed to fetch extension library", exc_info=True)
+        extensions = []
     return {"extensions": extensions}
 
 
@@ -52,6 +59,8 @@ async def install_extension(request: ExtensionInstallRequest):
     try:
         filename = service.install(request.type, request.filename)
         return {"installed": [filename], "errors": []}
+    except ConnectionError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     except ValueError as e:
         _raise_for_value_error(e)
 

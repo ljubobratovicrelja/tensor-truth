@@ -253,6 +253,10 @@ class TensorTruthConfig:
     history_cleaning: HistoryCleaningConfig
     web_search: WebSearchConfig
     providers: List[ProviderConfig] = field(default_factory=list)
+    extension_catalog_url: str = (
+        "https://raw.githubusercontent.com/"
+        "ljubobratovicrelja/tensor-truth/main/extension_library"
+    )
 
     def to_dict(self) -> dict:
         """Convert config to dictionary for YAML serialization."""
@@ -264,6 +268,7 @@ class TensorTruthConfig:
             "agent": asdict(self.agent),
             "history_cleaning": asdict(self.history_cleaning),
             "web_search": asdict(self.web_search),
+            "extension_catalog_url": self.extension_catalog_url,
         }
         # Write ollama section for backward compatibility with external tools
         result["ollama"] = asdict(self.ollama)
@@ -370,6 +375,10 @@ class TensorTruthConfig:
             ),
             web_search=WebSearchConfig(**_filter(WebSearchConfig, web_search_data)),
             providers=providers,
+            extension_catalog_url=data.get(
+                "extension_catalog_url",
+                TensorTruthConfig.extension_catalog_url,
+            ),
         )
 
     @classmethod

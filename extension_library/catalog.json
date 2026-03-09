@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "generated_at": "2026-03-08T17:19:14Z",
+  "extensions": [
+    {
+      "name": "arxiv",
+      "type": "command",
+      "filename": "arxiv.yaml",
+      "description": "Search arXiv for academic papers by keyword, author, or topic"
+    },
+    {
+      "name": "arxiv_paper",
+      "type": "command",
+      "filename": "arxiv_paper.yaml",
+      "description": "Get detailed info about a specific arXiv paper by its ID (e.g. 2301.12345)"
+    },
+    {
+      "name": "context7",
+      "type": "command",
+      "filename": "context7.yaml",
+      "description": "Look up library docs from Context7",
+      "requires_mcp": "context7"
+    },
+    {
+      "name": "gh_code",
+      "type": "command",
+      "filename": "gh_code.yaml",
+      "description": "Search code across GitHub repositories",
+      "requires_mcp": "github"
+    },
+    {
+      "name": "gh_commits",
+      "type": "command",
+      "filename": "gh_commits.yaml",
+      "description": "List recent commits for a GitHub repository",
+      "requires_mcp": "github"
+    },
+    {
+      "name": "gh_file",
+      "type": "command",
+      "filename": "gh_file.yaml",
+      "description": "Get contents of a file from a GitHub repository",
+      "requires_mcp": "github"
+    },
+    {
+      "name": "gh_issues",
+      "type": "command",
+      "filename": "gh_issues.yaml",
+      "description": "List issues for a GitHub repository",
+      "requires_mcp": "github"
+    },
+    {
+      "name": "gh_pr",
+      "type": "command",
+      "filename": "gh_pr.yaml",
+      "description": "Get details of a specific pull request",
+      "requires_mcp": "github"
+    },
+    {
+      "name": "gh_prs",
+      "type": "command",
+      "filename": "gh_prs.yaml",
+      "description": "List pull requests for a GitHub repository",
+      "requires_mcp": "github"
+    },
+    {
+      "name": "gh_repos",
+      "type": "command",
+      "filename": "gh_repos.yaml",
+      "description": "Search GitHub repositories",
+      "requires_mcp": "github"
+    },
+    {
+      "name": "gh_runs",
+      "type": "command",
+      "filename": "gh_runs.yaml",
+      "description": "List recent CI workflow runs for a GitHub repository",
+      "requires_mcp": "github"
+    },
+    {
+      "name": "gh_search_issues",
+      "type": "command",
+      "filename": "gh_search_issues.yaml",
+      "description": "Search issues and PRs across GitHub with query syntax",
+      "requires_mcp": "github"
+    },
+    {
+      "name": "github",
+      "type": "command",
+      "filename": "github.yaml",
+      "description": "Research GitHub repos, issues, PRs, and code using AI agent",
+      "requires_mcp": "github"
+    },
+    {
+      "name": "hf_datasets",
+      "type": "command",
+      "filename": "hf_datasets.yaml",
+      "description": "Search HuggingFace datasets",
+      "requires_mcp": "huggingface"
+    },
+    {
+      "name": "hf_docs",
+      "type": "command",
+      "filename": "hf_docs.yaml",
+      "description": "Search HuggingFace documentation",
+      "requires_mcp": "huggingface"
+    },
+    {
+      "name": "hf_models",
+      "type": "command",
+      "filename": "hf_models.yaml",
+      "description": "Search HuggingFace models by keyword or task",
+      "requires_mcp": "huggingface"
+    },
+    {
+      "name": "hf_papers",
+      "type": "command",
+      "filename": "hf_papers.yaml",
+      "description": "Search HuggingFace papers by topic",
+      "requires_mcp": "huggingface"
+    },
+    {
+      "name": "hf_repo",
+      "type": "command",
+      "filename": "hf_repo.yaml",
+      "description": "Get detailed info about a HuggingFace repository",
+      "requires_mcp": "huggingface"
+    },
+    {
+      "name": "hf_spaces",
+      "type": "command",
+      "filename": "hf_spaces.yaml",
+      "description": "Search HuggingFace Spaces (demos and apps)",
+      "requires_mcp": "huggingface"
+    },
+    {
+      "name": "huggingface",
+      "type": "command",
+      "filename": "huggingface.yaml",
+      "description": "Research HuggingFace models, datasets, and papers using AI agent",
+      "requires_mcp": "huggingface"
+    },
+    {
+      "name": "research_docs",
+      "type": "command",
+      "filename": "research_docs.yaml",
+      "description": "Research documentation using AI agent with Context7 + web search",
+      "requires_mcp": "context7"
+    },
+    {
+      "name": "doc_researcher",
+      "type": "agent",
+      "filename": "doc_researcher.yaml",
+      "description": "Research using Context7 + web search"
+    },
+    {
+      "name": "github_researcher",
+      "type": "agent",
+      "filename": "github_researcher.yaml",
+      "description": "Research GitHub repositories, issues, PRs, and code"
+    },
+    {
+      "name": "hf_researcher",
+      "type": "agent",
+      "filename": "hf_researcher.yaml",
+      "description": "Research HuggingFace models, datasets, papers, and spaces"
+    }
+  ]
+}

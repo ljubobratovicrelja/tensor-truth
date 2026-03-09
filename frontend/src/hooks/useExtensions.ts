@@ -7,7 +7,7 @@ import {
   reloadExtensions,
 } from "@/api/extensions";
 import { QUERY_KEYS } from "@/lib/constants";
-import type { ExtensionInstallRequest } from "@/api/types";
+import type { ExtensionInstallRequest, ExtensionListResponse } from "@/api/types";
 
 export function useExtensions() {
   return useQuery({
@@ -42,10 +42,33 @@ export function useInstallExtension() {
 }
 
 export function useUninstallExtension() {
+  const queryClient = useQueryClient();
   const invalidateAndReload = useInvalidateAndReload();
   return useMutation({
     mutationFn: ({ type, filename }: { type: string; filename: string }) =>
       uninstallExtension(type, filename),
-    onSuccess: () => invalidateAndReload(),
+    onMutate: async ({ type, filename }) => {
+      await queryClient.cancelQueries({ queryKey: QUERY_KEYS.extensions });
+      const previous = queryClient.getQueryData(QUERY_KEYS.extensions);
+      queryClient.setQueryData<ExtensionListResponse | undefined>(
+        QUERY_KEYS.extensions,
+        (old) => {
+          if (!old?.extensions) return old;
+          return {
+            ...old,
+            extensions: old.extensions.filter(
+              (e) => !(e.type === type && e.filename === filename)
+            ),
+          };
+        }
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(QUERY_KEYS.extensions, context.previous);
+      }
+    },
+    onSettled: () => invalidateAndReload(),
   });
 }

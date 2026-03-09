@@ -5,6 +5,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  ExternalLink,
   Package,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -150,6 +151,7 @@ export function ExtensionsSection() {
                 size="sm"
                 className="text-destructive hover:text-destructive h-7 shrink-0 px-2 text-xs"
                 onClick={() => handleUninstall(ext.type, ext.filename, ext.name)}
+                disabled={uninstallExtension.isPending}
               >
                 <Trash2 className="mr-1 h-3 w-3" />
                 Remove
@@ -162,9 +164,20 @@ export function ExtensionsSection() {
       {/* Extension Library */}
       {library.length > 0 && (
         <div className="space-y-3">
-          <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            Extension Library
-          </h4>
+          <div className="flex items-center gap-2">
+            <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+              Extension Library
+            </h4>
+            <a
+              href="https://github.com/ljubobratovicrelja/tensor-truth/tree/main/extension_library"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5 text-xs transition-colors"
+              title="Browse extensions on GitHub"
+            >
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
           {Array.from(groups.entries()).map(([groupKey, extensions]) => (
             <div key={groupKey} className="space-y-1">
               <div className="flex items-center justify-between">

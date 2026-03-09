@@ -400,6 +400,7 @@ export function McpServersSection() {
                   size="sm"
                   className="text-destructive hover:text-destructive h-7 px-2 text-xs"
                   onClick={() => handleDelete(server.name)}
+                  disabled={deleteServer.isPending}
                 >
                   <Trash2 className="mr-1 h-3 w-3" />
                   Remove
