@@ -159,9 +159,7 @@ class TestProposeMCPServerTool:
         )
         # Should have emitted an approval_request phase
         calls = progress_emitter.call_args_list
-        approval_calls = [
-            c for c in calls if c[0][0].phase == "approval_request"
-        ]
+        approval_calls = [c for c in calls if c[0][0].phase == "approval_request"]
         assert len(approval_calls) == 1
         tp = approval_calls[0][0][0]
         assert tp.metadata["action"] == "add"
@@ -263,7 +261,8 @@ class TestProposeMCPServerTool:
 
         # Verify the proposal has the preset config
         approval_calls = [
-            c for c in progress_emitter.call_args_list
+            c
+            for c in progress_emitter.call_args_list
             if c[0][0].phase == "approval_request"
         ]
         assert len(approval_calls) == 1
@@ -290,7 +289,8 @@ class TestProposeMCPServerTool:
         assert "Proposal created" in result_str
 
         approval_calls = [
-            c for c in progress_emitter.call_args_list
+            c
+            for c in progress_emitter.call_args_list
             if c[0][0].phase == "approval_request"
         ]
         config = approval_calls[0][0][0].metadata["config"]
@@ -315,7 +315,8 @@ class TestProposeMCPServerTool:
         assert "Proposal created" in result_str
 
         approval_calls = [
-            c for c in progress_emitter.call_args_list
+            c
+            for c in progress_emitter.call_args_list
             if c[0][0].phase == "approval_request"
         ]
         config = approval_calls[0][0][0].metadata["config"]
@@ -340,7 +341,8 @@ class TestProposeMCPServerTool:
         assert "Proposal created" in result_str
 
         approval_calls = [
-            c for c in progress_emitter.call_args_list
+            c
+            for c in progress_emitter.call_args_list
             if c[0][0].phase == "approval_request"
         ]
         config = approval_calls[0][0][0].metadata["config"]
@@ -424,7 +426,8 @@ class TestProposeMCPServerTool:
 
         # No approval_request should have been emitted
         approval_calls = [
-            c for c in progress_emitter.call_args_list
+            c
+            for c in progress_emitter.call_args_list
             if c[0][0].phase == "approval_request"
         ]
         assert len(approval_calls) == 0
@@ -504,7 +507,12 @@ class TestVerifyMCPServer:
             instance.list_tools = AsyncMock(return_value=mock_result)
 
             ok, msg = await _verify_mcp_server(
-                {"name": "test", "type": "stdio", "command": "npx", "args": ["-y", "pkg"]},
+                {
+                    "name": "test",
+                    "type": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "pkg"],
+                },
                 progress_emitter,
             )
 
@@ -525,7 +533,12 @@ class TestVerifyMCPServer:
             )
 
             ok, msg = await _verify_mcp_server(
-                {"name": "test", "type": "stdio", "command": "npx", "args": ["-y", "@fake/pkg"]},
+                {
+                    "name": "test",
+                    "type": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "@fake/pkg"],
+                },
                 progress_emitter,
             )
 
@@ -548,7 +561,12 @@ class TestVerifyMCPServer:
             instance.list_tools = slow_list
 
             ok, msg = await _verify_mcp_server(
-                {"name": "slow", "type": "stdio", "command": "npx", "args": ["-y", "pkg"]},
+                {
+                    "name": "slow",
+                    "type": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "pkg"],
+                },
                 progress_emitter,
                 timeout=0.1,
             )

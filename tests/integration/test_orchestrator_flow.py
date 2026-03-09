@@ -21,27 +21,30 @@ from httpx import ASGITransport, AsyncClient
 from tensortruth.api.main import create_app
 
 
-def _make_awaitable_handler(stream_events_fn, final_result_str="Result"):
-    """Create a mock handler that supports stream_events() and is awaitable.
+class _AwaitableHandler:
+    """Mock handler that supports stream_events() and is properly awaitable.
 
-    Args:
-        stream_events_fn: A callable (no args) returning an async generator.
-        final_result_str: The string representation of the final response.
-
-    Returns:
-        A mock handler object with stream_events() and __await__.
+    Setting __await__ on a MagicMock instance doesn't work because Python's
+    await protocol looks up __await__ on the *type*, not the instance.
     """
-    mock_handler = MagicMock()
-    mock_handler.stream_events = stream_events_fn
 
-    mock_result = MagicMock()
-    mock_result.__str__ = lambda self: final_result_str
+    def __init__(self, stream_events_fn, final_result_str="Result"):
+        self.stream_events = stream_events_fn
+        self._final_result_str = final_result_str
 
-    async def await_handler():
-        return mock_result
+    def __await__(self):
+        async def _resolve():
+            result = MagicMock()
+            result.__str__ = lambda self: self._str_val
+            result._str_val = self._final_result_str
+            return result
 
-    mock_handler.__await__ = await_handler().__await__
-    return mock_handler
+        return _resolve().__await__()
+
+
+def _make_awaitable_handler(stream_events_fn, final_result_str="Result"):
+    """Create a mock handler that supports stream_events() and is awaitable."""
+    return _AwaitableHandler(stream_events_fn, final_result_str)
 
 
 # ---------------------------------------------------------------
@@ -389,12 +392,13 @@ class TestOrchestratorServiceIntegration:
             async for event in svc.execute("Hello"):
                 events.append(event)
 
-        # The orchestrator thinking phase should be drained after the first tool call
+        # The orchestrator emits booting then thinking phases before tool calls
         phase_events = [e for e in events if e.tool_phase is not None]
-        assert len(phase_events) >= 1
-        first_phase = phase_events[0]
-        assert first_phase.tool_phase.tool_id == "orchestrator"
-        assert first_phase.tool_phase.phase == "thinking"
+        assert len(phase_events) >= 2
+        assert phase_events[0].tool_phase.tool_id == "orchestrator"
+        assert phase_events[0].tool_phase.phase == "booting"
+        assert phase_events[1].tool_phase.tool_id == "orchestrator"
+        assert phase_events[1].tool_phase.phase == "thinking"
 
     @pytest.mark.asyncio
     async def test_execute_with_chat_history(self):

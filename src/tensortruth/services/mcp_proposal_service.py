@@ -119,9 +119,7 @@ class MCPProposalService:
         if proposal is None:
             raise ValueError(f"Proposal '{proposal_id}' not found or expired")
         if proposal.status != "pending":
-            raise ValueError(
-                f"Proposal '{proposal_id}' already {proposal.status}"
-            )
+            raise ValueError(f"Proposal '{proposal_id}' already {proposal.status}")
 
         try:
             if proposal.action == "add":
@@ -157,9 +155,7 @@ class MCPProposalService:
         if proposal is None:
             raise ValueError(f"Proposal '{proposal_id}' not found or expired")
         if proposal.status != "pending":
-            raise ValueError(
-                f"Proposal '{proposal_id}' already {proposal.status}"
-            )
+            raise ValueError(f"Proposal '{proposal_id}' already {proposal.status}")
 
         proposal.status = "rejected"
         logger.info("Rejected MCP proposal %s", proposal_id)

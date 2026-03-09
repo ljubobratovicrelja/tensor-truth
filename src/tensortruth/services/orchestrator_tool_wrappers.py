@@ -862,9 +862,7 @@ class GetMCPPresetsInput(BaseModel):
 class ProposeMCPServerInput(BaseModel):
     """Input schema for propose_mcp_server tool."""
 
-    action: str = Field(
-        description='Action to perform: "add", "update", or "remove".'
-    )
+    action: str = Field(description='Action to perform: "add", "update", or "remove".')
     name: str = Field(description="Server name to add, update, or remove.")
     type: Optional[str] = Field(
         default="stdio",
@@ -955,9 +953,7 @@ async def _verify_mcp_server(
             return False, f"Unknown server type '{server_type}'"
 
         # Run connection + list_tools with a timeout
-        result = await asyncio.wait_for(
-            client.list_tools(), timeout=timeout
-        )
+        result = await asyncio.wait_for(client.list_tools(), timeout=timeout)
 
         tool_count = len(result.tools) if result and result.tools else 0
         tool_names = (
@@ -1120,7 +1116,9 @@ def create_propose_mcp_server_tool(
         # Prevent identical retry loops — refuse if same args as last failure
         call_key = f"{action}:{name}:{command}:{args}"
         if _last_error_key and call_key == _last_error_key:
-            _last_error_key = None  # Reset so a third attempt is allowed after adjustment
+            _last_error_key = (
+                None  # Reset so a third attempt is allowed after adjustment
+            )
             return (
                 "Error: This is the same call that just failed. "
                 "Do NOT retry with the same arguments. "
@@ -1229,9 +1227,7 @@ def create_propose_mcp_server_tool(
 
         # Verify the server actually works before proposing
         if action == "add":
-            ok, verify_msg = await _verify_mcp_server(
-                config, progress_emitter
-            )
+            ok, verify_msg = await _verify_mcp_server(config, progress_emitter)
             if not ok:
                 _last_error_key = call_key
                 return (
@@ -1381,12 +1377,8 @@ def create_all_tool_wrappers(
 
     # MCP management tools (when services are provided)
     if mcp_server_service is not None:
-        tools.append(
-            create_list_mcp_servers_tool(mcp_server_service, progress_emitter)
-        )
-        tools.append(
-            create_get_mcp_presets_tool(mcp_server_service, progress_emitter)
-        )
+        tools.append(create_list_mcp_servers_tool(mcp_server_service, progress_emitter))
+        tools.append(create_get_mcp_presets_tool(mcp_server_service, progress_emitter))
         if mcp_proposal_service is not None and session_id is not None:
             tools.append(
                 create_propose_mcp_server_tool(
