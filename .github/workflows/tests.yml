@@ -75,5 +75,8 @@ jobs:
         run: npm ci
         working-directory: frontend
 
+      - name: Build frontend
+        run: bash scripts/build_frontend.sh
+
       - name: Run linters
         run: ./scripts/lint.sh

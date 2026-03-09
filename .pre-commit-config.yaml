@@ -3,6 +3,14 @@ default_stages: [pre-commit]
 repos:
   - repo: local
     hooks:
+      # Pre-commit: Build frontend to check TypeScript
+      - id: build-frontend
+        name: build-frontend
+        entry: bash scripts/build_frontend.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
       # Pre-commit: Run linting checks
       - id: lint
         name: lint

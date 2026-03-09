@@ -144,16 +144,16 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
       {/* Config details (for add/update) */}
       {request.action !== "remove" && (
         <div className="text-muted-foreground bg-muted/50 mb-2 space-y-0.5 rounded p-2 font-mono text-xs">
-          {config.type && <div>Type: {String(config.type)}</div>}
-          {config.command && (
+          {config.type != null && <div>Type: {String(config.type)}</div>}
+          {config.command != null && (
             <div>
               Command: {String(config.command)}{" "}
               {Array.isArray(config.args) && config.args.join(" ")}
             </div>
           )}
-          {config.url && <div>URL: {String(config.url)}</div>}
-          {config.description && <div>Description: {String(config.description)}</div>}
-          {config.env && typeof config.env === "object" && (
+          {config.url != null && <div>URL: {String(config.url)}</div>}
+          {config.description != null && <div>Description: {String(config.description)}</div>}
+          {config.env != null && typeof config.env === "object" && (
             <div>Env: {Object.keys(config.env as Record<string, string>).join(", ")}</div>
           )}
         </div>
