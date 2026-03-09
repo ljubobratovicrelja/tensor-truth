@@ -43,6 +43,54 @@ from tensortruth.services.orchestrator_stream import OrchestratorStreamTranslato
 
 logger = logging.getLogger(__name__)
 
+# Regex for markdown images: ![alt](url) with optional trailing footnote like " [1]"
+_MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)(\s*\[\d+\])?")
+
+
+async def _localize_images(content: str, session_id: str) -> str:
+    """Download external images and replace URLs with local paths.
+
+    Scans for markdown ``![alt](url)`` patterns, downloads external images
+    concurrently, and replaces successful downloads with local API URLs.
+    Failed downloads are left unchanged.
+    """
+    if not content:
+        return content
+
+    matches = list(_MD_IMAGE_RE.finditer(content))
+    if not matches:
+        return content
+
+    # Filter to external URLs only (skip already-local images)
+    external: list[tuple[re.Match, str]] = []
+    for m in matches:
+        url = m.group(2)
+        if url.startswith(("http://", "https://")) and "/api/sessions/" not in url:
+            external.append((m, url))
+
+    if not external:
+        return content
+
+    image_service = ImageService()
+
+    # Download all external images concurrently
+    tasks = [image_service.save_image_from_url(session_id, url) for _, url in external]
+    results = await asyncio.gather(*tasks)
+
+    # Replace URLs back-to-front so offsets stay valid
+    new_content = content
+    for (m, _url), image_id in reversed(list(zip(external, results))):
+        if image_id is not None:
+            local_url = f"/api/sessions/{session_id}/images/{image_id}"
+            alt = m.group(1)
+            replacement = f"![{alt}]({local_url})"
+            new_content = (
+                new_content[: m.start()] + replacement + new_content[m.end() :]
+            )
+
+    return new_content
+
+
 # REST endpoints (mounted under /api)
 rest_router = APIRouter()
 # WebSocket endpoint (mounted at root, not under /api)
@@ -408,6 +456,17 @@ async def _run_orchestrator_path(
 
     # Finalize to get accumulated result data for saving
     result = translator.finalize()
+
+    # Download and cache external images locally
+    localized_content = await _localize_images(result.full_response, context.session_id)
+    if localized_content != result.full_response:
+        result.full_response = localized_content
+        # Re-send done message with localized URLs so client renders local images
+        done_update = translator.build_done_message(
+            title_pending=needs_title, input_chars=input_chars
+        )
+        done_update["content"] = localized_content
+        await websocket.send_json(done_update)
 
     # Save assistant message with tool steps
     assistant_message: Dict[str, Any] = {
@@ -852,6 +911,22 @@ async def websocket_chat(
                         "output_tokens": len(full_response) // CHARS_PER_TOKEN,
                     }
                 )
+
+                # Download and cache external images locally
+                localized = await _localize_images(full_response, session_id)
+                if localized != full_response:
+                    full_response = localized
+                    # Re-send done with localized URLs
+                    await websocket.send_json(
+                        {
+                            "type": "done",
+                            "content": full_response,
+                            "confidence_level": confidence_level,
+                            "title_pending": needs_title,
+                            "input_tokens": direct_input_chars // CHARS_PER_TOKEN,
+                            "output_tokens": len(full_response) // CHARS_PER_TOKEN,
+                        }
+                    )
 
                 # Save assistant response
                 assistant_message: dict = {

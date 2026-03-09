@@ -9,6 +9,8 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+import httpx
+
 from tensortruth.app_utils.paths import get_session_dir
 
 logger = logging.getLogger(__name__)
@@ -97,6 +99,87 @@ class ImageService:
             session_id,
         )
         return image_id
+
+    def save_image_from_bytes(
+        self, session_id: str, image_bytes: bytes, mimetype: str
+    ) -> str:
+        """Save raw image bytes to disk.
+
+        Args:
+            session_id: The session this image belongs to.
+            image_bytes: Raw image data.
+            mimetype: MIME type (e.g. "image/png").
+
+        Returns:
+            The UUID assigned to the saved image.
+
+        Raises:
+            ValueError: If the MIME type is not allowed or data is too large.
+        """
+        if mimetype not in ALLOWED_MIMETYPES:
+            raise ValueError(
+                f"Unsupported image type: {mimetype}. "
+                f"Allowed: {', '.join(sorted(ALLOWED_MIMETYPES))}"
+            )
+
+        if len(image_bytes) > MAX_IMAGE_BYTES:
+            raise ValueError(
+                f"Image too large: {len(image_bytes)} bytes "
+                f"(limit {MAX_IMAGE_BYTES} bytes)"
+            )
+
+        image_id = uuid.uuid4().hex
+        ext = MIME_TO_EXT.get(mimetype, ".png")
+        images_dir = _get_images_dir(session_id)
+        image_path = images_dir / f"{image_id}{ext}"
+        image_path.write_bytes(image_bytes)
+
+        logger.info(
+            "Saved image %s (%s, %d bytes) for session %s",
+            image_id,
+            mimetype,
+            len(image_bytes),
+            session_id,
+        )
+        return image_id
+
+    async def save_image_from_url(
+        self, session_id: str, url: str, timeout: float = 10.0
+    ) -> Optional[str]:
+        """Download an image from a URL and save it locally.
+
+        Args:
+            session_id: The session this image belongs to.
+            url: The URL to download the image from.
+            timeout: Request timeout in seconds.
+
+        Returns:
+            The image ID if successful, or None on failure.
+        """
+        try:
+            async with httpx.AsyncClient(
+                follow_redirects=True, timeout=timeout
+            ) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+
+            content_type = resp.headers.get("content-type", "")
+            # Extract base MIME type (strip parameters like charset)
+            mimetype = content_type.split(";")[0].strip().lower()
+
+            if mimetype not in ALLOWED_MIMETYPES:
+                logger.warning(
+                    "Skipping image download: unsupported Content-Type '%s' from %s",
+                    content_type,
+                    url,
+                )
+                return None
+
+            return self.save_image_from_bytes(session_id, resp.content, mimetype)
+
+        except Exception as exc:
+            logger.warning("Failed to download image from %s: %s", url, exc)
+            return None
 
     def get_image_path(self, session_id: str, image_id: str) -> Optional[Path]:
         """Find the stored image file by ID.
