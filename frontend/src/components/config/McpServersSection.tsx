@@ -138,11 +138,11 @@ function ServerDialog({ open, onOpenChange, editServer }: ServerDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md overflow-hidden">
         <DialogHeader>
           <DialogTitle>{editServer ? "Edit MCP Server" : "Add MCP Server"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           {!editServer && (
             <div className="space-y-2">
               <Label>Preset</Label>

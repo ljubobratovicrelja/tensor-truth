@@ -173,6 +173,9 @@ class OrchestratorService:
         custom_instructions: Optional[str] = None,
         project_metadata: Optional[str] = None,
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
+        mcp_proposal_service: Optional[Any] = None,
+        mcp_server_service: Optional[Any] = None,
+        session_id: Optional[str] = None,
     ):
         """Initialize the orchestrator service.
 
@@ -188,6 +191,9 @@ class OrchestratorService:
             custom_instructions: Session-level custom instructions to include in system prompt.
             project_metadata: Project-level metadata string (name, description, instructions).
             max_iterations: Maximum agentic iterations before stopping.
+            mcp_proposal_service: Optional MCPProposalService for MCP management tools.
+            mcp_server_service: Optional MCPServerService for MCP management tools.
+            session_id: Session ID for MCP proposal tracking.
         """
         self._tool_service = tool_service
         self._rag_service = rag_service
@@ -203,6 +209,9 @@ class OrchestratorService:
         self._custom_instructions = custom_instructions
         self._project_metadata = project_metadata
         self._max_iterations = max_iterations
+        self._mcp_proposal_service = mcp_proposal_service
+        self._mcp_server_service = mcp_server_service
+        self._session_id = session_id
 
         # Built lazily on first execute()
         self._llm: Optional["LLM"] = None
@@ -326,6 +335,9 @@ class OrchestratorService:
             fetched_urls_getter=_fetched_urls_getter,
             fetched_urls_updater=_fetched_urls_updater,
             full_output_callback=_full_output_cb,
+            mcp_proposal_service=self._mcp_proposal_service,
+            mcp_server_service=self._mcp_server_service,
+            session_id=self._session_id,
         )
 
         # 2. Collect MCP tools from ToolService, filtering out already-wrapped built-ins
@@ -432,12 +444,37 @@ class OrchestratorService:
             "Be mindful of your iteration budget. Do NOT re-fetch URLs already fetched."
         )
 
+        # --- MCP server management guidance ---
+        mcp_mgmt_tools = {"list_mcp_servers", "get_mcp_presets", "propose_mcp_server"}
+        has_mcp_mgmt = any(t.metadata.name in mcp_mgmt_tools for t in tools)
+        if has_mcp_mgmt:
+            sections.append(
+                "MCP server management:\n"
+                "- Use list_mcp_servers to see current MCP server configurations.\n"
+                "- Use get_mcp_presets to check for known preset configurations "
+                "(presets auto-fill command/args, so you only need name and summary).\n"
+                "- For servers NOT in presets, you MUST first research the correct "
+                "installation command before proposing. Use web_search to find the "
+                "server's npm package or GitHub repo, then fetch_page to read the "
+                "README and find the exact command and args (usually `npx -y <package>` "
+                "for npm-based servers). Only call propose_mcp_server once you have "
+                "the concrete command and args.\n"
+                "- Use propose_mcp_server to propose adding, updating, or removing "
+                "a server. For 'add' with type 'stdio', you MUST provide `command` "
+                "and `args` (e.g. command='npx', args=['-y', '<package>']). "
+                "The user must approve the proposal before it takes effect.\n"
+                "- After a proposal is approved, the tools will be reloaded automatically.\n"
+                "- NEVER retry propose_mcp_server with the same arguments if it fails. "
+                "Fix the issue first (e.g. research the correct command)."
+            )
+
         # --- MCP tool routing ---
         mcp_tools = [
             t
             for t in tools
             if t.metadata.name not in _WRAPPED_BUILTIN_TOOL_NAMES
             and t.metadata.name != "rag_query"
+            and t.metadata.name not in mcp_mgmt_tools
         ]
         if mcp_tools:
             lines = []
@@ -900,6 +937,20 @@ class OrchestratorService:
                     token="I encountered an error while processing your "
                     "request. This may be a temporary issue — please try "
                     "again."
+                )
+                return
+
+        # --- Check if this was a proposal-only interaction ---
+        # When the agent's only meaningful action was proposing an MCP server
+        # change, skip synthesis — the approval card IS the response.
+        _proposal_tools = {"propose_mcp_server", "list_mcp_servers", "get_mcp_presets"}
+        if tools_called and all(t in _proposal_tools for t in tools_called):
+            # Check if a proposal was actually created (not just listed)
+            has_proposal = "propose_mcp_server" in tools_called
+            if has_proposal:
+                yield OrchestratorEvent(
+                    token="I've proposed the MCP server configuration change above. "
+                    "Please review and approve or reject it."
                 )
                 return
 

@@ -16,6 +16,7 @@ from tensortruth.api.deps import (
     get_chat_service,
     get_config_service,
     get_document_service,
+    get_mcp_proposal_service,
     get_project_service,
     get_rag_service,
     get_session_service,
@@ -372,6 +373,12 @@ async def _run_orchestrator_path(
                 context.additional_index_paths,
             )
 
+    # Get MCP management services
+    mcp_proposal_service = get_mcp_proposal_service()
+    from tensortruth.services.mcp_server_service import MCPServerService
+
+    mcp_server_service = MCPServerService()
+
     # Create OrchestratorService
     orchestrator = OrchestratorService(
         tool_service=tool_service,
@@ -384,6 +391,9 @@ async def _run_orchestrator_path(
         module_descriptions=module_descriptions,
         custom_instructions=custom_instructions,
         project_metadata=project_metadata,
+        mcp_proposal_service=mcp_proposal_service,
+        mcp_server_service=mcp_server_service,
+        session_id=context.session_id,
     )
 
     # Create stream translator for event -> WebSocket message conversion

@@ -88,6 +88,36 @@ export async function apiPostFormData<T>(path: string, formData: FormData): Prom
   return handleResponse<T>(response);
 }
 
+// MCP proposal approval/rejection
+export interface McpProposalStatus {
+  proposal_id: string;
+  action: string;
+  config: Record<string, unknown>;
+  target_name: string;
+  status: "pending" | "approved" | "rejected";
+  summary: string;
+}
+
+export async function getMcpProposalStatus(
+  proposalId: string
+): Promise<McpProposalStatus | null> {
+  try {
+    const response = await fetch(`${API_BASE}/mcp-server-proposals/${proposalId}`);
+    if (!response.ok) return null;
+    return (await response.json()) as McpProposalStatus;
+  } catch {
+    return null;
+  }
+}
+
+export async function approveMcpProposal(proposalId: string): Promise<void> {
+  await apiPost(`/mcp-server-proposals/${proposalId}/approve`);
+}
+
+export async function rejectMcpProposal(proposalId: string): Promise<void> {
+  await apiPost(`/mcp-server-proposals/${proposalId}/reject`);
+}
+
 // WebSocket factory
 export function createWebSocket(sessionId: string): WebSocket {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";

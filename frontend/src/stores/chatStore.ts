@@ -3,6 +3,7 @@ import type {
   ImageRef,
   RetrievalMetrics,
   SourceNode,
+  StreamApprovalRequest,
   StreamToolProgress,
   StreamToolPhase,
   StreamAgentProgress,
@@ -46,6 +47,9 @@ interface ChatStore {
   toolPhase: StreamToolPhase | null;
   streamingReasoning: string;
 
+  // MCP approval requests
+  approvalRequests: StreamApprovalRequest[];
+
   // Response stats tracking
   streamingRequestTime: number | null;
   streamingStartTime: number | null;
@@ -79,6 +83,10 @@ interface ChatStore {
   setToolPhase: (phase: StreamToolPhase | null) => void;
   appendReasoning: (reasoning: string) => void;
   clearReasoning: () => void;
+
+  // MCP approval request setters
+  addApprovalRequest: (req: StreamApprovalRequest) => void;
+  resolveApprovalRequest: (proposalId: string, outcome: "approved" | "rejected") => void;
 }
 
 export const useChatStore = create<ChatStore>((set) => ({
@@ -98,6 +106,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   agentProgress: null,
   toolPhase: null,
   streamingReasoning: "",
+  approvalRequests: [],
   streamingRequestTime: null,
   streamingStartTime: null,
   streamingCharCount: 0,
@@ -124,6 +133,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingToolSteps: [],
       agentProgress: null,
       toolPhase: null,
+      approvalRequests: [],
       streamingRequestTime: Date.now(),
       streamingStartTime: null,
       streamingCharCount: 0,
@@ -276,4 +286,15 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingReasoning: state.streamingReasoning + reasoning,
     })),
   clearReasoning: () => set({ streamingReasoning: "" }),
+
+  addApprovalRequest: (req) =>
+    set((state) => ({
+      approvalRequests: [...state.approvalRequests, req],
+    })),
+  resolveApprovalRequest: (proposalId, outcome) =>
+    set((state) => ({
+      approvalRequests: state.approvalRequests.map((r) =>
+        r.proposal_id === proposalId ? { ...r, _outcome: outcome } as StreamApprovalRequest : r
+      ),
+    })),
 }));

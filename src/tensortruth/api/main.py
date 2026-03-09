@@ -20,6 +20,7 @@ from tensortruth.api.routes import (
     config,
     documents,
     extensions,
+    mcp_proposals,
     mcp_servers,
     modules,
     pdfs,
@@ -142,6 +143,11 @@ def create_app() -> FastAPI:
         mcp_servers.router, prefix="/api/mcp-servers", tags=["mcp-servers"]
     )
     app.include_router(extensions.router, prefix="/api/extensions", tags=["extensions"])
+    app.include_router(
+        mcp_proposals.router,
+        prefix="/api/mcp-server-proposals",
+        tags=["mcp-proposals"],
+    )
 
     @app.post("/api/reload-extensions", tags=["extensions"])
     async def reload_extensions():

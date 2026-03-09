@@ -122,6 +122,18 @@ def translate_event(event: Any) -> Optional[Dict[str, Any]]:
     # Tool phase progress
     if event.tool_phase is not None:
         tp: ToolProgress = event.tool_phase
+
+        # Special case: approval_request phase emits a distinct message type
+        if tp.phase == "approval_request" and tp.metadata:
+            return {
+                "type": "approval_request",
+                "proposal_id": tp.metadata.get("proposal_id", ""),
+                "action": tp.metadata.get("action", ""),
+                "config": tp.metadata.get("config", {}),
+                "summary": tp.metadata.get("summary", ""),
+                "target_name": tp.metadata.get("target_name", ""),
+            }
+
         return {
             "type": "tool_phase",
             "tool_id": tp.tool_id,

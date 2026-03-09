@@ -219,6 +219,15 @@ export interface StreamWebSearchSources {
   sources: WebSearchSource[];
 }
 
+export interface StreamApprovalRequest {
+  type: "approval_request";
+  proposal_id: string;
+  action: "add" | "update" | "remove";
+  config: Record<string, unknown>;
+  summary: string;
+  target_name: string;
+}
+
 export type StreamMessage =
   | StreamToken
   | StreamSources
@@ -231,7 +240,8 @@ export type StreamMessage =
   | StreamToolProgress
   | StreamToolPhase
   | StreamAgentProgress
-  | StreamWebSearchSources;
+  | StreamWebSearchSources
+  | StreamApprovalRequest;
 
 // Config types
 export interface OllamaConfig {

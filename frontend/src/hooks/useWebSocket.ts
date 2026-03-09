@@ -38,6 +38,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
     setToolPhase,
     appendReasoning,
     clearReasoning,
+    addApprovalRequest,
   } = useChatStore();
 
   // Cleanup on unmount or session change
@@ -223,6 +224,10 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
             case "agent_progress":
               setAgentProgress(data);
               break;
+
+            case "approval_request":
+              addApprovalRequest(data);
+              break;
           }
         } catch (error) {
           console.error("Failed to parse WebSocket message:", error);
@@ -259,6 +264,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       setToolPhase,
       appendReasoning,
       clearReasoning,
+      addApprovalRequest,
     ]
   );
 

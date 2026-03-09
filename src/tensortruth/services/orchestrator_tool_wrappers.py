@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
 from llama_index.core.tools import FunctionTool
+from llama_index.tools.mcp import BasicMCPClient
 from pydantic import BaseModel, Field
 
 from tensortruth.agents.tool_output import extract_tool_text
@@ -27,6 +28,8 @@ from tensortruth.services.tool_service import ToolService
 
 if TYPE_CHECKING:
     from tensortruth.core.source import SourceNode
+    from tensortruth.services.mcp_proposal_service import MCPProposalService
+    from tensortruth.services.mcp_server_service import MCPServerService
     from tensortruth.services.models import RAGRetrievalResult
     from tensortruth.services.rag_service import RAGService
 
@@ -44,6 +47,10 @@ RAGResultCallback = Callable[["RAGRetrievalResult"], None]
 
 # Type alias for a callback that receives web SourceNodes from fetch_pages_batch.
 WebResultCallback = Callable[[List["SourceNode"]], None]
+
+# Type alias for a callback that receives full tool output for the synthesizer.
+# Args: (tool_name, full_output_text).
+FullOutputCallback = Callable[[str, str], None]
 
 
 # --- Pydantic schemas for FunctionTool parameter validation ---
@@ -99,6 +106,7 @@ def create_rag_tool(
     session_params: Optional[Dict[str, object]] = None,
     session_messages: Optional[List[Dict[str, object]]] = None,
     rag_result_callback: Optional[RAGResultCallback] = None,
+    full_output_callback: Optional[FullOutputCallback] = None,
 ) -> FunctionTool:
     """Create a rag_query FunctionTool for the orchestrator.
 
@@ -161,8 +169,13 @@ def create_rag_tool(
         if rag_result_callback is not None:
             rag_result_callback(result)
 
-        # Format result as a structured string for the LLM
-        return _format_retrieval_result(result)
+        # Full output for the synthesizer (via side-channel callback)
+        full_output = _format_retrieval_result(result)
+        if full_output_callback is not None:
+            full_output_callback("rag_query", full_output)
+
+        # Return compact summary for orchestrator scratchpad
+        return _summarize_rag_result(result)
 
     return FunctionTool.from_defaults(
         async_fn=rag_query,
@@ -261,6 +274,69 @@ def _format_retrieval_result(result: "RAGRetrievalResult") -> str:
         if metrics_parts:
             lines.append(f"Metrics: {', '.join(metrics_parts)}")
 
+    return "\n".join(lines)
+
+
+def _summarize_rag_result(result: "RAGRetrievalResult") -> str:
+    """Produce a compact summary of a RAG result for the orchestrator scratchpad.
+
+    Includes source count, confidence level, and titles+scores — but no chunk
+    text. The full formatted output is sent separately via the callback.
+    """
+    if not result.source_nodes:
+        return f"No relevant sources found. " f"Confidence: {result.confidence_level}"
+
+    lines = [
+        f"Found {result.num_sources} source(s) "
+        f"(confidence: {result.confidence_level})"
+    ]
+    for i, node in enumerate(result.source_nodes, 1):
+        inner_node = getattr(node, "node", node)
+        metadata = {}
+        if hasattr(inner_node, "metadata") and inner_node.metadata:
+            metadata = inner_node.metadata
+        elif hasattr(node, "metadata") and node.metadata:
+            metadata = node.metadata
+        title = (
+            metadata.get("display_name")
+            or metadata.get("title")
+            or metadata.get("file_name")
+            or "Untitled"
+        )
+        score = node.score if hasattr(node, "score") else None
+        score_str = f"{score:.4f}" if score is not None else "N/A"
+        lines.append(f"  {i}. {title} (score: {score_str})")
+    return "\n".join(lines)
+
+
+def _summarize_fetch_page(url: str, title: str, content_len: int) -> str:
+    """Produce a compact summary of a fetched page for the orchestrator scratchpad."""
+    return f'Fetched: "{title}" ({url}) — {content_len} chars'
+
+
+def _summarize_fetch_pages_batch(
+    fitted_pages: list,
+    source_nodes: list,
+    total: int,
+) -> str:
+    """Produce a compact summary of batch-fetched pages for the scratchpad.
+
+    Lists titles, URLs, relevance scores, and char counts — no body content.
+    """
+    if not fitted_pages:
+        return "No pages could be fetched or all were below relevance threshold."
+
+    # Build score lookup from source_nodes
+    score_by_url: Dict[str, float] = {}
+    for sn in source_nodes:
+        if sn.url and sn.score is not None:
+            score_by_url[sn.url] = sn.score
+
+    lines = [f"Fetched {len(fitted_pages)}/{total} pages:"]
+    for page_url, title, content in fitted_pages:
+        score = score_by_url.get(page_url)
+        score_str = f", relevance: {score:.2f}" if score is not None else ""
+        lines.append(f'  - "{title}" ({page_url}) — {len(content)} chars{score_str}')
     return "\n".join(lines)
 
 
@@ -409,6 +485,7 @@ def create_fetch_page_tool(
     progress_emitter: ProgressEmitter,
     fetched_urls_getter: Optional[Callable[[], set]] = None,
     fetched_urls_updater: Optional[Callable[[List[str]], None]] = None,
+    full_output_callback: Optional[FullOutputCallback] = None,
 ) -> FunctionTool:
     """Create a fetch_page FunctionTool for the orchestrator.
 
@@ -463,7 +540,19 @@ def create_fetch_page_tool(
         if discovered_section:
             content += "\n\n" + discovered_section
 
-        return content
+        # Full output for synthesizer (via side-channel callback)
+        if full_output_callback is not None:
+            full_output_callback("fetch_page", content)
+
+        # Extract title: first heading or domain fallback
+        title = urlparse(url).netloc
+        for line in content.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("# "):
+                title = stripped[2:].strip()
+                break
+
+        return _summarize_fetch_page(url, title, len(content))
 
     return FunctionTool.from_defaults(
         async_fn=fetch_page,
@@ -491,6 +580,7 @@ def create_fetch_pages_batch_tool(
     web_result_callback: Optional[WebResultCallback] = None,
     fetched_urls_getter: Optional[Callable[[], set]] = None,
     fetched_urls_updater: Optional[Callable[[List[str]], None]] = None,
+    full_output_callback: Optional[FullOutputCallback] = None,
 ) -> FunctionTool:
     """Create a fetch_pages_batch FunctionTool for the orchestrator.
 
@@ -650,7 +740,12 @@ def create_fetch_pages_batch_tool(
         if discovered_section:
             output += "\n\n" + discovered_section
 
-        return output
+        # Full output for synthesizer (via side-channel callback)
+        if full_output_callback is not None:
+            full_output_callback("fetch_pages_batch", output)
+
+        # Return compact summary for orchestrator scratchpad
+        return _summarize_fetch_pages_batch(fitted_pages, source_nodes, total)
 
     return FunctionTool.from_defaults(
         async_fn=fetch_pages_batch,
@@ -749,6 +844,452 @@ async def _discover_links(
     return "\n".join(lines)
 
 
+# --- Pydantic schemas for MCP management tools ---
+
+
+class ListMCPServersInput(BaseModel):
+    """Input schema for list_mcp_servers tool (no params required)."""
+
+    pass
+
+
+class GetMCPPresetsInput(BaseModel):
+    """Input schema for get_mcp_presets tool (no params required)."""
+
+    pass
+
+
+class ProposeMCPServerInput(BaseModel):
+    """Input schema for propose_mcp_server tool."""
+
+    action: str = Field(
+        description='Action to perform: "add", "update", or "remove".'
+    )
+    name: str = Field(description="Server name to add, update, or remove.")
+    type: Optional[str] = Field(
+        default="stdio",
+        description='Server type: "stdio" or "sse". Defaults to "stdio".',
+    )
+    command: Optional[str] = Field(
+        default=None,
+        description=(
+            "REQUIRED for stdio servers. The executable to run. "
+            'E.g. "npx", "node", "python", "docker".'
+        ),
+    )
+    args: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            'Command arguments. E.g. ["-y", "@modelcontextprotocol/server-name"]. '
+            "Required alongside command for stdio servers."
+        ),
+    )
+    url: Optional[str] = Field(
+        default=None,
+        description='REQUIRED for SSE servers. E.g. "http://localhost:3000/sse".',
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Human-readable description of the server.",
+    )
+    env: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="Environment variables required by the server.",
+    )
+    enabled: Optional[bool] = Field(
+        default=True,
+        description="Whether the server should be enabled.",
+    )
+    summary: str = Field(
+        description="Human-readable summary of what this change does, for the user."
+    )
+
+
+# --- MCP server verification ---
+
+
+async def _verify_mcp_server(
+    config: Dict[str, Any],
+    progress_emitter: ProgressEmitter,
+    timeout: int = 15,
+) -> tuple[bool, str]:
+    """Verify an MCP server by attempting to connect and list its tools.
+
+    Spawns the server process (or connects via SSE), performs the MCP
+    initialize handshake, lists available tools, then shuts down.
+
+    Returns:
+        (success, message) — on success message includes tool count,
+        on failure it contains the error details.
+    """
+    server_type = config.get("type", "stdio")
+    name = config.get("name", "unknown")
+
+    await _emit(
+        progress_emitter,
+        ToolProgress(
+            tool_id="propose_mcp_server",
+            phase="verifying",
+            message=f"Verifying MCP server '{name}'...",
+            metadata={"name": name, "type": server_type},
+        ),
+    )
+
+    try:
+        from tensortruth.agents.server_registry import _resolve_env
+
+        if server_type == "stdio":
+            resolved_env = _resolve_env(config.get("env"))
+            client = BasicMCPClient(
+                command_or_url=config["command"],
+                args=config.get("args") or [],
+                env=resolved_env,
+                timeout=timeout,
+            )
+        elif server_type == "sse":
+            client = BasicMCPClient(
+                command_or_url=config["url"],
+                timeout=timeout,
+            )
+        else:
+            return False, f"Unknown server type '{server_type}'"
+
+        # Run connection + list_tools with a timeout
+        result = await asyncio.wait_for(
+            client.list_tools(), timeout=timeout
+        )
+
+        tool_count = len(result.tools) if result and result.tools else 0
+        tool_names = (
+            [t.name for t in result.tools[:5]] if result and result.tools else []
+        )
+        preview = ", ".join(tool_names)
+        if tool_count > 5:
+            preview += f", ... (+{tool_count - 5} more)"
+
+        return True, f"Server verified: {tool_count} tools available ({preview})"
+
+    except asyncio.TimeoutError:
+        return False, (
+            f"Server '{name}' timed out after {timeout}s. "
+            "The command may be wrong, the package may not exist, "
+            "or the server may take too long to start."
+        )
+    except FileNotFoundError as e:
+        return False, (
+            f"Command not found: {e}. "
+            "Check that the command is installed and available on PATH."
+        )
+    except Exception as e:
+        error_msg = str(e)
+        # Trim overly verbose tracebacks
+        if len(error_msg) > 300:
+            error_msg = error_msg[:300] + "..."
+        return False, f"Server verification failed: {error_msg}"
+
+
+# --- MCP management tool factories ---
+
+
+def create_list_mcp_servers_tool(
+    mcp_server_service: "MCPServerService",
+    progress_emitter: ProgressEmitter,
+) -> FunctionTool:
+    """Create a list_mcp_servers FunctionTool for the orchestrator.
+
+    Read-only tool that returns the current MCP server configuration.
+    """
+
+    async def list_mcp_servers() -> str:
+        """List all configured MCP servers with their status.
+
+        Returns a JSON list of all MCP servers (built-in and user-configured)
+        with their type, command, enabled state, and environment variable status.
+        """
+        await _emit(
+            progress_emitter,
+            ToolProgress(
+                tool_id="list_mcp_servers",
+                phase="listing",
+                message="Listing MCP server configurations...",
+            ),
+        )
+        servers = mcp_server_service.list_all()
+        return json.dumps(servers, indent=2)
+
+    return FunctionTool.from_defaults(
+        async_fn=list_mcp_servers,
+        name="list_mcp_servers",
+        description=(
+            "List all configured MCP servers with their type, command/URL, "
+            "enabled state, and environment variable status. Use this to see "
+            "what MCP servers are currently set up."
+        ),
+        fn_schema=ListMCPServersInput,
+    )
+
+
+def create_get_mcp_presets_tool(
+    mcp_server_service: "MCPServerService",
+    progress_emitter: ProgressEmitter,
+) -> FunctionTool:
+    """Create a get_mcp_presets FunctionTool for the orchestrator.
+
+    Read-only tool that returns available preset server templates.
+    """
+
+    async def get_mcp_presets() -> str:
+        """Get available MCP server preset configurations.
+
+        Returns preset templates for well-known MCP servers (e.g. context7,
+        github, huggingface) that can be used with propose_mcp_server.
+        """
+        await _emit(
+            progress_emitter,
+            ToolProgress(
+                tool_id="get_mcp_presets",
+                phase="listing",
+                message="Fetching MCP server presets...",
+            ),
+        )
+        presets = mcp_server_service.get_presets()
+        return json.dumps(presets, indent=2)
+
+    return FunctionTool.from_defaults(
+        async_fn=get_mcp_presets,
+        name="get_mcp_presets",
+        description=(
+            "Get available MCP server preset configurations for well-known "
+            "servers like context7, github, and huggingface. Use this before "
+            "proposing a server to check if a preset exists."
+        ),
+        fn_schema=GetMCPPresetsInput,
+    )
+
+
+def create_propose_mcp_server_tool(
+    mcp_proposal_service: "MCPProposalService",
+    mcp_server_service: "MCPServerService",
+    progress_emitter: ProgressEmitter,
+    session_id: str,
+) -> FunctionTool:
+    """Create a propose_mcp_server FunctionTool for the orchestrator.
+
+    Creates a proposal that the user must approve before it takes effect.
+    Emits an approval_request event via ToolProgress for the frontend.
+    """
+
+    # Track recent failed calls to prevent infinite retry loops.
+    _last_error_key: Optional[str] = None
+
+    async def propose_mcp_server(
+        action: str,
+        name: str,
+        summary: str,
+        type: Optional[str] = "stdio",
+        command: Optional[str] = None,
+        args: Optional[List[str]] = None,
+        url: Optional[str] = None,
+        description: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        enabled: Optional[bool] = True,
+    ) -> str:
+        """Propose adding, updating, or removing an MCP server configuration.
+
+        This does NOT immediately apply the change. Instead, it creates a
+        proposal that the user must approve or reject via an inline card
+        in the chat. Do not proceed until the user has approved.
+
+        For 'add': provide full server config (name, type, command/url, etc.).
+        For 'update': provide the server name and fields to change.
+        For 'remove': provide just the server name.
+        """
+        nonlocal _last_error_key
+
+        # Coerce args from JSON string to list (LLMs sometimes stringify)
+        if isinstance(args, str):
+            try:
+                parsed = json.loads(args)
+                if isinstance(parsed, list):
+                    args = parsed
+            except (json.JSONDecodeError, ValueError):
+                args = [args] if args.strip() else None
+        if isinstance(enabled, str):
+            enabled = enabled.lower() in ("true", "1", "yes")
+
+        # Prevent identical retry loops — refuse if same args as last failure
+        call_key = f"{action}:{name}:{command}:{args}"
+        if _last_error_key and call_key == _last_error_key:
+            _last_error_key = None  # Reset so a third attempt is allowed after adjustment
+            return (
+                "Error: This is the same call that just failed. "
+                "Do NOT retry with the same arguments. "
+                "If command is missing, use web_search and fetch_page to find "
+                "the correct command and args first, then try again with "
+                "the actual values filled in."
+            )
+
+        # Validate action
+        if action not in ("add", "update", "remove"):
+            return f"Error: action must be 'add', 'update', or 'remove', got '{action}'"
+
+        # Auto-fill from preset if name matches and key fields are missing
+        if action == "add" and not command and not url:
+            presets = mcp_server_service.get_presets()
+            preset = presets.get(name)
+            if preset:
+                type = type or preset.get("type", "stdio")
+                command = command or preset.get("command")
+                args = args or preset.get("args")
+                url = url or preset.get("url")
+                description = description or preset.get("description")
+                env = env or preset.get("env")
+                if enabled is None or enabled is True:
+                    enabled = preset.get("enabled", True)
+
+        # Infer command from args when the LLM forgets to set it.
+        # Common pattern: LLM passes args=["-y", "<pkg>"] but command=null.
+        if action in ("add", "update") and not command and args:
+            # args with "-y" flag strongly imply npx
+            if "-y" in args or "--yes" in args:
+                command = "npx"
+            # args starting with a scoped package (@org/pkg) or containing
+            # a path-like string suggest npx as well
+            elif args and (args[0].startswith("@") or "/" in args[0]):
+                command = "npx"
+                args = ["-y"] + list(args)
+
+        # Build config dict
+        config: Dict[str, Any] = {"name": name}
+        if action in ("add", "update"):
+            if type:
+                config["type"] = type
+            if command:
+                config["command"] = command
+            if args:
+                config["args"] = args
+            if url:
+                config["url"] = url
+            if description:
+                config["description"] = description
+            if env:
+                config["env"] = env
+            if enabled is not None:
+                config["enabled"] = enabled
+
+        # Validate: for add, check required fields
+        if action == "add":
+            if type == "stdio" and not command:
+                _last_error_key = call_key
+                return (
+                    "Error: 'command' is required for stdio servers. "
+                    "You must provide the executable command (e.g. 'npx') and args "
+                    "(e.g. ['-y', '<npm-package>']). Use web_search to find the "
+                    "server's npm package or GitHub repo, then fetch_page to read "
+                    "the installation instructions. Do NOT retry without the command."
+                )
+            if type == "sse" and not url:
+                _last_error_key = call_key
+                return (
+                    "Error: 'url' is required for SSE servers. "
+                    "Use web_search to find the server's URL. "
+                    "Do NOT retry without the url."
+                )
+
+        # Validate: for remove, check server exists and is user-configured
+        if action == "remove":
+            all_servers = mcp_server_service.list_all()
+            target = next((s for s in all_servers if s["name"] == name), None)
+            if target is None:
+                return f"Error: Server '{name}' not found."
+            if target.get("builtin"):
+                return (
+                    f"Error: Server '{name}' is a built-in server and cannot be removed. "
+                    "You can disable it instead."
+                )
+
+        # Validate config via MCPServerConfig for add/update
+        if action in ("add", "update"):
+            try:
+                from tensortruth.agents.config import MCPServerConfig, MCPServerType
+
+                MCPServerConfig(
+                    name=name,
+                    type=MCPServerType(config.get("type", "stdio")),
+                    command=config.get("command"),
+                    args=config.get("args", []),
+                    url=config.get("url"),
+                    description=config.get("description"),
+                    env=config.get("env"),
+                    enabled=config.get("enabled", True),
+                )
+            except Exception as e:
+                _last_error_key = call_key
+                return f"Error: Invalid server configuration: {e}"
+
+        # Verify the server actually works before proposing
+        if action == "add":
+            ok, verify_msg = await _verify_mcp_server(
+                config, progress_emitter
+            )
+            if not ok:
+                _last_error_key = call_key
+                return (
+                    f"Error: {verify_msg} "
+                    "Fix the command/args and try again. Use web_search and "
+                    "fetch_page to find the correct installation instructions."
+                )
+            logger.info("MCP verification passed for '%s': %s", name, verify_msg)
+
+        # Success path — clear error tracking
+        _last_error_key = None
+
+        # Create proposal
+        proposal = mcp_proposal_service.create_proposal(
+            action=action,
+            config=config,
+            session_id=session_id,
+            summary=summary,
+            target_name=name,
+        )
+
+        # Emit approval_request event for the frontend
+        await _emit(
+            progress_emitter,
+            ToolProgress(
+                tool_id="propose_mcp_server",
+                phase="approval_request",
+                message=f"Awaiting user approval to {action} MCP server '{name}'.",
+                metadata={
+                    "proposal_id": proposal.proposal_id,
+                    "action": proposal.action,
+                    "config": proposal.config,
+                    "summary": proposal.summary,
+                    "target_name": proposal.target_name,
+                },
+            ),
+        )
+
+        return (
+            f"Proposal created (ID: {proposal.proposal_id}). "
+            "The user will see an approval prompt in the chat. "
+            "Do not proceed until they approve."
+        )
+
+    return FunctionTool.from_defaults(
+        async_fn=propose_mcp_server,
+        name="propose_mcp_server",
+        description=(
+            "Propose adding, updating, or removing an MCP server configuration. "
+            "Creates a proposal that the user must approve before it takes effect. "
+            "IMPORTANT: For non-preset servers, you MUST research the correct "
+            "command and args (via web_search/fetch_page) BEFORE calling this tool. "
+            "Do not call with command=null for stdio servers."
+        ),
+        fn_schema=ProposeMCPServerInput,
+    )
+
+
 def create_all_tool_wrappers(
     tool_service: ToolService,
     progress_emitter: ProgressEmitter,
@@ -769,16 +1310,22 @@ def create_all_tool_wrappers(
     web_result_callback: Optional[WebResultCallback] = None,
     fetched_urls_getter: Optional[Callable[[], set]] = None,
     fetched_urls_updater: Optional[Callable[[List[str]], None]] = None,
+    full_output_callback: Optional[FullOutputCallback] = None,
+    mcp_proposal_service: Optional["MCPProposalService"] = None,
+    mcp_server_service: Optional["MCPServerService"] = None,
+    session_id: Optional[str] = None,
 ) -> List[FunctionTool]:
     """Create all orchestrator tool wrappers at once.
 
     Convenience function that builds the full set of wrapped tools for
     the orchestrator, including the RAG query tool when a RAGService with
-    a loaded engine is available.
+    a loaded engine is available, and MCP management tools when the
+    proposal and server services are provided.
 
     Returns:
         List of FunctionTool wrappers. Always includes web_search, fetch_page,
         fetch_pages_batch. Includes rag_query when rag_service is loaded.
+        Includes MCP management tools when services are provided.
     """
     tools: List[FunctionTool] = []
 
@@ -791,6 +1338,7 @@ def create_all_tool_wrappers(
                 session_params=session_params,
                 session_messages=session_messages,
                 rag_result_callback=rag_result_callback,
+                full_output_callback=full_output_callback,
             )
         )
 
@@ -811,6 +1359,7 @@ def create_all_tool_wrappers(
                 progress_emitter,
                 fetched_urls_getter=fetched_urls_getter,
                 fetched_urls_updater=fetched_urls_updater,
+                full_output_callback=full_output_callback,
             ),
             create_fetch_pages_batch_tool(
                 tool_service,
@@ -825,8 +1374,27 @@ def create_all_tool_wrappers(
                 web_result_callback=web_result_callback,
                 fetched_urls_getter=fetched_urls_getter,
                 fetched_urls_updater=fetched_urls_updater,
+                full_output_callback=full_output_callback,
             ),
         ]
     )
+
+    # MCP management tools (when services are provided)
+    if mcp_server_service is not None:
+        tools.append(
+            create_list_mcp_servers_tool(mcp_server_service, progress_emitter)
+        )
+        tools.append(
+            create_get_mcp_presets_tool(mcp_server_service, progress_emitter)
+        )
+        if mcp_proposal_service is not None and session_id is not None:
+            tools.append(
+                create_propose_mcp_server_tool(
+                    mcp_proposal_service,
+                    mcp_server_service,
+                    progress_emitter,
+                    session_id,
+                )
+            )
 
     return tools

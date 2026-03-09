@@ -28,6 +28,7 @@ from tensortruth.services import (
     TaskRunner,
     ToolService,
 )
+from tensortruth.services.mcp_proposal_service import MCPProposalService
 from tensortruth.services.metadata_store import MetadataStore
 from tensortruth.services.startup_service import StartupService
 
@@ -182,3 +183,14 @@ def get_task_runner() -> TaskRunner:
 
 AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
 TaskRunnerDep = Annotated[TaskRunner, Depends(get_task_runner)]
+
+# MCPProposalService singleton
+_mcp_proposal_service: MCPProposalService | None = None
+
+
+def get_mcp_proposal_service() -> MCPProposalService:
+    """Get the singleton MCPProposalService instance."""
+    global _mcp_proposal_service
+    if _mcp_proposal_service is None:
+        _mcp_proposal_service = MCPProposalService()
+    return _mcp_proposal_service

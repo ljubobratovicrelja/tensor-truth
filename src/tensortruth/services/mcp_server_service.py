@@ -135,6 +135,7 @@ class MCPServerService:
 
         # User-configured servers (skip any that shadow built-in names)
         for server_data in user_servers:
+            server_data = self._coerce_config(server_data)
             name = server_data.get("name", "")
             if name in builtin_names:
                 continue  # Already handled above
@@ -164,8 +165,31 @@ class MCPServerService:
                 names.add(server["name"])
         return names
 
+    @staticmethod
+    def _coerce_config(config: dict[str, Any]) -> dict[str, Any]:
+        """Normalize config values that may arrive as wrong types.
+
+        LLMs sometimes pass args as a JSON string instead of a list, or
+        enabled as a string instead of a bool.
+        """
+        config = dict(config)  # shallow copy
+        args = config.get("args")
+        if isinstance(args, str):
+            try:
+                parsed = json.loads(args)
+                if isinstance(parsed, list):
+                    config["args"] = parsed
+            except (json.JSONDecodeError, ValueError):
+                # Treat as single arg
+                config["args"] = [args] if args.strip() else []
+        enabled = config.get("enabled")
+        if isinstance(enabled, str):
+            config["enabled"] = enabled.lower() in ("true", "1", "yes")
+        return config
+
     def add(self, config: dict[str, Any]) -> dict[str, Any]:
         """Add a new user server configuration."""
+        config = self._coerce_config(config)
         name = config.get("name", "")
         if not name:
             raise ValueError("Server name is required")
@@ -218,6 +242,7 @@ class MCPServerService:
 
     def update(self, name: str, updates: dict[str, Any]) -> dict[str, Any]:
         """Update a user server configuration."""
+        updates = self._coerce_config(updates)
         if name in self._builtin_names():
             raise ValueError(f"Cannot modify built-in server '{name}'")
 

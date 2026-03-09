@@ -14,6 +14,7 @@ import type {
   RetrievalMetrics,
   SourceNode,
   StreamAgentProgress,
+  StreamApprovalRequest,
 } from "@/api/types";
 import { ToolSteps } from "./ToolSteps";
 import type { ToolStepWithStatus } from "./ToolSteps";
@@ -36,6 +37,7 @@ interface MessageListProps {
   streamingReasoning?: string;
   pendingUserImages?: (ImageRef & { previewUrl?: string })[] | null;
   lastResponseStats?: ResponseStats | null;
+  approvalRequests?: StreamApprovalRequest[];
 }
 
 export function MessageList({
@@ -55,6 +57,7 @@ export function MessageList({
   streamingReasoning,
   pendingUserImages,
   lastResponseStats,
+  approvalRequests,
 }: MessageListProps) {
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
   const isMobile = useIsMobile();
@@ -253,6 +256,7 @@ export function MessageList({
                   toolSteps={streamingToolSteps}
                   confidenceLevel={confidenceLevel ?? undefined}
                   isStreaming={!!isStreaming}
+                  approvalRequests={approvalRequests}
                 />
               </>
             )}

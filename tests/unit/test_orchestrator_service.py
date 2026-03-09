@@ -1614,3 +1614,112 @@ class TestReasoningVisibilityConfig:
         assert len(reasoning_events) == 2
         reasoning_text = "".join(e.reasoning for e in reasoning_events)
         assert reasoning_text == "Thinking hard"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_chars_resets_between_tool_calls(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """reasoning_chars should reset after each ToolCallResult so that
+        inter-tool reasoning text is visible for each gap, not just the first."""
+        from llama_index.core.agent.workflow import (
+            AgentStream,
+        )
+        from llama_index.core.agent.workflow import ToolCall as LIToolCall
+        from llama_index.core.agent.workflow import ToolCallResult as LIToolCallResult
+        from llama_index.core.tools.types import ToolOutput
+
+        svc = _create_service(tool_service, rag_service_not_loaded)
+
+        # Build two tool call + result + reasoning sequences
+        tc1 = LIToolCall(
+            tool_name="web_search",
+            tool_kwargs={"query": "q1"},
+            tool_id="tc_1",
+        )
+        to1 = ToolOutput(
+            content="results1",
+            tool_name="web_search",
+            raw_input={"query": "q1"},
+            raw_output="results1",
+            is_error=False,
+        )
+        tcr1 = LIToolCallResult(
+            tool_name="web_search",
+            tool_kwargs={"query": "q1"},
+            tool_id="tc_1",
+            tool_output=to1,
+            return_direct=False,
+        )
+
+        tc2 = LIToolCall(
+            tool_name="fetch_page",
+            tool_kwargs={"url": "https://a.com"},
+            tool_id="tc_2",
+        )
+        to2 = ToolOutput(
+            content="page content",
+            tool_name="fetch_page",
+            raw_input={"url": "https://a.com"},
+            raw_output="page content",
+            is_error=False,
+        )
+        tcr2 = LIToolCallResult(
+            tool_name="fetch_page",
+            tool_kwargs={"url": "https://a.com"},
+            tool_id="tc_2",
+            tool_output=to2,
+            return_direct=False,
+        )
+
+        reasoning1 = "Analyzing first results"
+        reasoning2 = "Now checking second"
+
+        async def stream_events():
+            yield tc1
+            yield tcr1
+            # Reasoning after first tool
+            yield AgentStream(delta=reasoning1, response="", current_agent_name="orch")
+            yield tc2
+            yield tcr2
+            # Reasoning after second tool
+            yield AgentStream(delta=reasoning2, response="", current_agent_name="orch")
+
+        handler = _make_awaitable_handler(stream_events, reasoning1 + reasoning2)
+
+        mock_config = MagicMock()
+        mock_config.load.return_value.agent.show_orchestrator_reasoning = False
+
+        async def _synth_gen(*_a, **_k):
+            yield OrchestratorEvent(token="Answer")
+
+        mock_synth_svc = MagicMock()
+        mock_synth_svc.synthesize = _synth_gen
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_service.LIFunctionAgent",
+                return_value=MagicMock(run=MagicMock(return_value=handler)),
+            ),
+            patch(
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "tensortruth.api.deps.get_config_service",
+                return_value=mock_config,
+            ),
+            patch(
+                "tensortruth.services.synthesis_service.get_synthesis_service",
+                return_value=mock_synth_svc,
+            ),
+        ):
+            events = []
+            async for event in svc.execute("search me"):
+                events.append(event)
+
+        reasoning_events = [e for e in events if e.reasoning is not None]
+        # Both reasoning gaps should produce events (counter resets)
+        assert len(reasoning_events) == 2
+        texts = [e.reasoning for e in reasoning_events]
+        assert texts[0] == reasoning1
+        assert texts[1] == reasoning2

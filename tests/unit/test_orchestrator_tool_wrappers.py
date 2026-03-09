@@ -116,7 +116,9 @@ class TestFetchPageTool:
         tool_service.execute_tool.assert_awaited_once_with(
             "fetch_page", {"url": "https://example.com"}
         )
+        # Summary includes title (extracted from heading) and URL
         assert "Page Title" in str(result)
+        assert "chars" in str(result)
 
     @pytest.mark.asyncio
     async def test_emits_fetching_progress(self, tool_service, progress_emitter):
@@ -187,9 +189,10 @@ class TestFetchPagesBatchTool:
             tool = create_fetch_pages_batch_tool(tool_service, progress_emitter)
             result = await tool.acall(urls=["https://a.com", "https://b.com"])
 
+        # Summary includes titles and URLs but NOT page body content
         assert "Page A" in str(result)
-        assert "Content A" in str(result)
         assert "a.com" in str(result)
+        assert "Content A" not in str(result)
 
     @pytest.mark.asyncio
     async def test_emits_fetching_and_fetched_progress(
@@ -333,11 +336,11 @@ class TestRAGQueryTool:
         call_args = rag_service.retrieve.call_args
         assert call_args[1]["query"] == "What are transformers?"
 
-        # Verify result contains source info
+        # Verify summary contains source info but NOT chunk text
         result_str = str(result)
-        assert "1 sources" in result_str
+        assert "1 source" in result_str
         assert "confidence: normal" in result_str
-        assert "Content about transformers" in result_str
+        assert "Content about transformers" not in result_str
 
     @pytest.mark.asyncio
     async def test_emits_retrieving_progress(self, rag_service, progress_emitter):
@@ -406,8 +409,8 @@ class TestRAGQueryTool:
         assert "document" in desc or "paper" in desc
 
     @pytest.mark.asyncio
-    async def test_truncates_long_content(self, rag_service, progress_emitter):
-        """Should truncate source content exceeding 1500 chars."""
+    async def test_summary_is_compact(self, rag_service, progress_emitter):
+        """Summary should be compact even when source content is large."""
         long_text = "A" * 3000
         nodes = [
             NodeWithScore(node=TextNode(text=long_text), score=0.9),
@@ -428,10 +431,9 @@ class TestRAGQueryTool:
         result = await tool.acall(query="test")
 
         result_str = str(result)
-        # Content should be truncated
-        assert "[truncated]" in result_str
-        # Should not contain the full 3000 chars
-        assert len(result_str) < 3000
+        # Summary should be compact — no chunk text
+        assert len(result_str) < 500
+        assert "1 source" in result_str
 
 
 class TestCreateAllToolWrappers:
@@ -514,3 +516,192 @@ class TestProgressEmitterVariants:
 
         assert len(emitted) == 1
         assert emitted[0].tool_id == "fetch_page"
+
+
+class TestFullOutputCallback:
+    """Tests for the full_output_callback side-channel."""
+
+    @pytest.mark.asyncio
+    async def test_rag_query_returns_summary(self, progress_emitter):
+        """rag_query should return a compact summary without chunk text."""
+        rag_service = MagicMock()
+        rag_service.is_loaded.return_value = True
+        nodes = [
+            NodeWithScore(
+                node=TextNode(
+                    text="Detailed content about neural networks " * 50,
+                    metadata={"title": "NN Paper"},
+                ),
+                score=0.92,
+            ),
+        ]
+        rag_service.retrieve.return_value = RAGRetrievalResult(
+            source_nodes=nodes,
+            confidence_level="high",
+            condensed_query="neural networks",
+            num_sources=1,
+        )
+
+        tool = create_rag_tool(rag_service, progress_emitter)
+        result = await tool.acall(query="neural networks")
+
+        result_str = str(result)
+        assert "1 source" in result_str
+        assert "confidence: high" in result_str
+        assert "NN Paper" in result_str
+        assert "0.9200" in result_str
+        # Should NOT contain chunk text
+        assert "Detailed content about neural" not in result_str
+
+    @pytest.mark.asyncio
+    async def test_rag_query_full_output_callback(self, progress_emitter):
+        """Callback should receive full formatted result with chunk text."""
+        rag_service = MagicMock()
+        rag_service.is_loaded.return_value = True
+        nodes = [
+            NodeWithScore(
+                node=TextNode(
+                    text="Detailed content about neural networks",
+                    metadata={"title": "NN Paper"},
+                ),
+                score=0.92,
+            ),
+        ]
+        rag_service.retrieve.return_value = RAGRetrievalResult(
+            source_nodes=nodes,
+            confidence_level="high",
+            condensed_query="neural networks",
+            num_sources=1,
+        )
+
+        captured = []
+
+        def callback(tool_name, full_output):
+            captured.append((tool_name, full_output))
+
+        tool = create_rag_tool(
+            rag_service, progress_emitter, full_output_callback=callback
+        )
+        await tool.acall(query="neural networks")
+
+        assert len(captured) == 1
+        assert captured[0][0] == "rag_query"
+        assert "Detailed content about neural networks" in captured[0][1]
+
+    @pytest.mark.asyncio
+    async def test_fetch_page_returns_summary(self, tool_service, progress_emitter):
+        """fetch_page should return a compact summary with title and char count."""
+        tool_service.execute_tool.return_value = {
+            "success": True,
+            "data": "# My Page Title\nLots of page content here " * 100,
+        }
+        tool = create_fetch_page_tool(tool_service, progress_emitter)
+
+        result = await tool.acall(url="https://example.com/article")
+
+        result_str = str(result)
+        assert "My Page Title" in result_str
+        assert "chars" in result_str
+        assert "example.com" in result_str
+        # Should NOT contain full page body
+        assert "Lots of page content" not in result_str
+
+    @pytest.mark.asyncio
+    async def test_fetch_page_full_output_callback(
+        self, tool_service, progress_emitter
+    ):
+        """Callback should receive full page content."""
+        tool_service.execute_tool.return_value = {
+            "success": True,
+            "data": "# Title\nFull body content here",
+        }
+
+        captured = []
+
+        def callback(tool_name, full_output):
+            captured.append((tool_name, full_output))
+
+        tool = create_fetch_page_tool(
+            tool_service, progress_emitter, full_output_callback=callback
+        )
+        await tool.acall(url="https://example.com")
+
+        assert len(captured) == 1
+        assert captured[0][0] == "fetch_page"
+        assert "Full body content here" in captured[0][1]
+
+    @pytest.mark.asyncio
+    async def test_fetch_pages_batch_returns_summary(
+        self, tool_service, progress_emitter
+    ):
+        """fetch_pages_batch should return summary with titles, not page bodies."""
+        from tensortruth.core.source import SourceNode, SourceStatus, SourceType
+
+        source_node = SourceNode(
+            id="s1",
+            title="Page A",
+            source_type=SourceType.WEB,
+            url="https://a.com",
+            content="Full page body content " * 100,
+            score=0.85,
+            status=SourceStatus.SUCCESS,
+            content_chars=2000,
+        )
+        mock_pipeline = MagicMock()
+        mock_pipeline.execute = AsyncMock(
+            return_value=(
+                [
+                    ("https://a.com", "Page A", "Full page body content " * 100),
+                ],
+                [source_node],
+                {},
+            )
+        )
+
+        with patch(
+            "tensortruth.core.source_pipeline.SourceFetchPipeline",
+            return_value=mock_pipeline,
+        ):
+            tool = create_fetch_pages_batch_tool(tool_service, progress_emitter)
+            result = await tool.acall(urls=["https://a.com"])
+
+        result_str = str(result)
+        assert "Page A" in result_str
+        assert "a.com" in result_str
+        assert "chars" in result_str
+        # Should NOT contain full page body
+        assert "Full page body content" not in result_str
+
+    @pytest.mark.asyncio
+    async def test_fetch_pages_batch_full_output_callback(
+        self, tool_service, progress_emitter
+    ):
+        """Callback should receive complete content including page bodies."""
+        mock_pipeline = MagicMock()
+        mock_pipeline.execute = AsyncMock(
+            return_value=(
+                [
+                    ("https://a.com", "Page A", "Complete page body text"),
+                ],
+                [],
+                {},
+            )
+        )
+
+        captured = []
+
+        def callback(tool_name, full_output):
+            captured.append((tool_name, full_output))
+
+        with patch(
+            "tensortruth.core.source_pipeline.SourceFetchPipeline",
+            return_value=mock_pipeline,
+        ):
+            tool = create_fetch_pages_batch_tool(
+                tool_service, progress_emitter, full_output_callback=callback
+            )
+            await tool.acall(urls=["https://a.com"])
+
+        assert len(captured) == 1
+        assert captured[0][0] == "fetch_pages_batch"
+        assert "Complete page body text" in captured[0][1]
