@@ -42,6 +42,7 @@ from tensortruth.core.providers import (
 from tensortruth.core.providers import resolve_thinking as _providers_resolve_thinking
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
 from tensortruth.services.orchestrator_tool_wrappers import (
+    FullOutputCallback,
     ProgressEmitter,
     create_all_tool_wrappers,
 )
@@ -227,6 +228,11 @@ class OrchestratorService:
         # Tracks all URLs fetched in this execution to exclude from link discovery
         self._fetched_urls: set[str] = set()
 
+        # Accumulator for full tool output (used by built-in tools via callback).
+        # The scratchpad receives only summaries; full output is popped here
+        # for tool_results_context which feeds the synthesizer.
+        self._full_output_queue: List[tuple] = []
+
     # ------------------------------------------------------------------
     # Tool assembly
     # ------------------------------------------------------------------
@@ -278,6 +284,10 @@ class OrchestratorService:
         def _fetched_urls_updater(urls: List[str]) -> None:
             self._fetched_urls.update(urls)
 
+        # Full output callback — stores full tool output for synthesizer
+        def _full_output_cb(tool_name: str, full_output: str) -> None:
+            self._full_output_queue.append((tool_name, full_output))
+
         # Resolve reranker config from session params
         reranker_model = self._session_params.get("reranker_model")
         reranker_device = str(self._session_params.get("rag_device", "cpu"))
@@ -315,6 +325,7 @@ class OrchestratorService:
             web_result_callback=_web_result_cb,
             fetched_urls_getter=_fetched_urls_getter,
             fetched_urls_updater=_fetched_urls_updater,
+            full_output_callback=_full_output_cb,
         )
 
         # 2. Collect MCP tools from ToolService, filtering out already-wrapped built-ins
@@ -458,10 +469,11 @@ class OrchestratorService:
         # discarded.
         sections.append(
             "CRITICAL: After gathering information from tools, respond with "
-            "AT MOST one short sentence summarizing what you found (e.g. "
-            "'Found 3 sources about X.'). Do NOT analyze, explain, or answer "
-            "the question — a separate synthesis step does that. Any detailed "
-            "response you write will be DISCARDED."
+            "AT MOST one or two short sentences summarizing what you found "
+            "(e.g. 'Found 3 relevant sources about X with high confidence.'). "
+            "Do NOT analyze, explain, or answer the question — a separate "
+            "synthesis step does that. Any detailed response you write will "
+            "be DISCARDED. Keep your inter-tool summary under 200 characters."
         )
 
         # --- Project metadata ---
@@ -607,6 +619,7 @@ class OrchestratorService:
         self._last_web_query = None
         self._last_web_search_results = None
         self._fetched_urls = set()
+        self._full_output_queue = []
 
         # Load configurable reasoning visibility flag
         try:
@@ -624,17 +637,16 @@ class OrchestratorService:
             if progress_emitter:
                 progress_emitter(tp)
 
-        # Emit orchestrator start phase directly (not deferred via
-        # _pending_phases) so it arrives at the frontend before any
-        # reasoning events from the FunctionAgent's initial thinking.
-        initial_phase = ToolProgress(
+        # Emit boot phase so the frontend shows immediate feedback while
+        # tools and LLM are being initialized.
+        boot_phase = ToolProgress(
             tool_id="orchestrator",
-            phase="thinking",
-            message="Analyzing your request...",
+            phase="booting",
+            message="Starting orchestrator...",
         )
-        yield OrchestratorEvent(tool_phase=initial_phase)
+        yield OrchestratorEvent(tool_phase=boot_phase)
         if progress_emitter:
-            progress_emitter(initial_phase)
+            progress_emitter(boot_phase)
 
         # --- Build tools and agent ---
         tools = self._build_tools(_combined_emitter)
@@ -666,9 +678,19 @@ class OrchestratorService:
             system_prompt=system_prompt,
         )
 
+        # Emit thinking phase once agent is ready and about to run.
+        thinking_phase = ToolProgress(
+            tool_id="orchestrator",
+            phase="thinking",
+            message="Analyzing your request...",
+        )
+        yield OrchestratorEvent(tool_phase=thinking_phase)
+        if progress_emitter:
+            progress_emitter(thinking_phase)
+
         # --- Phase 1: Tool routing (non-thinking orchestrator LLM) ---
         reasoning_chars = 0
-        MAX_REASONING_CHARS = 300  # ~75 tokens, enough for a brief summary
+        MAX_REASONING_CHARS = 1000  # ~250 tokens, enough for inter-tool reasoning
         tools_called: List[str] = []
         tool_steps: List[Dict[str, Any]] = []
         tool_results_context: List[str] = []
@@ -742,7 +764,17 @@ class OrchestratorService:
                         self._pending_phases = []
 
                     elif isinstance(event, ToolCallResult):
-                        full_output = extract_tool_text(event.tool_output)
+                        # Built-in tools store full output via callback;
+                        # the event now contains only a summary for the
+                        # scratchpad. Pop matching entry from the queue.
+                        full_output = None
+                        for i, (name, text) in enumerate(self._full_output_queue):
+                            if name == event.tool_name:
+                                full_output = self._full_output_queue.pop(i)[1]
+                                break
+                        if full_output is None:
+                            # MCP tools or fallback
+                            full_output = extract_tool_text(event.tool_output)
                         output_text = full_output[:2000]
                         is_error = event.tool_output.is_error
 
@@ -792,6 +824,10 @@ class OrchestratorService:
                                 message=_analyzing_message(event.tool_name),
                             )
                         )
+
+                        # Reset reasoning char counter so the next inter-tool
+                        # reasoning gap gets its own visibility budget.
+                        reasoning_chars = 0
 
                     elif isinstance(event, AgentStream):
                         # Capture the orchestrator's text output.

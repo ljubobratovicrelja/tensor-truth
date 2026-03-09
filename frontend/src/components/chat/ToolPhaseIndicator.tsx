@@ -31,6 +31,7 @@ interface PhaseConfig {
 // Extensible record mapping phase names to icon + animation.
 // Unknown phases fall back to a generic spinner.
 const PHASE_ICON_MAP: Record<string, PhaseConfig> = {
+  booting: { icon: Cpu, animation: "animate-pulse" },
   loading_models: { icon: Loader2, animation: "animate-spin" },
   loading_model: { icon: Loader2, animation: "animate-spin" },
   retrieving: { icon: Search, animation: "animate-bounce" },
