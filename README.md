@@ -10,13 +10,13 @@ A local-first RAG application purpose-built for technical documentation and rese
 
 It includes specialized ingestion for Sphinx/Doxygen API docs, arXiv papers (with metadata extraction), and textbooks (with TOC-based chapter splitting), alongside configurable chunking strategies tuned per content type. The result is a RAG pipeline that meaningfully reduces hallucinations on technical queries, even with 7-8B parameter models.
 
-> **Note:** The app has no authentication or multi-user support and is designed to run on a single machine. Contributions and testing on different hardware are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+TensorTruth is designed as a single-user, local-first application — no authentication, no server deployment. This is intentional: the target audience is people running small local models on their own hardware (8-24GB VRAM), where multi-user serving isn't practical anyway. That said, if someone wants to propose multi-user support, the door is open — it's just not in the project scope at the moment.
 
-## Why This Over Other Tools
+## What to Expect
 
-There are excellent local chat UIs — Open WebUI, AnythingLLM, llama.cpp's built-in web UI — many of which now support agentic tool-calling, MCP, and basic document upload. TensorTruth doesn't try to replace those for general chat. It focuses on a specific gap: **high-quality retrieval from large, complex technical knowledge bases**.
+The core focus is **high-quality retrieval from large, complex technical knowledge bases** — getting better answers out of small local models by investing in the retrieval pipeline rather than the model size.
 
-What's different in practice:
+In practice, this means:
 - **Hierarchical chunking with auto-merging retrieval** — documents are parsed into a multi-level node hierarchy. At query time, if enough child nodes from the same parent match, the system merges up to the parent for richer context. This avoids the "lost in the middle" problem of flat chunking while keeping retrieval precise.
 - **Cross-encoder reranking** — retrieved chunks are reranked by a cross-encoder model (BGE-reranker-v2-m3 by default) before being sent to the LLM, significantly improving relevance over embedding similarity alone.
 - **Format-aware document ingestion** — Sphinx and Doxygen API docs are crawled via their inventory files, preserving module structure. arXiv papers are fetched with full metadata. Textbooks are split by table-of-contents into chapters. This structure carries through to the index.
