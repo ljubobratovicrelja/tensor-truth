@@ -152,7 +152,9 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
             </div>
           )}
           {config.url != null && <div>URL: {String(config.url)}</div>}
-          {config.description != null && <div>Description: {String(config.description)}</div>}
+          {config.description != null && (
+            <div>Description: {String(config.description)}</div>
+          )}
           {config.env != null && typeof config.env === "object" && (
             <div>Env: {Object.keys(config.env as Record<string, string>).join(", ")}</div>
           )}
