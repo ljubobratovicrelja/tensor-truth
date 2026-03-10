@@ -48,7 +48,7 @@ function HelpTooltip({ text }: { text: string }) {
 
 const DEVICE_OPTIONS = ["cpu", "cuda", "mps"];
 const LLM_DEVICE_OPTIONS = ["cpu", "gpu"];
-const CONTEXT_WINDOW_OPTIONS = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
+const CONTEXT_WINDOW_OPTIONS = [2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144];
 
 interface SessionSettingsPanelProps {
   sessionId?: string;
