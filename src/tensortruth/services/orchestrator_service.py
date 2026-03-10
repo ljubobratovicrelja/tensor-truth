@@ -12,6 +12,7 @@ memory -- history is passed per-call from ChatHistoryService.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
 from typing import (
@@ -706,6 +707,35 @@ class OrchestratorService:
 
         # Convert budgeted history to LlamaIndex ChatMessage objects
         llama_history = self._to_chat_messages(budgeted_history)
+
+        # Estimate prompt token composition
+        system_tokens = len(system_prompt) // CHARS_PER_TOKEN
+        history_tokens = (
+            sum(len(str(m.get("content", ""))) for m in budgeted_history)
+            // CHARS_PER_TOKEN
+        )
+        user_tokens = len(prompt) // CHARS_PER_TOKEN
+        tool_schema_chars = 0
+        for t in tools:
+            tool_schema_chars += len(t.metadata.name or "")
+            tool_schema_chars += len(t.metadata.description or "")
+            if t.metadata.fn_schema:
+                tool_schema_chars += len(
+                    json.dumps(t.metadata.fn_schema.model_json_schema())
+                )
+        tool_tokens = tool_schema_chars // CHARS_PER_TOKEN
+        total_tokens = system_tokens + tool_tokens + history_tokens + user_tokens
+        logger.info(
+            "Orchestrator prompt: ~%d tokens "
+            "(sys=%d, tools=%d, hist=%d, user=%d) — %.0f%% of %d ctx",
+            total_tokens,
+            system_tokens,
+            tool_tokens,
+            history_tokens,
+            user_tokens,
+            total_tokens / self._context_window * 100,
+            self._context_window,
+        )
 
         # Create FunctionAgent for this execution
         agent = LIFunctionAgent(
