@@ -74,7 +74,7 @@ function MessageItemComponent({
     return message.tool_steps
       .filter(
         (s) =>
-          s.tool === "propose_mcp_server" &&
+          s.tool === "manage_mcp_server" &&
           !s.is_error &&
           s.output?.includes("Proposal created")
       )

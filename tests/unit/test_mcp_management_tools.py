@@ -3,7 +3,7 @@
 Tests the three MCP management tool wrappers:
 - list_mcp_servers: returns current server configurations
 - get_mcp_presets: returns preset templates
-- propose_mcp_server: creates proposals with validation
+- manage_mcp_server: creates proposals with validation
 """
 
 import json
@@ -15,7 +15,7 @@ from tensortruth.services.mcp_proposal_service import MCPProposalService
 from tensortruth.services.orchestrator_tool_wrappers import (
     create_get_mcp_presets_tool,
     create_list_mcp_servers_tool,
-    create_propose_mcp_server_tool,
+    create_manage_mcp_server_tool,
 )
 
 VERIFY_PATCH = "tensortruth.services.orchestrator_tool_wrappers._verify_mcp_server"
@@ -129,7 +129,7 @@ class TestProposeMCPServerTool:
     async def test_creates_add_proposal(
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -147,7 +147,7 @@ class TestProposeMCPServerTool:
     async def test_emits_approval_request_event(
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         await tool.acall(
@@ -170,7 +170,7 @@ class TestProposeMCPServerTool:
     async def test_validates_invalid_action(
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -184,7 +184,7 @@ class TestProposeMCPServerTool:
     async def test_validates_stdio_requires_command(
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -199,7 +199,7 @@ class TestProposeMCPServerTool:
     async def test_validates_sse_requires_url(
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -215,7 +215,7 @@ class TestProposeMCPServerTool:
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
         mcp_server_service.list_all.return_value = []
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -232,7 +232,7 @@ class TestProposeMCPServerTool:
         mcp_server_service.list_all.return_value = [
             {"name": "search_web", "builtin": True}
         ]
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -247,7 +247,7 @@ class TestProposeMCPServerTool:
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
         """When name matches a preset and command/url are omitted, auto-fill."""
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -275,7 +275,7 @@ class TestProposeMCPServerTool:
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
         """When command is explicitly provided, don't override with preset."""
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -302,7 +302,7 @@ class TestProposeMCPServerTool:
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
         """When LLM passes args=['-y', '<pkg>'] but command=null, infer npx."""
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -328,7 +328,7 @@ class TestProposeMCPServerTool:
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
         """When LLM passes args=['@org/pkg'] without -y, infer npx -y."""
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -354,7 +354,7 @@ class TestProposeMCPServerTool:
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
         """Second identical failing call is blocked with a retry error."""
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         # First call: fails (no command, no args to infer from)
@@ -386,7 +386,7 @@ class TestProposeMCPServerTool:
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
         """Verification is called when adding a server."""
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         await tool.acall(
@@ -410,7 +410,7 @@ class TestProposeMCPServerTool:
             False,
             "Server 'bad-pkg' timed out after 15s.",
         )
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -440,7 +440,7 @@ class TestProposeMCPServerTool:
         mcp_server_service.list_all.return_value = [
             {"name": "my-server", "builtin": False}
         ]
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -462,7 +462,7 @@ class TestProposeMCPServerTool:
         # Instead, test that when verification passes, a verifying phase is
         # NOT emitted from the mock (the mock skips it). This test just
         # confirms the integration doesn't break.
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
         result = await tool.acall(
@@ -477,11 +477,11 @@ class TestProposeMCPServerTool:
     def test_tool_metadata(
         self, mcp_proposal_service, mcp_server_service, progress_emitter
     ):
-        tool = create_propose_mcp_server_tool(
+        tool = create_manage_mcp_server_tool(
             mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
         )
-        assert tool.metadata.name == "propose_mcp_server"
-        assert "propose" in tool.metadata.description.lower()
+        assert tool.metadata.name == "manage_mcp_server"
+        assert "add, update, or remove" in tool.metadata.description.lower()
 
 
 class TestVerifyMCPServer:

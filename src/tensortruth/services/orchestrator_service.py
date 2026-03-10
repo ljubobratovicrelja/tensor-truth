@@ -445,7 +445,7 @@ class OrchestratorService:
         )
 
         # --- MCP server management guidance ---
-        mcp_mgmt_tools = {"list_mcp_servers", "get_mcp_presets", "propose_mcp_server"}
+        mcp_mgmt_tools = {"list_mcp_servers", "get_mcp_presets", "manage_mcp_server"}
         has_mcp_mgmt = any(t.metadata.name in mcp_mgmt_tools for t in tools)
         if has_mcp_mgmt:
             sections.append(
@@ -454,17 +454,17 @@ class OrchestratorService:
                 "- Use get_mcp_presets to check for known preset configurations "
                 "(presets auto-fill command/args, so you only need name and summary).\n"
                 "- For servers NOT in presets, you MUST first research the correct "
-                "installation command before proposing. Use web_search to find the "
+                "installation command before calling manage_mcp_server. Use web_search to find the "
                 "server's npm package or GitHub repo, then fetch_page to read the "
                 "README and find the exact command and args (usually `npx -y <package>` "
-                "for npm-based servers). Only call propose_mcp_server once you have "
+                "for npm-based servers). Only call manage_mcp_server once you have "
                 "the concrete command and args.\n"
-                "- Use propose_mcp_server to propose adding, updating, or removing "
+                "- Use manage_mcp_server to add, update, or remove "
                 "a server. For 'add' with type 'stdio', you MUST provide `command` "
                 "and `args` (e.g. command='npx', args=['-y', '<package>']). "
-                "The user must approve the proposal before it takes effect.\n"
+                "The change requires user approval before it takes effect.\n"
                 "- After a proposal is approved, the tools will be reloaded automatically.\n"
-                "- NEVER retry propose_mcp_server with the same arguments if it fails. "
+                "- NEVER retry manage_mcp_server with the same arguments if it fails. "
                 "Fix the issue first (e.g. research the correct command)."
             )
 
@@ -503,14 +503,18 @@ class OrchestratorService:
         # When tools are called, a separate synthesis service generates the
         # final answer.  Instruct the orchestrator to keep its post-tool
         # response minimal so it doesn't waste tokens on text that will be
-        # discarded.
+        # discarded — but allow inter-tool reasoning so it can extract
+        # information from tool results to feed into subsequent tool calls.
         sections.append(
-            "CRITICAL: After gathering information from tools, respond with "
-            "AT MOST one or two short sentences summarizing what you found "
-            "(e.g. 'Found 3 relevant sources about X with high confidence.'). "
-            "Do NOT analyze, explain, or answer the question — a separate "
-            "synthesis step does that. Any detailed response you write will "
-            "be DISCARDED. Keep your inter-tool summary under 200 characters."
+            "When you have finished ALL tool calls and are ready to present "
+            "your final response, keep it to AT MOST one or two short "
+            "sentences summarizing what you found (e.g. 'Found 3 relevant "
+            "sources about X with high confidence.'). Do NOT analyze, explain, "
+            "or answer the question — a separate synthesis step does that. "
+            "Any detailed final response you write will be DISCARDED. "
+            "HOWEVER, between tool calls you SHOULD reason about tool results "
+            "to decide your next action — e.g. extract fields from a fetched "
+            "page to use as parameters in a subsequent tool call."
         )
 
         # --- Project metadata ---
@@ -972,13 +976,13 @@ class OrchestratorService:
         # --- Check if this was a proposal-only interaction ---
         # When the agent's only meaningful action was proposing an MCP server
         # change, skip synthesis — the approval card IS the response.
-        _proposal_tools = {"propose_mcp_server", "list_mcp_servers", "get_mcp_presets"}
+        _proposal_tools = {"manage_mcp_server", "list_mcp_servers", "get_mcp_presets"}
         if tools_called and all(t in _proposal_tools for t in tools_called):
             # Check if a proposal was actually created (not just listed)
-            has_proposal = "propose_mcp_server" in tools_called
+            has_proposal = "manage_mcp_server" in tools_called
             if has_proposal:
                 yield OrchestratorEvent(
-                    token="I've proposed the MCP server configuration change above. "
+                    token="I've submitted the MCP server configuration change above. "
                     "Please review and approve or reject it."
                 )
                 return

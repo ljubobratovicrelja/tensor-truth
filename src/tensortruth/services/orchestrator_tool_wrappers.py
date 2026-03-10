@@ -860,46 +860,46 @@ class GetMCPPresetsInput(BaseModel):
 
 
 class ProposeMCPServerInput(BaseModel):
-    """Input schema for propose_mcp_server tool."""
+    """Input schema for manage_mcp_server tool."""
 
     action: str = Field(description='Action to perform: "add", "update", or "remove".')
     name: str = Field(description="Server name to add, update, or remove.")
-    type: Optional[str] = Field(
+    summary: str = Field(
+        description="Human-readable summary of what this change does, for the user."
+    )
+    type: str = Field(
         default="stdio",
         description='Server type: "stdio" or "sse". Defaults to "stdio".',
     )
-    command: Optional[str] = Field(
-        default=None,
+    command: str = Field(
+        default="",
         description=(
             "REQUIRED for stdio servers. The executable to run. "
             'E.g. "npx", "node", "python", "docker".'
         ),
     )
-    args: Optional[List[str]] = Field(
-        default=None,
+    args: List[str] = Field(
+        default_factory=list,
         description=(
             'Command arguments. E.g. ["-y", "@modelcontextprotocol/server-name"]. '
             "Required alongside command for stdio servers."
         ),
     )
-    url: Optional[str] = Field(
-        default=None,
+    url: str = Field(
+        default="",
         description='REQUIRED for SSE servers. E.g. "http://localhost:3000/sse".',
     )
-    description: Optional[str] = Field(
-        default=None,
+    description: str = Field(
+        default="",
         description="Human-readable description of the server.",
     )
-    env: Optional[Dict[str, str]] = Field(
-        default=None,
+    env: Dict[str, str] = Field(
+        default_factory=dict,
         description="Environment variables required by the server.",
     )
-    enabled: Optional[bool] = Field(
+    enabled: bool = Field(
         default=True,
         description="Whether the server should be enabled.",
-    )
-    summary: str = Field(
-        description="Human-readable summary of what this change does, for the user."
     )
 
 
@@ -926,7 +926,7 @@ async def _verify_mcp_server(
     await _emit(
         progress_emitter,
         ToolProgress(
-            tool_id="propose_mcp_server",
+            tool_id="manage_mcp_server",
             phase="verifying",
             message=f"Verifying MCP server '{name}'...",
             metadata={"name": name, "type": server_type},
@@ -1038,7 +1038,7 @@ def create_get_mcp_presets_tool(
         """Get available MCP server preset configurations.
 
         Returns preset templates for well-known MCP servers (e.g. context7,
-        github, huggingface) that can be used with propose_mcp_server.
+        github, huggingface) that can be used with manage_mcp_server.
         """
         await _emit(
             progress_emitter,
@@ -1063,13 +1063,13 @@ def create_get_mcp_presets_tool(
     )
 
 
-def create_propose_mcp_server_tool(
+def create_manage_mcp_server_tool(
     mcp_proposal_service: "MCPProposalService",
     mcp_server_service: "MCPServerService",
     progress_emitter: ProgressEmitter,
     session_id: str,
 ) -> FunctionTool:
-    """Create a propose_mcp_server FunctionTool for the orchestrator.
+    """Create a manage_mcp_server FunctionTool for the orchestrator.
 
     Creates a proposal that the user must approve before it takes effect.
     Emits an approval_request event via ToolProgress for the frontend.
@@ -1078,17 +1078,17 @@ def create_propose_mcp_server_tool(
     # Track recent failed calls to prevent infinite retry loops.
     _last_error_key: Optional[str] = None
 
-    async def propose_mcp_server(
+    async def manage_mcp_server(
         action: str,
         name: str,
         summary: str,
-        type: Optional[str] = "stdio",
-        command: Optional[str] = None,
+        type: str = "stdio",
+        command: str = "",
         args: Optional[List[str]] = None,
-        url: Optional[str] = None,
-        description: Optional[str] = None,
+        url: str = "",
+        description: str = "",
         env: Optional[Dict[str, str]] = None,
-        enabled: Optional[bool] = True,
+        enabled: bool = True,
     ) -> str:
         """Propose adding, updating, or removing an MCP server configuration.
 
@@ -1112,6 +1112,13 @@ def create_propose_mcp_server_tool(
                 args = [args] if args.strip() else None
         if isinstance(enabled, str):
             enabled = enabled.lower() in ("true", "1", "yes")
+
+        # Normalize empty sentinels to None for internal logic
+        command = command if command else None
+        args = args if args else None
+        url = url if url else None
+        description = description if description else None
+        env = env if env else None
 
         # Prevent identical retry loops — refuse if same args as last failure
         call_key = f"{action}:{name}:{command}:{args}"
@@ -1253,7 +1260,7 @@ def create_propose_mcp_server_tool(
         await _emit(
             progress_emitter,
             ToolProgress(
-                tool_id="propose_mcp_server",
+                tool_id="manage_mcp_server",
                 phase="approval_request",
                 message=f"Awaiting user approval to {action} MCP server '{name}'.",
                 metadata={
@@ -1273,14 +1280,19 @@ def create_propose_mcp_server_tool(
         )
 
     return FunctionTool.from_defaults(
-        async_fn=propose_mcp_server,
-        name="propose_mcp_server",
+        async_fn=manage_mcp_server,
+        name="manage_mcp_server",
         description=(
-            "Propose adding, updating, or removing an MCP server configuration. "
-            "Creates a proposal that the user must approve before it takes effect. "
+            "Add, update, or remove an MCP server configuration. "
+            "The change requires user approval before it takes effect. "
             "IMPORTANT: For non-preset servers, you MUST research the correct "
             "command and args (via web_search/fetch_page) BEFORE calling this tool. "
-            "Do not call with command=null for stdio servers."
+            "Do not call with command=null for stdio servers.\n\n"
+            "Example — to add a server found on a README:\n"
+            '  action="add", name="my-server", command="npx",\n'
+            '  args=["-y", "@org/mcp-server-name"],\n'
+            '  env={"API_KEY": "$API_KEY"},\n'
+            '  summary="Add My Server for API access"'
         ),
         fn_schema=ProposeMCPServerInput,
     )
@@ -1381,7 +1393,7 @@ def create_all_tool_wrappers(
         tools.append(create_get_mcp_presets_tool(mcp_server_service, progress_emitter))
         if mcp_proposal_service is not None and session_id is not None:
             tools.append(
-                create_propose_mcp_server_tool(
+                create_manage_mcp_server_tool(
                     mcp_proposal_service,
                     mcp_server_service,
                     progress_emitter,
