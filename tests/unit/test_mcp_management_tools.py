@@ -630,6 +630,8 @@ class TestVerifyMCPServer:
 
     @pytest.mark.asyncio
     async def test_successful_stdio_verification(self, progress_emitter):
+        from contextlib import asynccontextmanager
+
         from tensortruth.services.orchestrator_tool_wrappers import _verify_mcp_server
 
         mock_tool = MagicMock()
@@ -637,12 +639,28 @@ class TestVerifyMCPServer:
         mock_result = MagicMock()
         mock_result.tools = [mock_tool]
 
-        with patch(
-            "tensortruth.services.orchestrator_tool_wrappers.BasicMCPClient"
-        ) as MockClient:
-            instance = MockClient.return_value
-            instance.list_tools = AsyncMock(return_value=mock_result)
+        mock_session = AsyncMock()
+        mock_session.initialize = AsyncMock()
+        mock_session.list_tools = AsyncMock(return_value=mock_result)
 
+        @asynccontextmanager
+        async def fake_stdio_client(params, errlog=None):
+            yield MagicMock(), MagicMock()
+
+        @asynccontextmanager
+        async def fake_client_session(read, write):
+            yield mock_session
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_tool_wrappers.stdio_client",
+                fake_stdio_client,
+            ),
+            patch(
+                "tensortruth.services.orchestrator_tool_wrappers.ClientSession",
+                fake_client_session,
+            ),
+        ):
             ok, msg = await _verify_mcp_server(
                 {
                     "name": "test",
@@ -659,16 +677,29 @@ class TestVerifyMCPServer:
 
     @pytest.mark.asyncio
     async def test_failed_verification_returns_error(self, progress_emitter):
+        from contextlib import asynccontextmanager
+
         from tensortruth.services.orchestrator_tool_wrappers import _verify_mcp_server
 
-        with patch(
-            "tensortruth.services.orchestrator_tool_wrappers.BasicMCPClient"
-        ) as MockClient:
-            instance = MockClient.return_value
-            instance.list_tools = AsyncMock(
-                side_effect=RuntimeError("npm ERR! 404 Not Found: @fake/pkg")
-            )
+        @asynccontextmanager
+        async def fake_stdio_client(params, errlog=None):
+            yield MagicMock(), MagicMock()
 
+        @asynccontextmanager
+        async def fake_client_session(read, write):
+            raise RuntimeError("npm ERR! 404 Not Found: @fake/pkg")
+            yield  # pragma: no cover
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_tool_wrappers.stdio_client",
+                fake_stdio_client,
+            ),
+            patch(
+                "tensortruth.services.orchestrator_tool_wrappers.ClientSession",
+                fake_client_session,
+            ),
+        ):
             ok, msg = await _verify_mcp_server(
                 {
                     "name": "test",
@@ -685,18 +716,20 @@ class TestVerifyMCPServer:
     @pytest.mark.asyncio
     async def test_timeout_returns_error(self, progress_emitter):
         import asyncio as aio
+        from contextlib import asynccontextmanager
 
         from tensortruth.services.orchestrator_tool_wrappers import _verify_mcp_server
 
-        async def slow_list():
+        @asynccontextmanager
+        async def fake_stdio_client(params, errlog=None):
+            # Simulate a server that hangs during connection
             await aio.sleep(100)
+            yield MagicMock(), MagicMock()  # pragma: no cover
 
         with patch(
-            "tensortruth.services.orchestrator_tool_wrappers.BasicMCPClient"
-        ) as MockClient:
-            instance = MockClient.return_value
-            instance.list_tools = slow_list
-
+            "tensortruth.services.orchestrator_tool_wrappers.stdio_client",
+            fake_stdio_client,
+        ):
             ok, msg = await _verify_mcp_server(
                 {
                     "name": "slow",
@@ -713,16 +746,19 @@ class TestVerifyMCPServer:
 
     @pytest.mark.asyncio
     async def test_file_not_found_returns_error(self, progress_emitter):
+        from contextlib import asynccontextmanager
+
         from tensortruth.services.orchestrator_tool_wrappers import _verify_mcp_server
 
-        with patch(
-            "tensortruth.services.orchestrator_tool_wrappers.BasicMCPClient"
-        ) as MockClient:
-            instance = MockClient.return_value
-            instance.list_tools = AsyncMock(
-                side_effect=FileNotFoundError("No such file: 'badcmd'")
-            )
+        @asynccontextmanager
+        async def fake_stdio_client(params, errlog=None):
+            raise FileNotFoundError("No such file: 'badcmd'")
+            yield  # pragma: no cover
 
+        with patch(
+            "tensortruth.services.orchestrator_tool_wrappers.stdio_client",
+            fake_stdio_client,
+        ):
             ok, msg = await _verify_mcp_server(
                 {"name": "test", "type": "stdio", "command": "badcmd"},
                 progress_emitter,

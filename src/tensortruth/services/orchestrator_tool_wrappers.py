@@ -20,6 +20,8 @@ from urllib.parse import urlparse
 
 from llama_index.core.tools import FunctionTool
 from llama_index.tools.mcp import BasicMCPClient
+from mcp import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 from pydantic import BaseModel, Field
 
 from tensortruth.agents.tool_output import extract_tool_text
@@ -994,37 +996,63 @@ async def _verify_mcp_server(
         ),
     )
 
+    # Capture stderr so we can surface the real error (e.g. missing env vars)
+    # instead of the generic "Connection closed" from the MCP protocol layer.
+    import tempfile
+
+    stderr_file = tempfile.TemporaryFile()
+
     try:
         from tensortruth.agents.server_registry import _resolve_env
 
         if server_type == "stdio":
             resolved_env = _resolve_env(config.get("env"))
-            client = BasicMCPClient(
-                command_or_url=config["command"],
+            server_params = StdioServerParameters(
+                command=config["command"],
                 args=config.get("args") or [],
                 env=resolved_env,
-                timeout=timeout,
             )
+
+            async def _verify_stdio() -> tuple[bool, str]:
+                async with stdio_client(server_params, errlog=stderr_file) as (
+                    read_stream,
+                    write_stream,
+                ):
+                    async with ClientSession(read_stream, write_stream) as session:
+                        await session.initialize()
+                        result = await session.list_tools()
+                        tool_count = len(result.tools) if result.tools else 0
+                        tool_names = (
+                            [t.name for t in result.tools[:5]] if result.tools else []
+                        )
+                        preview = ", ".join(tool_names)
+                        if tool_count > 5:
+                            preview += f", ... (+{tool_count - 5} more)"
+                        return (
+                            True,
+                            f"Server verified: {tool_count} tools available"
+                            f" ({preview})",
+                        )
+
+            return await asyncio.wait_for(_verify_stdio(), timeout=timeout)
+
         elif server_type == "sse":
             client = BasicMCPClient(
                 command_or_url=config["url"],
                 timeout=timeout,
             )
+            result = await asyncio.wait_for(client.list_tools(), timeout=timeout)
+            tool_count = len(result.tools) if result and result.tools else 0
+            tool_names = (
+                [t.name for t in result.tools[:5]] if result and result.tools else []
+            )
+            preview = ", ".join(tool_names)
+            if tool_count > 5:
+                preview += f", ... (+{tool_count - 5} more)"
+            return True, f"Server verified: {tool_count} tools available ({preview})"
+
         else:
             return False, f"Unknown server type '{server_type}'"
-
-        # Run connection + list_tools with a timeout
-        result = await asyncio.wait_for(client.list_tools(), timeout=timeout)
-
-        tool_count = len(result.tools) if result and result.tools else 0
-        tool_names = (
-            [t.name for t in result.tools[:5]] if result and result.tools else []
-        )
-        preview = ", ".join(tool_names)
-        if tool_count > 5:
-            preview += f", ... (+{tool_count - 5} more)"
-
-        return True, f"Server verified: {tool_count} tools available ({preview})"
 
     except asyncio.TimeoutError:
         return False, (
@@ -1037,12 +1065,38 @@ async def _verify_mcp_server(
             f"Command not found: {e}. "
             "Check that the command is installed and available on PATH."
         )
-    except Exception as e:
-        error_msg = str(e)
-        # Trim overly verbose tracebacks
+    except BaseException as e:
+        # ExceptionGroups from asyncio TaskGroups wrap the real error;
+        # unwrap recursively to surface the actual cause to the LLM.
+        cause = e
+        while hasattr(cause, "exceptions") and cause.exceptions:
+            cause = cause.exceptions[0]
+        logger.warning(
+            "MCP server '%s' verification failed: %s", name, cause, exc_info=cause
+        )
+        # Prefer stderr output — it usually contains the real error message
+        # (e.g. "TRELLO_API_KEY and TRELLO_TOKEN environment variables are
+        # required") while the Python exception is just "Connection closed".
+        stderr_output = ""
+        try:
+            stderr_file.seek(0)
+            stderr_output = stderr_file.read().decode("utf-8", errors="replace").strip()
+        except Exception:
+            pass
+        if stderr_output:
+            # Extract last meaningful line from stderr
+            lines = [ln.strip() for ln in stderr_output.splitlines() if ln.strip()]
+            # Look for lines starting with "Error:" or the last non-empty line
+            error_lines = [ln for ln in lines if ln.startswith("Error:")]
+            error_msg = error_lines[-1] if error_lines else lines[-1]
+        else:
+            error_msg = str(cause)
+        # Trim overly verbose output
         if len(error_msg) > 300:
             error_msg = error_msg[:300] + "..."
         return False, f"Server verification failed: {error_msg}"
+    finally:
+        stderr_file.close()
 
 
 # --- MCP management tool factories ---
