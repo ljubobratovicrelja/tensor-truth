@@ -2,6 +2,8 @@
 Pytest configuration and shared fixtures.
 """
 
+import importlib.util
+import re
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -56,10 +58,20 @@ layout_mock = MagicMock()
 layout_mock.activate = MagicMock(return_value=None)
 sys.modules["pymupdf.layout"] = layout_mock
 
+# Dynamically read the PyMuPDF version that pymupdf4llm expects so the mock
+# never goes stale when pymupdf4llm bumps its requirement.
+_pymupdf4llm_spec = importlib.util.find_spec("pymupdf4llm")
+_required_version = "99.99.99"  # safe fallback
+if _pymupdf4llm_spec and _pymupdf4llm_spec.origin:
+    _src = Path(_pymupdf4llm_spec.origin).read_text()
+    _m = re.search(r"VERSION\s*=\s*['\"]([^'\"]+)['\"]", _src)
+    if _m:
+        _required_version = _m.group(1)
+
 # Create a mock pymupdf module with layout attribute and version
 pymupdf_mock = MagicMock()
 pymupdf_mock.layout = layout_mock
-pymupdf_mock.__version__ = "1.27.1"  # Match installed version
+pymupdf_mock.__version__ = _required_version
 sys.modules["pymupdf"] = pymupdf_mock
 
 # ============================================================================
