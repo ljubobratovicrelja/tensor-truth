@@ -28,10 +28,10 @@ from tensortruth.services.tool_service import ToolService
 
 if TYPE_CHECKING:
     from tensortruth.core.source import SourceNode
-    from tensortruth.services.mcp_proposal_service import MCPProposalService
     from tensortruth.services.mcp_server_service import MCPServerService
     from tensortruth.services.models import RAGRetrievalResult
     from tensortruth.services.rag_service import RAGService
+    from tensortruth.services.tool_confirmation_service import ToolConfirmationService
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,67 @@ async def _emit(emitter: ProgressEmitter, progress: ToolProgress) -> None:
     result = emitter(progress)
     if asyncio.iscoroutine(result):
         await result
+
+
+async def request_confirmation(
+    confirmation_service: "ToolConfirmationService",
+    progress_emitter: ProgressEmitter,
+    tool_name: str,
+    action_type: str,
+    title: str,
+    summary: str,
+    details: Dict[str, Any],
+    session_id: str,
+    timeout: float = 300.0,
+) -> str:
+    """Request user confirmation, block until resolved.
+
+    Creates a confirmation request, emits a WebSocket event for the frontend
+    to render an inline card, then blocks until the user approves/rejects
+    or the timeout expires.
+
+    Returns:
+        "approved", "rejected", or "expired".
+    """
+    confirmation = confirmation_service.create_confirmation(
+        tool_name=tool_name,
+        action_type=action_type,
+        title=title,
+        summary=summary,
+        details=details,
+        session_id=session_id,
+    )
+
+    # Emit confirmation_request event for the frontend
+    logger.info(
+        "request_confirmation: emitting confirmation_request for %s",
+        confirmation.confirmation_id,
+    )
+    await _emit(
+        progress_emitter,
+        ToolProgress(
+            tool_id=tool_name,
+            phase="confirmation_request",
+            message=f"Awaiting user approval: {title}",
+            metadata={
+                "confirmation_id": confirmation.confirmation_id,
+                "tool_name": tool_name,
+                "action_type": action_type,
+                "title": title,
+                "summary": summary,
+                "details": details,
+            },
+        ),
+    )
+    logger.info(
+        "request_confirmation: _emit returned, now awaiting resolution for %s",
+        confirmation.confirmation_id,
+    )
+
+    # Block until resolved
+    return await confirmation_service.await_resolution(
+        confirmation.confirmation_id, timeout=timeout
+    )
 
 
 # --- Factory functions ---
@@ -1064,15 +1125,17 @@ def create_get_mcp_presets_tool(
 
 
 def create_manage_mcp_server_tool(
-    mcp_proposal_service: "MCPProposalService",
+    confirmation_service: "ToolConfirmationService",
     mcp_server_service: "MCPServerService",
+    tool_service: ToolService,
     progress_emitter: ProgressEmitter,
     session_id: str,
 ) -> FunctionTool:
     """Create a manage_mcp_server FunctionTool for the orchestrator.
 
-    Creates a proposal that the user must approve before it takes effect.
-    Emits an approval_request event via ToolProgress for the frontend.
+    Requests user confirmation, blocks until approved/rejected, then applies
+    the change directly. The LLM sees the real result ("Successfully added...")
+    instead of "Proposal created...".
     """
 
     # Track recent failed calls to prevent infinite retry loops.
@@ -1247,44 +1310,55 @@ def create_manage_mcp_server_tool(
         # Success path — clear error tracking
         _last_error_key = None
 
-        # Create proposal
-        proposal = mcp_proposal_service.create_proposal(
-            action=action,
-            config=config,
-            session_id=session_id,
+        # Request user confirmation (blocks until approved/rejected/expired)
+        action_type = f"mcp_{action}"
+        title = f"{action.capitalize()} MCP server '{name}'"
+        outcome = await request_confirmation(
+            confirmation_service=confirmation_service,
+            progress_emitter=progress_emitter,
+            tool_name="manage_mcp_server",
+            action_type=action_type,
+            title=title,
             summary=summary,
-            target_name=name,
+            details={
+                "action": action,
+                "config": config,
+                "target_name": name,
+            },
+            session_id=session_id,
         )
 
-        # Emit approval_request event for the frontend
-        await _emit(
-            progress_emitter,
-            ToolProgress(
-                tool_id="manage_mcp_server",
-                phase="approval_request",
-                message=f"Awaiting user approval to {action} MCP server '{name}'.",
-                metadata={
-                    "proposal_id": proposal.proposal_id,
-                    "action": proposal.action,
-                    "config": proposal.config,
-                    "summary": proposal.summary,
-                    "target_name": proposal.target_name,
-                },
-            ),
-        )
+        if outcome == "rejected":
+            return f"User rejected the proposal to {action} MCP server '{name}'."
+        if outcome == "expired":
+            return f"Confirmation timed out for {action} MCP server '{name}'."
 
-        return (
-            f"Proposal created (ID: {proposal.proposal_id}). "
-            "The user will see an approval prompt in the chat. "
-            "Do not proceed until they approve."
-        )
+        # Apply the change directly
+        try:
+            if action == "add":
+                mcp_server_service.add(config)
+            elif action == "update":
+                mcp_server_service.update(name, config)
+            elif action == "remove":
+                mcp_server_service.remove(name)
+
+            # Reload tools so the new/changed MCP server is available
+            await tool_service.reload()
+        except Exception as e:
+            logger.error("Failed to apply MCP %s for '%s': %s", action, name, e)
+            return f"Error applying {action} for MCP server '{name}': {e}"
+
+        return f"Successfully {action}{'d' if action != 'add' else 'ed'} MCP server '{name}'."
 
     return FunctionTool.from_defaults(
         async_fn=manage_mcp_server,
         name="manage_mcp_server",
         description=(
             "Add, update, or remove an MCP server configuration. "
-            "The change requires user approval before it takes effect. "
+            "The user will be prompted to approve the change; the tool blocks "
+            "until they respond and applies the change automatically. "
+            "Do NOT tell the user to review or approve — it happens inline. "
+            "Just report the result returned by this tool. "
             "IMPORTANT: For non-preset servers, you MUST research the correct "
             "command and args (via web_search/fetch_page) BEFORE calling this tool. "
             "Do not call with command=null for stdio servers.\n\n"
@@ -1319,7 +1393,7 @@ def create_all_tool_wrappers(
     fetched_urls_getter: Optional[Callable[[], set]] = None,
     fetched_urls_updater: Optional[Callable[[List[str]], None]] = None,
     full_output_callback: Optional[FullOutputCallback] = None,
-    mcp_proposal_service: Optional["MCPProposalService"] = None,
+    confirmation_service: Optional["ToolConfirmationService"] = None,
     mcp_server_service: Optional["MCPServerService"] = None,
     session_id: Optional[str] = None,
 ) -> List[FunctionTool]:
@@ -1328,7 +1402,7 @@ def create_all_tool_wrappers(
     Convenience function that builds the full set of wrapped tools for
     the orchestrator, including the RAG query tool when a RAGService with
     a loaded engine is available, and MCP management tools when the
-    proposal and server services are provided.
+    confirmation and server services are provided.
 
     Returns:
         List of FunctionTool wrappers. Always includes web_search, fetch_page,
@@ -1391,11 +1465,12 @@ def create_all_tool_wrappers(
     if mcp_server_service is not None:
         tools.append(create_list_mcp_servers_tool(mcp_server_service, progress_emitter))
         tools.append(create_get_mcp_presets_tool(mcp_server_service, progress_emitter))
-        if mcp_proposal_service is not None and session_id is not None:
+        if confirmation_service is not None and session_id is not None:
             tools.append(
                 create_manage_mcp_server_tool(
-                    mcp_proposal_service,
+                    confirmation_service,
                     mcp_server_service,
+                    tool_service,
                     progress_emitter,
                     session_id,
                 )

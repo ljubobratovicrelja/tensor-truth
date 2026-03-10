@@ -123,15 +123,16 @@ def translate_event(event: Any) -> Optional[Dict[str, Any]]:
     if event.tool_phase is not None:
         tp: ToolProgress = event.tool_phase
 
-        # Special case: approval_request phase emits a distinct message type
-        if tp.phase == "approval_request" and tp.metadata:
+        # Special case: confirmation_request phase emits a distinct message type
+        if tp.phase == "confirmation_request" and tp.metadata:
             return {
-                "type": "approval_request",
-                "proposal_id": tp.metadata.get("proposal_id", ""),
-                "action": tp.metadata.get("action", ""),
-                "config": tp.metadata.get("config", {}),
+                "type": "confirmation_request",
+                "confirmation_id": tp.metadata.get("confirmation_id", ""),
+                "tool_name": tp.metadata.get("tool_name", ""),
+                "action_type": tp.metadata.get("action_type", ""),
+                "title": tp.metadata.get("title", ""),
                 "summary": tp.metadata.get("summary", ""),
-                "target_name": tp.metadata.get("target_name", ""),
+                "details": tp.metadata.get("details", {}),
             }
 
         return {

@@ -38,7 +38,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
     setToolPhase,
     appendReasoning,
     clearReasoning,
-    addApprovalRequest,
+    addConfirmationRequest,
   } = useChatStore();
 
   // Cleanup on unmount or session change
@@ -225,8 +225,9 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               setAgentProgress(data);
               break;
 
-            case "approval_request":
-              addApprovalRequest(data);
+            case "confirmation_request":
+              console.log("[WS] confirmation_request received:", data);
+              addConfirmationRequest(data);
               break;
           }
         } catch (error) {
@@ -264,7 +265,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       setToolPhase,
       appendReasoning,
       clearReasoning,
-      addApprovalRequest,
+      addConfirmationRequest,
     ]
   );
 

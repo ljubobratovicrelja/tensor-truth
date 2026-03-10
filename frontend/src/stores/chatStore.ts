@@ -3,7 +3,7 @@ import type {
   ImageRef,
   RetrievalMetrics,
   SourceNode,
-  StreamApprovalRequest,
+  StreamConfirmationRequest,
   StreamToolProgress,
   StreamToolPhase,
   StreamAgentProgress,
@@ -47,8 +47,8 @@ interface ChatStore {
   toolPhase: StreamToolPhase | null;
   streamingReasoning: string;
 
-  // MCP approval requests
-  approvalRequests: StreamApprovalRequest[];
+  // Tool confirmation requests
+  confirmationRequests: StreamConfirmationRequest[];
 
   // Response stats tracking
   streamingRequestTime: number | null;
@@ -84,9 +84,12 @@ interface ChatStore {
   appendReasoning: (reasoning: string) => void;
   clearReasoning: () => void;
 
-  // MCP approval request setters
-  addApprovalRequest: (req: StreamApprovalRequest) => void;
-  resolveApprovalRequest: (proposalId: string, outcome: "approved" | "rejected") => void;
+  // Tool confirmation request setters
+  addConfirmationRequest: (req: StreamConfirmationRequest) => void;
+  resolveConfirmationRequest: (
+    confirmationId: string,
+    outcome: "approved" | "rejected"
+  ) => void;
 }
 
 export const useChatStore = create<ChatStore>((set) => ({
@@ -106,7 +109,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   agentProgress: null,
   toolPhase: null,
   streamingReasoning: "",
-  approvalRequests: [],
+  confirmationRequests: [],
   streamingRequestTime: null,
   streamingStartTime: null,
   streamingCharCount: 0,
@@ -133,7 +136,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingToolSteps: [],
       agentProgress: null,
       toolPhase: null,
-      approvalRequests: [],
+      confirmationRequests: [],
       streamingRequestTime: Date.now(),
       streamingStartTime: null,
       streamingCharCount: 0,
@@ -287,15 +290,15 @@ export const useChatStore = create<ChatStore>((set) => ({
     })),
   clearReasoning: () => set({ streamingReasoning: "" }),
 
-  addApprovalRequest: (req) =>
+  addConfirmationRequest: (req) =>
     set((state) => ({
-      approvalRequests: [...state.approvalRequests, req],
+      confirmationRequests: [...state.confirmationRequests, req],
     })),
-  resolveApprovalRequest: (proposalId, outcome) =>
+  resolveConfirmationRequest: (confirmationId, outcome) =>
     set((state) => ({
-      approvalRequests: state.approvalRequests.map((r) =>
-        r.proposal_id === proposalId
-          ? ({ ...r, _outcome: outcome } as StreamApprovalRequest)
+      confirmationRequests: state.confirmationRequests.map((r) =>
+        r.confirmation_id === confirmationId
+          ? ({ ...r, _outcome: outcome } as StreamConfirmationRequest)
           : r
       ),
     })),

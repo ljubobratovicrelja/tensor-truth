@@ -1,7 +1,8 @@
 import { useState, useCallback } from "react";
 import { ChevronDown, ChevronUp, Wrench, Check, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ToolStep } from "@/api/types";
+import type { ToolStep, StreamConfirmationRequest } from "@/api/types";
+import { ConfirmationCard } from "./ConfirmationCard";
 
 export type ToolStepWithStatus = ToolStep & {
   status: "calling" | "completed" | "failed";
@@ -10,6 +11,7 @@ export type ToolStepWithStatus = ToolStep & {
 interface ToolStepCardProps {
   step: ToolStepWithStatus;
   isLast: boolean;
+  confirmation?: StreamConfirmationRequest;
 }
 
 function StatusDot({ status }: { status: ToolStepWithStatus["status"] }) {
@@ -35,7 +37,7 @@ function StatusDot({ status }: { status: ToolStepWithStatus["status"] }) {
   );
 }
 
-function ToolStepCard({ step, isLast }: ToolStepCardProps) {
+function ToolStepCard({ step, isLast, confirmation }: ToolStepCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const paramsSummary = Object.entries(step.params)
@@ -97,6 +99,9 @@ function ToolStepCard({ step, isLast }: ToolStepCardProps) {
             </pre>
           </div>
         )}
+        {confirmation && step.status === "calling" && (
+          <ConfirmationCard request={confirmation} isLive={true} />
+        )}
       </div>
     </div>
   );
@@ -105,9 +110,14 @@ function ToolStepCard({ step, isLast }: ToolStepCardProps) {
 interface ToolStepsProps {
   steps: ToolStepWithStatus[];
   defaultOpen?: boolean;
+  confirmationRequests?: StreamConfirmationRequest[];
 }
 
-export function ToolSteps({ steps, defaultOpen = false }: ToolStepsProps) {
+export function ToolSteps({
+  steps,
+  defaultOpen = false,
+  confirmationRequests,
+}: ToolStepsProps) {
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
   const collapsed = userToggle !== null ? !userToggle : !defaultOpen;
   const toggle = useCallback(
@@ -150,9 +160,32 @@ export function ToolSteps({ steps, defaultOpen = false }: ToolStepsProps) {
         )}
       >
         <div className="pt-0.5 pl-1">
-          {steps.map((step, index) => (
-            <ToolStepCard key={index} step={step} isLast={index === steps.length - 1} />
-          ))}
+          {steps.map((step, index) => {
+            // Match confirmation to step by tool_name
+            const confirmation = confirmationRequests?.find(
+              (c) => c.tool_name === step.tool
+            );
+            if (confirmationRequests && confirmationRequests.length > 0) {
+              console.log(
+                "[ToolSteps] step:",
+                step.tool,
+                "status:",
+                step.status,
+                "confirmation:",
+                confirmation,
+                "requests:",
+                confirmationRequests
+              );
+            }
+            return (
+              <ToolStepCard
+                key={index}
+                step={step}
+                isLast={index === steps.length - 1}
+                confirmation={confirmation}
+              />
+            );
+          })}
         </div>
       </div>
     </div>

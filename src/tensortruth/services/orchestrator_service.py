@@ -173,7 +173,7 @@ class OrchestratorService:
         custom_instructions: Optional[str] = None,
         project_metadata: Optional[str] = None,
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
-        mcp_proposal_service: Optional[Any] = None,
+        confirmation_service: Optional[Any] = None,
         mcp_server_service: Optional[Any] = None,
         session_id: Optional[str] = None,
     ):
@@ -191,7 +191,7 @@ class OrchestratorService:
             custom_instructions: Session-level custom instructions to include in system prompt.
             project_metadata: Project-level metadata string (name, description, instructions).
             max_iterations: Maximum agentic iterations before stopping.
-            mcp_proposal_service: Optional MCPProposalService for MCP management tools.
+            confirmation_service: Optional ToolConfirmationService for tool confirmations.
             mcp_server_service: Optional MCPServerService for MCP management tools.
             session_id: Session ID for MCP proposal tracking.
         """
@@ -209,7 +209,7 @@ class OrchestratorService:
         self._custom_instructions = custom_instructions
         self._project_metadata = project_metadata
         self._max_iterations = max_iterations
-        self._mcp_proposal_service = mcp_proposal_service
+        self._confirmation_service = confirmation_service
         self._mcp_server_service = mcp_server_service
         self._session_id = session_id
 
@@ -335,7 +335,7 @@ class OrchestratorService:
             fetched_urls_getter=_fetched_urls_getter,
             fetched_urls_updater=_fetched_urls_updater,
             full_output_callback=_full_output_cb,
-            mcp_proposal_service=self._mcp_proposal_service,
+            confirmation_service=self._confirmation_service,
             mcp_server_service=self._mcp_server_service,
             session_id=self._session_id,
         )
@@ -462,8 +462,8 @@ class OrchestratorService:
                 "- Use manage_mcp_server to add, update, or remove "
                 "a server. For 'add' with type 'stdio', you MUST provide `command` "
                 "and `args` (e.g. command='npx', args=['-y', '<package>']). "
-                "The change requires user approval before it takes effect.\n"
-                "- After a proposal is approved, the tools will be reloaded automatically.\n"
+                "The user is prompted inline to approve; the tool blocks and "
+                "applies the change automatically. Just report the result.\n"
                 "- NEVER retry manage_mcp_server with the same arguments if it fails. "
                 "Fix the issue first (e.g. research the correct command)."
             )
@@ -973,18 +973,21 @@ class OrchestratorService:
                 )
                 return
 
-        # --- Check if this was a proposal-only interaction ---
-        # When the agent's only meaningful action was proposing an MCP server
-        # change, skip synthesis — the approval card IS the response.
-        _proposal_tools = {"manage_mcp_server", "list_mcp_servers", "get_mcp_presets"}
-        if tools_called and all(t in _proposal_tools for t in tools_called):
-            # Check if a proposal was actually created (not just listed)
-            has_proposal = "manage_mcp_server" in tools_called
-            if has_proposal:
-                yield OrchestratorEvent(
-                    token="I've submitted the MCP server configuration change above. "
-                    "Please review and approve or reject it."
+        # --- Check if this was an MCP-management-only interaction ---
+        # When the agent's only action was managing MCP servers, skip
+        # synthesis and emit the tool result directly as the response.
+        _mcp_tools = {"manage_mcp_server", "list_mcp_servers", "get_mcp_presets"}
+        if tools_called and all(t in _mcp_tools for t in tools_called):
+            if "manage_mcp_server" in tools_called and tool_results_context:
+                # Extract the last manage_mcp_server result
+                last_result = tool_results_context[-1]
+                # Strip the "[manage_mcp_server (OK)]\n" prefix
+                result_text = (
+                    last_result.split("\n", 1)[-1]
+                    if "\n" in last_result
+                    else last_result
                 )
+                yield OrchestratorEvent(token=result_text)
                 return
 
         # --- Phase 2: Response generation ---
@@ -1059,9 +1062,95 @@ class OrchestratorService:
             role = role_map.get(role_str, MessageRole.USER)
             content = str(msg.get("content", ""))
             if content:
+                # Append tool call trace for assistant messages
+                if role_str == "assistant" and msg.get("tool_steps"):
+                    content += OrchestratorService._format_tool_trace(msg["tool_steps"])
                 messages.append(ChatMessage(role=role, content=content))
 
         return messages
+
+    @staticmethod
+    def _format_tool_trace(
+        tool_steps: List[Dict[str, Any]],
+        max_chars: int = 300,
+        max_param_len: int = 60,
+    ) -> str:
+        """Build a compact tool call trace string for orchestrator context.
+
+        Args:
+            tool_steps: List of tool step dicts with ``tool``, ``params``,
+                ``is_error`` keys.
+            max_chars: Maximum total length of the trace string.
+            max_param_len: Maximum length for the displayed parameter value.
+
+        Returns:
+            Formatted trace like ``\\n[Tools: name("val") -> ok]``, or empty
+            string if *tool_steps* is empty.
+        """
+        if not tool_steps:
+            return ""
+
+        parts: List[str] = []
+        for step in tool_steps:
+            name = step.get("tool", "unknown")
+            params = step.get("params") or {}
+            status = "error" if step.get("is_error") else "ok"
+
+            # Extract key param by priority
+            param_display: str
+            if "query" in params and isinstance(params["query"], str):
+                param_display = params["query"]
+            elif "url" in params and isinstance(params["url"], str):
+                param_display = params["url"]
+            elif "urls" in params and isinstance(params["urls"], (list, tuple)):
+                param_display = f"{len(params['urls'])} urls"
+            else:
+                # First string param
+                param_display = ""
+                for v in params.values():
+                    if isinstance(v, str) and v:
+                        param_display = v
+                        break
+
+            if param_display:
+                if len(param_display) > max_param_len:
+                    param_display = param_display[: max_param_len - 3] + "..."
+                parts.append(f'{name}("{param_display}") -> {status}')
+            else:
+                parts.append(f"{name}() -> {status}")
+
+        # Assemble with char cap
+        prefix = "\n[Tools: "
+        suffix = "]"
+        available = max_chars - len(prefix) - len(suffix)
+
+        result_parts: List[str] = []
+        used = 0
+        for i, part in enumerate(parts):
+            separator = ", " if result_parts else ""
+            needed = len(separator) + len(part)
+            remaining_after = len(parts) - i - 1
+
+            if remaining_after > 0:
+                # If not the last part, reserve space for a possible overflow
+                overflow_reserve = len(f", ... +{remaining_after} more")
+            else:
+                overflow_reserve = 0
+
+            if used + needed + overflow_reserve <= available:
+                result_parts.append(separator + part)
+                used += needed
+            else:
+                remaining = len(parts) - i
+                overflow = (
+                    f", ... +{remaining} more"
+                    if result_parts
+                    else f"... +{remaining} more"
+                )
+                result_parts.append(overflow)
+                break
+
+        return prefix + "".join(result_parts) + suffix
 
     @property
     def tools(self) -> List[FunctionTool]:

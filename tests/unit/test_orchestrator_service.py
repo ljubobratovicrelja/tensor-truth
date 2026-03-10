@@ -787,6 +787,129 @@ class TestHelperMethods:
         assert svc.last_rag_result is None
         assert svc.last_web_sources is None
 
+    # -- _format_tool_trace tests --
+
+    def test_format_tool_trace_single_ok(self):
+        steps = [
+            {"tool": "rag_query", "params": {"query": "attention"}, "is_error": False}
+        ]
+        result = OrchestratorService._format_tool_trace(steps)
+        assert result == '\n[Tools: rag_query("attention") -> ok]'
+
+    def test_format_tool_trace_single_error(self):
+        steps = [{"tool": "web_search", "params": {"query": "test"}, "is_error": True}]
+        result = OrchestratorService._format_tool_trace(steps)
+        assert result == '\n[Tools: web_search("test") -> error]'
+
+    def test_format_tool_trace_multiple_tools(self):
+        steps = [
+            {"tool": "rag_query", "params": {"query": "attention"}, "is_error": False},
+            {
+                "tool": "web_search",
+                "params": {"query": "transformers"},
+                "is_error": True,
+            },
+        ]
+        result = OrchestratorService._format_tool_trace(steps)
+        assert result == (
+            '\n[Tools: rag_query("attention") -> ok, '
+            'web_search("transformers") -> error]'
+        )
+
+    def test_format_tool_trace_empty_steps(self):
+        assert OrchestratorService._format_tool_trace([]) == ""
+
+    def test_format_tool_trace_param_truncation(self):
+        long_query = "a" * 100
+        steps = [
+            {"tool": "rag_query", "params": {"query": long_query}, "is_error": False}
+        ]
+        result = OrchestratorService._format_tool_trace(steps, max_param_len=60)
+        # The param should be truncated to 57 chars + "..."
+        assert "..." in result
+        assert len(long_query) > 60  # confirm it would be truncated
+        # Extract the quoted param
+        param_in_result = result.split('"')[1]
+        assert len(param_in_result) == 60
+
+    def test_format_tool_trace_char_cap(self):
+        steps = [
+            {"tool": f"tool_{i}", "params": {"query": f"query {i}"}, "is_error": False}
+            for i in range(20)
+        ]
+        result = OrchestratorService._format_tool_trace(steps, max_chars=120)
+        assert len(result) <= 120
+        assert "+", "more" in result
+
+    def test_format_tool_trace_url_param(self):
+        steps = [
+            {
+                "tool": "fetch_url",
+                "params": {"url": "https://example.com"},
+                "is_error": False,
+            }
+        ]
+        result = OrchestratorService._format_tool_trace(steps)
+        assert 'fetch_url("https://example.com") -> ok' in result
+
+    def test_format_tool_trace_urls_param(self):
+        steps = [
+            {
+                "tool": "fetch_urls",
+                "params": {"urls": ["a", "b", "c"]},
+                "is_error": False,
+            }
+        ]
+        result = OrchestratorService._format_tool_trace(steps)
+        assert 'fetch_urls("3 urls") -> ok' in result
+
+    def test_format_tool_trace_no_params(self):
+        steps = [{"tool": "list_tools", "params": {}, "is_error": False}]
+        result = OrchestratorService._format_tool_trace(steps)
+        assert "list_tools() -> ok" in result
+
+    def test_format_tool_trace_first_string_param_fallback(self):
+        steps = [
+            {
+                "tool": "custom",
+                "params": {"limit": 10, "name": "foo"},
+                "is_error": False,
+            }
+        ]
+        result = OrchestratorService._format_tool_trace(steps)
+        assert 'custom("foo") -> ok' in result
+
+    def test_to_chat_messages_appends_trace(self):
+        history = [
+            {"role": "user", "content": "search for attention"},
+            {
+                "role": "assistant",
+                "content": "Here are the results.",
+                "tool_steps": [
+                    {
+                        "tool": "rag_query",
+                        "params": {"query": "attention"},
+                        "is_error": False,
+                    },
+                ],
+            },
+        ]
+        messages = OrchestratorService._to_chat_messages(history)
+        assert len(messages) == 2
+        # User message should be unmodified
+        assert messages[0].content == "search for attention"
+        # Assistant message should have trace appended
+        assert messages[1].content.startswith("Here are the results.")
+        assert "[Tools:" in messages[1].content
+        assert "rag_query" in messages[1].content
+
+    def test_to_chat_messages_no_trace_without_tool_steps(self):
+        history = [
+            {"role": "assistant", "content": "Just a response."},
+        ]
+        messages = OrchestratorService._to_chat_messages(history)
+        assert messages[0].content == "Just a response."
+
 
 # ---------------------------------------------------------------
 # OrchestratorEvent dataclass

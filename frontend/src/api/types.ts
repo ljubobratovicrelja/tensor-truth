@@ -219,14 +219,18 @@ export interface StreamWebSearchSources {
   sources: WebSearchSource[];
 }
 
-export interface StreamApprovalRequest {
-  type: "approval_request";
-  proposal_id: string;
-  action: "add" | "update" | "remove";
-  config: Record<string, unknown>;
+export interface StreamConfirmationRequest {
+  type: "confirmation_request";
+  confirmation_id: string;
+  tool_name: string;
+  action_type: string; // Drives rendering: "mcp_add", "mcp_remove", "mcp_update", etc.
+  title: string;
   summary: string;
-  target_name: string;
+  details: Record<string, unknown>;
 }
+
+/** @deprecated Use StreamConfirmationRequest */
+export type StreamApprovalRequest = StreamConfirmationRequest;
 
 export type StreamMessage =
   | StreamToken
@@ -241,7 +245,7 @@ export type StreamMessage =
   | StreamToolPhase
   | StreamAgentProgress
   | StreamWebSearchSources
-  | StreamApprovalRequest;
+  | StreamConfirmationRequest;
 
 // Config types
 export interface OllamaConfig {

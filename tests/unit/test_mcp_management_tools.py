@@ -3,20 +3,21 @@
 Tests the three MCP management tool wrappers:
 - list_mcp_servers: returns current server configurations
 - get_mcp_presets: returns preset templates
-- manage_mcp_server: creates proposals with validation
+- manage_mcp_server: requests confirmation, blocks, then applies
 """
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tensortruth.services.mcp_proposal_service import MCPProposalService
 from tensortruth.services.orchestrator_tool_wrappers import (
     create_get_mcp_presets_tool,
     create_list_mcp_servers_tool,
     create_manage_mcp_server_tool,
 )
+from tensortruth.services.tool_confirmation_service import ToolConfirmationService
 
 VERIFY_PATCH = "tensortruth.services.orchestrator_tool_wrappers._verify_mcp_server"
 
@@ -53,19 +54,56 @@ def mcp_server_service():
             "enabled": True,
         },
     }
+    svc.add.return_value = {"name": "test-server", "builtin": False}
+    svc.update.return_value = {"name": "test-server", "builtin": False}
+    svc.remove.return_value = None
     return svc
 
 
 @pytest.fixture
-def mcp_proposal_service():
-    """Real MCPProposalService instance."""
-    return MCPProposalService()
+def confirmation_service():
+    """Real ToolConfirmationService instance."""
+    return ToolConfirmationService()
+
+
+@pytest.fixture
+def tool_service():
+    """Mock ToolService."""
+    svc = MagicMock()
+    svc.reload = AsyncMock()
+    return svc
 
 
 @pytest.fixture
 def progress_emitter():
     """Mock progress emitter."""
     return AsyncMock()
+
+
+def _auto_approve(confirmation_service, delay=0.05):
+    """Create a task that auto-approves the next pending confirmation."""
+
+    async def _approver():
+        await asyncio.sleep(delay)
+        for c in confirmation_service._confirmations.values():
+            if c.status == "pending":
+                confirmation_service.resolve(c.confirmation_id, "approved")
+                return
+
+    return asyncio.create_task(_approver())
+
+
+def _auto_reject(confirmation_service, delay=0.05):
+    """Create a task that auto-rejects the next pending confirmation."""
+
+    async def _rejector():
+        await asyncio.sleep(delay)
+        for c in confirmation_service._confirmations.values():
+            if c.status == "pending":
+                confirmation_service.resolve(c.confirmation_id, "rejected")
+                return
+
+    return asyncio.create_task(_rejector())
 
 
 class TestListMCPServersTool:
@@ -117,7 +155,7 @@ class TestGetMCPPresetsTool:
         assert tool.metadata.name == "get_mcp_presets"
 
 
-class TestProposeMCPServerTool:
+class TestManageMCPServerTool:
     @pytest.fixture(autouse=True)
     def _mock_verify(self):
         """Auto-mock verification for all propose tests (no real processes)."""
@@ -126,12 +164,17 @@ class TestProposeMCPServerTool:
             yield
 
     @pytest.mark.asyncio
-    async def test_creates_add_proposal(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+    async def test_approved_add_applies_and_returns_success(
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
+        _auto_approve(confirmation_service)
         result = await tool.acall(
             action="add",
             name="context7",
@@ -140,16 +183,44 @@ class TestProposeMCPServerTool:
             summary="Add Context7 server",
         )
         result_str = str(result)
-        assert "Proposal created" in result_str
-        assert "approval" in result_str.lower()
+        assert "Successfully" in result_str
+        mcp_server_service.add.assert_called_once()
+        tool_service.reload.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_emits_approval_request_event(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+    async def test_rejected_returns_rejection_message(
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
+        _auto_reject(confirmation_service)
+        result = await tool.acall(
+            action="add",
+            name="test",
+            command="node",
+            args=["server.js"],
+            summary="Add test server",
+        )
+        assert "rejected" in str(result).lower()
+        mcp_server_service.add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_emits_confirmation_request_event(
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
+    ):
+        tool = create_manage_mcp_server_tool(
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
+        )
+        _auto_approve(confirmation_service)
         await tool.acall(
             action="add",
             name="test",
@@ -157,21 +228,25 @@ class TestProposeMCPServerTool:
             args=["server.js"],
             summary="Add test server",
         )
-        # Should have emitted an approval_request phase
+        # Should have emitted a confirmation_request phase
         calls = progress_emitter.call_args_list
-        approval_calls = [c for c in calls if c[0][0].phase == "approval_request"]
-        assert len(approval_calls) == 1
-        tp = approval_calls[0][0][0]
-        assert tp.metadata["action"] == "add"
-        assert tp.metadata["target_name"] == "test"
-        assert "proposal_id" in tp.metadata
+        conf_calls = [c for c in calls if c[0][0].phase == "confirmation_request"]
+        assert len(conf_calls) == 1
+        tp = conf_calls[0][0][0]
+        assert tp.metadata["action_type"] == "mcp_add"
+        assert tp.metadata["tool_name"] == "manage_mcp_server"
+        assert "confirmation_id" in tp.metadata
 
     @pytest.mark.asyncio
     async def test_validates_invalid_action(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
         result = await tool.acall(
             action="invalid",
@@ -182,10 +257,14 @@ class TestProposeMCPServerTool:
 
     @pytest.mark.asyncio
     async def test_validates_stdio_requires_command(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
         result = await tool.acall(
             action="add",
@@ -197,10 +276,14 @@ class TestProposeMCPServerTool:
 
     @pytest.mark.asyncio
     async def test_validates_sse_requires_url(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
         result = await tool.acall(
             action="add",
@@ -212,11 +295,15 @@ class TestProposeMCPServerTool:
 
     @pytest.mark.asyncio
     async def test_validates_remove_server_exists(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         mcp_server_service.list_all.return_value = []
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
         result = await tool.acall(
             action="remove",
@@ -227,13 +314,17 @@ class TestProposeMCPServerTool:
 
     @pytest.mark.asyncio
     async def test_validates_remove_not_builtin(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         mcp_server_service.list_all.return_value = [
             {"name": "search_web", "builtin": True}
         ]
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
         result = await tool.acall(
             action="remove",
@@ -244,12 +335,17 @@ class TestProposeMCPServerTool:
 
     @pytest.mark.asyncio
     async def test_auto_fills_from_preset_when_fields_missing(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         """When name matches a preset and command/url are omitted, auto-fill."""
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
+        _auto_approve(confirmation_service)
         result = await tool.acall(
             action="add",
             name="context7",
@@ -257,27 +353,33 @@ class TestProposeMCPServerTool:
         )
         result_str = str(result)
         # Should succeed (auto-filled from preset), not error about missing command
-        assert "Proposal created" in result_str
+        assert "Successfully" in result_str
 
-        # Verify the proposal has the preset config
-        approval_calls = [
+        # Verify the confirmation has the preset config in details
+        conf_calls = [
             c
             for c in progress_emitter.call_args_list
-            if c[0][0].phase == "approval_request"
+            if c[0][0].phase == "confirmation_request"
         ]
-        assert len(approval_calls) == 1
-        config = approval_calls[0][0][0].metadata["config"]
+        assert len(conf_calls) == 1
+        details = conf_calls[0][0][0].metadata["details"]
+        config = details["config"]
         assert config["command"] == "npx"
         assert "@upstash/context7-mcp@latest" in config["args"]
 
     @pytest.mark.asyncio
     async def test_no_auto_fill_when_command_provided(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         """When command is explicitly provided, don't override with preset."""
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
+        _auto_approve(confirmation_service)
         result = await tool.acall(
             action="add",
             name="context7",
@@ -286,25 +388,31 @@ class TestProposeMCPServerTool:
             summary="Add with custom command",
         )
         result_str = str(result)
-        assert "Proposal created" in result_str
+        assert "Successfully" in result_str
 
-        approval_calls = [
+        conf_calls = [
             c
             for c in progress_emitter.call_args_list
-            if c[0][0].phase == "approval_request"
+            if c[0][0].phase == "confirmation_request"
         ]
-        config = approval_calls[0][0][0].metadata["config"]
+        details = conf_calls[0][0][0].metadata["details"]
+        config = details["config"]
         assert config["command"] == "custom-cmd"
         assert config["args"] == ["--flag"]
 
     @pytest.mark.asyncio
     async def test_infers_npx_command_from_args_with_y_flag(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         """When LLM passes args=['-y', '<pkg>'] but command=null, infer npx."""
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
+        _auto_approve(confirmation_service)
         result = await tool.acall(
             action="add",
             name="sequential-thinking",
@@ -312,25 +420,31 @@ class TestProposeMCPServerTool:
             summary="Add Sequential Thinking server",
         )
         result_str = str(result)
-        assert "Proposal created" in result_str
+        assert "Successfully" in result_str
 
-        approval_calls = [
+        conf_calls = [
             c
             for c in progress_emitter.call_args_list
-            if c[0][0].phase == "approval_request"
+            if c[0][0].phase == "confirmation_request"
         ]
-        config = approval_calls[0][0][0].metadata["config"]
+        details = conf_calls[0][0][0].metadata["details"]
+        config = details["config"]
         assert config["command"] == "npx"
         assert "-y" in config["args"]
 
     @pytest.mark.asyncio
     async def test_infers_npx_command_from_scoped_package_arg(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         """When LLM passes args=['@org/pkg'] without -y, infer npx -y."""
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
+        _auto_approve(confirmation_service)
         result = await tool.acall(
             action="add",
             name="some-mcp",
@@ -338,24 +452,29 @@ class TestProposeMCPServerTool:
             summary="Add some MCP server",
         )
         result_str = str(result)
-        assert "Proposal created" in result_str
+        assert "Successfully" in result_str
 
-        approval_calls = [
+        conf_calls = [
             c
             for c in progress_emitter.call_args_list
-            if c[0][0].phase == "approval_request"
+            if c[0][0].phase == "confirmation_request"
         ]
-        config = approval_calls[0][0][0].metadata["config"]
+        details = conf_calls[0][0][0].metadata["details"]
+        config = details["config"]
         assert config["command"] == "npx"
         assert config["args"][0] == "-y"
 
     @pytest.mark.asyncio
     async def test_blocks_identical_retry_after_failure(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         """Second identical failing call is blocked with a retry error."""
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
         # First call: fails (no command, no args to infer from)
         result1 = await tool.acall(
@@ -383,12 +502,17 @@ class TestProposeMCPServerTool:
 
     @pytest.mark.asyncio
     async def test_verification_called_for_add(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         """Verification is called when adding a server."""
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
+        _auto_approve(confirmation_service)
         await tool.acall(
             action="add",
             name="test-server",
@@ -402,16 +526,20 @@ class TestProposeMCPServerTool:
         assert config["name"] == "test-server"
 
     @pytest.mark.asyncio
-    async def test_verification_failure_blocks_proposal(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+    async def test_verification_failure_blocks_confirmation(
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
-        """When verification fails, no proposal is created."""
+        """When verification fails, no confirmation is created."""
         self._verify_mock.return_value = (
             False,
             "Server 'bad-pkg' timed out after 15s.",
         )
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
         result = await tool.acall(
             action="add",
@@ -424,47 +552,51 @@ class TestProposeMCPServerTool:
         assert "Error" in result_str
         assert "timed out" in result_str
 
-        # No approval_request should have been emitted
-        approval_calls = [
+        # No confirmation_request should have been emitted
+        conf_calls = [
             c
             for c in progress_emitter.call_args_list
-            if c[0][0].phase == "approval_request"
+            if c[0][0].phase == "confirmation_request"
         ]
-        assert len(approval_calls) == 0
+        assert len(conf_calls) == 0
 
     @pytest.mark.asyncio
     async def test_verification_not_called_for_remove(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         """Verification is skipped for remove actions."""
         mcp_server_service.list_all.return_value = [
             {"name": "my-server", "builtin": False}
         ]
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
+        _auto_approve(confirmation_service)
         result = await tool.acall(
             action="remove",
             name="my-server",
             summary="Remove my server",
         )
-        assert "Proposal created" in str(result)
+        assert "Successfully" in str(result)
         self._verify_mock.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_verification_emits_progress(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+    async def test_approved_add_calls_service(
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
-        """Verification emits a 'verifying' progress event."""
-        # The _verify_mcp_server is mocked, so the progress emission comes
-        # from _verify_mcp_server itself. Since it's mocked, we check that
-        # the verify mock was called (it handles progress internally).
-        # Instead, test that when verification passes, a verifying phase is
-        # NOT emitted from the mock (the mock skips it). This test just
-        # confirms the integration doesn't break.
+        """After approval, the tool directly calls mcp_server_service.add()."""
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
+        _auto_approve(confirmation_service)
         result = await tool.acall(
             action="add",
             name="test-server",
@@ -472,13 +604,18 @@ class TestProposeMCPServerTool:
             args=["-y", "test-pkg"],
             summary="Add test",
         )
-        assert "Proposal created" in str(result)
+        assert "Successfully" in str(result)
+        mcp_server_service.add.assert_called_once()
 
     def test_tool_metadata(
-        self, mcp_proposal_service, mcp_server_service, progress_emitter
+        self, confirmation_service, mcp_server_service, tool_service, progress_emitter
     ):
         tool = create_manage_mcp_server_tool(
-            mcp_proposal_service, mcp_server_service, progress_emitter, "sess-1"
+            confirmation_service,
+            mcp_server_service,
+            tool_service,
+            progress_emitter,
+            "sess-1",
         )
         assert tool.metadata.name == "manage_mcp_server"
         assert "add, update, or remove" in tool.metadata.description.lower()

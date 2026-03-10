@@ -88,34 +88,35 @@ export async function apiPostFormData<T>(path: string, formData: FormData): Prom
   return handleResponse<T>(response);
 }
 
-// MCP proposal approval/rejection
-export interface McpProposalStatus {
-  proposal_id: string;
-  action: string;
-  config: Record<string, unknown>;
-  target_name: string;
-  status: "pending" | "approved" | "rejected";
+// Tool confirmation approval/rejection
+export interface ToolConfirmationStatus {
+  confirmation_id: string;
+  tool_name: string;
+  action_type: string;
+  title: string;
   summary: string;
+  details: Record<string, unknown>;
+  status: "pending" | "approved" | "rejected" | "expired";
 }
 
-export async function getMcpProposalStatus(
-  proposalId: string
-): Promise<McpProposalStatus | null> {
+export async function getToolConfirmationStatus(
+  confirmationId: string
+): Promise<ToolConfirmationStatus | null> {
   try {
-    const response = await fetch(`${API_BASE}/mcp-server-proposals/${proposalId}`);
+    const response = await fetch(`${API_BASE}/tool-confirmations/${confirmationId}`);
     if (!response.ok) return null;
-    return (await response.json()) as McpProposalStatus;
+    return (await response.json()) as ToolConfirmationStatus;
   } catch {
     return null;
   }
 }
 
-export async function approveMcpProposal(proposalId: string): Promise<void> {
-  await apiPost(`/mcp-server-proposals/${proposalId}/approve`);
+export async function approveToolConfirmation(confirmationId: string): Promise<void> {
+  await apiPost(`/tool-confirmations/${confirmationId}/approve`);
 }
 
-export async function rejectMcpProposal(proposalId: string): Promise<void> {
-  await apiPost(`/mcp-server-proposals/${proposalId}/reject`);
+export async function rejectToolConfirmation(confirmationId: string): Promise<void> {
+  await apiPost(`/tool-confirmations/${confirmationId}/reject`);
 }
 
 // WebSocket factory

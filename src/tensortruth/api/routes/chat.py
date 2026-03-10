@@ -16,10 +16,10 @@ from tensortruth.api.deps import (
     get_chat_service,
     get_config_service,
     get_document_service,
-    get_mcp_proposal_service,
     get_project_service,
     get_rag_service,
     get_session_service,
+    get_tool_confirmation_service,
     get_tool_service,
 )
 from tensortruth.api.routes.commands import registry as command_registry
@@ -374,7 +374,7 @@ async def _run_orchestrator_path(
             )
 
     # Get MCP management services
-    mcp_proposal_service = get_mcp_proposal_service()
+    confirmation_service = get_tool_confirmation_service()
     from tensortruth.services.mcp_server_service import MCPServerService
 
     mcp_server_service = MCPServerService()
@@ -391,7 +391,7 @@ async def _run_orchestrator_path(
         module_descriptions=module_descriptions,
         custom_instructions=custom_instructions,
         project_metadata=project_metadata,
-        mcp_proposal_service=mcp_proposal_service,
+        confirmation_service=confirmation_service,
         mcp_server_service=mcp_server_service,
         session_id=context.session_id,
     )
@@ -403,17 +403,35 @@ async def _run_orchestrator_path(
     # This is captured by tool wrappers at construction time.
     async def _ws_progress_emitter(tp: ToolProgress) -> None:
         try:
-            await websocket.send_json(
-                {
-                    "type": "tool_phase",
-                    "tool_id": tp.tool_id,
-                    "phase": tp.phase,
-                    "message": tp.message,
-                    "metadata": tp.metadata,
+            # Confirmation requests need a distinct message type so the
+            # frontend can render inline approval cards.
+            if tp.phase == "confirmation_request" and tp.metadata:
+                msg = {
+                    "type": "confirmation_request",
+                    "confirmation_id": tp.metadata.get("confirmation_id", ""),
+                    "tool_name": tp.metadata.get("tool_name", ""),
+                    "action_type": tp.metadata.get("action_type", ""),
+                    "title": tp.metadata.get("title", ""),
+                    "summary": tp.metadata.get("summary", ""),
+                    "details": tp.metadata.get("details", {}),
                 }
-            )
+                logger.info(
+                    "WS emitter: sending confirmation_request %s",
+                    msg.get("confirmation_id"),
+                )
+                await websocket.send_json(msg)
+            else:
+                await websocket.send_json(
+                    {
+                        "type": "tool_phase",
+                        "tool_id": tp.tool_id,
+                        "phase": tp.phase,
+                        "message": tp.message,
+                        "metadata": tp.metadata,
+                    }
+                )
         except Exception:
-            pass  # WebSocket may have closed
+            logger.exception("WS emitter error for phase=%s", tp.phase)
 
     # The OrchestratorService's progress_emitter is synchronous (called from
     # sync tool wrappers). We wrap the async emitter to schedule it on the
@@ -421,10 +439,11 @@ async def _run_orchestrator_path(
     loop = asyncio.get_event_loop()
 
     def _sync_progress_emitter(tp: ToolProgress) -> None:
+        logger.info("sync_progress_emitter called: phase=%s", tp.phase)
         try:
             loop.call_soon_threadsafe(asyncio.ensure_future, _ws_progress_emitter(tp))
         except Exception:
-            pass
+            logger.exception("sync_progress_emitter failed for phase=%s", tp.phase)
 
     # Stream orchestrator events
     async for event in orchestrator.execute(

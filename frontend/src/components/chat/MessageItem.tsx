@@ -7,13 +7,12 @@ import type { ToolStepWithStatus } from "./ToolSteps";
 import { ThinkingBox } from "./ThinkingBox";
 import { StreamingText } from "./StreamingText";
 import { MemoizedMarkdown } from "./MemoizedMarkdown";
-import { McpApprovalCard } from "./McpApprovalCard";
 import type {
   ImageRef,
   MessageResponse,
   RetrievalMetrics,
   SourceNode,
-  StreamApprovalRequest,
+  StreamConfirmationRequest,
 } from "@/api/types";
 import type { ResponseStats } from "@/stores/chatStore";
 
@@ -35,8 +34,8 @@ interface MessageItemProps {
   pendingImages?: (ImageRef & { previewUrl?: string })[];
   /** Generation stats (shown after streaming completes on the last message) */
   responseStats?: ResponseStats | null;
-  /** Active approval requests (streaming only) */
-  approvalRequests?: StreamApprovalRequest[];
+  /** Active confirmation requests (streaming only) */
+  confirmationRequests?: StreamConfirmationRequest[];
 }
 
 function MessageItemComponent({
@@ -50,7 +49,7 @@ function MessageItemComponent({
   sessionId,
   pendingImages,
   responseStats,
-  approvalRequests,
+  confirmationRequests,
 }: MessageItemProps) {
   const isUser = message.role === "user";
   const messageSources = sources ?? (message.sources as SourceNode[] | undefined);
@@ -66,33 +65,10 @@ function MessageItemComponent({
       status: (s.is_error ? "failed" : "completed") as "failed" | "completed",
     })) ??
     [];
-  // Extract approval requests: prefer streaming prop, fall back to saved tool_steps.
-  // Only show cards for successful proposals (output contains "Proposal created").
-  const savedApprovalRequests: StreamApprovalRequest[] = (() => {
-    if (approvalRequests && approvalRequests.length > 0) return approvalRequests;
-    if (!message.tool_steps) return [];
-    return message.tool_steps
-      .filter(
-        (s) =>
-          s.tool === "manage_mcp_server" &&
-          !s.is_error &&
-          s.output?.includes("Proposal created")
-      )
-      .map((s) => {
-        const params = s.params as Record<string, unknown>;
-        // Extract proposal_id from output: "Proposal created (ID: <uuid>)."
-        const idMatch = s.output?.match(/ID:\s*([0-9a-f-]+)/);
-        const proposalId = idMatch?.[1] || "";
-        return {
-          type: "approval_request" as const,
-          proposal_id: proposalId,
-          action: (params.action as "add" | "update" | "remove") || "add",
-          config: params,
-          summary: (params.summary as string) || "",
-          target_name: (params.name as string) || "",
-        };
-      });
-  })();
+  // Confirmation requests: prefer streaming prop, otherwise empty
+  // (saved messages no longer need reconstruction since the tool now blocks
+  // and applies changes directly — there's no pending state to reconstruct)
+  const activeConfirmations = confirmationRequests ?? [];
 
   const [copied, setCopied] = useState(false);
   const [userMsgExpanded, setUserMsgExpanded] = useState(false);
@@ -271,17 +247,6 @@ function MessageItemComponent({
               )}
             </div>
           )}
-          {!isUser && savedApprovalRequests.length > 0 && (
-            <div className="mt-2">
-              {savedApprovalRequests.map((req, i) => (
-                <McpApprovalCard
-                  key={req.proposal_id || `saved-${i}`}
-                  request={req}
-                  isLive={!!(approvalRequests && approvalRequests.length > 0)}
-                />
-              ))}
-            </div>
-          )}
           {!isUser && (messageSources?.length || messageMetrics) && (
             <SourcesList
               sources={messageSources ?? []}
@@ -293,6 +258,7 @@ function MessageItemComponent({
             <ToolSteps
               steps={messageToolSteps}
               defaultOpen={isStreaming && !message.content && !thinkingContent}
+              confirmationRequests={activeConfirmations}
             />
           )}
         </div>
@@ -328,6 +294,6 @@ export const MessageItem = memo(MessageItemComponent, (prev, next) => {
     prev.sessionId === next.sessionId &&
     prev.pendingImages === next.pendingImages &&
     prev.responseStats === next.responseStats &&
-    prev.approvalRequests === next.approvalRequests
+    prev.confirmationRequests === next.confirmationRequests
   );
 });

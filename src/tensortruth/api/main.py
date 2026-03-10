@@ -20,7 +20,6 @@ from tensortruth.api.routes import (
     config,
     documents,
     extensions,
-    mcp_proposals,
     mcp_servers,
     modules,
     pdfs,
@@ -31,6 +30,7 @@ from tensortruth.api.routes import (
     startup,
     system,
     tasks,
+    tool_confirmations,
     tools,
 )
 from tensortruth.api.schemas import HealthResponse
@@ -144,9 +144,9 @@ def create_app() -> FastAPI:
     )
     app.include_router(extensions.router, prefix="/api/extensions", tags=["extensions"])
     app.include_router(
-        mcp_proposals.router,
-        prefix="/api/mcp-server-proposals",
-        tags=["mcp-proposals"],
+        tool_confirmations.router,
+        prefix="/api/tool-confirmations",
+        tags=["tool-confirmations"],
     )
 
     @app.post("/api/reload-extensions", tags=["extensions"])

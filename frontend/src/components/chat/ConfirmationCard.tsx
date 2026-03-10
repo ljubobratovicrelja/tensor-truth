@@ -1,91 +1,114 @@
 import { useState, useEffect } from "react";
-import { Check, X, Server, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import {
-  approveMcpProposal,
-  rejectMcpProposal,
-  getMcpProposalStatus,
+  Check,
+  X,
+  Server,
+  Plus,
+  Pencil,
+  Trash2,
+  Loader2,
+  ShieldQuestion,
+} from "lucide-react";
+import {
+  approveToolConfirmation,
+  rejectToolConfirmation,
+  getToolConfirmationStatus,
 } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "@/lib/constants";
-import type { StreamApprovalRequest } from "@/api/types";
+import { useChatStore } from "@/stores";
+import type { StreamConfirmationRequest } from "@/api/types";
 import { cn } from "@/lib/utils";
 
-interface McpApprovalCardProps {
-  request: StreamApprovalRequest;
+interface ConfirmationCardProps {
+  request: StreamConfirmationRequest;
   /** True when this card comes from a live streaming session (not saved message) */
   isLive?: boolean;
 }
 
-const ACTION_ICONS = {
-  add: Plus,
-  update: Pencil,
-  remove: Trash2,
+const MCP_ACTION_ICONS = {
+  mcp_add: Plus,
+  mcp_update: Pencil,
+  mcp_remove: Trash2,
 } as const;
 
-const ACTION_LABELS = {
-  add: "Add",
-  update: "Update",
-  remove: "Remove",
+const MCP_ACTION_LABELS = {
+  mcp_add: "Add",
+  mcp_update: "Update",
+  mcp_remove: "Remove",
 } as const;
 
-const ACTION_COLORS = {
-  add: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  update: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  remove: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+const MCP_ACTION_COLORS = {
+  mcp_add: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  mcp_update: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  mcp_remove: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
 } as const;
 
-export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
-  const [status, setStatus] = useState<"loading" | "pending" | "approved" | "rejected">(
-    isLive ? "pending" : "loading"
-  );
-  const [resolvedConfig, setResolvedConfig] = useState<Record<string, unknown> | null>(
+export function ConfirmationCard({ request, isLive }: ConfirmationCardProps) {
+  const [status, setStatus] = useState<
+    "loading" | "pending" | "approved" | "rejected" | "expired"
+  >(isLive ? "pending" : "loading");
+  const [resolvedDetails, setResolvedDetails] = useState<Record<string, unknown> | null>(
     null
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const resolveConfirmationRequest = useChatStore((s) => s.resolveConfirmationRequest);
 
-  // For saved messages, fetch the real proposal status from backend
+  // For saved messages, fetch the real status from backend
   useEffect(() => {
-    if (isLive || !request.proposal_id) {
-      // Live streaming cards are always pending; no proposal_id means we can't check
-      if (!isLive && !request.proposal_id) setStatus("approved");
+    if (isLive || !request.confirmation_id) {
+      if (!isLive && !request.confirmation_id) setStatus("approved");
       return;
     }
 
     let cancelled = false;
-    getMcpProposalStatus(request.proposal_id).then((result) => {
+    getToolConfirmationStatus(request.confirmation_id).then((result) => {
       if (cancelled) return;
       if (!result) {
-        // Proposal expired or not found — it was likely already acted on
+        // Confirmation expired or not found — it was likely already acted on
         setStatus("approved");
         return;
       }
       setStatus(result.status === "pending" ? "pending" : result.status);
-      // Use the backend config (has auto-filled values) instead of raw LLM params
-      if (result.config) setResolvedConfig(result.config);
+      if (result.details) setResolvedDetails(result.details);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [request.proposal_id, isLive]);
+  }, [request.confirmation_id, isLive]);
 
-  const ActionIcon = ACTION_ICONS[request.action] || Server;
-  const actionLabel = ACTION_LABELS[request.action] || request.action;
-  const actionColor = ACTION_COLORS[request.action] || "";
+  const isMcp = request.action_type.startsWith("mcp_");
+  const ActionIcon =
+    (isMcp
+      ? MCP_ACTION_ICONS[request.action_type as keyof typeof MCP_ACTION_ICONS]
+      : null) || ShieldQuestion;
+  const actionLabel = isMcp
+    ? MCP_ACTION_LABELS[request.action_type as keyof typeof MCP_ACTION_LABELS] ||
+      request.action_type
+    : request.action_type;
+  const actionColor = isMcp
+    ? MCP_ACTION_COLORS[request.action_type as keyof typeof MCP_ACTION_COLORS] || ""
+    : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
 
-  // Prefer backend-resolved config (auto-filled), fall back to request config
-  const config = (resolvedConfig || request.config) as Record<string, unknown>;
+  // Merge details from backend response or use request details
+  const details = (resolvedDetails || request.details) as Record<string, unknown>;
+  const config = (details.config || {}) as Record<string, unknown>;
 
   const handleApprove = async () => {
     setLoading(true);
     setError(null);
     try {
-      await approveMcpProposal(request.proposal_id);
+      await approveToolConfirmation(request.confirmation_id);
       setStatus("approved");
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.mcpServers });
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.extensions });
+      resolveConfirmationRequest(request.confirmation_id, "approved");
+      // Invalidate caches that may be affected
+      if (isMcp) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.mcpServers });
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.extensions });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to approve");
     } finally {
@@ -97,8 +120,9 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
     setLoading(true);
     setError(null);
     try {
-      await rejectMcpProposal(request.proposal_id);
+      await rejectToolConfirmation(request.confirmation_id);
       setStatus("rejected");
+      resolveConfirmationRequest(request.confirmation_id, "rejected");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to reject");
     } finally {
@@ -106,11 +130,17 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
     }
   };
 
+  const headerIcon = isMcp ? Server : ShieldQuestion;
+  const HeaderIcon = headerIcon;
+  const targetName = isMcp
+    ? (details.target_name as string) || request.title
+    : request.title;
+
   return (
     <div className="border-border bg-card my-2 rounded-lg border p-3 shadow-sm">
       {/* Header */}
       <div className="mb-2 flex items-center gap-2">
-        <Server className="text-muted-foreground h-4 w-4" />
+        <HeaderIcon className="text-muted-foreground h-4 w-4" />
         <span
           className={cn(
             "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
@@ -120,11 +150,11 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
           <ActionIcon className="h-3 w-3" />
           {actionLabel}
         </span>
-        <span className="text-sm font-medium">{request.target_name}</span>
+        <span className="text-sm font-medium">{targetName}</span>
         {status === "loading" && (
           <Loader2 className="text-muted-foreground ml-auto h-3.5 w-3.5 animate-spin" />
         )}
-        {(status === "approved" || status === "rejected") && (
+        {(status === "approved" || status === "rejected" || status === "expired") && (
           <span
             className={cn(
               "ml-auto rounded-md px-2 py-0.5 text-xs font-medium",
@@ -133,7 +163,11 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
                 : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
             )}
           >
-            {status === "approved" ? "Approved" : "Rejected"}
+            {status === "approved"
+              ? "Approved"
+              : status === "rejected"
+                ? "Rejected"
+                : "Expired"}
           </span>
         )}
       </div>
@@ -141,8 +175,8 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
       {/* Summary */}
       <p className="text-muted-foreground mb-2 text-sm">{request.summary}</p>
 
-      {/* Config details (for add/update) */}
-      {request.action !== "remove" && (
+      {/* MCP-specific config details */}
+      {isMcp && request.action_type !== "mcp_remove" && (
         <div className="text-muted-foreground bg-muted/50 mb-2 space-y-0.5 rounded p-2 font-mono text-xs">
           {config.type != null && <div>Type: {String(config.type)}</div>}
           {config.command != null && (
@@ -158,6 +192,17 @@ export function McpApprovalCard({ request, isLive }: McpApprovalCardProps) {
           {config.env != null && typeof config.env === "object" && (
             <div>Env: {Object.keys(config.env as Record<string, string>).join(", ")}</div>
           )}
+        </div>
+      )}
+
+      {/* Generic details for non-MCP confirmations */}
+      {!isMcp && Object.keys(details).length > 0 && (
+        <div className="text-muted-foreground bg-muted/50 mb-2 space-y-0.5 rounded p-2 font-mono text-xs">
+          {Object.entries(details).map(([key, value]) => (
+            <div key={key}>
+              {key}: {typeof value === "object" ? JSON.stringify(value) : String(value)}
+            </div>
+          ))}
         </div>
       )}
 

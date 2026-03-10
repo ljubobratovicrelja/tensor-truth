@@ -28,9 +28,9 @@ from tensortruth.services import (
     TaskRunner,
     ToolService,
 )
-from tensortruth.services.mcp_proposal_service import MCPProposalService
 from tensortruth.services.metadata_store import MetadataStore
 from tensortruth.services.startup_service import StartupService
+from tensortruth.services.tool_confirmation_service import ToolConfirmationService
 
 
 @lru_cache
@@ -184,13 +184,13 @@ def get_task_runner() -> TaskRunner:
 AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
 TaskRunnerDep = Annotated[TaskRunner, Depends(get_task_runner)]
 
-# MCPProposalService singleton
-_mcp_proposal_service: MCPProposalService | None = None
+# ToolConfirmationService singleton
+_tool_confirmation_service: ToolConfirmationService | None = None
 
 
-def get_mcp_proposal_service() -> MCPProposalService:
-    """Get the singleton MCPProposalService instance."""
-    global _mcp_proposal_service
-    if _mcp_proposal_service is None:
-        _mcp_proposal_service = MCPProposalService()
-    return _mcp_proposal_service
+def get_tool_confirmation_service() -> ToolConfirmationService:
+    """Get the singleton ToolConfirmationService instance."""
+    global _tool_confirmation_service
+    if _tool_confirmation_service is None:
+        _tool_confirmation_service = ToolConfirmationService()
+    return _tool_confirmation_service
