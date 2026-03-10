@@ -17,7 +17,7 @@ import {
   useInstallExtension,
   useUninstallExtension,
 } from "@/hooks";
-import type { LibraryExtensionResponse } from "@/api/types";
+import type { ExtensionResponse, LibraryExtensionResponse } from "@/api/types";
 
 function McpStatusDot({
   requires_mcp,
@@ -78,6 +78,20 @@ export function ExtensionsSection() {
     [uninstallExtension]
   );
 
+  const handleUninstallGroup = useCallback(
+    (extensions: ExtensionResponse[]) => {
+      if (!confirm(`Remove ${extensions.length} extensions?`)) return;
+      for (const ext of extensions) {
+        uninstallExtension.mutate(
+          { type: ext.type, filename: ext.filename },
+          { onError: (e) => toast.error(`Failed to remove "${ext.name}": ${e.message}`) }
+        );
+      }
+      toast.success(`Removing ${extensions.length} extensions...`);
+    },
+    [uninstallExtension]
+  );
+
   const handleInstallGroup = useCallback(
     (extensions: LibraryExtensionResponse[]) => {
       const toInstall = extensions.filter((e) => !e.installed);
@@ -109,6 +123,14 @@ export function ExtensionsSection() {
   const installed = installedData?.extensions ?? [];
   const library = libraryData?.extensions ?? [];
 
+  // Group installed extensions by MCP dependency
+  const installedGroups = new Map<string, ExtensionResponse[]>();
+  for (const ext of installed) {
+    const key = ext.requires_mcp ?? "_builtin";
+    if (!installedGroups.has(key)) installedGroups.set(key, []);
+    installedGroups.get(key)!.push(ext);
+  }
+
   // Group library extensions by MCP dependency
   const groups = new Map<string, LibraryExtensionResponse[]>();
   for (const ext of library) {
@@ -130,32 +152,57 @@ export function ExtensionsSection() {
           <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
             Installed
           </h4>
-          {installed.map((ext) => (
-            <div
-              key={`${ext.type}:${ext.filename}`}
-              className="bg-muted/30 flex items-center justify-between rounded-lg border px-3 py-2"
-            >
-              <div className="flex min-w-0 items-center gap-2">
-                <Package className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-                <span className="truncate text-sm font-medium">{ext.name}</span>
-                <Badge variant="outline" className="shrink-0 text-xs">
-                  {ext.type}
-                </Badge>
-                <McpStatusDot
-                  requires_mcp={ext.requires_mcp}
-                  mcp_available={ext.mcp_available}
-                />
+          {Array.from(installedGroups.entries()).map(([groupKey, extensions]) => (
+            <div key={groupKey} className="space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {groupKey !== "_builtin" && (
+                    <McpStatusDot
+                      requires_mcp={groupKey}
+                      mcp_available={extensions[0]?.mcp_available ?? false}
+                    />
+                  )}
+                  <span className="text-muted-foreground text-xs">
+                    {groupKey === "_builtin" ? "Built-in tools" : `${groupKey} MCP`}
+                  </span>
+                </div>
+                {extensions.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive h-6 px-2 text-xs"
+                    onClick={() => handleUninstallGroup(extensions)}
+                    disabled={uninstallExtension.isPending}
+                  >
+                    <Trash2 className="mr-1 h-3 w-3" />
+                    Remove All
+                  </Button>
+                )}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive h-7 shrink-0 px-2 text-xs"
-                onClick={() => handleUninstall(ext.type, ext.filename, ext.name)}
-                disabled={uninstallExtension.isPending}
-              >
-                <Trash2 className="mr-1 h-3 w-3" />
-                Remove
-              </Button>
+              {extensions.map((ext) => (
+                <div
+                  key={`${ext.type}:${ext.filename}`}
+                  className="bg-muted/30 flex items-center justify-between rounded-lg border px-3 py-2"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Package className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate text-sm font-medium">{ext.name}</span>
+                    <Badge variant="outline" className="shrink-0 text-xs">
+                      {ext.type}
+                    </Badge>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive h-7 shrink-0 px-2 text-xs"
+                    onClick={() => handleUninstall(ext.type, ext.filename, ext.name)}
+                    disabled={uninstallExtension.isPending}
+                  >
+                    <Trash2 className="mr-1 h-3 w-3" />
+                    Remove
+                  </Button>
+                </div>
+              ))}
             </div>
           ))}
         </div>
