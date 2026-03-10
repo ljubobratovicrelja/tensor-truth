@@ -18,6 +18,10 @@ class ProviderResponse(BaseModel):
     models: List[Dict[str, Any]] = Field(
         default_factory=list, description="Static model configs"
     )
+    default_capabilities: List[str] = Field(
+        default_factory=list,
+        description="Capabilities assumed for all models (e.g. tools, thinking)",
+    )
     status: str = Field(
         "unknown", description="Connection status (connected, unreachable)"
     )
@@ -49,6 +53,10 @@ class ProviderCreateRequest(BaseModel):
     models: List[Dict[str, Any]] = Field(
         default_factory=list, description="Static model configs"
     )
+    default_capabilities: List[str] = Field(
+        default_factory=list,
+        description="Capabilities assumed for all models (e.g. tools, thinking)",
+    )
 
 
 class ProviderUpdateRequest(BaseModel):
@@ -63,6 +71,10 @@ class ProviderUpdateRequest(BaseModel):
     )
     models: Optional[List[Dict[str, Any]]] = Field(
         None, description="Static model configs"
+    )
+    default_capabilities: Optional[List[str]] = Field(
+        None,
+        description="Capabilities assumed for all models (e.g. tools, thinking)",
     )
 
 

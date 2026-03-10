@@ -14,12 +14,22 @@ export class ApiRequestError extends Error {
   }
 }
 
+function extractDetail(error: ApiError): string | undefined {
+  const d = error.detail;
+  if (!d) return undefined;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    return d.map((item: { msg?: string }) => item.msg || String(item)).join("; ");
+  }
+  return String(d);
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let detail = `HTTP ${response.status}`;
     try {
       const error = (await response.json()) as ApiError;
-      detail = error.detail || detail;
+      detail = extractDetail(error) || detail;
     } catch {
       // Ignore JSON parsing errors
     }
@@ -71,7 +81,7 @@ export async function apiDelete(path: string): Promise<void> {
     let detail = `HTTP ${response.status}`;
     try {
       const error = (await response.json()) as ApiError;
-      detail = error.detail || detail;
+      detail = extractDetail(error) || detail;
     } catch {
       // Ignore JSON parsing errors
     }

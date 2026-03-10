@@ -263,13 +263,15 @@ async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
                 if not name:
                     continue
                 static = static_lookup.get(name, {})
+                default_caps = getattr(provider, "default_capabilities", []) or []
+                caps = static.get("capabilities", []) or default_caps
                 models.append(
                     ModelInfo(
                         name=name,
                         provider_id=provider.id,
                         provider_type="openai_compatible",
                         display_name=static.get("display_name") or name,
-                        capabilities=static.get("capabilities", []),
+                        capabilities=caps,
                     )
                 )
                 has_any_models = True

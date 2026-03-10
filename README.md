@@ -75,19 +75,15 @@ providers:
 
 ### OpenAI-Compatible APIs
 
-Connects to vLLM, Groq, Together AI, LocalAI, or any service that implements the OpenAI API. Requires a static model list since these endpoints don't always publish available models.
+Connects to OpenRouter, vLLM, Groq, Together AI, LocalAI, or any service that implements the OpenAI API. Models are discovered automatically via the `/v1/models` endpoint. Use `default_capabilities` to declare what all models on the provider support (tool calling, thinking) — this controls whether agentic mode is available.
 
 ```yaml
 providers:
-  - id: groq
+  - id: openrouter
     type: openai_compatible
-    base_url: https://api.groq.com/openai/v1
-    api_key: ${GROQ_API_KEY}    # environment variable expansion
-    models:
-      - name: llama-3.3-70b-versatile
-        display_name: Llama 3.3 70B
-        capabilities: ["tools"]
-        context_window: 131072
+    base_url: https://openrouter.ai/api/v1
+    api_key: ${OPENROUTER_API_KEY}    # environment variable expansion
+    default_capabilities: ["tools", "thinking"]
 ```
 
 ### llama.cpp

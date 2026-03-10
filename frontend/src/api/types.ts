@@ -524,6 +524,7 @@ export interface ProviderResponse {
   api_key: string;
   timeout: number;
   models: Record<string, unknown>[];
+  default_capabilities: string[];
   status: string;
   model_count: number;
 }
@@ -539,6 +540,7 @@ export interface ProviderCreateRequest {
   api_key?: string;
   timeout?: number;
   models?: Record<string, unknown>[];
+  default_capabilities?: string[];
 }
 
 export interface ProviderUpdateRequest {
@@ -546,6 +548,7 @@ export interface ProviderUpdateRequest {
   api_key?: string;
   timeout?: number;
   models?: Record<string, unknown>[];
+  default_capabilities?: string[];
 }
 
 export interface ProviderTestRequest {
@@ -618,7 +621,7 @@ export interface TaskListResponse {
 
 // API Error
 export interface ApiError {
-  detail: string;
+  detail: string | Array<{ msg?: string; loc?: unknown[] }>;
 }
 
 // Project types

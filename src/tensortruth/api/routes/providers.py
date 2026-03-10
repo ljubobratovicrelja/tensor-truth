@@ -20,6 +20,7 @@ from tensortruth.api.schemas.provider import (
     ProviderTestResponse,
     ProviderUpdateRequest,
 )
+from tensortruth.app_utils.config import _expand_env_vars
 from tensortruth.app_utils.config_schema import ProviderConfig
 
 logger = logging.getLogger(__name__)
@@ -178,6 +179,39 @@ def _detect_and_store_model_capabilities(
     return updated
 
 
+def _store_discovered_models(
+    config_service: Any,
+    provider_id: str,
+    discovered_model_names: List[str],
+    existing_models: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Store discovered model names without probing capabilities.
+
+    Used for openai_compatible providers where the llama.cpp ``/props``
+    endpoint doesn't exist.  Preserves any existing display_name /
+    capabilities already set by the user.
+    """
+    existing_lookup = {m.get("name", ""): m for m in existing_models if m.get("name")}
+    updated: List[Dict[str, Any]] = []
+
+    for model_name in discovered_model_names:
+        prior = existing_lookup.get(model_name, {})
+        updated.append(
+            {
+                "name": model_name,
+                "display_name": prior.get("display_name", ""),
+                "capabilities": prior.get("capabilities", []),
+            }
+        )
+
+    try:
+        config_service.update_provider(provider_id, models=updated)
+    except Exception as e:
+        logger.warning("Failed to persist models for '%s': %s", provider_id, e)
+
+    return updated
+
+
 @router.get("", response_model=ProviderListResponse)
 def list_providers(config_service: ConfigServiceDep) -> ProviderListResponse:
     """List all configured providers with live connectivity status."""
@@ -185,7 +219,8 @@ def list_providers(config_service: ConfigServiceDep) -> ProviderListResponse:
     providers: List[ProviderResponse] = []
 
     for p in config.providers:
-        probe = _probe_provider(p.type, p.base_url, p.api_key)
+        expanded_key = _expand_env_vars(p.api_key) if p.api_key else ""
+        probe = _probe_provider(p.type, p.base_url, expanded_key)
         providers.append(
             ProviderResponse(
                 id=p.id,
@@ -194,6 +229,7 @@ def list_providers(config_service: ConfigServiceDep) -> ProviderListResponse:
                 api_key=_mask_api_key(p.api_key),
                 timeout=p.timeout,
                 models=p.models,
+                default_capabilities=p.default_capabilities,
                 status="connected" if probe["connected"] else "unreachable",
                 model_count=len(probe["models"]),
             )
@@ -219,6 +255,7 @@ def add_provider(
         api_key=body.api_key or "",
         timeout=body.timeout or 300,
         models=body.models or [],
+        default_capabilities=body.default_capabilities or [],
     )
 
     try:
@@ -228,18 +265,25 @@ def add_provider(
 
     _reset_provider_registry()
 
-    probe = _probe_provider(provider.type, provider.base_url, provider.api_key)
+    expanded_key = _expand_env_vars(provider.api_key) if provider.api_key else ""
+    probe = _probe_provider(provider.type, provider.base_url, expanded_key)
 
-    # Auto-detect capabilities for llama_cpp and openai_compatible providers and
-    # persist them to config so the model selector knows what each model supports.
+    # Auto-detect capabilities via llama.cpp /props endpoint (only works for
+    # llama_cpp providers).  For openai_compatible providers we just store
+    # the discovered model names without probing — /props doesn't exist on
+    # remote OpenAI-compatible APIs and would timeout for every model.
     detected_models = provider.models
-    if provider.type in ("llama_cpp", "openai_compatible") and probe["models"]:
+    if provider.type == "llama_cpp" and probe["models"]:
         detected_models = _detect_and_store_model_capabilities(
             config_service,
             provider.id,
             provider.base_url,
             probe["models"],
             existing_models=body.models or [],
+        )
+    elif provider.type == "openai_compatible" and probe["models"]:
+        detected_models = _store_discovered_models(
+            config_service, provider.id, probe["models"], body.models or []
         )
 
     return ProviderResponse(
@@ -249,6 +293,7 @@ def add_provider(
         api_key=_mask_api_key(provider.api_key),
         timeout=provider.timeout,
         models=detected_models,
+        default_capabilities=provider.default_capabilities,
         status="connected" if probe["connected"] else "unreachable",
         model_count=len(probe["models"]),
     )
@@ -274,6 +319,8 @@ def update_provider(
         updates["timeout"] = body.timeout
     if body.models is not None:
         updates["models"] = body.models
+    if body.default_capabilities is not None:
+        updates["default_capabilities"] = body.default_capabilities
 
     try:
         config = config_service.update_provider(provider_id, **updates)
@@ -294,22 +341,23 @@ def update_provider(
             status_code=404, detail=f"Provider '{provider_id}' not found"
         )
 
-    probe = _probe_provider(provider.type, provider.base_url, provider.api_key)
+    expanded_key = _expand_env_vars(provider.api_key) if provider.api_key else ""
+    probe = _probe_provider(provider.type, provider.base_url, expanded_key)
 
     # Re-detect capabilities when the URL changes (new server may have different models)
     detected_models = provider.models
     url_changed = body.base_url is not None
-    if (
-        url_changed
-        and provider.type in ("llama_cpp", "openai_compatible")
-        and probe["models"]
-    ):
+    if url_changed and provider.type == "llama_cpp" and probe["models"]:
         detected_models = _detect_and_store_model_capabilities(
             config_service,
             provider.id,
             provider.base_url,
             probe["models"],
             existing_models=body.models or [],
+        )
+    elif url_changed and provider.type == "openai_compatible" and probe["models"]:
+        detected_models = _store_discovered_models(
+            config_service, provider.id, probe["models"], body.models or []
         )
 
     return ProviderResponse(
@@ -319,6 +367,7 @@ def update_provider(
         api_key=_mask_api_key(provider.api_key),
         timeout=provider.timeout,
         models=detected_models,
+        default_capabilities=provider.default_capabilities,
         status="connected" if probe["connected"] else "unreachable",
         model_count=len(probe["models"]),
     )
@@ -354,7 +403,8 @@ def test_provider(body: ProviderTestRequest) -> ProviderTestResponse:
             message=str(e),
         )
 
-    probe = _probe_provider(body.type, body.base_url, body.api_key or "")
+    expanded_key = _expand_env_vars(body.api_key) if body.api_key else ""
+    probe = _probe_provider(body.type, body.base_url, expanded_key)
 
     if probe["connected"]:
         model_count = len(probe["models"])

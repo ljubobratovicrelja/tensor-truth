@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTestProviderUrl } from "@/hooks/useProviders";
@@ -41,6 +42,7 @@ interface AddProviderDialogProps {
     base_url: string;
     api_key?: string;
     timeout?: number;
+    default_capabilities?: string[];
   }) => void;
   isSaving: boolean;
   prefill?: { type: string; base_url: string; suggested_id: string };
@@ -60,6 +62,8 @@ export function AddProviderDialog({
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [providerTimeout, setProviderTimeout] = useState(300);
+  const [assumeTools, setAssumeTools] = useState(true);
+  const [assumeThinking, setAssumeThinking] = useState(true);
 
   const testUrl = useTestProviderUrl();
 
@@ -75,18 +79,24 @@ export function AddProviderDialog({
       setBaseUrl(editProvider.base_url);
       setApiKey(editProvider.api_key === "***" ? "***" : editProvider.api_key);
       setProviderTimeout(editProvider.timeout);
+      setAssumeTools((editProvider.default_capabilities ?? []).includes("tools"));
+      setAssumeThinking((editProvider.default_capabilities ?? []).includes("thinking"));
     } else if (prefill) {
       setProviderType(prefill.type);
       setId(prefill.suggested_id);
       setBaseUrl(prefill.base_url);
       setApiKey("");
       setProviderTimeout(300);
+      setAssumeTools(true);
+      setAssumeThinking(true);
     } else {
       setProviderType("ollama");
       setId("");
       setBaseUrl("");
       setApiKey("");
       setProviderTimeout(300);
+      setAssumeTools(true);
+      setAssumeThinking(true);
     }
     testUrl.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,12 +118,16 @@ export function AddProviderDialog({
   };
 
   const handleSave = () => {
+    const caps: string[] = [];
+    if (assumeTools) caps.push("tools");
+    if (assumeThinking) caps.push("thinking");
     onSave({
       id,
       type: providerType,
       base_url: baseUrl,
       api_key: apiKey && apiKey !== "***" ? apiKey : undefined,
       timeout: providerTimeout,
+      default_capabilities: caps,
     });
   };
 
@@ -130,10 +144,22 @@ export function AddProviderDialog({
             <Label>ID</Label>
             <Input
               value={id}
-              onChange={(e) => setId(e.target.value)}
+              onChange={(e) =>
+                setId(
+                  e.target.value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9_-]/g, "-")
+                    .replace(/^-+/, "")
+                )
+              }
               placeholder="my-provider"
               disabled={isEdit}
             />
+            {!isEdit && (
+              <p className="text-muted-foreground text-xs">
+                Lowercase letters, numbers, hyphens, and underscores only.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -169,11 +195,44 @@ export function AddProviderDialog({
             <div className="space-y-2">
               <Label>API Key</Label>
               <Input
-                type="password"
+                type={/^\$\{.+\}$/.test(apiKey) ? "text" : "password"}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Optional"
+                placeholder="sk-... or ${ENV_VAR_NAME}"
               />
+              <p className="text-muted-foreground text-xs">
+                Use <code className="text-xs">{"${ENV_VAR_NAME}"}</code> to reference an
+                environment variable.
+              </p>
+            </div>
+          )}
+
+          {providerType === "openai_compatible" && (
+            <div className="space-y-3">
+              <Label>Assume model capabilities</Label>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="assume-tools"
+                  checked={assumeTools}
+                  onCheckedChange={(v) => setAssumeTools(v === true)}
+                />
+                <label htmlFor="assume-tools" className="text-sm">
+                  Tool calling
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="assume-thinking"
+                  checked={assumeThinking}
+                  onCheckedChange={(v) => setAssumeThinking(v === true)}
+                />
+                <label htmlFor="assume-thinking" className="text-sm">
+                  Thinking / reasoning
+                </label>
+              </div>
+              <p className="text-muted-foreground text-xs">
+                Applied to all models that don&apos;t have explicit capabilities set.
+              </p>
             </div>
           )}
 

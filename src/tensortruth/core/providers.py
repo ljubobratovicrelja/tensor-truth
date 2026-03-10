@@ -170,11 +170,13 @@ class ProviderRegistry:
 
     def _get_static_models(self, provider) -> List[ModelReference]:
         """Return statically-configured models for an openai_compatible provider."""
+        default_caps = getattr(provider, "default_capabilities", []) or []
         models: List[ModelReference] = []
         for m in provider.models:
             name = m.get("name", "")
             if not name:
                 continue
+            caps = m.get("capabilities", []) or default_caps
             models.append(
                 ModelReference(
                     provider_id=provider.id,
@@ -183,7 +185,7 @@ class ProviderRegistry:
                     provider_type="openai_compatible",
                     base_url=provider.base_url.rstrip("/"),
                     api_key=provider.api_key,
-                    capabilities=m.get("capabilities", []),
+                    capabilities=caps,
                     context_window=m.get("context_window", 4096),
                     timeout=provider.timeout,
                 )
@@ -346,8 +348,10 @@ class ProviderRegistry:
             )
         else:
             # openai_compatible — look in static model list
+            default_caps = getattr(provider, "default_capabilities", []) or []
             for m in provider.models:
                 if m.get("name") == model_name:
+                    caps = m.get("capabilities", []) or default_caps
                     return ModelReference(
                         provider_id=provider.id,
                         model_name=model_name,
@@ -355,7 +359,7 @@ class ProviderRegistry:
                         provider_type="openai_compatible",
                         base_url=provider.base_url.rstrip("/"),
                         api_key=provider.api_key,
-                        capabilities=m.get("capabilities", []),
+                        capabilities=caps,
                         context_window=m.get("context_window", 4096),
                         timeout=provider.timeout,
                     )
@@ -367,6 +371,7 @@ class ProviderRegistry:
                 provider_type="openai_compatible",
                 base_url=provider.base_url.rstrip("/"),
                 api_key=provider.api_key,
+                capabilities=default_caps,
                 timeout=provider.timeout,
             )
 

@@ -24,6 +24,7 @@ class ProviderConfig:
     api_key: str = ""  # Supports ${ENV_VAR} syntax
     timeout: int = 300
     models: List[Dict[str, Any]] = field(default_factory=list)
+    default_capabilities: List[str] = field(default_factory=list)
 
 
 @dataclass

@@ -93,6 +93,7 @@ export function ProviderSetupPanel({ mode, onProvidersReady }: ProviderSetupPane
       base_url: string;
       api_key?: string;
       timeout?: number;
+      default_capabilities?: string[];
     }) => {
       if (editingProvider) {
         updateProvider.mutate(
@@ -102,6 +103,7 @@ export function ProviderSetupPanel({ mode, onProvidersReady }: ProviderSetupPane
               base_url: data.base_url,
               api_key: data.api_key,
               timeout: data.timeout,
+              default_capabilities: data.default_capabilities,
             },
           },
           {
@@ -120,6 +122,7 @@ export function ProviderSetupPanel({ mode, onProvidersReady }: ProviderSetupPane
             base_url: data.base_url,
             api_key: data.api_key,
             timeout: data.timeout,
+            default_capabilities: data.default_capabilities,
           },
           {
             onSuccess: () => {
