@@ -186,6 +186,12 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
   );
 
   // Web Search
+  const [enableTitleReranking, setEnableTitleReranking] = useState(
+    config.web_search.enable_title_reranking ?? true
+  );
+  const [enableContentReranking, setEnableContentReranking] = useState(
+    config.web_search.enable_content_reranking ?? true
+  );
   const [ddgMaxResults, setDdgMaxResults] = useState(config.web_search.ddg_max_results);
   const [maxPagesToFetch, setMaxPagesToFetch] = useState(
     config.web_search.max_pages_to_fetch
@@ -222,6 +228,8 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
     setCollapseNewlines(config.history_cleaning.collapse_newlines);
     setMaxHistoryTurns(config.conversation.max_history_turns);
     setMemoryTokenLimit(config.conversation.memory_token_limit);
+    setEnableTitleReranking(config.web_search.enable_title_reranking ?? true);
+    setEnableContentReranking(config.web_search.enable_content_reranking ?? true);
     setDdgMaxResults(config.web_search.ddg_max_results);
     setMaxPagesToFetch(config.web_search.max_pages_to_fetch);
     setRerankTitleThreshold(config.web_search.rerank_title_threshold);
@@ -340,6 +348,8 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
       history_cleaning_collapse_newlines: collapseNewlines,
       conversation_max_history_turns: maxHistoryTurns,
       conversation_memory_token_limit: memoryTokenLimit,
+      web_search_enable_title_reranking: enableTitleReranking,
+      web_search_enable_content_reranking: enableContentReranking,
       web_search_ddg_max_results: ddgMaxResults,
       web_search_max_pages_to_fetch: maxPagesToFetch,
       web_search_rerank_title_threshold: rerankTitleThreshold,
@@ -873,6 +883,41 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
         </div>
       </div>
 
+      {/* Reranking */}
+      <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
+        <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          Reranking
+        </h4>
+        <p className="text-muted-foreground text-xs">
+          Use a cross-encoder model to score and filter results by relevance. When off,
+          the LLM decides what to keep.
+        </p>
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="enable-title-reranking"
+              checked={enableTitleReranking}
+              onCheckedChange={(checked) => setEnableTitleReranking(checked === true)}
+            />
+            <Label htmlFor="enable-title-reranking" className="cursor-pointer">
+              Rerank by title/snippet
+              <HelpTooltip text="After searching, score results by title and snippet relevance before fetching pages." />
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="enable-content-reranking"
+              checked={enableContentReranking}
+              onCheckedChange={(checked) => setEnableContentReranking(checked === true)}
+            />
+            <Label htmlFor="enable-content-reranking" className="cursor-pointer">
+              Rerank by page content
+              <HelpTooltip text="After fetching pages, score them by actual content relevance. When off, source confidence scores are not shown." />
+            </Label>
+          </div>
+        </div>
+      </div>
+
       {/* Relevance Thresholds */}
       <div className="bg-muted/30 space-y-3 rounded-lg border p-3">
         <h4 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
@@ -881,7 +926,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
         <p className="text-muted-foreground text-xs">
           Sources below these thresholds are rejected. Lower = more lenient.
         </p>
-        <div className="space-y-2">
+        <div className={!enableTitleReranking ? "space-y-2 opacity-50" : "space-y-2"}>
           <div className="flex items-center justify-between">
             <Label className="text-sm">
               Title Threshold
@@ -897,9 +942,10 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
             min={0}
             max={0.5}
             step={0.05}
+            disabled={!enableTitleReranking}
           />
         </div>
-        <div className="space-y-2">
+        <div className={!enableContentReranking ? "space-y-2 opacity-50" : "space-y-2"}>
           <div className="flex items-center justify-between">
             <Label className="text-sm">
               Content Threshold
@@ -915,6 +961,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
             min={0}
             max={0.5}
             step={0.05}
+            disabled={!enableContentReranking}
           />
         </div>
       </div>

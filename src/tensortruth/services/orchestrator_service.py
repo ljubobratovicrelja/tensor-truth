@@ -301,7 +301,7 @@ class OrchestratorService:
         reranker_model = self._session_params.get("reranker_model")
         reranker_device = str(self._session_params.get("rag_device", "cpu"))
 
-        # Load web search config for thresholds
+        # Load web search config for thresholds and reranking toggles
         try:
             from tensortruth.api.deps import get_config_service
 
@@ -309,9 +309,17 @@ class OrchestratorService:
             ws_config = config.web_search
             title_threshold = ws_config.rerank_title_threshold
             content_threshold = ws_config.rerank_content_threshold
+            enable_title_reranking = ws_config.enable_title_reranking
+            enable_content_reranking = ws_config.enable_content_reranking
         except Exception:
             title_threshold = 0.1
             content_threshold = 0.1
+            enable_title_reranking = True
+            enable_content_reranking = True
+
+        # Compute per-stage reranker refs (None disables that stage)
+        title_reranker = reranker_model if enable_title_reranking else None
+        content_reranker = reranker_model if enable_content_reranking else None
 
         # 1. Create wrapped built-in tools (RAG + web tools with reranking)
         wrapped_tools = create_all_tool_wrappers(
@@ -321,7 +329,8 @@ class OrchestratorService:
             session_params=self._session_params,
             session_messages=self._session_messages,
             rag_result_callback=_rag_result_cb,
-            reranker_model=reranker_model,
+            title_reranker_model=title_reranker,
+            content_reranker_model=content_reranker,
             reranker_device=reranker_device,
             title_threshold=title_threshold,
             content_threshold=content_threshold,

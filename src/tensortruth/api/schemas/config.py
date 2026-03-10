@@ -67,6 +67,8 @@ class WebSearchConfigSchema(BaseModel):
 
     ddg_max_results: int = 10
     max_pages_to_fetch: int = 5
+    enable_title_reranking: bool = True
+    enable_content_reranking: bool = True
     rerank_title_threshold: float = 0.1
     rerank_content_threshold: float = 0.1
     max_source_context_pct: float = 0.15

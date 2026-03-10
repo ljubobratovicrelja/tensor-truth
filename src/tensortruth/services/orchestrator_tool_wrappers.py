@@ -1433,7 +1433,8 @@ def create_all_tool_wrappers(
     session_params: Optional[Dict[str, object]] = None,
     session_messages: Optional[List[Dict[str, object]]] = None,
     rag_result_callback: Optional[RAGResultCallback] = None,
-    reranker_model: Optional[str] = None,
+    title_reranker_model: Optional[str] = None,
+    content_reranker_model: Optional[str] = None,
     reranker_device: str = "cpu",
     title_threshold: float = 0.1,
     content_threshold: float = 0.1,
@@ -1484,7 +1485,7 @@ def create_all_tool_wrappers(
             create_web_search_tool(
                 tool_service,
                 progress_emitter,
-                reranker_model=reranker_model,
+                reranker_model=title_reranker_model,
                 reranker_device=reranker_device,
                 title_threshold=title_threshold,
                 web_query_setter=web_query_setter,
@@ -1500,7 +1501,7 @@ def create_all_tool_wrappers(
             create_fetch_pages_batch_tool(
                 tool_service,
                 progress_emitter,
-                reranker_model=reranker_model,
+                reranker_model=content_reranker_model,
                 reranker_device=reranker_device,
                 content_threshold=content_threshold,
                 context_window=context_window,

@@ -164,8 +164,6 @@ class AgentConfig:
     # Higher values = more thorough research, but slower
     min_pages_required: int = 5
 
-    enable_search_reranking: bool = True
-
     # Orchestrator (agentic chat) — when enabled, messages are routed through
     # the orchestrator agent which can call tools (RAG, web search, etc.).
     # Session-level setting overrides this global default.
@@ -207,6 +205,10 @@ class WebSearchConfig:
     # DDG search settings
     ddg_max_results: int = 10  # Max results to fetch from DuckDuckGo
     max_pages_to_fetch: int = 5  # Max pages to actually download and process
+
+    # Reranking toggles
+    enable_title_reranking: bool = True  # Rerank DDG results by title/snippet
+    enable_content_reranking: bool = True  # Rerank fetched pages by content
 
     # Reranking thresholds (0.0-1.0)
     rerank_title_threshold: float = 0.1  # Min score after title/snippet reranking

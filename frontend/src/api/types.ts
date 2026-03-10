@@ -298,6 +298,8 @@ export interface HistoryCleaningConfig {
 export interface WebSearchConfig {
   ddg_max_results: number;
   max_pages_to_fetch: number;
+  enable_title_reranking: boolean;
+  enable_content_reranking: boolean;
   rerank_title_threshold: number;
   rerank_content_threshold: number;
   max_source_context_pct: number;

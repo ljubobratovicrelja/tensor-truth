@@ -220,7 +220,7 @@ class OrchestratorStreamTranslator:
                 continue
             source_dict: Dict[str, Any] = {
                 "text": node.content or node.snippet or "",
-                "score": node.effective_score,
+                "score": node.score,
                 "metadata": {
                     "source_url": node.url,
                     "display_name": node.title,

@@ -61,6 +61,8 @@ def _config_to_response(config) -> ConfigResponse:
         web_search=WebSearchConfigSchema(
             ddg_max_results=config.web_search.ddg_max_results,
             max_pages_to_fetch=config.web_search.max_pages_to_fetch,
+            enable_title_reranking=config.web_search.enable_title_reranking,
+            enable_content_reranking=config.web_search.enable_content_reranking,
             rerank_title_threshold=config.web_search.rerank_title_threshold,
             rerank_content_threshold=config.web_search.rerank_content_threshold,
             max_source_context_pct=config.web_search.max_source_context_pct,
