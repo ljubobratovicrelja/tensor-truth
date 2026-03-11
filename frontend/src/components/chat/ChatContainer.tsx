@@ -113,6 +113,7 @@ export function ChatContainer() {
           doc_id: d.doc_id,
           type: d.doc_id.startsWith("url_") ? "url" : "pdf",
           filename: d.filename,
+          status: "indexed",
         }))
     : undefined;
 
