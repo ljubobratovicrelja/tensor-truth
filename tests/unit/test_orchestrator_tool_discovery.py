@@ -251,7 +251,13 @@ class TestBuiltinToolNameFiltering:
 
     def test_wrapped_builtin_names_constant_is_complete(self):
         """The _WRAPPED_BUILTIN_TOOL_NAMES set should contain all expected names."""
-        expected = {"search_web", "fetch_page", "fetch_pages_batch", "search_focused"}
+        expected = {
+            "search_web",
+            "fetch_page",
+            "fetch_pages_batch",
+            "search_focused",
+            "add_arxiv_paper",
+        }
         assert _WRAPPED_BUILTIN_TOOL_NAMES == expected
 
 

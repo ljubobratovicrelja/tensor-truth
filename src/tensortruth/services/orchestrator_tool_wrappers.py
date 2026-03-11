@@ -58,6 +58,24 @@ FullOutputCallback = Callable[[str, str], None]
 # --- Pydantic schemas for FunctionTool parameter validation ---
 
 
+class AddArxivPaperInput(BaseModel):
+    """Input schema for add_arxiv_paper orchestrator tool."""
+
+    arxiv_id: str = Field(
+        description=(
+            'An arXiv paper identifier. Accepts new format ("2301.12345"), '
+            'old format ("hep-th/9901001"), or a full arXiv URL.'
+        )
+    )
+    scope: str = Field(
+        default="session",
+        description=(
+            'Where to add the paper: "session" (default) adds to the '
+            'current chat session, "project" adds to the parent project.'
+        ),
+    )
+
+
 class RAGQueryInput(BaseModel):
     """Input schema for rag_query orchestrator tool."""
 
@@ -1426,6 +1444,186 @@ def create_manage_mcp_server_tool(
     )
 
 
+def create_add_arxiv_paper_tool(
+    progress_emitter: ProgressEmitter,
+    confirmation_service: "ToolConfirmationService",
+    session_id: str,
+    project_id: Optional[str] = None,
+) -> FunctionTool:
+    """Create an add_arxiv_paper FunctionTool for the orchestrator.
+
+    Downloads an arXiv paper PDF and adds it to the session or project
+    document store. Requires user confirmation before downloading.
+    Reuses the same download + upload logic as the ``_upload_arxiv``
+    REST endpoint in ``documents.py``.
+    """
+
+    async def add_arxiv_paper(arxiv_id: str, scope: str = "session") -> str:
+        """Download an arXiv paper and add it to the session or project documents.
+
+        Use this tool when the user asks you to add, save, or download an arXiv
+        paper to their session or project. The user will be prompted to approve
+        the download; the tool blocks until they respond. The paper will appear
+        in the documents panel and must be indexed before it can be used for
+        RAG queries.
+
+        Args:
+            arxiv_id: arXiv identifier (e.g. "2301.12345") or full URL.
+            scope: "session" (default) or "project".
+
+        Returns:
+            Success message with paper details, or an error string.
+        """
+        import tempfile
+        from pathlib import Path
+
+        import arxiv as arxiv_lib
+
+        from tensortruth.api.deps import get_document_service
+        from tensortruth.utils.validation import validate_arxiv_id
+
+        # Validate scope
+        if scope not in ("session", "project"):
+            return f"Error: scope must be 'session' or 'project', got '{scope}'"
+
+        if scope == "project" and not project_id:
+            return (
+                "Error: cannot add to project — this session is not part of a "
+                "project. Use scope='session' instead."
+            )
+
+        scope_id = project_id if scope == "project" else session_id
+        scope_type = scope
+
+        # Validate arXiv ID
+        normalized = validate_arxiv_id(arxiv_id)
+        if normalized is None:
+            return f"Error: invalid arXiv ID '{arxiv_id}'"
+
+        # Request user confirmation before downloading
+        outcome = await request_confirmation(
+            confirmation_service=confirmation_service,
+            progress_emitter=progress_emitter,
+            tool_name="add_arxiv_paper",
+            action_type="add_document",
+            title=f"Add arXiv paper {normalized}",
+            summary=f"Download arXiv:{normalized} and add it to {scope} documents.",
+            details={
+                "arxiv_id": normalized,
+                "url": f"https://arxiv.org/abs/{normalized}",
+                "scope": scope,
+            },
+            session_id=session_id,
+        )
+
+        if outcome == "rejected":
+            return "User rejected the proposal to add the arXiv paper."
+        if outcome == "expired":
+            return "Confirmation timed out for adding the arXiv paper."
+
+        # Emit progress
+        await _emit(
+            progress_emitter,
+            ToolProgress(
+                tool_id="add_arxiv_paper",
+                phase="downloading",
+                message=f"Downloading arXiv paper {normalized}...",
+            ),
+        )
+
+        # Fetch paper and download PDF in executor (blocking I/O)
+        loop = asyncio.get_event_loop()
+
+        def _fetch():
+            search = arxiv_lib.Search(id_list=[normalized])
+            try:
+                paper = next(search.results())
+            except StopIteration:
+                return None, None
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                paper.download_pdf(dirpath=tmpdir, filename="paper.pdf")
+                pdf_bytes = Path(tmpdir, "paper.pdf").read_bytes()
+
+            return paper, pdf_bytes
+
+        try:
+            paper, pdf_bytes = await asyncio.wait_for(
+                loop.run_in_executor(None, _fetch),
+                timeout=60,
+            )
+        except asyncio.TimeoutError:
+            return "Error: arXiv download timed out after 60 seconds."
+        except Exception as e:
+            logger.error("arXiv download failed for %s: %s", arxiv_id, e)
+            return f"Error: failed to download paper — {e}"
+
+        if paper is None:
+            return f"Error: paper '{normalized}' not found on arXiv"
+
+        # Upload PDF
+        await _emit(
+            progress_emitter,
+            ToolProgress(
+                tool_id="add_arxiv_paper",
+                phase="uploading",
+                message="Adding paper to documents...",
+            ),
+        )
+
+        try:
+            filename = f"{paper.title}.pdf"
+            with get_document_service(scope_id, scope_type) as doc_service:
+                metadata = doc_service.upload(pdf_bytes, filename)
+
+            # Store arXiv metadata
+            from tensortruth.utils.metadata import format_authors as _fmt_authors
+
+            authors_str = ", ".join(a.name for a in paper.authors)
+            formatted = _fmt_authors(authors_str)
+            display = f"{paper.title}, {formatted}" if formatted else paper.title
+            arxiv_metadata = {
+                "title": paper.title,
+                "authors": authors_str,
+                "display_name": display,
+                "source_url": f"https://arxiv.org/abs/{normalized}",
+                "doc_type": "arxiv_paper",
+            }
+            with get_document_service(scope_id, scope_type) as doc_service:
+                doc_service.set_metadata(metadata.pdf_id, arxiv_metadata)
+        except Exception as e:
+            logger.error("Failed to upload arXiv paper %s: %s", arxiv_id, e)
+            return f"Error: downloaded paper but failed to upload — {e}"
+
+        authors_short = (
+            authors_str[:80] + "..." if len(authors_str) > 80 else authors_str
+        )
+        return (
+            f"Successfully added arXiv paper to {scope} documents.\n"
+            f"Title: {paper.title}\n"
+            f"Authors: {authors_short}\n"
+            f"Doc ID: {metadata.pdf_id}\n"
+            f"IMPORTANT: Tell the user they need to click 'Build Index' in the "
+            f"documents panel to index this paper before it can be searched via "
+            f"RAG queries."
+        )
+
+    return FunctionTool.from_defaults(
+        async_fn=add_arxiv_paper,
+        name="add_arxiv_paper",
+        description=(
+            "Download an arXiv paper and add it to the session or project "
+            "documents. The user will be prompted to approve; the tool blocks "
+            "until they respond. Use when the user asks to save/add/download an "
+            "arXiv paper they found or mentioned. Accepts arXiv IDs like "
+            "'2301.12345' or full URLs. "
+            "After success, always remind the user to build the index from the "
+            "documents panel so the paper becomes searchable."
+        ),
+        fn_schema=AddArxivPaperInput,
+    )
+
+
 def create_all_tool_wrappers(
     tool_service: ToolService,
     progress_emitter: ProgressEmitter,
@@ -1451,6 +1649,7 @@ def create_all_tool_wrappers(
     confirmation_service: Optional["ToolConfirmationService"] = None,
     mcp_server_service: Optional["MCPServerService"] = None,
     session_id: Optional[str] = None,
+    project_id: Optional[str] = None,
 ) -> List[FunctionTool]:
     """Create all orchestrator tool wrappers at once.
 
@@ -1530,5 +1729,13 @@ def create_all_tool_wrappers(
                     session_id,
                 )
             )
+
+    # ArXiv paper tool (needs session_id + confirmation_service)
+    if session_id is not None and confirmation_service is not None:
+        tools.append(
+            create_add_arxiv_paper_tool(
+                progress_emitter, confirmation_service, session_id, project_id
+            )
+        )
 
     return tools

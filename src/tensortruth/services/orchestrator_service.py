@@ -72,6 +72,7 @@ _WRAPPED_BUILTIN_TOOL_NAMES = frozenset(
         "fetch_page",
         "fetch_pages_batch",
         "search_focused",
+        "add_arxiv_paper",
     }
 )
 
@@ -84,6 +85,7 @@ _TOOL_ANALYZING_MESSAGES: Dict[str, str] = {
     "fetch_page": "Analyzing page content...",
     "fetch_pages_batch": "Analyzing fetched pages...",
     "rag_query": "Analyzing knowledge base results...",
+    "add_arxiv_paper": "Adding paper to documents...",
 }
 _DEFAULT_ANALYZING_MESSAGE = "Analyzing results..."
 
@@ -176,6 +178,7 @@ class OrchestratorService:
         confirmation_service: Optional[Any] = None,
         mcp_server_service: Optional[Any] = None,
         session_id: Optional[str] = None,
+        project_id: Optional[str] = None,
     ):
         """Initialize the orchestrator service.
 
@@ -194,6 +197,7 @@ class OrchestratorService:
             confirmation_service: Optional ToolConfirmationService for tool confirmations.
             mcp_server_service: Optional MCPServerService for MCP management tools.
             session_id: Session ID for MCP proposal tracking.
+            project_id: Project ID for project-scoped operations (e.g. add_arxiv_paper).
         """
         self._tool_service = tool_service
         self._rag_service = rag_service
@@ -212,6 +216,7 @@ class OrchestratorService:
         self._confirmation_service = confirmation_service
         self._mcp_server_service = mcp_server_service
         self._session_id = session_id
+        self._project_id = project_id
 
         # Built lazily on first execute()
         self._llm: Optional["LLM"] = None
@@ -347,6 +352,7 @@ class OrchestratorService:
             confirmation_service=self._confirmation_service,
             mcp_server_service=self._mcp_server_service,
             session_id=self._session_id,
+            project_id=self._project_id,
         )
 
         # 2. Collect MCP tools from ToolService, filtering out already-wrapped built-ins

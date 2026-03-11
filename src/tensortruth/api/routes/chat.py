@@ -394,6 +394,7 @@ async def _run_orchestrator_path(
         confirmation_service=confirmation_service,
         mcp_server_service=mcp_server_service,
         session_id=context.session_id,
+        project_id=project_id,
     )
 
     # Create stream translator for event -> WebSocket message conversion
