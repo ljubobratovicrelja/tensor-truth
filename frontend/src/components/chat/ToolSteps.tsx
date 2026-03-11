@@ -161,21 +161,17 @@ export function ToolSteps({
       >
         <div className="pt-0.5 pl-1">
           {steps.map((step, index) => {
-            // Match confirmation to step by tool_name
-            const confirmation = confirmationRequests?.find(
-              (c) => c.tool_name === step.tool
-            );
-            if (confirmationRequests && confirmationRequests.length > 0) {
-              console.log(
-                "[ToolSteps] step:",
-                step.tool,
-                "status:",
-                step.status,
-                "confirmation:",
-                confirmation,
-                "requests:",
-                confirmationRequests
+            // Match confirmation to step: for parallel tool calls of the same
+            // type (e.g. multiple add_arxiv_paper), pair by positional order
+            // among steps sharing the same tool name.
+            let confirmation: StreamConfirmationRequest | undefined;
+            if (confirmationRequests) {
+              const sameToolStepIndex =
+                steps.slice(0, index + 1).filter((s) => s.tool === step.tool).length - 1;
+              const sameToolConfirmations = confirmationRequests.filter(
+                (c) => c.tool_name === step.tool
               );
+              confirmation = sameToolConfirmations[sameToolStepIndex];
             }
             return (
               <ToolStepCard

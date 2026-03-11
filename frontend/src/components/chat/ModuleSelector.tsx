@@ -27,6 +27,8 @@ interface ModuleSelectorProps {
   lockedModules?: string[];
   /** Documents attached to the project. Shown as a flat read-only list. */
   projectDocuments?: DocumentInfo[];
+  /** Indexed documents in the current session (non-project). Shown as a flat read-only list. */
+  sessionDocuments?: DocumentInfo[];
 }
 
 export function ModuleSelector({
@@ -36,6 +38,7 @@ export function ModuleSelector({
   embeddingModel,
   lockedModules,
   projectDocuments,
+  sessionDocuments,
 }: ModuleSelectorProps) {
   const [open, setOpen] = useState(false);
   const [localSelection, setLocalSelection] = useState<string[]>(selectedModules);
@@ -406,6 +409,31 @@ export function ModuleSelector({
             ) : (
               /* Default (non-project) view: grouped by type */
               <div className="space-y-3">
+                {sessionDocuments && sessionDocuments.length > 0 && (
+                  <div>
+                    <div className="text-muted-foreground mb-1 flex items-center gap-1.5 px-2 text-xs font-medium">
+                      <FileText className="h-3 w-3" />
+                      <span>Session Documents</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {sessionDocuments.map((doc) => (
+                        <div
+                          key={doc.doc_id}
+                          className="flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left"
+                        >
+                          {doc.type === "url" ? (
+                            <Link className="text-muted-foreground h-4 w-4 shrink-0" />
+                          ) : (
+                            <FileText className="text-muted-foreground h-4 w-4 shrink-0" />
+                          )}
+                          <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm">
+                            {doc.filename || doc.url || doc.doc_id}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {typeOrder.map((type) => {
                   const group = groupedModules[type];
                   if (!group || group.length === 0) return null;

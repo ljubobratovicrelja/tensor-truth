@@ -38,6 +38,8 @@ interface ChatInputProps {
   lockedModules?: string[];
   /** Documents attached to the project (shown in module selector). */
   projectDocuments?: DocumentInfo[];
+  /** Indexed documents in the current session (shown in module selector for non-project sessions). */
+  sessionDocuments?: DocumentInfo[];
   /** Whether this is a project session (hides session-level system prompt). */
   isProjectSession?: boolean;
 }
@@ -57,6 +59,7 @@ export function ChatInput({
   sessionParams = {},
   lockedModules,
   projectDocuments,
+  sessionDocuments,
   isProjectSession,
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
@@ -240,6 +243,7 @@ export function ChatInput({
                 embeddingModel={sessionParams.embedding_model as string | undefined}
                 lockedModules={lockedModules}
                 projectDocuments={projectDocuments}
+                sessionDocuments={sessionDocuments}
               />
             )}
             {sessionId && (

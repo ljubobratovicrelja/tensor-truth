@@ -395,10 +395,16 @@ class DocumentService:
             # Direct PDF path — load PDFs directly
             from llama_index.readers.file import PDFReader
 
+            total = len(unindexed)
             reader = PDFReader()
-            for did in unindexed:
+            for i, did in enumerate(unindexed):
                 if did in pdf_by_id:
-                    cb(f"Loading {pdf_by_id[did].name}", 10, 100)
+                    pct = int(i / total * 60)
+                    cb(
+                        f"Loading {pdf_by_id[did].name} ({i + 1}/{total})",
+                        pct,
+                        100,
+                    )
                     docs = reader.load_data(pdf_by_id[did])
                     for doc in docs:
                         doc.metadata["file_path"] = str(pdf_by_id[did])
@@ -413,9 +419,22 @@ class DocumentService:
         else:
             # Marker path — convert PDFs to markdown first, then load markdown
             total = len(unindexed)
+
+            # Report model loading stage before first conversion
+            from tensortruth.utils.pdf import MARKER_CONVERTER
+
+            has_pdfs_to_convert = any(did in pdf_by_id for did in unindexed)
+            if MARKER_CONVERTER is None and has_pdfs_to_convert:
+                cb("Loading conversion models (one-time setup)...", 0, 100)
+
             for i, did in enumerate(unindexed):
                 if did in pdf_by_id:
-                    cb(f"Converting {pdf_by_id[did].name}", i, total + 1)
+                    pct = int(i / total * 60)
+                    cb(
+                        f"Converting {pdf_by_id[did].name} ({i + 1}/{total})",
+                        pct,
+                        100,
+                    )
                     md_path = self._convert_if_needed(pdf_by_id[did])
                     if md_path:
                         rdr = SimpleDirectoryReader(input_files=[str(md_path)])
@@ -433,7 +452,14 @@ class DocumentService:
             return
 
         logger.info(f"Loading {len(documents)} documents for incremental add")
-        builder.add_documents(documents, doc_ids, chunk_sizes, progress_callback)
+
+        # Relay inner add_documents stages (0-100%) to outer (60-95%)
+        def embed_cb(stage: str, current: int, total_inner: int) -> None:
+            inner_pct = min(int(current / total_inner * 100), 100) if total_inner else 0
+            outer_pct = 60 + int(inner_pct * 0.35)
+            cb(stage, outer_pct, 100)
+
+        builder.add_documents(documents, doc_ids, chunk_sizes, embed_cb)
 
         # Update metadata cache from builder and persist
         self.metadata_cache = builder.get_metadata_cache()
@@ -467,11 +493,18 @@ class DocumentService:
             b._save_settings_hash(chunk_sizes or [2048, 512, 256], conversion_method)
             return
 
-        # Phase 1: Convert PDFs -> markdown (per-PDF progress)
-        total_steps = len(pdf_files) + 1
+        # Unified progress: conversion (0-60%), embedding (60-95%), done (100%)
         converted: List[Path] = []
+
+        # Report model loading stage before first conversion (marker downloads ~1GB on first run)
+        from tensortruth.utils.pdf import MARKER_CONVERTER
+
+        if MARKER_CONVERTER is None:
+            cb("Loading conversion models (one-time setup)...", 0, 100)
+
         for i, pdf in enumerate(pdf_files):
-            cb(f"Converting {pdf.name}", i, total_steps)
+            pct = int(i / len(pdf_files) * 60)
+            cb(f"Converting {pdf.name} ({i + 1}/{len(pdf_files)})", pct, 100)
             md = self._convert_if_needed(pdf)
             if md:
                 converted.append(md)
@@ -485,11 +518,16 @@ class DocumentService:
         if not all_md:
             return
 
-        # Phase 2: Index from markdown
-        cb("Building index", len(pdf_files), total_steps)
-        self.index_from_markdown(all_md, chunk_sizes, progress_callback=None)
+        # Phase 2: Index from markdown — relay inner stages with offset
+        def index_cb(stage: str, current: int, total: int) -> None:
+            # Map inner 0-100% to outer 60-95%
+            inner_pct = min(int(current / total * 100), 100) if total else 0
+            outer_pct = 60 + int(inner_pct * 0.35)
+            cb(stage, outer_pct, 100)
 
-        cb("Complete", total_steps, total_steps)
+        self.index_from_markdown(all_md, chunk_sizes, progress_callback=index_cb)
+
+        cb("Complete", 100, 100)
         self._persist_metadata()
 
         # Save settings hash for staleness detection

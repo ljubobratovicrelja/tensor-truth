@@ -10,6 +10,7 @@ import {
   useIsMobile,
   useProject,
   useModels,
+  useDocuments,
   paramToThinking,
   thinkingToParam,
 } from "@/hooks";
@@ -99,6 +100,21 @@ export function ChatContainer() {
   const sessionProjectId = sessionData?.project_id ?? null;
   const { data: projectData } = useProject(sessionProjectId);
   const { data: modelsData } = useModels();
+
+  // Load session documents for non-project sessions (shown in ModuleSelector)
+  const { data: sessionDocsData } = useDocuments(
+    !sessionProjectId ? (urlSessionId ?? null) : null,
+    "session"
+  );
+  const sessionDocuments = sessionDocsData?.has_index
+    ? sessionDocsData.documents
+        .filter((d) => d.is_indexed !== false)
+        .map((d) => ({
+          doc_id: d.doc_id,
+          type: d.doc_id.startsWith("url_") ? "url" : "pdf",
+          filename: d.filename,
+        }))
+    : undefined;
 
   const modelThinkingSupport = (modelName: string) => {
     const info = modelsData?.models.find((m) => m.name === modelName);
@@ -336,6 +352,7 @@ export function ChatContainer() {
               projectData ? Object.keys(projectData.catalog_modules) : undefined
             }
             projectDocuments={projectData?.documents}
+            sessionDocuments={sessionDocuments}
             isProjectSession={!!sessionProjectId}
           />
         </div>
