@@ -1018,7 +1018,7 @@ async def _verify_mcp_server(
     # instead of the generic "Connection closed" from the MCP protocol layer.
     import tempfile
 
-    stderr_file = tempfile.TemporaryFile()
+    stderr_file = tempfile.TemporaryFile(mode="w+")
 
     try:
         from tensortruth.agents.server_registry import _resolve_env
@@ -1098,7 +1098,7 @@ async def _verify_mcp_server(
         stderr_output = ""
         try:
             stderr_file.seek(0)
-            stderr_output = stderr_file.read().decode("utf-8", errors="replace").strip()
+            stderr_output = stderr_file.read().strip()
         except Exception:
             pass
         if stderr_output:
@@ -1218,10 +1218,10 @@ def create_manage_mcp_server_tool(
         name: str,
         summary: str,
         type: str = "stdio",
-        command: str = "",
+        command: Optional[str] = "",
         args: Optional[List[str]] = None,
-        url: str = "",
-        description: str = "",
+        url: Optional[str] = "",
+        description: Optional[str] = "",
         env: Optional[Dict[str, str]] = None,
         enabled: bool = True,
     ) -> str:
@@ -1492,7 +1492,8 @@ def create_add_arxiv_paper_tool(
                 "project. Use scope='session' instead."
             )
 
-        scope_id = project_id if scope == "project" else session_id
+        assert (scope != "project") or (project_id is not None)
+        scope_id: str = project_id if scope == "project" else session_id  # type: ignore[assignment]
         scope_type = scope
 
         # Validate arXiv ID
