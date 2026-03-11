@@ -10,6 +10,7 @@ import {
   X,
   CheckCircle,
   FolderOpen,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +38,7 @@ import { FetchDialog } from "./FetchDialog";
 import { BuildDialog } from "./BuildDialog";
 import { EditSourceDialog } from "./EditSourceDialog";
 import { IndexMetadataView } from "./IndexMetadataView";
+import { DocumentBrowserDialog } from "./DocumentBrowserDialog";
 
 interface ModuleCardProps {
   module: ModuleOverview;
@@ -50,6 +52,7 @@ export function ModuleCard({ module, embeddingModelId }: ModuleCardProps) {
   const [showMetadata, setShowMetadata] = useState(false);
   const [showDeleteIndex, setShowDeleteIndex] = useState(false);
   const [showDeleteSource, setShowDeleteSource] = useState(false);
+  const [showDocBrowser, setShowDocBrowser] = useState(false);
 
   const deleteSource = useDeleteSource();
   const deleteIdx = useDeleteIndex();
@@ -84,7 +87,13 @@ export function ModuleCard({ module, embeddingModelId }: ModuleCardProps) {
 
   return (
     <>
-      <div className="bg-muted/50 flex items-center justify-between rounded-lg border p-3">
+      <div
+        className={
+          "bg-muted/50 flex items-center justify-between rounded-lg border p-3" +
+          (module.has_index ? " cursor-pointer" : "")
+        }
+        onDoubleClick={() => module.has_index && setShowDocBrowser(true)}
+      >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{module.display_name}</span>
@@ -160,6 +169,12 @@ export function ModuleCard({ module, embeddingModelId }: ModuleCardProps) {
               </DropdownMenuItem>
             )}
             {module.has_index && (
+              <DropdownMenuItem onClick={() => setShowDocBrowser(true)}>
+                <FileText className="mr-2 h-3.5 w-3.5" />
+                Browse Documents
+              </DropdownMenuItem>
+            )}
+            {module.has_index && (
               <DropdownMenuItem onClick={() => setShowMetadata(true)}>
                 <Info className="mr-2 h-3.5 w-3.5" />
                 View Metadata
@@ -211,6 +226,13 @@ export function ModuleCard({ module, embeddingModelId }: ModuleCardProps) {
         sourceType={module.source_type}
         name={module.name}
         config={module.source_config}
+      />
+      <DocumentBrowserDialog
+        open={showDocBrowser}
+        onOpenChange={setShowDocBrowser}
+        embeddingModelId={embeddingModelId}
+        moduleName={module.name}
+        moduleDisplayName={module.display_name}
       />
       <IndexMetadataView
         open={showMetadata}

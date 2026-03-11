@@ -91,3 +91,40 @@ class ValidateResponse(BaseModel):
 
     valid: bool
     issues: List[str] = Field(default_factory=list)
+
+
+class SourceDocumentInfo(BaseModel):
+    """Info about a single source document in an index's docstore."""
+
+    doc_id: str
+    file_name: str
+    title: Optional[str] = None
+    display_name: Optional[str] = None
+    doc_type: Optional[str] = None
+    source_url: Optional[str] = None
+    file_size: Optional[int] = None
+    chunk_count: int
+
+
+class SourceDocumentsResponse(BaseModel):
+    """List of source documents for a module."""
+
+    module_name: str
+    documents: List[SourceDocumentInfo]
+
+
+class ChunkBoundary(BaseModel):
+    """A chunk's position within reconstructed document text."""
+
+    chunk_id: str
+    start: int
+    end: int
+
+
+class DocumentContentResponse(BaseModel):
+    """Reconstructed document text with chunk boundaries."""
+
+    doc_id: str
+    metadata: Dict[str, Any]
+    text: str
+    chunks: List[ChunkBoundary]

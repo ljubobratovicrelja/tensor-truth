@@ -3,6 +3,7 @@
 Wraps existing CLI logic into a programmatic API for the web frontend.
 """
 
+import functools
 import json
 import logging
 import os
@@ -325,6 +326,117 @@ class IndexManagementService:
 
         return stats if stats else None  # type: ignore[return-value]
 
+    # ── Document browsing ─────────────────────────────────────────────
+
+    def list_source_documents(
+        self, embedding_model_id: str, module_name: str
+    ) -> List[Dict[str, Any]]:
+        """List source documents (ref_doc_info) for a module's index."""
+        index_dir = Path(self._indexes_dir) / embedding_model_id / module_name
+        docstore_path = index_dir / "docstore.json"
+        if not docstore_path.is_file():
+            raise ValueError(f"Docstore not found: {embedding_model_id}/{module_name}")
+
+        docstore = _load_docstore(str(docstore_path))
+        ref_doc_info = docstore.get("docstore/ref_doc_info", {})
+
+        documents: List[Dict[str, Any]] = []
+        for doc_id, info in ref_doc_info.items():
+            meta = info.get("metadata", {})
+            node_ids = info.get("node_ids", [])
+            documents.append(
+                {
+                    "doc_id": doc_id,
+                    "file_name": meta.get("file_name", ""),
+                    "title": meta.get("display_name") or meta.get("title"),
+                    "display_name": meta.get("display_name"),
+                    "doc_type": meta.get("doc_type"),
+                    "source_url": meta.get("source_url"),
+                    "file_size": meta.get("file_size"),
+                    "chunk_count": len(node_ids),
+                }
+            )
+
+        documents.sort(key=lambda d: d.get("file_name", ""))
+        return documents
+
+    def get_document_content(
+        self, embedding_model_id: str, module_name: str, doc_id: str
+    ) -> Dict[str, Any]:
+        """Reconstruct document text from top-level chunks with deduplication."""
+        index_dir = Path(self._indexes_dir) / embedding_model_id / module_name
+        docstore_path = index_dir / "docstore.json"
+        if not docstore_path.is_file():
+            raise ValueError(f"Docstore not found: {embedding_model_id}/{module_name}")
+
+        docstore = _load_docstore(str(docstore_path))
+        ref_doc_info = docstore.get("docstore/ref_doc_info", {})
+        data = docstore.get("docstore/data", {})
+
+        if doc_id not in ref_doc_info:
+            raise ValueError(f"Document not found: {doc_id}")
+
+        doc_info = ref_doc_info[doc_id]
+        node_ids = doc_info.get("node_ids", [])
+        metadata = doc_info.get("metadata", {})
+
+        # Collect top-level chunks: parent points to a node NOT in data
+        top_chunks: List[Dict[str, Any]] = []
+        for nid in node_ids:
+            node = data.get(nid)
+            if node is None:
+                continue
+            nd = node.get("__data__", {})
+            parent = nd.get("relationships", {}).get("1", {})
+            parent_id = parent.get("node_id", "") if isinstance(parent, dict) else ""
+            if parent_id not in data:
+                top_chunks.append(
+                    {
+                        "chunk_id": nid,
+                        "start": nd.get("start_char_idx", 0),
+                        "end": nd.get("end_char_idx", 0),
+                        "text": nd.get("text", ""),
+                    }
+                )
+
+        # Sort by start position
+        top_chunks.sort(key=lambda c: c["start"])
+
+        # Reconstruct text with overlap deduplication
+        text_parts: List[str] = []
+        chunks_out: List[Dict[str, Any]] = []
+        current_pos = 0
+
+        for chunk in top_chunks:
+            chunk_text = chunk["text"]
+            if current_pos > 0 and chunk["start"] < current_pos:
+                # Overlap — skip already-covered chars
+                overlap = current_pos - chunk["start"]
+                if overlap < len(chunk_text):
+                    chunk_text = chunk_text[overlap:]
+                else:
+                    continue
+
+            chunk_start_in_output = len("".join(text_parts))
+            text_parts.append(chunk_text)
+            chunk_end_in_output = len("".join(text_parts))
+
+            chunks_out.append(
+                {
+                    "chunk_id": chunk["chunk_id"],
+                    "start": chunk_start_in_output,
+                    "end": chunk_end_in_output,
+                }
+            )
+            current_pos = max(current_pos, chunk["end"])
+
+        return {
+            "doc_id": doc_id,
+            "metadata": metadata,
+            "text": "".join(text_parts),
+            "chunks": chunks_out,
+        }
+
     # ── Fetch callable ────────────────────────────────────────────────
 
     def create_fetch_callable(
@@ -493,3 +605,10 @@ class IndexManagementService:
                     issues.append(f"{source_type}/{name}: docs directory is empty")
 
         return {"valid": len(issues) == 0, "issues": issues}
+
+
+@functools.lru_cache(maxsize=2)
+def _load_docstore(path: str) -> dict:
+    """Load and cache a docstore.json. LRU(2) since users browse one module at a time."""
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)

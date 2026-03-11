@@ -13,9 +13,11 @@ from tensortruth.api.deps import TaskRunnerDep, get_index_management_service
 from tensortruth.api.schemas.index_management import (
     BatchBuildRequest,
     BuildRequest,
+    DocumentContentResponse,
     FetchRequest,
     ModulesOverviewResponse,
     SourceCreateRequest,
+    SourceDocumentsResponse,
     SourcesResponse,
     SourceUpdateRequest,
     ValidateResponse,
@@ -206,6 +208,39 @@ async def batch_build(request: BatchBuildRequest, task_runner: TaskRunnerDep):
 
 
 # ── Index operations ──────────────────────────────────────────────────
+
+
+@router.get(
+    "/indexes/{embedding_model_id}/{module_name}/documents",
+    response_model=SourceDocumentsResponse,
+)
+async def list_source_documents(embedding_model_id: str, module_name: str):
+    """List source documents in a module's docstore."""
+    service = _get_service()
+    try:
+        docs = service.list_source_documents(embedding_model_id, module_name)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    from tensortruth.api.schemas.index_management import SourceDocumentInfo
+
+    return SourceDocumentsResponse(
+        module_name=module_name,
+        documents=[SourceDocumentInfo(**d) for d in docs],
+    )
+
+
+@router.get(
+    "/indexes/{embedding_model_id}/{module_name}/documents/{doc_id}",
+    response_model=DocumentContentResponse,
+)
+async def get_document_content(embedding_model_id: str, module_name: str, doc_id: str):
+    """Get reconstructed document text with chunk boundaries."""
+    service = _get_service()
+    try:
+        content = service.get_document_content(embedding_model_id, module_name, doc_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return DocumentContentResponse(**content)
 
 
 @router.delete("/indexes/{embedding_model_id}/{module_name}", status_code=204)

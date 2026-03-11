@@ -23,6 +23,10 @@ export const QUERY_KEYS = {
   extensionLibrary: ["extension-library"] as const,
   sources: ["sources"] as const,
   modulesOverview: ["modules-overview"] as const,
+  sourceDocuments: (embeddingModelId: string, moduleName: string) =>
+    ["source-documents", embeddingModelId, moduleName] as const,
+  documentContent: (embeddingModelId: string, moduleName: string, docId: string) =>
+    ["document-content", embeddingModelId, moduleName, docId] as const,
 };
 
 export const PROVIDER_TYPE_LABELS: Record<string, string> = {

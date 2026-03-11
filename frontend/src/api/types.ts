@@ -836,3 +836,32 @@ export interface ValidateResponse {
   valid: boolean;
   issues: string[];
 }
+
+export interface SourceDocumentInfo {
+  doc_id: string;
+  file_name: string;
+  title: string | null;
+  display_name: string | null;
+  doc_type: string | null;
+  source_url: string | null;
+  file_size: number | null;
+  chunk_count: number;
+}
+
+export interface SourceDocumentsResponse {
+  module_name: string;
+  documents: SourceDocumentInfo[];
+}
+
+export interface ChunkBoundary {
+  chunk_id: string;
+  start: number;
+  end: number;
+}
+
+export interface DocumentContentResponse {
+  doc_id: string;
+  metadata: Record<string, unknown>;
+  text: string;
+  chunks: ChunkBoundary[];
+}

@@ -9,6 +9,8 @@ import type {
   BatchBuildResponse,
   TaskSubmitResponse,
   ValidateResponse,
+  SourceDocumentsResponse,
+  DocumentContentResponse,
 } from "./types";
 
 const BASE = "/index-management";
@@ -71,4 +73,23 @@ export async function deleteIndex(
 
 export async function validateSources(): Promise<ValidateResponse> {
   return apiPost<ValidateResponse>(`${BASE}/validate`);
+}
+
+export async function getSourceDocuments(
+  embeddingModelId: string,
+  moduleName: string
+): Promise<SourceDocumentsResponse> {
+  return apiGet<SourceDocumentsResponse>(
+    `${BASE}/indexes/${embeddingModelId}/${moduleName}/documents`
+  );
+}
+
+export async function getDocumentContent(
+  embeddingModelId: string,
+  moduleName: string,
+  docId: string
+): Promise<DocumentContentResponse> {
+  return apiGet<DocumentContentResponse>(
+    `${BASE}/indexes/${embeddingModelId}/${moduleName}/documents/${encodeURIComponent(docId)}`
+  );
 }

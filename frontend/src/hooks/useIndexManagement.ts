@@ -10,6 +10,8 @@ import {
   buildIndex,
   batchBuild,
   deleteIndex,
+  getSourceDocuments,
+  getDocumentContent,
 } from "@/api/index-management";
 import type {
   SourceCreateRequest,
@@ -99,6 +101,31 @@ export function useBatchBuild() {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.modulesOverview });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.modules });
     },
+  });
+}
+
+export function useSourceDocuments(
+  embeddingModelId: string,
+  moduleName: string,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey: QUERY_KEYS.sourceDocuments(embeddingModelId, moduleName),
+    queryFn: () => getSourceDocuments(embeddingModelId, moduleName),
+    enabled,
+  });
+}
+
+export function useDocumentContent(
+  embeddingModelId: string,
+  moduleName: string,
+  docId: string,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey: QUERY_KEYS.documentContent(embeddingModelId, moduleName, docId),
+    queryFn: () => getDocumentContent(embeddingModelId, moduleName, docId),
+    enabled,
   });
 }
 
