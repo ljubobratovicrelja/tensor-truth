@@ -31,6 +31,8 @@ echo "=== Frontend Linting ==="
 
 if [ -d "frontend" ]; then
     cd frontend
+    echo "Running TypeScript type check..."
+    npx tsc -b
     echo "Running ESLint..."
     npm run lint
     echo "Checking Prettier formatting..."
