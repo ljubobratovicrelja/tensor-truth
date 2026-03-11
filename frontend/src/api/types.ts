@@ -771,9 +771,11 @@ export interface ModuleOverview {
   display_name: string;
   doc_type: string;
   source_config: Record<string, unknown>;
+  in_sources_config: boolean;
   has_fetched_docs: boolean;
   doc_dir_size_mb: number | null;
   has_index: boolean;
+  index_size_mb: number | null;
   index_metadata: Record<string, unknown> | null;
 }
 

@@ -35,9 +35,11 @@ class ModuleOverview(BaseModel):
     display_name: str
     doc_type: str = ""
     source_config: Dict[str, Any] = Field(default_factory=dict)
+    in_sources_config: bool = False
     has_fetched_docs: bool = False
     doc_dir_size_mb: Optional[float] = None
     has_index: bool = False
+    index_size_mb: Optional[float] = None
     index_metadata: Optional[Dict[str, Any]] = None
 
 

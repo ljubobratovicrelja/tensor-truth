@@ -95,28 +95,34 @@ export function ModuleCard({ module, embeddingModelId }: ModuleCardProps) {
             )}
           </div>
           <div className="mt-1 flex items-center gap-2">
-            <span className="flex items-center gap-1 text-xs">
-              {module.has_fetched_docs ? (
-                <>
-                  <FolderOpen className="h-3 w-3 text-green-500" />
-                  <span className="text-muted-foreground">
-                    {module.doc_dir_size_mb != null
-                      ? `${module.doc_dir_size_mb} MB`
-                      : "Docs fetched"}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <FolderOpen className="text-muted-foreground h-3 w-3" />
-                  <span className="text-muted-foreground">No docs</span>
-                </>
-              )}
-            </span>
+            {module.in_sources_config && (
+              <span className="flex items-center gap-1 text-xs">
+                {module.has_fetched_docs ? (
+                  <>
+                    <FolderOpen className="h-3 w-3 text-green-500" />
+                    <span className="text-muted-foreground">
+                      {module.doc_dir_size_mb != null
+                        ? `${module.doc_dir_size_mb} MB`
+                        : "Docs fetched"}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <FolderOpen className="text-muted-foreground h-3 w-3" />
+                    <span className="text-muted-foreground">Not fetched</span>
+                  </>
+                )}
+              </span>
+            )}
             <span className="flex items-center gap-1 text-xs">
               {module.has_index ? (
                 <>
                   <CheckCircle className="h-3 w-3 text-green-500" />
-                  <span className="text-muted-foreground">Indexed</span>
+                  <span className="text-muted-foreground">
+                    {module.index_size_mb != null
+                      ? `${module.index_size_mb} MB`
+                      : "Indexed"}
+                  </span>
                 </>
               ) : (
                 <>
@@ -135,17 +141,18 @@ export function ModuleCard({ module, embeddingModelId }: ModuleCardProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setShowFetch(true)}>
-              <Download className="mr-2 h-3.5 w-3.5" />
-              Fetch Docs
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => setShowBuild(true)}
-              disabled={!module.has_fetched_docs}
-            >
-              <Hammer className="mr-2 h-3.5 w-3.5" />
-              Build Index
-            </DropdownMenuItem>
+            {module.in_sources_config && (
+              <DropdownMenuItem onClick={() => setShowFetch(true)}>
+                <Download className="mr-2 h-3.5 w-3.5" />
+                Fetch Docs
+              </DropdownMenuItem>
+            )}
+            {module.has_fetched_docs && !module.has_index && (
+              <DropdownMenuItem onClick={() => setShowBuild(true)}>
+                <Hammer className="mr-2 h-3.5 w-3.5" />
+                Build Index
+              </DropdownMenuItem>
+            )}
             {module.has_index && (
               <DropdownMenuItem onClick={() => setShowBuild(true)}>
                 <RefreshCw className="mr-2 h-3.5 w-3.5" />
@@ -158,11 +165,22 @@ export function ModuleCard({ module, embeddingModelId }: ModuleCardProps) {
                 View Metadata
               </DropdownMenuItem>
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setShowEdit(true)}>
-              <Pencil className="mr-2 h-3.5 w-3.5" />
-              Edit Source
-            </DropdownMenuItem>
+            {module.in_sources_config && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowEdit(true)}>
+                  <Pencil className="mr-2 h-3.5 w-3.5" />
+                  Edit Source
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setShowDeleteSource(true)}
+                  className="text-red-600"
+                >
+                  <X className="mr-2 h-3.5 w-3.5" />
+                  Remove Source
+                </DropdownMenuItem>
+              </>
+            )}
             {module.has_index && (
               <DropdownMenuItem
                 onClick={() => setShowDeleteIndex(true)}
@@ -172,13 +190,6 @@ export function ModuleCard({ module, embeddingModelId }: ModuleCardProps) {
                 Delete Index
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem
-              onClick={() => setShowDeleteSource(true)}
-              className="text-red-600"
-            >
-              <X className="mr-2 h-3.5 w-3.5" />
-              Remove Source
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

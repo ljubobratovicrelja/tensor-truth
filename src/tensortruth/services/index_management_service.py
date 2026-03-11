@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import shutil
+import sqlite3
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -138,11 +139,14 @@ class IndexManagementService:
                     modules.append(overview)
                     seen.add(name)
 
-        # 3. Check library_docs/ for orphaned doc directories
+        # 3. Check library_docs/ for orphaned doc directories (skip empty ones)
         docs_dir = Path(self._library_docs_dir)
         if docs_dir.is_dir():
             for entry in sorted(docs_dir.iterdir()):
                 if not entry.is_dir():
+                    continue
+                # Skip empty directories (leftovers from aborted fetches)
+                if not any(entry.iterdir()):
                     continue
                 dir_name = entry.name
                 for prefix, stype in [
@@ -202,14 +206,12 @@ class IndexManagementService:
         embedding_model_id: str,
     ) -> Dict[str, Any]:
         """Build a single module overview dict."""
-        # Determine doc type prefix for directory name
-        doc_type_map = {
-            "libraries": "library",
-            "papers": "papers",
-            "books": "book",
-        }
-        prefix = doc_type_map.get(source_type, source_type)
-        doc_dir = Path(self._library_docs_dir) / f"{prefix}_{name}"
+        in_sources_config = bool(config)
+
+        # Determine doc directory — check both with and without type prefix
+        # Index names already include prefix (e.g., "library_pytorch_2.9"),
+        # so try the name directly first, then with prefix prepended.
+        doc_dir = self._find_doc_dir(name, source_type)
 
         has_fetched = (
             doc_dir.is_dir() and any(doc_dir.iterdir()) if doc_dir.is_dir() else False
@@ -223,6 +225,18 @@ class IndexManagementService:
         index_dir = Path(self._indexes_dir) / embedding_model_id / name
         has_index = (index_dir / "chroma.sqlite3").is_file()
         index_meta = read_index_metadata(index_dir) if has_index else None
+
+        # Compute index size
+        index_size_mb = None
+        if has_index:
+            total_bytes = sum(
+                f.stat().st_size for f in index_dir.rglob("*") if f.is_file()
+            )
+            index_size_mb = round(total_bytes / (1024 * 1024), 1)
+
+        # If no metadata file, compute basic stats from the index itself
+        if has_index and not index_meta:
+            index_meta = self._compute_index_stats(index_dir)
 
         # Build display name: prefer source config, then index metadata, then fallback
         display_name = config.get("display_name") or config.get("title")
@@ -247,11 +261,69 @@ class IndexManagementService:
             "display_name": display_name,
             "doc_type": doc_type,
             "source_config": config,
+            "in_sources_config": in_sources_config,
             "has_fetched_docs": has_fetched,
             "doc_dir_size_mb": doc_size_mb,
             "has_index": has_index,
+            "index_size_mb": index_size_mb,
             "index_metadata": index_meta,
         }
+
+    def _find_doc_dir(self, name: str, source_type: str) -> Path:
+        """Find the docs directory for a module.
+
+        Handles both bare names (from sources.json, e.g., "pytorch")
+        and prefixed names (from index dirs, e.g., "library_pytorch_2.9").
+        """
+        docs_base = Path(self._library_docs_dir)
+        doc_type_map = {
+            "libraries": "library",
+            "papers": "papers",
+            "books": "book",
+        }
+        prefix = doc_type_map.get(source_type, source_type)
+
+        # Try direct name first (already has prefix, e.g., "library_pytorch_2.9")
+        direct = docs_base / name
+        if direct.is_dir():
+            return direct
+
+        # Try with prefix prepended (bare name from sources.json, e.g., "pytorch")
+        prefixed = docs_base / f"{prefix}_{name}"
+        return prefixed
+
+    @staticmethod
+    def _compute_index_stats(index_dir: Path) -> Dict[str, Any]:
+        """Compute basic stats from ChromaDB and docstore when metadata file is missing."""
+        stats: Dict[str, Any] = {}
+        chroma_path = index_dir / "chroma.sqlite3"
+        if chroma_path.is_file():
+            try:
+                conn = sqlite3.connect(str(chroma_path))
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM embeddings")
+                stats["num_embeddings"] = cur.fetchone()[0]
+                cur.execute("SELECT dimension FROM collections LIMIT 1")
+                row = cur.fetchone()
+                if row:
+                    stats["embedding_dimension"] = row[0]
+                conn.close()
+            except Exception:
+                pass
+
+        docstore_path = index_dir / "docstore.json"
+        if docstore_path.is_file():
+            try:
+                with open(docstore_path, "r", encoding="utf-8") as f:
+                    docstore = json.load(f)
+                if "docstore/data" in docstore:
+                    stats["num_documents"] = len(docstore["docstore/data"])
+                if "docstore/ref_doc_info" in docstore:
+                    stats["num_source_docs"] = len(docstore["docstore/ref_doc_info"])
+            except Exception:
+                pass
+
+        return stats if stats else None  # type: ignore[return-value]
 
     # ── Fetch callable ────────────────────────────────────────────────
 
