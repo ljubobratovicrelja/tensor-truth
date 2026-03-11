@@ -20,6 +20,7 @@ from tensortruth.api.routes import (
     config,
     documents,
     extensions,
+    index_management,
     mcp_servers,
     modules,
     pdfs,
@@ -143,6 +144,11 @@ def create_app() -> FastAPI:
         mcp_servers.router, prefix="/api/mcp-servers", tags=["mcp-servers"]
     )
     app.include_router(extensions.router, prefix="/api/extensions", tags=["extensions"])
+    app.include_router(
+        index_management.router,
+        prefix="/api/index-management",
+        tags=["index-management"],
+    )
     app.include_router(
         tool_confirmations.router,
         prefix="/api/tool-confirmations",

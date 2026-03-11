@@ -21,6 +21,8 @@ export const QUERY_KEYS = {
   mcpServers: ["mcp-servers"] as const,
   extensions: ["extensions"] as const,
   extensionLibrary: ["extension-library"] as const,
+  sources: ["sources"] as const,
+  modulesOverview: ["modules-overview"] as const,
 };
 
 export const PROVIDER_TYPE_LABELS: Record<string, string> = {

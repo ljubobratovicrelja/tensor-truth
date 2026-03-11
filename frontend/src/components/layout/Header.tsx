@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/stores";
 import { useIsMobile } from "@/hooks";
 import { ConfigPanel } from "@/components/config";
+import { IndexManagementPanel } from "@/components/index-management";
 import { SystemStatusPanel } from "@/components/status";
 import { ThemeToggle } from "./ThemeToggle";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,7 @@ export function Header() {
       </div>
       <SystemStatusPanel />
       <ThemeToggle />
+      {!isInChat && <IndexManagementPanel />}
       {!isInChat && <ConfigPanel />}
       {isInProject && (
         <Button

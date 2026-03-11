@@ -44,6 +44,17 @@ from .extension import (
     ExtensionResponse,
     LibraryExtensionResponse,
 )
+from .index_management import (
+    BatchBuildRequest,
+    BuildRequest,
+    FetchRequest,
+    ModuleOverview,
+    ModulesOverviewResponse,
+    SourceCreateRequest,
+    SourcesResponse,
+    SourceUpdateRequest,
+    ValidateResponse,
+)
 from .mcp_server import (
     MCPServerCreateRequest,
     MCPServerListResponse,
@@ -191,4 +202,14 @@ __all__ = [
     "ExtensionLibraryResponse",
     "ExtensionInstallRequest",
     "ExtensionInstallResponse",
+    # Index Management
+    "SourceCreateRequest",
+    "SourceUpdateRequest",
+    "SourcesResponse",
+    "ModuleOverview",
+    "ModulesOverviewResponse",
+    "FetchRequest",
+    "BuildRequest",
+    "BatchBuildRequest",
+    "ValidateResponse",
 ]

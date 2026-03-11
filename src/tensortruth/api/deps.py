@@ -28,6 +28,7 @@ from tensortruth.services import (
     TaskRunner,
     ToolService,
 )
+from tensortruth.services.index_management_service import IndexManagementService
 from tensortruth.services.metadata_store import MetadataStore
 from tensortruth.services.startup_service import StartupService
 from tensortruth.services.tool_confirmation_service import ToolConfirmationService
@@ -186,6 +187,17 @@ TaskRunnerDep = Annotated[TaskRunner, Depends(get_task_runner)]
 
 # ToolConfirmationService singleton
 _tool_confirmation_service: ToolConfirmationService | None = None
+
+
+@lru_cache
+def get_index_management_service() -> IndexManagementService:
+    """Get the singleton IndexManagementService instance."""
+    return IndexManagementService()
+
+
+IndexManagementServiceDep = Annotated[
+    IndexManagementService, Depends(get_index_management_service)
+]
 
 
 def get_tool_confirmation_service() -> ToolConfirmationService:

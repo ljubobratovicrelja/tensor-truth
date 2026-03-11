@@ -757,3 +757,80 @@ export interface ReloadExtensionsResponse {
   extensions_loaded: number;
   errors: string[];
 }
+
+// Index Management types
+export interface SourcesResponse {
+  libraries: Record<string, Record<string, unknown>>;
+  papers: Record<string, Record<string, unknown>>;
+  books: Record<string, Record<string, unknown>>;
+}
+
+export interface ModuleOverview {
+  name: string;
+  source_type: string;
+  display_name: string;
+  doc_type: string;
+  source_config: Record<string, unknown>;
+  has_fetched_docs: boolean;
+  doc_dir_size_mb: number | null;
+  has_index: boolean;
+  index_metadata: Record<string, unknown> | null;
+}
+
+export interface ModulesOverviewResponse {
+  modules: ModuleOverview[];
+}
+
+export interface SourceCreateRequest {
+  source_type: string;
+  name: string;
+  config: Record<string, unknown>;
+}
+
+export interface FetchRequest {
+  source_type: string;
+  name: string;
+  workers?: number;
+  converter?: string;
+  output_format?: string;
+  enable_cleanup?: boolean;
+  min_size?: number;
+  pages_per_chunk?: number;
+}
+
+export interface BuildRequest {
+  module_name: string;
+  chunking_strategy?: string;
+  chunk_sizes?: number[];
+  chunk_overlap?: number;
+  embedding_model?: string;
+  semantic_buffer_size?: number;
+  semantic_breakpoint_threshold?: number;
+}
+
+export interface BatchBuildRequest {
+  module_names: string[];
+  chunking_strategy?: string;
+  chunk_sizes?: number[];
+  chunk_overlap?: number;
+  embedding_model?: string;
+  semantic_buffer_size?: number;
+  semantic_breakpoint_threshold?: number;
+}
+
+export interface TaskSubmitResponse {
+  task_id: string;
+}
+
+export interface BatchBuildResponse {
+  tasks: Array<{
+    module_name: string;
+    task_id: string | null;
+    error?: string;
+  }>;
+}
+
+export interface ValidateResponse {
+  valid: boolean;
+  issues: string[];
+}
