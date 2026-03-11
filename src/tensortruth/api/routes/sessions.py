@@ -142,6 +142,23 @@ async def delete_session(
     session_service.save(new_data)
 
 
+@router.delete("/{session_id}/messages/{message_index}", status_code=204)
+async def delete_message(
+    session_id: str, message_index: int, session_service: SessionServiceDep
+) -> None:
+    """Delete a single message by index."""
+    data = session_service.load()
+    if session_id not in data.sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        new_data = session_service.delete_message(session_id, message_index, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    session_service.save(new_data)
+
+
 @router.get("/{session_id}/messages", response_model=MessagesResponse)
 async def get_messages(
     session_id: str, session_service: SessionServiceDep

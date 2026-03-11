@@ -5,7 +5,12 @@ import { Button } from "@/components/ui/button";
 import { MessageItem } from "./MessageItem";
 import { StreamingIndicator } from "./StreamingIndicator";
 import { AgentProgress } from "./AgentProgress";
-import { useScrollDirection, useIsMobile, useAutoScroll } from "@/hooks";
+import {
+  useScrollDirection,
+  useIsMobile,
+  useAutoScroll,
+  useDeleteMessage,
+} from "@/hooks";
 import { useUIStore } from "@/stores";
 import { cn } from "@/lib/utils";
 import type {
@@ -59,6 +64,7 @@ export function MessageList({
   lastResponseStats,
   confirmationRequests,
 }: MessageListProps) {
+  const deleteMessage = useDeleteMessage(sessionId);
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
   const isMobile = useIsMobile();
   const setHeaderHidden = useUIStore((state) => state.setHeaderHidden);
@@ -208,6 +214,8 @@ export function MessageList({
                     ? lastResponseStats
                     : null
                 }
+                onDelete={(i) => deleteMessage.mutate(i)}
+                messageIndex={index}
               />
             ))}
             {/* Show pending message only if not already in fetched messages (dedup) */}

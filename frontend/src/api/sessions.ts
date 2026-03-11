@@ -61,6 +61,13 @@ export interface SessionStatsResponse {
   context_length: number;
 }
 
+export async function deleteMessage(
+  sessionId: string,
+  messageIndex: number
+): Promise<void> {
+  return apiDelete(`/sessions/${sessionId}/messages/${messageIndex}`);
+}
+
 export async function getSessionStats(sessionId: string): Promise<SessionStatsResponse> {
   return apiGet<SessionStatsResponse>(`/sessions/${sessionId}/stats`);
 }

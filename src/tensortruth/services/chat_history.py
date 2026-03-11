@@ -231,6 +231,10 @@ class ChatHistoryService:
         if effective_turns and valid_messages:
             valid_messages = self._limit_to_turns(valid_messages, effective_turns)
 
+        # Consolidate consecutive same-role messages so the LLM always sees
+        # strict alternation even when individual messages have been deleted.
+        valid_messages = self._consolidate_roles(valid_messages)
+
         # Create immutable history
         history = ChatHistory(messages=tuple(valid_messages))
 
@@ -294,6 +298,40 @@ class ChatHistoryService:
                 i += 1
 
         return messages[cut_index:]
+
+    @staticmethod
+    def _consolidate_roles(
+        messages: List[ChatHistoryMessage],
+    ) -> List[ChatHistoryMessage]:
+        """Merge consecutive messages that share the same role.
+
+        LLM APIs require strict user/assistant alternation.  When a message
+        is deleted from the middle of a conversation the remaining messages
+        may have two (or more) consecutive entries with the same role.  This
+        method joins them with a double-newline separator so the history
+        stays valid.
+
+        Args:
+            messages: List of chat messages (may have adjacent same-role).
+
+        Returns:
+            New list where no two adjacent messages share a role.
+        """
+        if not messages:
+            return []
+
+        result: List[ChatHistoryMessage] = [messages[0]]
+        for msg in messages[1:]:
+            if msg.role == result[-1].role:
+                merged = ChatHistoryMessage(
+                    role=msg.role,
+                    content=result[-1].content + "\n\n" + msg.content,
+                    timestamp=msg.timestamp,
+                )
+                result[-1] = merged
+            else:
+                result.append(msg)
+        return result
 
     def build_cleaned(self, history: ChatHistory) -> ChatHistory:
         """Apply history cleaning transformations.

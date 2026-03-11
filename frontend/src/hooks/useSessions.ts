@@ -8,6 +8,7 @@ import {
   deleteSession,
   getSessionMessages,
   getSessionStats,
+  deleteMessage,
   type SessionStatsResponse,
 } from "@/api/sessions";
 import type { SessionCreate, SessionUpdate } from "@/api/types";
@@ -74,6 +75,23 @@ export function useDeleteSession() {
       queryClient.removeQueries({ queryKey: QUERY_KEYS.session(sessionId) });
       queryClient.removeQueries({ queryKey: QUERY_KEYS.messages(sessionId) });
       // Refresh the sessions list
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
+    },
+  });
+}
+
+export function useDeleteMessage(sessionId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (messageIndex: number) => {
+      if (!sessionId) throw new Error("No session ID");
+      return deleteMessage(sessionId, messageIndex);
+    },
+    onSuccess: () => {
+      if (sessionId) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.messages(sessionId) });
+      }
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
     },
   });

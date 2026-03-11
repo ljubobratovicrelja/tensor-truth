@@ -300,9 +300,12 @@ def test_build_history_skips_malformed_messages():
 
     history = service.build_history(session_messages)
 
-    assert len(history.messages) == 2
-    assert history.messages[0].content == "Hello"
-    assert history.messages[1].content == "Valid"
+    # After skipping malformed messages, two consecutive user messages remain.
+    # Consolidation merges them into one to maintain strict role alternation.
+    assert len(history.messages) == 1
+    assert history.messages[0].role == "user"
+    assert "Hello" in history.messages[0].content
+    assert "Valid" in history.messages[0].content
 
 
 @pytest.mark.unit

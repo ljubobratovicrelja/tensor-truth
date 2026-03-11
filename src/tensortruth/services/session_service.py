@@ -544,6 +544,40 @@ class SessionService:
             return None
         return data.sessions.get(data.current_id)
 
+    def delete_message(
+        self, session_id: str, message_index: int, data: SessionData
+    ) -> SessionData:
+        """Delete a single message from a session.
+
+        Args:
+            session_id: Session ID.
+            message_index: 0-based index of the message to remove.
+            data: Current session data.
+
+        Returns:
+            Updated SessionData with the message removed.
+
+        Raises:
+            ValueError: If message_index is out of range.
+        """
+        if session_id not in data.sessions:
+            raise ValueError(f"Session {session_id} not found")
+
+        messages = list(data.sessions[session_id].get("messages", []))
+        if message_index < 0 or message_index >= len(messages):
+            raise ValueError(
+                f"message_index {message_index} out of range "
+                f"(session has {len(messages)} messages)"
+            )
+
+        del messages[message_index]
+
+        new_sessions = dict(data.sessions)
+        new_sessions[session_id] = dict(new_sessions[session_id])
+        new_sessions[session_id]["messages"] = messages
+
+        return SessionData(current_id=data.current_id, sessions=new_sessions)
+
     def get_messages(self, session_id: str, data: SessionData) -> List[Dict[str, Any]]:
         """Get messages for a session.
 

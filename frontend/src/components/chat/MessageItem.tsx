@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useEffect } from "react";
-import { User, Bot, Copy, Check } from "lucide-react";
+import { User, Bot, Copy, Check, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourcesList } from "./SourceCard";
 import { ToolSteps } from "./ToolSteps";
@@ -36,6 +36,10 @@ interface MessageItemProps {
   responseStats?: ResponseStats | null;
   /** Active confirmation requests (streaming only) */
   confirmationRequests?: StreamConfirmationRequest[];
+  /** Callback to delete this message */
+  onDelete?: (messageIndex: number) => void;
+  /** Index of this message in the messages array */
+  messageIndex?: number;
 }
 
 function MessageItemComponent({
@@ -50,6 +54,8 @@ function MessageItemComponent({
   pendingImages,
   responseStats,
   confirmationRequests,
+  onDelete,
+  messageIndex,
 }: MessageItemProps) {
   const isUser = message.role === "user";
   const messageSources = sources ?? (message.sources as SourceNode[] | undefined);
@@ -82,6 +88,12 @@ function MessageItemComponent({
     if (!isUser || !userContentRef.current) return;
     setUserMsgOverflows(userContentRef.current.scrollHeight > USER_MSG_COLLAPSED_PX);
   }, [isUser, message.content]);
+
+  const handleDelete = () => {
+    if (onDelete == null || messageIndex == null) return;
+    if (!confirm("Delete this message?")) return;
+    onDelete(messageIndex);
+  };
 
   const handleCopy = async (e: React.MouseEvent) => {
     const content = message.content;
@@ -163,17 +175,6 @@ function MessageItemComponent({
             isUser ? "bg-primary text-primary-foreground" : "bg-muted"
           )}
         >
-          {/* Copy button for assistant messages */}
-          {!isUser && !isStreaming && (
-            <button
-              onClick={handleCopy}
-              className="text-muted-foreground hover:bg-background/50 hover:text-foreground absolute top-2 right-2 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-              title="Copy (Shift+click for rich text)"
-            >
-              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            </button>
-          )}
-
           {/* Inline header with icon - visible on mobile only */}
           <div
             className={cn(
@@ -262,6 +263,38 @@ function MessageItemComponent({
             />
           )}
         </div>
+        {/* Action buttons below the bubble */}
+        {!isStreaming && (
+          <div
+            className={cn(
+              "flex gap-2 px-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
+              isUser ? "justify-end" : "justify-start"
+            )}
+          >
+            {!isUser && (
+              <button
+                onClick={handleCopy}
+                className="text-muted-foreground hover:text-foreground rounded p-1"
+                title="Copy (Shift+click for rich text)"
+              >
+                {copied ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+              </button>
+            )}
+            {onDelete != null && messageIndex != null && (
+              <button
+                onClick={handleDelete}
+                className="text-muted-foreground hover:text-destructive rounded p-1"
+                title="Delete message pair"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
         {!isUser &&
           !isStreaming &&
           responseStats != null &&
@@ -294,6 +327,8 @@ export const MessageItem = memo(MessageItemComponent, (prev, next) => {
     prev.sessionId === next.sessionId &&
     prev.pendingImages === next.pendingImages &&
     prev.responseStats === next.responseStats &&
-    prev.confirmationRequests === next.confirmationRequests
+    prev.confirmationRequests === next.confirmationRequests &&
+    prev.onDelete === next.onDelete &&
+    prev.messageIndex === next.messageIndex
   );
 });
