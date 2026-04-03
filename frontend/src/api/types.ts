@@ -857,6 +857,7 @@ export interface ChunkBoundary {
   chunk_id: string;
   start: number;
   end: number;
+  level: number;
 }
 
 export interface DocumentContentResponse {

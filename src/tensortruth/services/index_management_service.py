@@ -380,61 +380,91 @@ class IndexManagementService:
         node_ids = doc_info.get("node_ids", [])
         metadata = doc_info.get("metadata", {})
 
-        # Collect top-level chunks: parent points to a node NOT in data
-        top_chunks: List[Dict[str, Any]] = []
+        # Build set of all IDs referenced as children by other nodes
+        child_ids: set[str] = set()
         for nid in node_ids:
             node = data.get(nid)
             if node is None:
                 continue
+            for ref in node.get("__data__", {}).get("relationships", {}).get("5", []):
+                cid = ref.get("node_id")
+                if cid:
+                    child_ids.add(cid)
+
+        # Top-level chunks: those NOT referenced as a child of any other node
+        top_chunks: List[Dict[str, Any]] = []
+        for nid in node_ids:
+            if nid in child_ids:
+                continue
+            node = data.get(nid)
+            if node is None:
+                continue
             nd = node.get("__data__", {})
-            parent = nd.get("relationships", {}).get("1", {})
-            parent_id = parent.get("node_id", "") if isinstance(parent, dict) else ""
-            if parent_id not in data:
-                top_chunks.append(
-                    {
-                        "chunk_id": nid,
-                        "start": nd.get("start_char_idx", 0),
-                        "end": nd.get("end_char_idx", 0),
-                        "text": nd.get("text", ""),
-                    }
-                )
+            top_chunks.append(
+                {
+                    "chunk_id": nid,
+                    "start": nd.get("start_char_idx", 0),
+                    "end": nd.get("end_char_idx", 0),
+                    "text": nd.get("text", ""),
+                }
+            )
 
         # Sort by start position
         top_chunks.sort(key=lambda c: c["start"])
 
-        # Reconstruct text with overlap deduplication
+        # Reconstruct text with overlap deduplication, collecting all levels
         text_parts: List[str] = []
-        chunks_out: List[Dict[str, Any]] = []
+        all_chunks: List[Dict[str, Any]] = []
         current_pos = 0
+        output_len = 0
 
         for chunk in top_chunks:
             chunk_text = chunk["text"]
+            skip = 0
             if current_pos > 0 and chunk["start"] < current_pos:
-                # Overlap — skip already-covered chars
-                overlap = current_pos - chunk["start"]
-                if overlap < len(chunk_text):
-                    chunk_text = chunk_text[overlap:]
-                else:
+                skip = current_pos - chunk["start"]
+                if skip >= len(chunk_text):
                     continue
+                chunk_text = chunk_text[skip:]
 
-            chunk_start_in_output = len("".join(text_parts))
+            recon_start = output_len
             text_parts.append(chunk_text)
-            chunk_end_in_output = len("".join(text_parts))
+            output_len += len(chunk_text)
+            recon_end = output_len
 
-            chunks_out.append(
+            # Mapping: recon_pos = orig_pos + recon_offset
+            effective_orig_start = chunk["start"] + skip
+            recon_offset = recon_start - effective_orig_start
+
+            all_chunks.append(
                 {
                     "chunk_id": chunk["chunk_id"],
-                    "start": chunk_start_in_output,
-                    "end": chunk_end_in_output,
+                    "start": recon_start,
+                    "end": recon_end,
+                    "level": 0,
                 }
             )
+
+            # Recursively collect child chunks at deeper levels.
+            # Children store positions relative to their parent's full
+            # text, so parent_doc_start is the parent's original start.
+            _collect_children(
+                data,
+                chunk["chunk_id"],
+                parent_doc_start=chunk["start"],
+                recon_offset=recon_offset,
+                effective_orig_start=effective_orig_start,
+                level=1,
+                out=all_chunks,
+            )
+
             current_pos = max(current_pos, chunk["end"])
 
         return {
             "doc_id": doc_id,
             "metadata": metadata,
             "text": "".join(text_parts),
-            "chunks": chunks_out,
+            "chunks": all_chunks,
         }
 
     # ── Fetch callable ────────────────────────────────────────────────
@@ -605,6 +635,77 @@ class IndexManagementService:
                     issues.append(f"{source_type}/{name}: docs directory is empty")
 
         return {"valid": len(issues) == 0, "issues": issues}
+
+
+def _collect_children(
+    data: dict,
+    parent_id: str,
+    parent_doc_start: int,
+    recon_offset: int,
+    effective_orig_start: int,
+    level: int,
+    out: list,
+    max_level: int = 10,
+) -> None:
+    """Recursively collect child chunks, mapping positions to reconstructed text.
+
+    Child chunks store ``start_char_idx`` / ``end_char_idx`` relative to their
+    parent's text, so we translate them to document-level coordinates using
+    ``parent_doc_start`` before applying the reconstruction offset.
+    """
+    if level > max_level:
+        return
+    node = data.get(parent_id)
+    if node is None:
+        return
+    children_refs = node.get("__data__", {}).get("relationships", {}).get("5", [])
+    if not children_refs:
+        return
+
+    for ref in children_refs:
+        child_id = ref.get("node_id")
+        if not child_id:
+            continue
+        child_node = data.get(child_id)
+        if child_node is None:
+            continue
+        cd = child_node["__data__"]
+        local_start = cd.get("start_char_idx", 0)
+        local_end = cd.get("end_char_idx", 0)
+
+        # Convert parent-relative positions to document-absolute
+        doc_start = parent_doc_start + local_start
+        doc_end = parent_doc_start + local_end
+
+        # Skip chunks entirely within the trimmed overlap region
+        if doc_end <= effective_orig_start:
+            continue
+
+        mapped_start = max(doc_start, effective_orig_start) + recon_offset
+        mapped_end = doc_end + recon_offset
+
+        if mapped_start >= mapped_end:
+            continue
+
+        out.append(
+            {
+                "chunk_id": child_id,
+                "start": mapped_start,
+                "end": mapped_end,
+                "level": level,
+            }
+        )
+
+        _collect_children(
+            data,
+            child_id,
+            doc_start,
+            recon_offset,
+            effective_orig_start,
+            level + 1,
+            out,
+            max_level,
+        )
 
 
 @functools.lru_cache(maxsize=2)

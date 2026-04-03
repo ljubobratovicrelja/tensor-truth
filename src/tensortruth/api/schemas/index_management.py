@@ -119,6 +119,7 @@ class ChunkBoundary(BaseModel):
     chunk_id: str
     start: int
     end: int
+    level: int = 0
 
 
 class DocumentContentResponse(BaseModel):

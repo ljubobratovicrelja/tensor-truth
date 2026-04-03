@@ -222,6 +222,9 @@ function DocumentViewer({
         <div className="flex shrink-0 items-center gap-2">
           <Badge variant="secondary" className="text-[10px]">
             {data.chunks.length} chunks
+            {data.chunks.length > 0 && (
+              <> &middot; {Math.max(...data.chunks.map((c) => c.level)) + 1} levels</>
+            )}
           </Badge>
           {sourceUrl && (
             <a
@@ -236,6 +239,11 @@ function DocumentViewer({
         </div>
       </div>
 
+      {/* Legend */}
+      {data.chunks.length > 0 && (
+        <ChunkLegend maxLevel={Math.max(...data.chunks.map((c) => c.level))} />
+      )}
+
       {/* Text with chunk highlighting */}
       <ScrollArea className="min-h-0 flex-1 rounded-md border">
         <pre className="p-4 text-sm whitespace-pre-wrap">
@@ -246,56 +254,159 @@ function DocumentViewer({
   );
 }
 
-// ── Chunked Text Renderer ────────────────────────────────────────────
+// ── Hierarchical Chunk Renderer ──────────────────────────────────────
 
-const CHUNK_COLORS = [
-  "bg-blue-100/40 dark:bg-blue-900/20",
-  "bg-amber-100/40 dark:bg-amber-900/20",
-] as const;
+// Each level gets a pair of alternating background colors + a label color for the legend
+const LEVEL_STYLES: {
+  colors: [string, string];
+  swatches: [string, string];
+}[] = [
+  {
+    colors: [
+      "bg-gray-200/70 dark:bg-gray-700/50",
+      "bg-stone-200/70 dark:bg-stone-700/50",
+    ],
+    swatches: ["bg-gray-300 dark:bg-gray-600", "bg-stone-300 dark:bg-stone-600"],
+  },
+  {
+    colors: [
+      "bg-blue-200/60 dark:bg-blue-800/50",
+      "bg-amber-200/60 dark:bg-amber-800/50",
+    ],
+    swatches: ["bg-blue-300 dark:bg-blue-700", "bg-amber-300 dark:bg-amber-700"],
+  },
+  {
+    colors: [
+      "bg-emerald-200/60 dark:bg-emerald-800/50",
+      "bg-rose-200/60 dark:bg-rose-800/50",
+    ],
+    swatches: ["bg-emerald-300 dark:bg-emerald-700", "bg-rose-300 dark:bg-rose-700"],
+  },
+  {
+    colors: [
+      "bg-violet-200/60 dark:bg-violet-800/50",
+      "bg-orange-200/60 dark:bg-orange-800/50",
+    ],
+    swatches: ["bg-violet-300 dark:bg-violet-700", "bg-orange-300 dark:bg-orange-700"],
+  },
+  {
+    colors: ["bg-sky-200/60 dark:bg-sky-800/50", "bg-pink-200/60 dark:bg-pink-800/50"],
+    swatches: ["bg-sky-300 dark:bg-sky-700", "bg-pink-300 dark:bg-pink-700"],
+  },
+];
 
-function ChunkedText({
-  text,
-  chunks,
-}: {
-  text: string;
-  chunks: { chunk_id: string; start: number; end: number }[];
-}) {
+// Convenience accessor for the color pairs
+const LEVEL_COLORS: [string, string][] = LEVEL_STYLES.map((s) => s.colors);
+
+function ChunkLegend({ maxLevel }: { maxLevel: number }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-[11px]">
+      {maxLevel > 0 && (
+        <div className="flex items-center gap-1">
+          <span className="border-border/60 inline-block h-0 w-4 border-t-2 border-dashed" />
+          <span className="text-muted-foreground">L0 boundary</span>
+        </div>
+      )}
+      {Array.from({ length: maxLevel + 1 }, (_, level) => {
+        const style = LEVEL_STYLES[Math.min(level, LEVEL_STYLES.length - 1)];
+        const label = level === 0 ? "L0 (top)" : `L${level}`;
+        return (
+          <div key={level} className="flex items-center gap-1">
+            <span className={`inline-block h-3 w-2 rounded-l-sm ${style.swatches[0]}`} />
+            <span
+              className={`-ml-px inline-block h-3 w-2 rounded-r-sm ${style.swatches[1]}`}
+            />
+            <span className="text-muted-foreground">{label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+interface ChunkWithLevel {
+  chunk_id: string;
+  start: number;
+  end: number;
+  level: number;
+}
+
+function ChunkedText({ text, chunks }: { text: string; chunks: ChunkWithLevel[] }) {
   if (chunks.length === 0) return <>{text}</>;
 
+  // Find leaf chunks: those with no deeper chunk fully contained within them
+  const leaves = chunks.filter(
+    (c) => !chunks.some((d) => d.level > c.level && d.start >= c.start && d.end <= c.end)
+  );
+  leaves.sort((a, b) => a.start - b.start);
+
+  // L0 boundary positions (for separator lines between top-level chunks)
+  const l0Chunks = chunks.filter((c) => c.level === 0).sort((a, b) => a.start - b.start);
+  const l0Starts = new Set(l0Chunks.slice(1).map((c) => c.start));
+
+  // Track alternation counter per level — resets at L0 boundaries
+  const altCounters = new Map<number, number>();
+
   const elements: React.ReactNode[] = [];
-  let lastEnd = 0;
+  let pos = 0;
 
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
+  for (let i = 0; i < leaves.length; i++) {
+    const leaf = leaves[i];
+    const effectiveStart = Math.max(leaf.start, pos);
 
-    // Gap between chunks (if any)
-    if (chunk.start > lastEnd) {
-      elements.push(<span key={`gap-${i}`}>{text.slice(lastEnd, chunk.start)}</span>);
+    // Skip fully overlapped leaves
+    if (effectiveStart >= leaf.end) continue;
+
+    // Check for L0 separator between pos and this leaf
+    for (const l0Start of l0Starts) {
+      if (l0Start > pos && l0Start <= effectiveStart) {
+        elements.push(
+          <span
+            key={`sep-${l0Start}`}
+            className="border-border/60 my-1 block border-t-2 border-dashed"
+          />
+        );
+        // Reset all alternation counters at L0 boundary
+        altCounters.clear();
+        l0Starts.delete(l0Start);
+        break;
+      }
     }
 
-    const colorClass = CHUNK_COLORS[i % 2];
-    const truncId =
-      chunk.chunk_id.length > 12 ? chunk.chunk_id.slice(0, 8) + "..." : chunk.chunk_id;
+    // Gap before this leaf (uncovered text)
+    if (effectiveStart > pos) {
+      elements.push(<span key={`gap-${i}`}>{text.slice(pos, effectiveStart)}</span>);
+    }
+
+    // Get alternating color for this leaf's level
+    const level = leaf.level;
+    const altIdx = altCounters.get(level) ?? 0;
+    altCounters.set(level, altIdx + 1);
+
+    const colors = LEVEL_COLORS[Math.min(level, LEVEL_COLORS.length - 1)];
+    const colorClass = colors[altIdx % 2];
 
     elements.push(
-      <span
-        key={chunk.chunk_id}
-        className={colorClass}
-        title={`Chunk ${truncId} [${chunk.start}–${chunk.end}]`}
-      >
-        {text.slice(chunk.start, chunk.end)}
+      <span key={leaf.chunk_id} className={colorClass} title={chunkTooltip(leaf)}>
+        {text.slice(effectiveStart, leaf.end)}
       </span>
     );
 
-    lastEnd = chunk.end;
+    pos = leaf.end;
   }
 
   // Trailing text
-  if (lastEnd < text.length) {
-    elements.push(<span key="tail">{text.slice(lastEnd)}</span>);
+  if (pos < text.length) {
+    elements.push(<span key="tail">{text.slice(pos)}</span>);
   }
 
   return <>{elements}</>;
+}
+
+function chunkTooltip(chunk: ChunkWithLevel): string {
+  const truncId =
+    chunk.chunk_id.length > 12 ? chunk.chunk_id.slice(0, 8) + "..." : chunk.chunk_id;
+  return `L${chunk.level} chunk ${truncId} [${chunk.start}–${chunk.end}]`;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
