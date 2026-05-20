@@ -183,7 +183,7 @@ For index contents, see [config/sources.json](config/sources.json). This is a cu
 Tested on:
 - MacBook M1 Max (32GB unified memory)
 - Desktop with RTX 3090 Ti (24GB VRAM)
-- ASUS Ascent DX10
+- ASUS Ascent GX10
 
 If you encounter memory issues, consider running smaller models. Keep track of what models are loaded in Ollama, as they consume GPU VRAM and tend to stay in memory until Ollama is restarted.
 
