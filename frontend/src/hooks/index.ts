@@ -20,3 +20,4 @@ export * from "./useModelActions";
 export * from "./useImageAttachment";
 export * from "./useMcpServers";
 export * from "./useExtensions";
+export * from "./useIndexManagement";
