@@ -56,15 +56,6 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
     async (message: string, images?: AttachedImage[]) => {
       if (!sessionId) return;
 
-      // Close any existing connection
-      if (wsRef.current) {
-        manualCloseRef.current = true;
-        wsRef.current.close();
-      }
-
-      // Reset manual close flag for new connection
-      manualCloseRef.current = false;
-
       // Build image refs for optimistic UI (include previewUrl for pending display)
       const imageRefs = images?.map((img) => ({
         id: img.id,
@@ -103,23 +94,39 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
         );
       }
 
-      // Create new WebSocket connection
-      const ws = createWebSocket(sessionId);
-      wsRef.current = ws;
+      // Build payload
+      const payload: Record<string, unknown> = { prompt: message };
+      if (imagePayloads.length > 0) {
+        payload.images = imagePayloads;
+      }
+
+      // Reuse existing open connection, or create a new one
+      let ws: WebSocket;
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        // Close any stale connection
+        if (wsRef.current) {
+          manualCloseRef.current = true;
+          wsRef.current.close();
+        }
+        manualCloseRef.current = false;
+
+        ws = createWebSocket(sessionId);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify(payload));
+        };
+      } else {
+        // Connection already open — send immediately
+        manualCloseRef.current = false;
+        ws = wsRef.current;
+        ws.send(JSON.stringify(payload));
+      }
 
       let fullContent = "";
       let confidenceLevel = "normal";
       let didFetchUserMessage = false;
       let didReceiveThinking = false;
-
-      ws.onopen = () => {
-        // Send the prompt (with images if present)
-        const payload: Record<string, unknown> = { prompt: message };
-        if (imagePayloads.length > 0) {
-          payload.images = imagePayloads;
-        }
-        ws.send(JSON.stringify(payload));
-      };
 
       ws.onmessage = (event) => {
         try {
@@ -181,11 +188,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               });
               queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
 
-              // Close immediately if no title pending, otherwise wait for title
-              if (!data.title_pending) {
-                manualCloseRef.current = true; // Suppress error on clean close
-                ws.close();
-              }
+              // Connection stays open for next message
               break;
 
             case "error":
@@ -201,9 +204,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
               queryClient.invalidateQueries({
                 queryKey: QUERY_KEYS.session(sessionId),
               });
-              // Now we can close the connection
-              manualCloseRef.current = true; // Suppress error on clean close
-              ws.close();
+              // Connection stays open for next message
               break;
 
             case "tool_progress":

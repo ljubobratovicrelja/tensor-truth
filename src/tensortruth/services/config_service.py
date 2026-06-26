@@ -35,10 +35,15 @@ class ConfigService:
             self.config_file = Path(config_file)
             self.config_dir = self.config_file.parent
 
+        self._cached_config: Optional[TensorTruthConfig] = None
+        self._cache_mtime: Optional[float] = None
+
     def load(self) -> TensorTruthConfig:
         """Load configuration from YAML file.
 
         Creates default config if file doesn't exist.
+        Results are cached based on file mtime — re-reads only when the file
+        changes on disk.
 
         Returns:
             TensorTruthConfig instance.
@@ -48,10 +53,17 @@ class ConfigService:
             self.save(config)
             return config
 
+        current_mtime = self.config_file.stat().st_mtime
+        if self._cached_config is not None and self._cache_mtime == current_mtime:
+            return self._cached_config
+
         try:
             with open(self.config_file, "r") as f:
                 data = yaml.safe_load(f) or {}
-            return TensorTruthConfig.from_dict(data)
+            config = TensorTruthConfig.from_dict(data)
+            self._cached_config = config
+            self._cache_mtime = current_mtime
+            return config
         except (yaml.YAMLError, IOError, KeyError):
             return TensorTruthConfig.create_default()
 
@@ -67,6 +79,11 @@ class ConfigService:
             yaml.safe_dump(
                 config.to_dict(), f, default_flow_style=False, sort_keys=False
             )
+
+        # Update cache after successful write
+        self._cached_config = config
+        if self.config_file.exists():
+            self._cache_mtime = self.config_file.stat().st_mtime
 
     def update(self, **kwargs: Any) -> TensorTruthConfig:
         """Update specific config values.

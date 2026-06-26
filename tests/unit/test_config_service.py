@@ -462,3 +462,82 @@ class TestConfigBackwardCompatibility:
         assert config.rag.default_confidence_threshold == 0.4
         assert config.rag.default_device == "cuda"
         assert config.conversation.max_history_turns == 5
+
+
+class TestConfigServiceCache:
+    """Tests for ConfigService caching behavior."""
+
+    def test_cache_hit_on_second_load(
+        self, config_service: ConfigService, temp_config_file: Path
+    ):
+        """Second load() returns cached config without re-reading disk."""
+        # First load — reads from disk (or creates default)
+        config1 = config_service.load()
+        assert config1.ollama.base_url == "http://localhost:11434"
+
+        # Second load — should return cached object
+        config2 = config_service.load()
+        assert config2 is config1  # Same object from cache
+
+    def test_cache_invalidated_on_mtime_change(
+        self, config_service: ConfigService, temp_config_file: Path
+    ):
+        """If config file mtime changes, load() re-reads from disk."""
+        config1 = config_service.load()
+        assert config1.ollama.base_url == "http://localhost:11434"
+
+        # Write a different config to disk
+        updated = {
+            "ollama": {"base_url": "http://changed:11434", "timeout": 600},
+        }
+        temp_config_file.write_text(yaml.safe_dump(updated))
+
+        # Load should detect mtime change and re-read
+        config2 = config_service.load()
+        assert config2.ollama.base_url == "http://changed:11434"
+        # Should be a different object
+        assert config2 is not config1
+
+    def test_save_updates_cache(
+        self, config_service: ConfigService, temp_config_file: Path
+    ):
+        """After save(), load() returns the saved config from cache."""
+        config = config_service.load()
+        config.ollama.base_url = "http://saved:11434"
+        config_service.save(config)
+
+        # Subsequent load returns cached (saved) config
+        config2 = config_service.load()
+        assert config2.ollama.base_url == "http://saved:11434"
+        # Same object — cache was updated by save()
+        assert config2 is config
+
+    def test_cache_bypassed_when_file_does_not_exist(
+        self, config_service: ConfigService, temp_config_file: Path
+    ):
+        """When file is missing, load() creates default and caches it."""
+        assert not temp_config_file.exists()
+
+        config1 = config_service.load()
+        assert config1.ollama.base_url == "http://localhost:11434"
+        assert temp_config_file.exists()
+
+        # Second load returns cached version (file now exists, mtime matches)
+        config2 = config_service.load()
+        assert config2 is config1
+
+    def test_update_works_with_cache(
+        self, config_service: ConfigService, temp_config_file: Path
+    ):
+        """update() calls load() then save() — must work transparently with cache."""
+        # Prime the cache
+        config_service.load()
+
+        # Update via the prefixed-key API
+        result = config_service.update(llm_default_temperature=0.3)
+
+        assert result.llm.default_temperature == 0.3
+
+        # Subsequent load should return cached value
+        config2 = config_service.load()
+        assert config2.llm.default_temperature == 0.3

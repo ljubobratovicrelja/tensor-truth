@@ -174,6 +174,16 @@ class AgentConfig:
     # "analyzing" phase.  Dev/debug feature, off by default.
     show_orchestrator_reasoning: bool = False
 
+    # Phase 3: Tool subset selection — when True, simple prompts skip tool
+    # schemas entirely and call the LLM with a tiny no-tools system prompt.
+    # Falls back to full agent if the LLM responds "NEED_TOOLS".
+    tool_subset_selection: bool = False
+
+    # Phase 3: Slim tool schemas — when True, tool descriptions in the
+    # function schemas sent via the ``tools=`` parameter are truncated to
+    # the first 120 characters, reducing prefill token count.
+    slim_tool_schemas: bool = False
+
     def __post_init__(self):
         """Validate configuration values."""
         if self.max_iterations <= 0:

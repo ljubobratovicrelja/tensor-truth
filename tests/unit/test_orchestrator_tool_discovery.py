@@ -56,12 +56,6 @@ def rag_service_not_loaded():
     return service
 
 
-@pytest.fixture
-def progress_emitter():
-    """No-op progress emitter for tool building."""
-    return MagicMock()
-
-
 def _make_mcp_tool(name: str, description: str = "An MCP tool") -> MagicMock:
     """Create a mock FunctionTool representing an MCP tool."""
     tool = MagicMock(spec=FunctionTool)
@@ -90,22 +84,22 @@ class TestToolDiscoveryWebOnly:
     """When RAG is unavailable, only web tools should be registered."""
 
     def test_web_tools_only_when_rag_not_loaded(
-        self, tool_service, rag_service_not_loaded, progress_emitter
+        self, tool_service, rag_service_not_loaded
     ):
         """Should include only web tools when RAG is not loaded."""
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         names = {t.metadata.name for t in tools}
         assert names == {"web_search", "fetch_page", "fetch_pages_batch"}
         assert "rag_query" not in names
 
-    def test_web_tools_only_when_rag_is_none(self, tool_service, progress_emitter):
+    def test_web_tools_only_when_rag_is_none(self, tool_service):
         """Should include only web tools when rag_service is None."""
         svc = _create_service(
             tool_service, rag_service=MagicMock(is_loaded=MagicMock(return_value=False))
         )
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         names = {t.metadata.name for t in tools}
         assert "rag_query" not in names
@@ -118,22 +112,18 @@ class TestToolDiscoveryWebOnly:
 class TestToolDiscoveryWithRAG:
     """When RAG is loaded, rag_query should be included alongside web tools."""
 
-    def test_includes_rag_when_loaded(
-        self, tool_service, rag_service_loaded, progress_emitter
-    ):
+    def test_includes_rag_when_loaded(self, tool_service, rag_service_loaded):
         """Should include rag_query plus the three web tools."""
         svc = _create_service(tool_service, rag_service_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         names = {t.metadata.name for t in tools}
         assert names == {"rag_query", "web_search", "fetch_page", "fetch_pages_batch"}
 
-    def test_rag_tool_is_first(
-        self, tool_service, rag_service_loaded, progress_emitter
-    ):
+    def test_rag_tool_is_first(self, tool_service, rag_service_loaded):
         """rag_query should appear first in the tool list (wrapped tools order)."""
         svc = _create_service(tool_service, rag_service_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         assert tools[0].metadata.name == "rag_query"
 
@@ -144,31 +134,27 @@ class TestToolDiscoveryWithRAG:
 class TestToolDiscoveryWithMCPTools:
     """MCP tools from ToolService should be included alongside wrapped tools."""
 
-    def test_includes_mcp_tools(
-        self, tool_service, rag_service_not_loaded, progress_emitter
-    ):
+    def test_includes_mcp_tools(self, tool_service, rag_service_not_loaded):
         """Should include MCP tools that don't conflict with wrapped names."""
         mcp_tool = _make_mcp_tool("custom_mcp_tool", "A custom MCP tool")
         tool_service.tools = [mcp_tool]
 
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         names = {t.metadata.name for t in tools}
         assert "custom_mcp_tool" in names
         # 3 web tools + 1 MCP tool
         assert len(tools) == 4
 
-    def test_includes_multiple_mcp_tools(
-        self, tool_service, rag_service_loaded, progress_emitter
-    ):
+    def test_includes_multiple_mcp_tools(self, tool_service, rag_service_loaded):
         """Should include all non-conflicting MCP tools."""
         mcp1 = _make_mcp_tool("mcp_analyzer", "Analyze data")
         mcp2 = _make_mcp_tool("mcp_summarizer", "Summarize text")
         tool_service.tools = [mcp1, mcp2]
 
         svc = _create_service(tool_service, rag_service_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         names = {t.metadata.name for t in tools}
         assert "mcp_analyzer" in names
@@ -176,14 +162,12 @@ class TestToolDiscoveryWithMCPTools:
         # 4 wrapped (rag + 3 web) + 2 MCP
         assert len(tools) == 6
 
-    def test_no_mcp_tools_is_fine(
-        self, tool_service, rag_service_not_loaded, progress_emitter
-    ):
+    def test_no_mcp_tools_is_fine(self, tool_service, rag_service_not_loaded):
         """Should work gracefully when no MCP tools are available."""
         tool_service.tools = []
 
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         # Should still have the 3 web tools
         assert len(tools) == 3
@@ -195,15 +179,13 @@ class TestToolDiscoveryWithMCPTools:
 class TestBuiltinToolNameFiltering:
     """MCP tools with names matching wrapped built-in tools must be filtered."""
 
-    def test_filters_search_web_from_mcp(
-        self, tool_service, rag_service_not_loaded, progress_emitter
-    ):
+    def test_filters_search_web_from_mcp(self, tool_service, rag_service_not_loaded):
         """Should filter out an MCP tool named 'search_web' to avoid duplicates."""
         conflicting = _make_mcp_tool("search_web", "Conflicting search_web")
         tool_service.tools = [conflicting]
 
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         # The conflicting MCP tool should be excluded
         names = [t.metadata.name for t in tools]
@@ -213,7 +195,7 @@ class TestBuiltinToolNameFiltering:
         assert "web_search" in names
 
     def test_filters_all_wrapped_builtin_names(
-        self, tool_service, rag_service_not_loaded, progress_emitter
+        self, tool_service, rag_service_not_loaded
     ):
         """Should filter all names in _WRAPPED_BUILTIN_TOOL_NAMES."""
         conflicting_tools = [
@@ -223,7 +205,7 @@ class TestBuiltinToolNameFiltering:
         tool_service.tools = conflicting_tools
 
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         # None of the conflicting MCP tools should be included
         for builtin_name in _WRAPPED_BUILTIN_TOOL_NAMES:
@@ -236,7 +218,7 @@ class TestBuiltinToolNameFiltering:
             assert mcp_count == 0, f"MCP tool '{builtin_name}' should be filtered"
 
     def test_keeps_non_conflicting_mcp_tools(
-        self, tool_service, rag_service_not_loaded, progress_emitter
+        self, tool_service, rag_service_not_loaded
     ):
         """Non-conflicting MCP tools should be kept even when conflicting ones are filtered."""
         conflicting = _make_mcp_tool("search_web", "Conflicting")
@@ -244,7 +226,7 @@ class TestBuiltinToolNameFiltering:
         tool_service.tools = [conflicting, good_tool]
 
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         names = {t.metadata.name for t in tools}
         assert "my_custom_tool" in names
@@ -268,11 +250,11 @@ class TestToolDescriptions:
     """All tools must have non-empty, distinct descriptions for LLM routing."""
 
     def test_all_wrapped_tools_have_descriptions(
-        self, tool_service, rag_service_loaded, progress_emitter
+        self, tool_service, rag_service_loaded
     ):
         """Every wrapped tool should have a non-empty description."""
         svc = _create_service(tool_service, rag_service_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         for tool in tools:
             assert (
@@ -282,12 +264,10 @@ class TestToolDescriptions:
                 len(tool.metadata.description) > 20
             ), f"Tool '{tool.metadata.name}' description is too short"
 
-    def test_tool_descriptions_are_distinct(
-        self, tool_service, rag_service_loaded, progress_emitter
-    ):
+    def test_tool_descriptions_are_distinct(self, tool_service, rag_service_loaded):
         """No two tools should share the exact same description."""
         svc = _create_service(tool_service, rag_service_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         descriptions = [t.metadata.description for t in tools]
         assert len(descriptions) == len(
@@ -295,44 +275,44 @@ class TestToolDescriptions:
         ), "Duplicate tool descriptions found"
 
     def test_rag_tool_description_mentions_knowledge_base(
-        self, tool_service, rag_service_loaded, progress_emitter
+        self, tool_service, rag_service_loaded
     ):
         """rag_query description should mention knowledge base for clear routing."""
         svc = _create_service(tool_service, rag_service_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         rag_tool = next(t for t in tools if t.metadata.name == "rag_query")
         desc = rag_tool.metadata.description.lower()
         assert "knowledge base" in desc
 
     def test_web_search_description_mentions_current_info(
-        self, tool_service, rag_service_not_loaded, progress_emitter
+        self, tool_service, rag_service_not_loaded
     ):
         """web_search description should guide toward current/live information."""
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         ws_tool = next(t for t in tools if t.metadata.name == "web_search")
         desc = ws_tool.metadata.description.lower()
         assert "current" in desc or "recent" in desc or "web" in desc
 
     def test_fetch_page_description_mentions_single_page(
-        self, tool_service, rag_service_not_loaded, progress_emitter
+        self, tool_service, rag_service_not_loaded
     ):
         """fetch_page description should mention it fetches a single page."""
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         fp_tool = next(t for t in tools if t.metadata.name == "fetch_page")
         desc = fp_tool.metadata.description.lower()
         assert "single" in desc or "page" in desc
 
     def test_fetch_pages_batch_description_mentions_parallel(
-        self, tool_service, rag_service_not_loaded, progress_emitter
+        self, tool_service, rag_service_not_loaded
     ):
         """fetch_pages_batch description should mention parallel fetching."""
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
 
         fpb_tool = next(t for t in tools if t.metadata.name == "fetch_pages_batch")
         desc = fpb_tool.metadata.description.lower()
@@ -350,12 +330,10 @@ class TestGetToolNames:
         svc = _create_service(tool_service, rag_service_not_loaded)
         assert svc.get_tool_names() == []
 
-    def test_returns_sorted_names_after_build(
-        self, tool_service, rag_service_loaded, progress_emitter
-    ):
+    def test_returns_sorted_names_after_build(self, tool_service, rag_service_loaded):
         """Should return sorted tool names after tools are built."""
         svc = _create_service(tool_service, rag_service_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
         svc._tools = tools
 
         names = svc.get_tool_names()
@@ -367,15 +345,13 @@ class TestGetToolNames:
             "web_search",
         }
 
-    def test_includes_mcp_tool_names(
-        self, tool_service, rag_service_not_loaded, progress_emitter
-    ):
+    def test_includes_mcp_tool_names(self, tool_service, rag_service_not_loaded):
         """Should include MCP tool names in the list."""
         mcp_tool = _make_mcp_tool("alpha_tool", "Alpha")
         tool_service.tools = [mcp_tool]
 
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(progress_emitter)
+        tools = svc._build_tools()
         svc._tools = tools
 
         names = svc.get_tool_names()
@@ -399,7 +375,7 @@ class TestToolBuildLogging:
     """Verify that _build_tools() produces appropriate log messages."""
 
     def test_logs_tool_count_at_info_level(
-        self, tool_service, rag_service_loaded, progress_emitter, caplog
+        self, tool_service, rag_service_loaded, caplog
     ):
         """Should log the total tool count at INFO level."""
         import logging
@@ -408,7 +384,7 @@ class TestToolBuildLogging:
             logging.INFO, logger="tensortruth.services.orchestrator_service"
         ):
             svc = _create_service(tool_service, rag_service_loaded)
-            svc._build_tools(progress_emitter)
+            svc._build_tools()
 
         # Find the info-level log message
         info_msgs = [r.message for r in caplog.records if r.levelno == logging.INFO]
@@ -417,7 +393,7 @@ class TestToolBuildLogging:
         ), f"Expected INFO log about 4 tools, got: {info_msgs}"
 
     def test_logs_tool_descriptions_at_debug_level(
-        self, tool_service, rag_service_not_loaded, progress_emitter, caplog
+        self, tool_service, rag_service_not_loaded, caplog
     ):
         """Should log individual tool descriptions at DEBUG level."""
         import logging
@@ -426,7 +402,7 @@ class TestToolBuildLogging:
             logging.DEBUG, logger="tensortruth.services.orchestrator_service"
         ):
             svc = _create_service(tool_service, rag_service_not_loaded)
-            svc._build_tools(progress_emitter)
+            svc._build_tools()
 
         debug_msgs = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
         # Each of the 3 tools should have a debug log for its description

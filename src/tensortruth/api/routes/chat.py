@@ -379,8 +379,9 @@ async def _run_orchestrator_path(
 
     mcp_server_service = MCPServerService()
 
-    # Create OrchestratorService
-    orchestrator = OrchestratorService(
+    # Create OrchestratorService (cached per session/config identity)
+    orchestrator = OrchestratorService.get_or_create(
+        session_id=context.session_id,
         tool_service=tool_service,
         rag_service=rag_service,
         model=model_name or "",
@@ -393,7 +394,6 @@ async def _run_orchestrator_path(
         project_metadata=project_metadata,
         confirmation_service=confirmation_service,
         mcp_server_service=mcp_server_service,
-        session_id=context.session_id,
         project_id=project_id,
     )
 

@@ -615,3 +615,160 @@ class TestAtomicWrites:
         atomic_write_json(file_path, {"data": True})
 
         assert file_path.exists()
+
+
+class TestSessionServiceCache:
+    """Tests for SessionService caching behavior."""
+
+    @pytest.fixture
+    def service(self, tmp_path: Path) -> SessionService:
+        """Create a SessionService with a low cache cap for eviction tests."""
+        svc = SessionService(
+            sessions_file=tmp_path / "legacy.json",
+            sessions_dir=tmp_path / "sessions",
+        )
+        svc.sessions_dir.mkdir(exist_ok=True)
+        svc.MAX_CACHED_SESSIONS = 2  # Small cap for eviction testing
+        return svc
+
+    def _create_session_on_disk(
+        self,
+        service: SessionService,
+        session_id: str,
+        title: str = "Test",
+        msg_count: int = 1,
+    ) -> None:
+        """Create a session file + index entry on disk without going through cache."""
+        session_dir = service.sessions_dir / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+        session_data = {
+            "title": title,
+            "created_at": "2024-01-01 12:00:00",
+            "messages": [
+                {"role": "user", "content": f"msg {i}"} for i in range(msg_count)
+            ],
+            "modules": None,
+            "params": {},
+            "title_needs_update": False,
+        }
+        (session_dir / "session.json").write_text(json.dumps(session_data))
+
+        # Update index
+        index_file = service.sessions_dir / "sessions_index.json"
+        if index_file.exists():
+            index = json.loads(index_file.read_text())
+        else:
+            index = {"current_id": None, "sessions": {}}
+        index["current_id"] = session_id
+        index["sessions"][session_id] = {
+            "title": title,
+            "created_at": "2024-01-01 12:00:00",
+        }
+        index_file.write_text(json.dumps(index))
+
+    def test_cache_hit_returns_same_data(self, service: SessionService, tmp_path: Path):
+        """Second load() returns same data without re-reading disk."""
+        self._create_session_on_disk(service, "s1", "Session One")
+        self._create_session_on_disk(service, "s2", "Session Two")
+
+        # First load — populates cache
+        data1 = service.load()
+        assert data1.sessions["s1"]["title"] == "Session One"
+
+        # Second load should use cache (mtime unchanged)
+        data2 = service.load()
+        assert data2.sessions["s1"]["title"] == "Session One"
+        assert data2.sessions["s2"]["title"] == "Session Two"
+
+        # The session dicts should be the same objects (cache reuse)
+        assert data2.sessions["s1"] is data1.sessions["s1"]
+
+    def test_save_updates_cache(self, service: SessionService, tmp_path: Path):
+        """Save writes through to cache; subsequent load returns updated data."""
+        self._create_session_on_disk(service, "s1", "Original Title")
+
+        data = service.load()
+        assert data.sessions["s1"]["title"] == "Original Title"
+
+        # Modify and save
+        data = service.update_title("s1", "Updated Title", data)
+        service.save(data)
+
+        # Load again — should get cached updated data without disk re-read
+        data2 = service.load()
+        assert data2.sessions["s1"]["title"] == "Updated Title"
+
+    def test_reload_forces_disk_re_read(self, service: SessionService, tmp_path: Path):
+        """reload(session_id) invalidates cache; next load re-reads from disk."""
+        self._create_session_on_disk(service, "s1", "Before Reload")
+
+        data = service.load()
+        assert data.sessions["s1"]["title"] == "Before Reload"
+
+        # Change file on disk directly
+        session_file = service.sessions_dir / "s1" / "session.json"
+        on_disk = json.loads(session_file.read_text())
+        on_disk["title"] = "After Reload"
+        session_file.write_text(json.dumps(on_disk))
+
+        # reload() without clearing cache would still return old data
+        # But after explicit reload:
+        service.reload("s1")
+        data2 = service.load()
+        assert data2.sessions["s1"]["title"] == "After Reload"
+
+    def test_reload_all_clears_cache(self, service: SessionService, tmp_path: Path):
+        """reload() with no arg clears entire cache."""
+        self._create_session_on_disk(service, "s1", "Session 1")
+        self._create_session_on_disk(service, "s2", "Session 2")
+
+        data = service.load()
+        assert len(data.sessions) == 2
+
+        service.reload()
+        # Cache is now empty; next load should re-read from disk
+        data2 = service.load()
+        assert len(data2.sessions) == 2
+        assert data2.sessions["s1"]["title"] == "Session 1"
+
+    def test_lru_eviction(self, service: SessionService, tmp_path: Path):
+        """When cache exceeds MAX_CACHED_SESSIONS, oldest entries are evicted."""
+        svc = service
+        svc.MAX_CACHED_SESSIONS = 2
+
+        # Create 3 sessions on disk
+        self._create_session_on_disk(svc, "s1", "Session 1")
+        self._create_session_on_disk(svc, "s2", "Session 2")
+        self._create_session_on_disk(svc, "s3", "Session 3")
+
+        # Load all 3 — with cap=2, s1 should be evicted
+        data = svc.load()
+        assert len(data.sessions) == 3  # All returned from load
+
+        # s1 should no longer be in the cache (evicted)
+        assert "s1" not in svc._cache
+        # s2 and s3 should still be cached
+        assert "s2" in svc._cache
+        assert "s3" in svc._cache
+
+    def test_cache_staleness_detected_via_mtime(
+        self, service: SessionService, tmp_path: Path
+    ):
+        """If session file mtime changes, load() re-reads from disk."""
+        self._create_session_on_disk(service, "s1", "Original")
+
+        data = service.load()
+        assert data.sessions["s1"]["title"] == "Original"
+
+        # Modify file directly on disk but don't call reload()
+        session_file = service.sessions_dir / "s1" / "session.json"
+        on_disk = json.loads(session_file.read_text())
+        on_disk["title"] = "Modified on Disk"
+        session_file.write_text(json.dumps(on_disk))
+
+        # Advance mtime by touching the parent dir to ensure different mtime
+        # (write_text already updated the mtime, but we need the cached mtime
+        #  to differ — since we haven't called reload(), the cache still has
+        #  the old mtime, so the next load should detect the change)
+        data2 = service.load()
+        assert data2.sessions["s1"]["title"] == "Modified on Disk"

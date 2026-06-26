@@ -16,7 +16,6 @@ from .orchestrator_service import OrchestratorService
 from .project_service import ProjectService
 from .rag_service import RAGService
 from .session_service import SessionService
-from .synthesis_service import SynthesisService
 from .task_runner import TaskInfo, TaskRunner, TaskStatus
 from .tool_service import ToolService
 
@@ -35,7 +34,6 @@ __all__ = [
     "PDFService",
     "ModelManager",
     "OrchestratorService",
-    "SynthesisService",
     "ChatHistory",
     "ChatHistoryMessage",
     "ChatHistoryService",

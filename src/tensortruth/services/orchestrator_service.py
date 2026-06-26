@@ -1,9 +1,11 @@
 """Orchestrator service built on LlamaIndex FunctionAgent.
 
-Routes every user prompt through a tool-calling agent that decides whether to
-query the knowledge base, search the web, fetch pages, call MCP tools, or
-respond directly. The FunctionAgent handles the agentic loop internally
-(call tool -> inspect result -> decide -> repeat or produce final answer).
+Executes a single-turn agentic loop: creates a FunctionAgent, streams its
+output directly as token events, and auto-continues if tools are requested.
+No separate synthesis phase — the agent's own output IS the final answer.
+
+The FunctionAgent handles the agentic loop internally (call tool -> inspect
+result -> decide -> repeat or produce final answer).
 
 This is the core of the agentic chat loop.  It does NOT maintain conversation
 memory -- history is passed per-call from ChatHistoryService.
@@ -14,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -22,6 +25,8 @@ from typing import (
     Dict,
     List,
     Optional,
+    Tuple,
+    cast,
 )
 
 from llama_index.core.agent.workflow import AgentStream, ToolCall, ToolCallResult
@@ -40,7 +45,6 @@ from tensortruth.core.providers import (
 from tensortruth.core.providers import (
     resolve_model_from_params,
 )
-from tensortruth.core.providers import resolve_thinking as _providers_resolve_thinking
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
 from tensortruth.services.orchestrator_tool_wrappers import (
     ProgressEmitter,
@@ -88,6 +92,108 @@ _TOOL_ANALYZING_MESSAGES: Dict[str, str] = {
     "add_arxiv_paper": "Adding paper to documents...",
 }
 _DEFAULT_ANALYZING_MESSAGE = "Analyzing results..."
+
+
+# Module-level agent cache (Phase 2: Stateful Agent Cache).
+# Maps identity tuple -> OrchestratorService instance.
+_agent_cache: "OrderedDict[Tuple, OrchestratorService]" = OrderedDict()
+_AGENT_CACHE_MAX_SIZE = 16
+
+# Simple prompt heuristic keywords (Phase 3 Lever 1).
+# Prompts containing any of these are considered likely to need tools.
+_TOOL_KEYWORDS = frozenset(
+    {
+        "search",
+        "find",
+        "what",
+        "when",
+        "where",
+        "who",
+        "lookup",
+        "fetch",
+        "latest",
+        "recent",
+        "current",
+        "compare",
+        "research",
+        "analyze",
+        "investigate",
+        "check",
+        "look up",
+        "summarize",
+        "translate",
+        "calculate",
+    }
+)
+_SIMPLE_PROMPT_MAX_LENGTH = 80
+
+
+def clear_agent_cache() -> None:
+    """Clear the agent cache (for testing / reset)."""
+    _agent_cache.clear()
+
+
+def _compute_cache_identity(
+    session_id: str,
+    tool_service: "ToolService",
+    rag_service: "RAGService",
+    model: str,
+    base_url: str,
+    context_window: int,
+    session_params: Optional[Dict[str, Any]],
+    module_descriptions: Optional[List["ModuleDescription"]],
+    custom_instructions: Optional[str],
+    project_metadata: Optional[str],
+    max_iterations: int,
+    mcp_server_service: Optional[Any],
+) -> tuple:
+    """Compute a hashable identity tuple for the agent cache.
+
+    The identity captures every input that affects the constructed tool set,
+    LLM config, and system prompt.  When any of these changes a cache miss
+    occurs and a new instance is created.
+    """
+    # Wrapped built-in tool names depend on RAG availability
+    wrapped_names = {"web_search", "fetch_page", "fetch_pages_batch"}
+    if rag_service and rag_service.is_loaded():
+        wrapped_names.add("rag_query")
+    # MCP management tools
+    if mcp_server_service is not None:
+        wrapped_names.update(
+            {"list_mcp_servers", "get_mcp_presets", "manage_mcp_server"}
+        )
+    # MCP tools from ToolService (filter out wrapped built-ins)
+    mcp_names = frozenset(
+        t.metadata.name
+        for t in tool_service.tools
+        if t.metadata.name not in _WRAPPED_BUILTIN_TOOL_NAMES
+    )
+    all_tool_names = frozenset(wrapped_names) | mcp_names
+
+    # System-prompt-relevant inputs hash
+    descs = tuple(
+        sorted(
+            (m.name, m.display_name, m.doc_type) for m in (module_descriptions or [])
+        )
+    )
+    sp_hash = hash(
+        (
+            descs,
+            custom_instructions,
+            project_metadata,
+            (session_params or {}).get("provider_id"),
+            max_iterations,
+        )
+    )
+
+    return (
+        session_id or "",
+        model,
+        base_url,
+        context_window,
+        all_tool_names,
+        sp_hash,
+    )
 
 
 def _analyzing_message(tool_name: str) -> str:
@@ -208,7 +314,7 @@ class OrchestratorService:
 
         # Resolve model reference once for provider-aware LLM creation
         self._model_ref = resolve_model_from_params(self._session_params, model)
-        self._session_messages = session_messages
+        self._session_messages: List[Dict[str, Any]] = session_messages or []
         self._module_descriptions = module_descriptions or []
         self._custom_instructions = custom_instructions
         self._project_metadata = project_metadata
@@ -222,6 +328,14 @@ class OrchestratorService:
         self._llm: Optional["LLM"] = None
         self._agent: Optional[LIFunctionAgent] = None
         self._tools: Optional[List[FunctionTool]] = None
+
+        # Per-call external progress emitter (updated each execute())
+        # Tool closures read this dynamically via the internal emitter.
+        self._current_external_emitter: Optional[ProgressEmitter] = None
+
+        # Tracks the last system prompt used to build _agent, so we know
+        # when to rebuild (e.g. on date change or config change).
+        self._last_system_prompt: Optional[str] = None
 
         # Accumulator for tool phase events emitted by tool wrappers.
         # Populated during execute() via the progress emitter closure.
@@ -248,10 +362,68 @@ class OrchestratorService:
         self._full_output_queue: List[tuple] = []
 
     # ------------------------------------------------------------------
+    # Cache-aware factory (Phase 2)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def get_or_create(
+        cls, session_id: str = "", **kwargs: Any
+    ) -> "OrchestratorService":
+        """Get or create a cached OrchestratorService instance.
+
+        The cache key is a hashable identity tuple capturing session_id,
+        model, base_url, context_window, the tool name set, and a hash of
+        system-prompt-relevant inputs (module descriptions, custom instructions,
+        project metadata, provider_id, max_iterations).
+
+        On cache hit the per-call ``session_messages`` are synchronised to
+        the cached instance so that the RAG tool's query condensation has
+        the latest conversation history.
+
+        The cache is capped at ``_AGENT_CACHE_MAX_SIZE`` (16) entries by
+        LRU-style eviction.
+        """
+        identity = _compute_cache_identity(
+            session_id=session_id,
+            tool_service=cast("ToolService", kwargs.get("tool_service")),
+            rag_service=cast("RAGService", kwargs.get("rag_service")),
+            model=kwargs.get("model") or "",
+            base_url=kwargs.get("base_url") or "",
+            context_window=kwargs.get("context_window") or 16384,
+            session_params=kwargs.get("session_params"),
+            module_descriptions=kwargs.get("module_descriptions"),
+            custom_instructions=kwargs.get("custom_instructions"),
+            project_metadata=kwargs.get("project_metadata"),
+            max_iterations=kwargs.get("max_iterations", DEFAULT_MAX_ITERATIONS),
+            mcp_server_service=kwargs.get("mcp_server_service"),
+        )
+
+        if identity in _agent_cache:
+            _agent_cache.move_to_end(identity)
+            cached = _agent_cache[identity]
+            # Sync per-call mutable state (session messages grow each turn).
+            new_msgs = kwargs.get("session_messages") or []
+            cached._session_messages.clear()
+            cached._session_messages.extend(new_msgs)
+            logger.debug("Agent cache HIT for session %s", session_id)
+            return cached
+
+        instance = cls(session_id=session_id, **kwargs)
+        _agent_cache[identity] = instance
+        if len(_agent_cache) > _AGENT_CACHE_MAX_SIZE:
+            _agent_cache.popitem(last=False)
+        logger.debug(
+            "Agent cache MISS for session %s (cache size=%d)",
+            session_id,
+            len(_agent_cache),
+        )
+        return instance
+
+    # ------------------------------------------------------------------
     # Tool assembly
     # ------------------------------------------------------------------
 
-    def _build_tools(self, progress_emitter: ProgressEmitter) -> List[FunctionTool]:
+    def _build_tools(self) -> List[FunctionTool]:
         """Build the complete tool set for the orchestrator.
 
         Combines:
@@ -261,12 +433,20 @@ class OrchestratorService:
         Built-in ToolService tools that are already wrapped are filtered out
         to avoid duplicates.
 
-        Args:
-            progress_emitter: Callback for tool phase progress reporting.
+        The internal emitter stores phases in ``_pending_phases`` and forwards
+        to ``_current_external_emitter`` (set per execute() call), so tools
+        can be built once and reused — the emitter reference resolves lazily.
 
         Returns:
             Complete list of FunctionTool instances.
         """
+
+        # Internal emitter — reads self._current_external_emitter dynamically
+        # so tool closures work correctly across execute() calls.
+        def _internal_emitter(tp: ToolProgress) -> None:
+            self._pending_phases.append(tp)
+            if self._current_external_emitter:
+                self._current_external_emitter(tp)
 
         # RAG result callback stores the raw retrieval result for the
         # stream translator to extract proper sources and metrics.
@@ -329,7 +509,7 @@ class OrchestratorService:
         # 1. Create wrapped built-in tools (RAG + web tools with reranking)
         wrapped_tools = create_all_tool_wrappers(
             tool_service=self._tool_service,
-            progress_emitter=progress_emitter,
+            progress_emitter=_internal_emitter,
             rag_service=self._rag_service,
             session_params=self._session_params,
             session_messages=self._session_messages,
@@ -381,6 +561,32 @@ class OrchestratorService:
                 t.metadata.name,
                 desc[:120] + ("..." if len(desc) > 120 else ""),
             )
+
+        # Phase 3 Lever 2 — slim_tool_schemas: truncate descriptions in
+        # FunctionTool metadata (sent via the ``tools=`` LLM parameter).
+        try:
+            from tensortruth.api.deps import get_config_service
+
+            _cfg = get_config_service().load()
+            if _cfg.agent.slim_tool_schemas:
+                slimmed = []
+                from dataclasses import replace as _dataclass_replace
+
+                for t in all_tools:
+                    new_meta = _dataclass_replace(
+                        t.metadata,
+                        description=(t.metadata.description or "")[:120],
+                    )
+                    slimmed.append(
+                        FunctionTool(
+                            fn=t._fn,
+                            async_fn=t._async_fn,
+                            metadata=new_meta,
+                        )
+                    )
+                all_tools = slimmed
+        except Exception:
+            pass
 
         return all_tools
 
@@ -484,21 +690,21 @@ class OrchestratorService:
             )
 
         # --- MCP tool routing ---
+        _wrapped_builtin_names = _WRAPPED_BUILTIN_TOOL_NAMES | {
+            "rag_query",
+            "web_search",
+            "fetch_page",
+            "fetch_pages_batch",
+        }
         mcp_tools = [
             t
             for t in tools
-            if t.metadata.name not in _WRAPPED_BUILTIN_TOOL_NAMES
-            and t.metadata.name != "rag_query"
+            if t.metadata.name not in _wrapped_builtin_names
             and t.metadata.name not in mcp_mgmt_tools
         ]
         if mcp_tools:
-            lines = []
-            for t in mcp_tools:
-                desc = (t.metadata.description or "")[:200]
-                if desc:
-                    lines.append(f"- {t.metadata.name}: {desc}")
-            if lines:
-                sections.append("Additional tools:\n" + "\n".join(lines))
+            _names = [t.metadata.name or "?" for t in mcp_tools]
+            sections.append(f"Additional tools: {', '.join(_names)}")
 
         # --- Parallel tool calls + iteration budget ---
         sections.append(
@@ -514,22 +720,35 @@ class OrchestratorService:
             "tool calls into a single response whenever possible."
         )
 
-        # --- Synthesis handoff ---
-        # When tools are called, a separate synthesis service generates the
-        # final answer.  Instruct the orchestrator to keep its post-tool
-        # response minimal so it doesn't waste tokens on text that will be
-        # discarded — but allow inter-tool reasoning so it can extract
-        # information from tool results to feed into subsequent tool calls.
+        # --- Final answer guidance ---
+        # The agent's own output IS the final answer (no separate synthesis).
+        # Guide it to produce comprehensive, well-cited responses from tool
+        # results, while still reasoning between tool calls about next steps.
         sections.append(
-            "When you have finished ALL tool calls and are ready to present "
-            "your final response, keep it to AT MOST one or two short "
-            "sentences summarizing what you found (e.g. 'Found 3 relevant "
-            "sources about X with high confidence.'). Do NOT analyze, explain, "
-            "or answer the question — a separate synthesis step does that. "
-            "Any detailed final response you write will be DISCARDED. "
-            "HOWEVER, between tool calls you SHOULD reason about tool results "
-            "to decide your next action — e.g. extract fields from a fetched "
-            "page to use as parameters in a subsequent tool call."
+            "When you have gathered all necessary information from tool calls, "
+            "write a comprehensive answer using the tool results you obtained.\n\n"
+            "Response formatting rules:\n"
+            "- Use markdown formatting (headings, lists, code blocks) for readability.\n"
+            "- ALWAYS cite sources using numbered references matching the order "
+            "sources appeared in tool results (e.g. [1], [2]).\n"
+            "- For web sources, include a clickable link on first mention: "
+            "[Title](URL) [1].\n"
+            "- For knowledge base sources, reference by name: according to "
+            "the documentation [1].\n"
+            "- Do NOT add a 'Sources' section at the end of your response. "
+            "Sources are displayed separately in the UI.\n"
+            "- Only cite sources that actually appeared in tool results; "
+            "do not invent sources.\n"
+            "- If tool results are insufficient to fully answer the question, "
+            "say so and provide what you can.\n"
+            "- Source content may contain images as ![alt](url) markdown syntax. "
+            "Include up to 3 relevant images that directly illustrate key points. "
+            "Place images near the text they support. "
+            "Only use image URLs from the provided sources; never invent URLs. "
+            "If no relevant images are available, do not mention their absence.\n\n"
+            "Between tool calls you SHOULD reason about tool results to decide "
+            "your next action — e.g. extract fields from a fetched page to use "
+            "as parameters in a subsequent tool call."
         )
 
         # --- Project metadata ---
@@ -636,8 +855,131 @@ class OrchestratorService:
         return kept
 
     # ------------------------------------------------------------------
-    # Direct response generation (thinking-enabled, no tools)
+    # Context transform hook (Phase 5)
     # ------------------------------------------------------------------
+
+    def _transform_context(
+        self,
+        history: List[Dict[str, Any]],
+        prompt: str,
+        tools: List[FunctionTool],
+    ) -> List[Dict[str, Any]]:
+        """Transform context before every LLM call.
+
+        Applies, in order:
+        1. **Small-history bypass** — if total history chars < 2000, pass
+           through with only standard budgeting (skip compaction/floor).
+        2. **Tool result compaction** — truncate tool output > 4000 chars
+           to first 500 + ``...[truncated]``.
+        3. **Budget history** — drop oldest messages when token count
+           exceeds the context window budget (already walks newest first).
+        4. **Recent-N floor** — always keep the most recent 6 messages
+           regardless of budget.
+
+        Returns:
+            Truncated list of history messages.
+        """
+        # 1. Small-history bypass — return as-is (budgeting is unnecessary for
+        # short histories and would waste compute).
+        total_chars = sum(len(str(m.get("content", ""))) for m in history)
+        if total_chars < 2000:
+            return list(history)
+
+        # 2. Tool result compaction
+        for msg in history:
+            if msg.get("role") == "assistant" and msg.get("tool_steps"):
+                for step in msg["tool_steps"]:
+                    output = step.get("output", "")
+                    if len(output) > 4000:
+                        step["output"] = output[:500] + "...[truncated]"
+
+        # 3. Budget history
+        system_prompt = self._build_system_prompt(tools)
+        budgeted = self._budget_history(history, system_prompt, prompt)
+
+        # 4. Recent-N floor — ensure at least 6 newest messages
+        if len(history) >= 6:
+            last_6 = history[-6:]
+            budgeted_ids = {id(m) for m in budgeted}
+            missing = [m for m in last_6 if id(m) not in budgeted_ids]
+            if missing:
+                # Merge: insert missing messages at their original positions
+                result = list(budgeted)
+                for m in missing:
+                    try:
+                        pos = history.index(m)
+                    except ValueError:
+                        continue
+                    insert_idx = 0
+                    for i, r in enumerate(result):
+                        try:
+                            if history.index(r) < pos:
+                                insert_idx = i + 1
+                        except ValueError:
+                            pass
+                    result.insert(insert_idx, m)
+                budgeted = result
+        elif len(history) > 0:
+            budgeted = list(history)
+
+        return budgeted
+
+    # ------------------------------------------------------------------
+    # No-tools fast path helpers (Phase 3 Lever 1)
+    # ------------------------------------------------------------------
+
+    def _is_simple_prompt(self, prompt: str) -> bool:
+        """Heuristic: does this prompt look like it needs no tools?
+
+        Returns True when the prompt is short and contains no tool-related
+        keywords.  Used to gate the no-tools fast path.
+        """
+        text = prompt.lower().strip()
+        if len(text) > _SIMPLE_PROMPT_MAX_LENGTH:
+            return False
+        for kw in _TOOL_KEYWORDS:
+            if kw in text:
+                return False
+        return True
+
+    async def _try_fast_path(self, prompt: str) -> Optional[str]:
+        """Try the no-tools fast path.
+
+        Calls the LLM with *no tools* and a tiny system prompt.  If the LLM
+        responds with exactly ``NEED_TOOLS``, returns ``None`` (caller should
+        fall through to the full agent).  Otherwise returns the LLM's text
+        response.
+
+        Returns:
+            Response text if tools are not needed, or ``None`` if tools are
+            needed (caller should proceed with full agent).
+        """
+        from llama_index.core.base.llms.types import ChatMessage, MessageRole
+
+        # Ensure LLM is available
+        if self._llm is None:
+            self._llm = _providers_get_orchestrator_llm(
+                self._model_ref,
+                self._context_window,
+            )
+
+        fast_system = (
+            "Answer the user's message concisely. "
+            "If you genuinely need external tools to answer, "
+            "respond with exactly: NEED_TOOLS"
+        )
+        messages = [
+            ChatMessage(role=MessageRole.SYSTEM, content=fast_system),
+            ChatMessage(role=MessageRole.USER, content=prompt),
+        ]
+
+        response = await self._llm.achat(messages)
+        text = str((response.message.content or "")).strip()
+
+        if text == "NEED_TOOLS":
+            return None
+
+        return text
 
     # ------------------------------------------------------------------
     # Main execution
@@ -676,22 +1018,7 @@ class OrchestratorService:
         self._last_web_search_results = None
         self._fetched_urls = set()
         self._full_output_queue = []
-
-        # Load configurable reasoning visibility flag
-        try:
-            from tensortruth.api.deps import get_config_service
-
-            _agent_config = get_config_service().load().agent
-            show_reasoning = _agent_config.show_orchestrator_reasoning
-        except Exception:
-            show_reasoning = False
-
-        # Build a progress emitter that both stores phases locally and
-        # forwards to the external emitter (if provided).
-        def _combined_emitter(tp: ToolProgress) -> None:
-            self._pending_phases.append(tp)
-            if progress_emitter:
-                progress_emitter(tp)
+        self._current_external_emitter = progress_emitter
 
         # Emit boot phase so the frontend shows immediate feedback while
         # tools and LLM are being initialized.
@@ -704,24 +1031,54 @@ class OrchestratorService:
         if progress_emitter:
             progress_emitter(boot_phase)
 
-        # --- Build tools and agent ---
-        tools = self._build_tools(_combined_emitter)
-        self._tools = tools
+        # ---- Phase 3 Lever 1: No-tools fast path ----
+        try:
+            from tensortruth.api.deps import get_config_service as _get_cfg
 
-        # Get (or reuse) orchestrator LLM singleton (provider-agnostic)
-        self._llm = _providers_get_orchestrator_llm(
-            self._model_ref,
-            self._context_window,
-        )
+            _cfg = _get_cfg().load()
+            _use_fast = _cfg.agent.tool_subset_selection
+        except Exception:
+            _use_fast = False
+
+        if _use_fast and not images and self._is_simple_prompt(prompt):
+            fast_text = await self._try_fast_path(prompt)
+            if fast_text is not None:
+                logger.info(
+                    "Fast path: no-tools response for prompt (len=%d)", len(prompt)
+                )
+                yield OrchestratorEvent(token=fast_text)
+                # Per-execution state is already reset; just return.
+                if progress_emitter:
+                    progress_emitter(
+                        ToolProgress(
+                            tool_id="orchestrator",
+                            phase="done",
+                            message="Complete",
+                        )
+                    )
+                return
+            logger.debug("Fast path: NEED_TOOLS, falling through to full agent")
+
+        # --- Build tools and agent (cached across execute() calls) ---
+        if self._tools is None:
+            self._tools = self._build_tools()
+        tools = self._tools
+
+        # Get (or reuse) orchestrator LLM singleton
+        if self._llm is None:
+            self._llm = _providers_get_orchestrator_llm(
+                self._model_ref,
+                self._context_window,
+            )
 
         # Compose system prompt
         system_prompt = self._build_system_prompt(tools)
 
-        # Budget chat history
-        budgeted_history = self._budget_history(
+        # Phase 5: context transform (budget + compaction + floor)
+        budgeted_history = self._transform_context(
             chat_history or [],
-            system_prompt,
             prompt,
+            tools,
         )
 
         # Convert budgeted history to LlamaIndex ChatMessage objects
@@ -756,12 +1113,15 @@ class OrchestratorService:
             self._context_window,
         )
 
-        # Create FunctionAgent for this execution
-        agent = LIFunctionAgent(
-            tools=list(tools),  # type: ignore[arg-type]
-            llm=self._llm,
-            system_prompt=system_prompt,
-        )
+        # Create FunctionAgent (cached across calls; rebuild only when
+        # system prompt changes e.g. on date rollover).
+        if self._agent is None or self._last_system_prompt != system_prompt:
+            self._agent = LIFunctionAgent(
+                tools=list(tools),  # type: ignore[arg-type]
+                llm=self._llm,
+                system_prompt=system_prompt,
+            )
+            self._last_system_prompt = system_prompt
 
         # Emit thinking phase once agent is ready and about to run.
         thinking_phase = ToolProgress(
@@ -773,9 +1133,7 @@ class OrchestratorService:
         if progress_emitter:
             progress_emitter(thinking_phase)
 
-        # --- Phase 1: Tool routing (non-thinking orchestrator LLM) ---
-        reasoning_chars = 0
-        MAX_REASONING_CHARS = 1000  # ~250 tokens, enough for inter-tool reasoning
+        # --- Agentic loop (single-turn) ---
         tools_called: List[str] = []
         tool_steps: List[Dict[str, Any]] = []
         tool_results_context: List[str] = []
@@ -807,7 +1165,7 @@ class OrchestratorService:
                 else:
                     user_msg = prompt  # type: ignore[assignment]
 
-                handler = agent.run(
+                handler = self._agent.run(
                     user_msg=user_msg,
                     chat_history=llama_history if llama_history else None,
                     max_iterations=self._max_iterations,
@@ -910,24 +1268,15 @@ class OrchestratorService:
                             )
                         )
 
-                        # Reset reasoning char counter so the next inter-tool
-                        # reasoning gap gets its own visibility budget.
-                        reasoning_chars = 0
-
                     elif isinstance(event, AgentStream):
-                        # Capture the orchestrator's text output.
-                        # If tools have been called, this is ephemeral reasoning
-                        # between tool calls — show it in the reasoning box.
-                        # If no tools have been called yet, this might be the
-                        # final answer (agent responding directly) — DON'T show
-                        # it as reasoning unless show_reasoning is enabled.
+                        # Stream the agent's text directly as the final response
+                        # tokens. thinking_delta is forwarded as thinking events.
+                        if event.thinking_delta:
+                            yield OrchestratorEvent(thinking=event.thinking_delta)
                         if event.delta:
                             agent_final_response += event.delta
                             agent_deltas.append(event.delta)
-                            if tools_called or show_reasoning:
-                                reasoning_chars += len(event.delta)
-                                if reasoning_chars <= MAX_REASONING_CHARS:
-                                    yield OrchestratorEvent(reasoning=event.delta)
+                            yield OrchestratorEvent(token=event.delta)
 
                 # Await the agent handler to completion
                 response = await handler
@@ -938,14 +1287,29 @@ class OrchestratorService:
             except WorkflowRuntimeError:
                 # Max iterations reached — agent was cut off mid-loop.
                 # All tool results from prior iterations are already in
-                # tool_results_context. If we have any, fall through to synthesis.
+                # tool_results_context, and any streamed text is in
+                # agent_final_response. If the agent already streamed
+                # text, let it stand; otherwise emit a graceful message.
                 if tool_results_context:
-                    logger.warning(
-                        "Max iterations reached after %d tool calls; "
-                        "proceeding to synthesis with available results",
-                        len(tools_called),
-                    )
-                    # Fall through to Phase 2 (synthesis) below
+                    if agent_final_response:
+                        logger.warning(
+                            "Max iterations reached after %d tool calls; "
+                            "using streamed text as final response",
+                            len(tools_called),
+                        )
+                        break
+                    else:
+                        logger.warning(
+                            "Max iterations reached after %d tool calls "
+                            "with no streamed text; emitting graceful message",
+                            len(tools_called),
+                        )
+                        yield OrchestratorEvent(
+                            token="I gathered information but was unable to "
+                            "complete the response within the iteration limit. "
+                            "Please try again or ask a more specific question."
+                        )
+                        return
                 else:
                     logger.error("Max iterations reached with no tool results")
                     yield OrchestratorEvent(
@@ -953,7 +1317,6 @@ class OrchestratorService:
                         "iteration limit. Please try a more specific question."
                     )
                     return
-                break
 
             except Exception as e:
                 if (
@@ -971,13 +1334,27 @@ class OrchestratorService:
                     continue  # Retry
 
                 if _is_transient_llm_error(e) and tool_results_context:
-                    logger.warning(
-                        "Transient LLM error after %d tool calls; "
-                        "proceeding to synthesis with available results: %s",
-                        len(tools_called),
-                        e,
-                    )
-                    break  # Fall through to Phase 2
+                    if agent_final_response:
+                        logger.warning(
+                            "Transient LLM error after %d tool calls; "
+                            "using streamed text as final response: %s",
+                            len(tools_called),
+                            e,
+                        )
+                        break
+                    else:
+                        logger.warning(
+                            "Transient LLM error after %d tool calls "
+                            "with no streamed text; emitting graceful message: %s",
+                            len(tools_called),
+                            e,
+                        )
+                        yield OrchestratorEvent(
+                            token="I gathered information but was unable to "
+                            "complete the response within the iteration limit. "
+                            "Please try again or ask a more specific question."
+                        )
+                        return
 
                 # Non-transient or final attempt with no results
                 logger.error("Orchestrator execution failed: %s", e, exc_info=True)
@@ -1005,46 +1382,8 @@ class OrchestratorService:
                 yield OrchestratorEvent(token=result_text)
                 return
 
-        # --- Phase 2: Response generation ---
-        # Route through the synthesis service for both tools-called and
-        # no-tools paths.  The synthesizer handles empty tool_results by
-        # switching to a general assistant prompt without citation rules.
-        from tensortruth.services.synthesis_service import get_synthesis_service
-
-        # Build structured source reference for citation guidance (only
-        # meaningful when tools were called).
-        source_reference = None
-        if tools_called:
-            source_reference = build_source_reference(
-                tool_results_context,
-                rag_result=self._last_rag_result,
-                web_sources=self._last_web_sources,
-            )
-
-        thinking_pref = self._session_params.get("thinking")
-        resolved_thinking = _providers_resolve_thinking(self._model_ref, thinking_pref)
-        synthesis = get_synthesis_service(
-            self._model,
-            self._base_url,
-            self._context_window,
-            thinking=resolved_thinking,
-            provider_id=self._session_params.get("provider_id"),
-        )
-        async for synth_event in synthesis.synthesize(
-            prompt=prompt,
-            chat_history=llama_history,
-            tool_results=tool_results_context,
-            module_descriptions=self._module_descriptions,
-            custom_instructions=self._custom_instructions,
-            project_metadata=self._project_metadata,
-            progress_emitter=_combined_emitter,
-            source_reference=source_reference,
-        ):
-            yield synth_event
-
         logger.info(
-            "Orchestrator execution complete%s: %d tools called, prompt_len=%d",
-            " (direct)" if not tools_called else "",
+            "Orchestrator execution complete: %d tools called, prompt_len=%d",
             len(tools_called),
             len(prompt),
         )

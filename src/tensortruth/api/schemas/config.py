@@ -49,6 +49,8 @@ class AgentConfigSchema(BaseModel):
     min_pages_required: int = 3
     orchestrator_enabled: bool = True
     show_orchestrator_reasoning: bool = False
+    tool_subset_selection: bool = False
+    slim_tool_schemas: bool = False
 
 
 class HistoryCleaningConfigSchema(BaseModel):

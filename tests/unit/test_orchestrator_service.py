@@ -99,7 +99,7 @@ class TestSystemPromptComposition:
     def test_base_prompt_always_present(self, tool_service, rag_service_not_loaded):
         """The role description should always appear in the system prompt."""
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(MagicMock())
+        tools = svc._build_tools()
         prompt = svc._build_system_prompt(tools)
 
         assert "assistant powering tensortruth" in prompt.lower()
@@ -122,7 +122,7 @@ class TestSystemPromptComposition:
         svc = _create_service(
             tool_service, rag_service_loaded, module_descriptions=modules
         )
-        tools = svc._build_tools(MagicMock())
+        tools = svc._build_tools()
         prompt = svc._build_system_prompt(tools)
 
         assert "pytorch_docs" in prompt
@@ -135,7 +135,7 @@ class TestSystemPromptComposition:
     def test_no_modules_section_when_empty(self, tool_service, rag_service_not_loaded):
         """When no modules are provided, the explicit module listing should be absent."""
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(MagicMock())
+        tools = svc._build_tools()
         prompt = svc._build_system_prompt(tools)
 
         # The explicit module block with "You have access to a knowledge base with
@@ -149,7 +149,7 @@ class TestSystemPromptComposition:
             rag_service_not_loaded,
             custom_instructions="Always respond in French.",
         )
-        tools = svc._build_tools(MagicMock())
+        tools = svc._build_tools()
         prompt = svc._build_system_prompt(tools)
 
         assert "Always respond in French." in prompt
@@ -162,7 +162,7 @@ class TestSystemPromptComposition:
             rag_service_not_loaded,
             project_metadata="Project: ML Research\nFocus on deep learning papers.",
         )
-        tools = svc._build_tools(MagicMock())
+        tools = svc._build_tools()
         prompt = svc._build_system_prompt(tools)
 
         assert "ML Research" in prompt
@@ -172,7 +172,7 @@ class TestSystemPromptComposition:
     def test_tool_names_listed_in_prompt(self, tool_service, rag_service_loaded):
         """The explicit tool list should be present to prevent hallucination."""
         svc = _create_service(tool_service, rag_service_loaded)
-        tools = svc._build_tools(MagicMock())
+        tools = svc._build_tools()
         prompt = svc._build_system_prompt(tools)
 
         # All built-in tool names should be listed
@@ -466,8 +466,8 @@ class TestExecuteFlow:
 
     @pytest.mark.asyncio
     async def test_yields_token_events(self, tool_service, rag_service_not_loaded):
-        """Token deltas from FunctionAgent should yield OrchestratorEvent(token=...)
-        via the synthesis service (no-tools path)."""
+        """AgentStream deltas should yield OrchestratorEvent(token=...) directly
+        (no synthesis phase)."""
         from llama_index.core.agent.workflow import AgentStream
 
         svc = _create_service(tool_service, rag_service_not_loaded)
@@ -486,13 +486,6 @@ class TestExecuteFlow:
 
         handler = _make_awaitable_handler(stream_events, "Hello world")
 
-        # Mock synthesis service to yield token events
-        async def _synth_gen(*_a, **_k):
-            yield OrchestratorEvent(token="Hello world")
-
-        mock_synth_svc = MagicMock()
-        mock_synth_svc.synthesize = _synth_gen
-
         with (
             patch(
                 "tensortruth.services.orchestrator_service.LIFunctionAgent",
@@ -502,10 +495,6 @@ class TestExecuteFlow:
                 "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
-            patch(
-                "tensortruth.services.synthesis_service.get_synthesis_service",
-                return_value=mock_synth_svc,
-            ),
         ):
             events = []
             async for event in svc.execute("Hi"):
@@ -514,7 +503,7 @@ class TestExecuteFlow:
         token_events = [e for e in events if e.token is not None]
         assert len(token_events) >= 1
         token_text = "".join(e.token for e in token_events)
-        assert "Hello" in token_text
+        assert token_text == "Hello world"
 
     @pytest.mark.asyncio
     async def test_yields_tool_call_events(self, tool_service, rag_service_not_loaded):
@@ -1154,10 +1143,11 @@ class TestMaxIterationsHandling:
     """Tests for graceful handling when max_iterations is reached."""
 
     @pytest.mark.asyncio
-    async def test_max_iterations_with_results_proceeds_to_synthesis(
+    async def test_max_iterations_with_results_emits_graceful_message(
         self, tool_service, rag_service_not_loaded
     ):
-        """When max_iterations is hit but tool results exist, synthesis should run."""
+        """When max_iterations is hit with tool results but no streamed text,
+        a graceful message should be emitted."""
         from llama_index.core.agent.workflow import ToolCall as LIToolCall
         from llama_index.core.agent.workflow import ToolCallResult as LIToolCallResult
         from llama_index.core.tools.types import ToolOutput
@@ -1192,14 +1182,6 @@ class TestMaxIterationsHandling:
 
         handler = _make_awaitable_handler(stream_events)
 
-        # Mock synthesis service to return a known token
-        mock_synth = MagicMock()
-
-        async def fake_synthesize(**kwargs):
-            yield OrchestratorEvent(token="Synthesized answer from tool results.")
-
-        mock_synth.synthesize = MagicMock(side_effect=fake_synthesize)
-
         with (
             patch(
                 "tensortruth.services.orchestrator_service.LIFunctionAgent",
@@ -1209,20 +1191,15 @@ class TestMaxIterationsHandling:
                 "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
-            patch(
-                "tensortruth.services.synthesis_service.get_synthesis_service",
-                return_value=mock_synth,
-            ),
         ):
             events = []
             async for event in svc.execute("Tell me about AI"):
                 events.append(event)
 
-        # Should get synthesis tokens, not error tokens
+        # Should produce a graceful message, not error text
         token_events = [e for e in events if e.token is not None]
         token_text = "".join(e.token for e in token_events)
-        assert "Synthesized answer" in token_text
-        assert "error" not in token_text.lower()
+        assert "unable to complete" in token_text.lower()
 
     @pytest.mark.asyncio
     async def test_max_iterations_without_results_yields_friendly_message(
@@ -1265,7 +1242,7 @@ class TestMaxIterationsHandling:
     ):
         """System prompt should contain budget guidance with max_iterations value."""
         svc = _create_service(tool_service, rag_service_not_loaded, max_iterations=15)
-        tools = svc._build_tools(MagicMock())
+        tools = svc._build_tools()
         prompt = svc._build_system_prompt(tools)
 
         assert "budget" in prompt.lower()
@@ -1279,7 +1256,7 @@ class TestMaxIterationsHandling:
     def test_default_budget_value_in_prompt(self, tool_service, rag_service_not_loaded):
         """Default max_iterations (10) should appear in the system prompt."""
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(MagicMock())
+        tools = svc._build_tools()
         prompt = svc._build_system_prompt(tools)
 
         assert "budget of 10 iterations" in prompt
@@ -1289,7 +1266,7 @@ class TestMaxIterationsHandling:
     ):
         """Tool routing guidance should be generic, not prescribe tool chains."""
         svc = _create_service(tool_service, rag_service_not_loaded)
-        tools = svc._build_tools(MagicMock())
+        tools = svc._build_tools()
         prompt = svc._build_system_prompt(tools)
 
         # Old prescriptive directives should be gone
@@ -1390,10 +1367,11 @@ class TestTransientErrorHandling:
     """Tests for retry and graceful degradation on transient LLM errors."""
 
     @pytest.mark.asyncio
-    async def test_transient_error_with_results_falls_through_to_synthesis(
+    async def test_transient_error_with_results_keeps_streamed_text(
         self, tool_service, rag_service_not_loaded
     ):
-        """Transient error after tool results should fall through to synthesis."""
+        """Transient error after tool results with streamed text keeps the text."""
+        from llama_index.core.agent.workflow import AgentStream
         from llama_index.core.agent.workflow import ToolCall as LIToolCall
         from llama_index.core.agent.workflow import ToolCallResult as LIToolCallResult
         from llama_index.core.tools.types import ToolOutput
@@ -1423,18 +1401,16 @@ class TestTransientErrorHandling:
         async def stream_events():
             yield tc
             yield tcr
+            yield AgentStream(
+                delta="Here are the results I found about AI.",
+                response="",
+                current_agent_name="orchestrator",
+            )
             raise RuntimeError(
                 "failed to parse JSON: invalid character '<' looking for value"
             )
 
         handler = _make_awaitable_handler(stream_events)
-
-        mock_synth = MagicMock()
-
-        async def fake_synthesize(**kwargs):
-            yield OrchestratorEvent(token="Synthesized answer from tool results.")
-
-        mock_synth.synthesize = MagicMock(side_effect=fake_synthesize)
 
         with (
             patch(
@@ -1445,10 +1421,6 @@ class TestTransientErrorHandling:
                 "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
-            patch(
-                "tensortruth.services.synthesis_service.get_synthesis_service",
-                return_value=mock_synth,
-            ),
         ):
             events = []
             async for event in svc.execute("Tell me about AI"):
@@ -1456,7 +1428,7 @@ class TestTransientErrorHandling:
 
         token_events = [e for e in events if e.token is not None]
         token_text = "".join(e.token for e in token_events)
-        assert "Synthesized answer" in token_text
+        assert "results" in token_text
         # Raw error should never reach the user
         assert "failed to parse" not in token_text
 
@@ -1496,13 +1468,6 @@ class TestTransientErrorHandling:
         mock_agent = MagicMock()
         mock_agent.run = MagicMock(side_effect=lambda **kwargs: make_handler())
 
-        # Mock synthesis service for the no-tools path after retry success
-        async def _synth_gen(*_a, **_k):
-            yield OrchestratorEvent(token="Success!")
-
-        mock_synth_svc = MagicMock()
-        mock_synth_svc.synthesize = _synth_gen
-
         with (
             patch(
                 "tensortruth.services.orchestrator_service.LIFunctionAgent",
@@ -1513,10 +1478,6 @@ class TestTransientErrorHandling:
                 return_value=MagicMock(),
             ),
             patch("asyncio.sleep", new_callable=AsyncMock),
-            patch(
-                "tensortruth.services.synthesis_service.get_synthesis_service",
-                return_value=mock_synth_svc,
-            ),
         ):
             events = []
             async for event in svc.execute("Hello"):
@@ -1611,19 +1572,20 @@ class TestTransientErrorHandling:
 
 
 # ---------------------------------------------------------------
-# Orchestrator reasoning visibility config
+# AgentStream event routing
 # ---------------------------------------------------------------
 
 
-class TestReasoningVisibilityConfig:
-    """Tests for show_orchestrator_reasoning config flag."""
+class TestAgentStreamEventRouting:
+    """Tests that AgentStream deltas are routed to token events
+    (not reasoning events) in the single-turn design."""
 
     @pytest.mark.asyncio
-    async def test_reasoning_not_yielded_when_config_disabled(
+    async def test_agent_stream_delta_yields_token_not_reasoning(
         self, tool_service, rag_service_not_loaded
     ):
-        """With show_orchestrator_reasoning=False (default), AgentStream
-        deltas on the no-tools path should NOT be yielded as reasoning."""
+        """AgentStream deltas should yield token events, not reasoning events
+        (reasoning is no longer emitted from the streaming loop)."""
         from llama_index.core.agent.workflow import AgentStream
 
         svc = _create_service(tool_service, rag_service_not_loaded)
@@ -1641,17 +1603,6 @@ class TestReasoningVisibilityConfig:
 
         handler = _make_awaitable_handler(stream_events, "I think about it")
 
-        # Mock config with show_orchestrator_reasoning=False
-        mock_config = MagicMock()
-        mock_config.load.return_value.agent.show_orchestrator_reasoning = False
-
-        # Mock synthesis to yield a simple token
-        async def _synth_gen(*_a, **_k):
-            yield OrchestratorEvent(token="Hello!")
-
-        mock_synth_svc = MagicMock()
-        mock_synth_svc.synthesize = _synth_gen
-
         with (
             patch(
                 "tensortruth.services.orchestrator_service.LIFunctionAgent",
@@ -1661,28 +1612,23 @@ class TestReasoningVisibilityConfig:
                 "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
-            patch(
-                "tensortruth.api.deps.get_config_service",
-                return_value=mock_config,
-            ),
-            patch(
-                "tensortruth.services.synthesis_service.get_synthesis_service",
-                return_value=mock_synth_svc,
-            ),
         ):
             events = []
             async for event in svc.execute("Hi"):
                 events.append(event)
 
+        # AgentStream deltas become token events, not reasoning events
         reasoning_events = [e for e in events if e.reasoning is not None]
         assert len(reasoning_events) == 0
+        token_events = [e for e in events if e.token is not None]
+        token_text = "".join(e.token for e in token_events)
+        assert token_text == "I think about it"
 
     @pytest.mark.asyncio
-    async def test_reasoning_yielded_when_config_enabled(
+    async def test_agent_stream_delta_yields_token_directly(
         self, tool_service, rag_service_not_loaded
     ):
-        """With show_orchestrator_reasoning=True, AgentStream deltas on the
-        no-tools path should be yielded as reasoning events."""
+        """AgentStream deltas yield token events directly regardless of config."""
         from llama_index.core.agent.workflow import AgentStream
 
         svc = _create_service(tool_service, rag_service_not_loaded)
@@ -1700,17 +1646,6 @@ class TestReasoningVisibilityConfig:
 
         handler = _make_awaitable_handler(stream_events, "Thinking hard")
 
-        # Mock config with show_orchestrator_reasoning=True
-        mock_config = MagicMock()
-        mock_config.load.return_value.agent.show_orchestrator_reasoning = True
-
-        # Mock synthesis to yield a simple token
-        async def _synth_gen(*_a, **_k):
-            yield OrchestratorEvent(token="Hello!")
-
-        mock_synth_svc = MagicMock()
-        mock_synth_svc.synthesize = _synth_gen
-
         with (
             patch(
                 "tensortruth.services.orchestrator_service.LIFunctionAgent",
@@ -1720,30 +1655,23 @@ class TestReasoningVisibilityConfig:
                 "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
-            patch(
-                "tensortruth.api.deps.get_config_service",
-                return_value=mock_config,
-            ),
-            patch(
-                "tensortruth.services.synthesis_service.get_synthesis_service",
-                return_value=mock_synth_svc,
-            ),
         ):
             events = []
             async for event in svc.execute("Hi"):
                 events.append(event)
 
+        # AgentStream deltas become token events, not reasoning events
+        token_events = [e for e in events if e.token is not None]
+        token_text = "".join(e.token for e in token_events)
+        assert token_text == "Thinking hard"
         reasoning_events = [e for e in events if e.reasoning is not None]
-        assert len(reasoning_events) == 2
-        reasoning_text = "".join(e.reasoning for e in reasoning_events)
-        assert reasoning_text == "Thinking hard"
+        assert len(reasoning_events) == 0
 
     @pytest.mark.asyncio
-    async def test_reasoning_chars_resets_between_tool_calls(
+    async def test_agent_stream_with_tool_calls_yields_token_events(
         self, tool_service, rag_service_not_loaded
     ):
-        """reasoning_chars should reset after each ToolCallResult so that
-        inter-tool reasoning text is visible for each gap, not just the first."""
+        """AgentStream deltas between tool calls yield token events directly."""
         from llama_index.core.agent.workflow import (
             AgentStream,
         )
@@ -1794,29 +1722,18 @@ class TestReasoningVisibilityConfig:
             return_direct=False,
         )
 
-        reasoning1 = "Analyzing first results"
-        reasoning2 = "Now checking second"
+        text1 = "Analyzing first results"
+        text2 = "Now checking second"
 
         async def stream_events():
             yield tc1
             yield tcr1
-            # Reasoning after first tool
-            yield AgentStream(delta=reasoning1, response="", current_agent_name="orch")
+            yield AgentStream(delta=text1, response="", current_agent_name="orch")
             yield tc2
             yield tcr2
-            # Reasoning after second tool
-            yield AgentStream(delta=reasoning2, response="", current_agent_name="orch")
+            yield AgentStream(delta=text2, response="", current_agent_name="orch")
 
-        handler = _make_awaitable_handler(stream_events, reasoning1 + reasoning2)
-
-        mock_config = MagicMock()
-        mock_config.load.return_value.agent.show_orchestrator_reasoning = False
-
-        async def _synth_gen(*_a, **_k):
-            yield OrchestratorEvent(token="Answer")
-
-        mock_synth_svc = MagicMock()
-        mock_synth_svc.synthesize = _synth_gen
+        handler = _make_awaitable_handler(stream_events, text1 + text2)
 
         with (
             patch(
@@ -1827,22 +1744,379 @@ class TestReasoningVisibilityConfig:
                 "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
                 return_value=MagicMock(),
             ),
-            patch(
-                "tensortruth.api.deps.get_config_service",
-                return_value=mock_config,
-            ),
-            patch(
-                "tensortruth.services.synthesis_service.get_synthesis_service",
-                return_value=mock_synth_svc,
-            ),
         ):
             events = []
             async for event in svc.execute("search me"):
                 events.append(event)
 
+        # AgentStream deltas should become token events, not reasoning events
         reasoning_events = [e for e in events if e.reasoning is not None]
-        # Both reasoning gaps should produce events (counter resets)
-        assert len(reasoning_events) == 2
-        texts = [e.reasoning for e in reasoning_events]
-        assert texts[0] == reasoning1
-        assert texts[1] == reasoning2
+        assert len(reasoning_events) == 0
+        token_events = [e for e in events if e.token is not None]
+        token_text = "".join(e.token for e in token_events)
+        assert text1 in token_text
+        assert text2 in token_text
+
+
+# ---------------------------------------------------------------
+# Phase 2: Agent Cache
+# ---------------------------------------------------------------
+
+
+class TestAgentCache:
+    """Tests for the agent cache (get_or_create, clear_agent_cache)."""
+
+    def teardown_method(self):
+        from tensortruth.services.orchestrator_service import clear_agent_cache
+
+        clear_agent_cache()
+
+    def _make_services(self):
+        """Create minimal mock services for cache identity computation."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        tool_svc = MagicMock()
+        tool_svc.tools = []
+        tool_svc.execute_tool = AsyncMock()
+        rag_svc = MagicMock()
+        rag_svc.is_loaded.return_value = False
+        return tool_svc, rag_svc
+
+    def test_same_identity_returns_same_instance(self):
+        """Same kwargs should return the same cached instance."""
+        from tensortruth.services.orchestrator_service import (
+            OrchestratorService,
+            clear_agent_cache,
+        )
+
+        clear_agent_cache()
+        tool_svc, rag_svc = self._make_services()
+
+        s1 = OrchestratorService.get_or_create(
+            session_id="sess1",
+            tool_service=tool_svc,
+            rag_service=rag_svc,
+            model="model-a",
+            base_url="http://localhost:11434",
+            context_window=4096,
+        )
+        s2 = OrchestratorService.get_or_create(
+            session_id="sess1",
+            tool_service=tool_svc,
+            rag_service=rag_svc,
+            model="model-a",
+            base_url="http://localhost:11434",
+            context_window=4096,
+        )
+
+        assert s1 is s2
+
+    def test_different_model_returns_new_instance(self):
+        """Different model should create a new instance."""
+        from tensortruth.services.orchestrator_service import (
+            OrchestratorService,
+            clear_agent_cache,
+        )
+
+        clear_agent_cache()
+        tool_svc, rag_svc = self._make_services()
+
+        s1 = OrchestratorService.get_or_create(
+            session_id="sess1",
+            tool_service=tool_svc,
+            rag_service=rag_svc,
+            model="model-a",
+            base_url="http://localhost:11434",
+            context_window=4096,
+        )
+        s2 = OrchestratorService.get_or_create(
+            session_id="sess1",
+            tool_service=tool_svc,
+            rag_service=rag_svc,
+            model="model-b",
+            base_url="http://localhost:11434",
+            context_window=4096,
+        )
+
+        assert s1 is not s2
+
+    def test_different_tool_list_returns_new_instance(self):
+        """Different tool names should create a new instance."""
+        from tensortruth.services.orchestrator_service import (
+            OrchestratorService,
+            clear_agent_cache,
+        )
+
+        clear_agent_cache()
+        tool_svc, rag_svc = self._make_services()
+
+        s1 = OrchestratorService.get_or_create(
+            session_id="sess1",
+            tool_service=tool_svc,
+            rag_service=rag_svc,
+            model="model-a",
+            base_url="http://localhost:11434",
+            context_window=4096,
+        )
+
+        # Add an MCP tool — changes the tool name set
+        from llama_index.core.tools import FunctionTool as LIFunctionTool
+
+        mcp_tool = MagicMock(spec=LIFunctionTool)
+        mcp_tool.metadata = MagicMock()
+        mcp_tool.metadata.name = "custom_tool"
+        tool_svc.tools = [mcp_tool]
+
+        s2 = OrchestratorService.get_or_create(
+            session_id="sess1",
+            tool_service=tool_svc,
+            rag_service=rag_svc,
+            model="model-a",
+            base_url="http://localhost:11434",
+            context_window=4096,
+        )
+
+        assert s1 is not s2
+
+    def test_clear_agent_cache(self):
+        """clear_agent_cache() should empty the cache."""
+        from tensortruth.services.orchestrator_service import (
+            OrchestratorService,
+            clear_agent_cache,
+        )
+
+        clear_agent_cache()
+        tool_svc, rag_svc = self._make_services()
+
+        s1 = OrchestratorService.get_or_create(
+            session_id="sess1",
+            tool_service=tool_svc,
+            rag_service=rag_svc,
+            model="model-a",
+            base_url="http://localhost:11434",
+            context_window=4096,
+        )
+        clear_agent_cache()
+
+        s2 = OrchestratorService.get_or_create(
+            session_id="sess1",
+            tool_service=tool_svc,
+            rag_service=rag_svc,
+            model="model-a",
+            base_url="http://localhost:11434",
+            context_window=4096,
+        )
+
+        assert s1 is not s2
+
+    def test_session_messages_synced_on_cache_hit(self):
+        """Per-call session_messages should be synced on cache hit."""
+        from tensortruth.services.orchestrator_service import (
+            OrchestratorService,
+            clear_agent_cache,
+        )
+
+        clear_agent_cache()
+        tool_svc, rag_svc = self._make_services()
+
+        s1 = OrchestratorService.get_or_create(
+            session_id="sess1",
+            tool_service=tool_svc,
+            rag_service=rag_svc,
+            model="model-a",
+            base_url="http://localhost:11434",
+            context_window=4096,
+            session_messages=[{"role": "user", "content": "first"}],
+        )
+        assert len(s1._session_messages) == 1
+
+        s2 = OrchestratorService.get_or_create(
+            session_id="sess1",
+            tool_service=tool_svc,
+            rag_service=rag_svc,
+            model="model-a",
+            base_url="http://localhost:11434",
+            context_window=4096,
+            session_messages=[
+                {"role": "user", "content": "first"},
+                {"role": "assistant", "content": "reply"},
+            ],
+        )
+        assert s1 is s2
+        assert len(s1._session_messages) == 2
+        assert s1._session_messages[1]["role"] == "assistant"
+
+
+# ---------------------------------------------------------------
+# Phase 3: Tool Schema Slimming
+# ---------------------------------------------------------------
+
+
+class TestIsSimplePrompt:
+    """Tests for _is_simple_prompt heuristic."""
+
+    def _create_service(self):
+        from unittest.mock import MagicMock
+
+        return _create_service(
+            MagicMock(),
+            MagicMock(is_loaded=MagicMock(return_value=False)),
+        )
+
+    def test_short_greeting_is_simple(self):
+        svc = self._create_service()
+        assert svc._is_simple_prompt("Hello") is True
+
+    def test_short_thanks_is_simple(self):
+        svc = self._create_service()
+        assert svc._is_simple_prompt("Thanks!") is True
+
+    def test_keyword_triggers_not_simple(self):
+        svc = self._create_service()
+        assert svc._is_simple_prompt("search for AI papers") is False
+
+    def test_what_question_not_simple(self):
+        svc = self._create_service()
+        assert svc._is_simple_prompt("What is the capital of France?") is False
+
+    def test_long_prompt_not_simple(self):
+        svc = self._create_service()
+        long = "A" * 100
+        assert svc._is_simple_prompt(long) is False
+
+    def test_compare_keyword_not_simple(self):
+        svc = self._create_service()
+        assert svc._is_simple_prompt("compare A and B") is False
+
+    def test_case_insensitive(self):
+        svc = self._create_service()
+        assert svc._is_simple_prompt("Search for papers") is False
+        assert svc._is_simple_prompt("FETCH the data") is False
+
+
+class TestAdditionalToolsBlock(TestSystemPromptComposition):
+    """Phase 3 Lever 3: Additional tools block should be comma-separated names."""
+
+    def test_mcp_tools_listed_as_names_only(self, tool_service, rag_service_not_loaded):
+        from llama_index.core.tools import FunctionTool as LIFunctionTool
+
+        mcp_tool = MagicMock(spec=LIFunctionTool)
+        mcp_tool.metadata = MagicMock()
+        mcp_tool.metadata.name = "custom_analyzer"
+        mcp_tool.metadata.description = (
+            "A long description that should not appear in the additional tools block"
+        )
+        mcp_tool.metadata.fn_schema = None
+        tool_service.tools = [mcp_tool]
+
+        svc = _create_service(tool_service, rag_service_not_loaded)
+        tools = svc._build_tools()
+        prompt = svc._build_system_prompt(tools)
+
+        assert "Additional tools: custom_analyzer" in prompt
+        # The long description should NOT be in the additional tools block
+        assert (
+            "long description"
+            not in prompt.split("Additional tools:")[1].split("\n")[0]
+        )
+
+
+# ---------------------------------------------------------------
+# Phase 5: Context Transform Hook
+# ---------------------------------------------------------------
+
+
+class TestTransformContext:
+    """Tests for _transform_context()."""
+
+    def test_small_history_bypass(self, tool_service, rag_service_not_loaded):
+        """Total chars < 2000 should return history as-is (skip all transforms)."""
+        svc = _create_service(tool_service, rag_service_not_loaded, context_window=4096)
+        history = [
+            {"role": "user", "content": "Hi"},
+            {"role": "assistant", "content": "Hello!"},
+        ]
+        tools = svc._build_tools()
+        result = svc._transform_context(history, "short prompt", tools)
+
+        # Should return the exact same messages (bypass)
+        assert len(result) == 2
+        assert result[0] is history[0]  # Same object = no copy
+        assert result[1] is history[1]
+        assert result[0]["content"] == "Hi"
+
+    def test_recent_n_floor_keeps_last_six(self, tool_service, rag_service_not_loaded):
+        """Even with tight budget, the 6 most recent messages should survive."""
+        svc = _create_service(tool_service, rag_service_not_loaded, context_window=2048)
+        tools = svc._build_tools()
+
+        # 10 large messages to force truncation + bypass the <2000 bypass
+        history = []
+        for i in range(10):
+            history.append({"role": "user", "content": f"Message {i} " * 100})
+            history.append({"role": "assistant", "content": f"Reply {i} " * 100})
+
+        # Verify total chars > 2000 (to not hit the small-history bypass)
+        total_chars = sum(len(str(m.get("content", ""))) for m in history)
+        assert total_chars > 2000
+
+        result = svc._transform_context(history, "short", tools)
+
+        # Should keep at least the last 6 messages (3 user-assistant pairs)
+        assert len(result) >= 6, f"Expected >= 6 messages, got {len(result)}"
+
+        # The last message in result should be the original last assistant message
+        assert result[-1]["content"] == history[-1]["content"]
+
+    def test_tool_result_compaction(self, tool_service, rag_service_not_loaded):
+        """Tool output > 4000 chars should be truncated to 500 + ...[truncated]."""
+        svc = _create_service(tool_service, rag_service_not_loaded, context_window=4096)
+        tools = svc._build_tools()
+
+        large_output = "X" * 5000
+        history = [
+            {"role": "user", "content": "search something"},
+            {
+                "role": "assistant",
+                "content": "Here are results",
+                "tool_steps": [
+                    {
+                        "tool": "web_search",
+                        "output": large_output,
+                        "is_error": False,
+                    }
+                ],
+            },
+        ]
+        # Force total_chars > 2000 to avoid the bypass
+        history[0]["content"] = "X" * 1000
+        history[1]["content"] = "Y" * 1000
+
+        result = svc._transform_context(history, "short prompt", tools)
+
+        # Find the tool_steps in the result
+        for msg in result:
+            if msg.get("tool_steps"):
+                assert len(msg["tool_steps"][0]["output"]) < 1000
+                assert "...[truncated]" in msg["tool_steps"][0]["output"]
+                return
+        pytest.fail("No tool_steps found in result")
+
+    def test_budgeting_still_works(self, tool_service, rag_service_not_loaded):
+        """Standard history budgeting should still apply when no floor needed."""
+        svc = _create_service(tool_service, rag_service_not_loaded, context_window=256)
+        tools = svc._build_tools()
+
+        # 20 large messages — budget will cut hard
+        history = []
+        for i in range(20):
+            history.append({"role": "user", "content": f"Message {i} " * 20})
+            history.append({"role": "assistant", "content": f"Reply {i} " * 20})
+
+        result = svc._transform_context(history, "short", tools)
+
+        # Should have some messages but less than original
+        assert len(result) < len(history)
+        if result:
+            # Most recent message should be kept
+            assert result[-1]["content"] == history[-1]["content"]

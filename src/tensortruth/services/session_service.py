@@ -8,6 +8,7 @@ import json
 import logging
 import shutil
 import uuid
+from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
@@ -34,6 +35,8 @@ class SessionService:
     - Per-session files are authoritative; index is a cache
     """
 
+    MAX_CACHED_SESSIONS = 32
+
     def __init__(
         self,
         sessions_file: Union[str, Path],
@@ -48,6 +51,11 @@ class SessionService:
         self.legacy_sessions_file = Path(sessions_file)
         self.sessions_dir = Path(sessions_dir)
         self.index_file = self.sessions_dir / "sessions_index.json"
+
+        # In-memory cache: session_id -> session dict, LRU-evicted
+        self._cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        # Mapping of session_id -> mtime of session.json on last read
+        self._cache_mtimes: Dict[str, float] = {}
 
     def _apply_config_defaults(
         self, params: Dict[str, Any], config_service: "ConfigService"
@@ -167,6 +175,27 @@ class SessionService:
         if session_dir.exists():
             shutil.rmtree(session_dir)
 
+    # -------------------------------------------------------------------------
+    # Cache helpers
+    # -------------------------------------------------------------------------
+
+    def _get_session_mtime(self, session_id: str) -> float:
+        """Get the mtime of a session's file on disk.
+
+        Returns 0.0 if the file doesn't exist or can't be stat'ed.
+        """
+        session_file = self.sessions_dir / session_id / "session.json"
+        try:
+            return session_file.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    def _evict_cache_if_needed(self) -> None:
+        """Evict least-recently-used cache entries when over the cap."""
+        while len(self._cache) > self.MAX_CACHED_SESSIONS:
+            oldest_id, _ = self._cache.popitem(last=False)
+            self._cache_mtimes.pop(oldest_id, None)
+
     def _migrate_from_legacy(self) -> None:
         """Migrate from legacy single-file storage to per-session files.
 
@@ -241,6 +270,8 @@ class SessionService:
         """Load chat sessions from per-session files.
 
         Migration: If legacy file exists, migrates to per-session format.
+        Results are cached in memory — subsequent calls avoid re-reading
+        session files that haven't changed on disk.
 
         Returns:
             SessionData with current_id and sessions dict.
@@ -254,20 +285,44 @@ class SessionService:
         current_id = index.get("current_id")
         index_sessions = index.get("sessions", {})
 
-        # Load each session file
+        # Load each session file, using cache when possible
         sessions: Dict[str, Dict[str, Any]] = {}
         stale_ids: List[str] = []
 
         for session_id in index_sessions:
+            # Cache hit check: session in cache and mtime unchanged
+            if session_id in self._cache and session_id in self._cache_mtimes:
+                mtime = self._get_session_mtime(session_id)
+                if mtime == self._cache_mtimes[session_id]:
+                    sessions[session_id] = self._cache[session_id]
+                    self._cache.move_to_end(session_id)
+                    continue
+
+            # Cache miss or stale — load from disk
             session_data = self._load_session_file(session_id)
             if session_data is not None:
                 sessions[session_id] = session_data
+                # Populate/update cache
+                self._cache[session_id] = session_data
+                self._cache.move_to_end(session_id)
+                self._cache_mtimes[session_id] = self._get_session_mtime(session_id)
             else:
-                # Session file missing - stale index entry
                 logger.warning(
                     f"Removing stale index entry for missing session: {session_id}"
                 )
                 stale_ids.append(session_id)
+                # Also remove from cache if present
+                self._cache.pop(session_id, None)
+                self._cache_mtimes.pop(session_id, None)
+
+        # Remove cache entries for sessions no longer in index
+        cached_ids = list(self._cache.keys())
+        for session_id in cached_ids:
+            if session_id not in index_sessions:
+                self._cache.pop(session_id, None)
+                self._cache_mtimes.pop(session_id, None)
+
+        self._evict_cache_if_needed()
 
         # Clean up stale entries from index
         if stale_ids:
@@ -279,12 +334,15 @@ class SessionService:
                 index["current_id"] = None
             self._save_index(index)
 
-        return SessionData(current_id=current_id, sessions=sessions)
+        # Return a shallow copy so callers can mutate without corrupting cache
+        return SessionData(current_id=current_id, sessions=dict(sessions))
 
     def save(self, data: SessionData) -> None:
         """Save chat sessions to per-session files.
 
         Filters out empty sessions (no messages) except for the current session.
+        Updates the in-memory cache (write-through) so subsequent load() calls
+        return the saved data without re-reading disk.
 
         Args:
             data: SessionData to save.
@@ -314,15 +372,40 @@ class SessionService:
                 "title": session_data.get("title", "New Session"),
                 "created_at": session_data.get("created_at", str(datetime.now())),
             }
+            # Write-through to cache
+            self._cache[session_id] = session_data
+            self._cache.move_to_end(session_id)
+            self._cache_mtimes[session_id] = self._get_session_mtime(session_id)
 
         # Save index
         self._save_index(new_index)
 
-        # Delete removed session files
+        # Delete removed session files and remove from cache
         new_session_ids = set(filtered_sessions.keys())
         removed_ids = old_session_ids - new_session_ids
         for session_id in removed_ids:
             self._delete_session_file(session_id)
+            self._cache.pop(session_id, None)
+            self._cache_mtimes.pop(session_id, None)
+
+        self._evict_cache_if_needed()
+
+    def reload(self, session_id: Optional[str] = None) -> None:
+        """Force a re-read of session data from disk on the next load().
+
+        When called with a session_id, only that session is invalidated.
+        When called without arguments, the entire cache is cleared.
+
+        Args:
+            session_id: Optional session ID to invalidate. If None, all cached
+                        sessions are invalidated.
+        """
+        if session_id is None:
+            self._cache.clear()
+            self._cache_mtimes.clear()
+        else:
+            self._cache.pop(session_id, None)
+            self._cache_mtimes.pop(session_id, None)
 
     def create(
         self,
