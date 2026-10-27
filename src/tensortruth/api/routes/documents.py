@@ -303,6 +303,32 @@ def _upload_url(
     )
 
 
+def _apply_arxiv_metadata(
+    scope_id: str,
+    scope_type: str,
+    doc_id: str,
+    paper,
+    normalized: str,
+) -> None:
+    """Persist arXiv metadata on a freshly uploaded paper (blocking worker)."""
+    from tensortruth.utils.metadata import format_authors as _fmt_authors
+
+    authors_str = ", ".join(a.name for a in paper.authors)
+    formatted = _fmt_authors(authors_str)
+    display = f"{paper.title}, {formatted}" if formatted else paper.title
+    arxiv_metadata = {
+        "title": paper.title,
+        "authors": authors_str,
+        "display_name": display,
+        "source_url": f"https://arxiv.org/abs/{normalized}",
+        "doc_type": "arxiv_paper",
+    }
+    # The service is created and closed on the worker thread so its stores
+    # keep thread affinity.
+    with get_document_service(scope_id, scope_type) as doc_service:
+        doc_service.set_metadata(doc_id, arxiv_metadata)
+
+
 async def _upload_arxiv(
     scope_id: str, scope_type: str, arxiv_id: str, in_context: bool = False
 ) -> DocumentUploadResponse:
@@ -336,32 +362,30 @@ async def _upload_arxiv(
         logger.error(f"arXiv download failed for {arxiv_id}: {e}")
         raise HTTPException(status_code=502, detail="arXiv download error")
 
-    if paper is None:
+    if paper is None or pdf_bytes is None:
         raise HTTPException(status_code=404, detail="Paper not found on arXiv")
 
     filename = f"{title}.pdf"
-    result = _upload_pdf(scope_id, scope_type, pdf_bytes, filename)
+    # PDF storage touches the filesystem and metadata store — keep it off the
+    # event loop. _upload_pdf opens and closes its own DocumentService.
+    result = await asyncio.to_thread(
+        _upload_pdf, scope_id, scope_type, pdf_bytes, filename
+    )
     if in_context:
         result = result.model_copy(update={"in_context": False, "context_tokens": None})
 
-    # Persist arXiv metadata so the indexer skips LLM extraction
-    from tensortruth.utils.metadata import format_authors as _fmt_authors
-
-    authors_str = ", ".join(a.name for a in paper.authors)
-    formatted = _fmt_authors(authors_str)
-    display = f"{paper.title}, {formatted}" if formatted else paper.title
-    arxiv_metadata = {
-        "title": paper.title,
-        "authors": authors_str,
-        "display_name": display,
-        "source_url": f"https://arxiv.org/abs/{normalized}",
-        "doc_type": "arxiv_paper",
-    }
-    with get_document_service(scope_id, scope_type) as doc_service:
-        doc_service.set_metadata(result.doc_id, arxiv_metadata)
+    # Persist arXiv metadata so the indexer skips LLM extraction.
+    # _apply_arxiv_metadata creates its DocumentService on the worker thread.
+    await asyncio.to_thread(
+        _apply_arxiv_metadata, scope_id, scope_type, result.doc_id, paper, normalized
+    )
 
     if in_context:
-        tokens = _mark_in_context(scope_id, scope_type, result.doc_id)
+        # _mark_in_context runs pymupdf4llm when the markdown does not exist
+        # yet — the expensive blocking call this whole module must avoid.
+        tokens = await asyncio.to_thread(
+            _mark_in_context, scope_id, scope_type, result.doc_id
+        )
         result = result.model_copy(
             update={"in_context": True, "context_tokens": tokens}
         )
@@ -433,10 +457,17 @@ async def _build_index(
         on_complete: Optional TaskRunner completion callback (receives the
             TaskInfo). Used to clear the RAG engine cache after a build.
     """
-    with get_document_service(scope_id, scope_type) as doc_service:
-        pdf_count = doc_service.get_pdf_count()
-        md_count = len(doc_service.get_all_markdown_files())
-        unindexed = doc_service.get_unindexed_doc_ids()
+
+    def _count_scope() -> tuple[int, int, list]:
+        # Directory walks + metadata reads; service opened/closed on the
+        # worker thread so its stores keep thread affinity.
+        with get_document_service(scope_id, scope_type) as doc_service:
+            pdf_count = doc_service.get_pdf_count()
+            md_count = len(doc_service.get_all_markdown_files())
+            unindexed = doc_service.get_unindexed_doc_ids()
+        return pdf_count, md_count, unindexed
+
+    pdf_count, md_count, unindexed = await asyncio.to_thread(_count_scope)
 
     if pdf_count == 0 and md_count == 0:
         raise HTTPException(status_code=400, detail="No documents to index")
@@ -598,11 +629,19 @@ async def _upload_file_url(
     filename = _filename_from_response(resp, url)
 
     if content_type == "application/pdf":
-        return _upload_pdf(
-            scope_id, scope_type, resp.content, filename, in_context=in_context
+        # Upload + optional context attach touch disk and can trigger PDF
+        # conversion — run the whole helper on a worker thread.
+        return await asyncio.to_thread(
+            _upload_pdf,
+            scope_id,
+            scope_type,
+            resp.content,
+            filename,
+            in_context=in_context,
         )
     elif content_type in ("text/plain", "text/markdown"):
-        return _upload_text(
+        return await asyncio.to_thread(
+            _upload_text,
             scope_id,
             scope_type,
             resp.content.decode("utf-8", errors="replace"),
@@ -631,7 +670,9 @@ async def list_session_documents(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return _list_documents(session_id, "session")
+    # _list_documents walks the scope directory and opens every PDF to count
+    # pages — real filesystem I/O that must not run on the event loop.
+    return await asyncio.to_thread(_list_documents, session_id, "session")
 
 
 @router.post(
@@ -656,8 +697,14 @@ async def upload_session_document(
         raise HTTPException(status_code=400, detail="File must be a PDF")
 
     content = await file.read()
-    return _upload_pdf(
-        session_id, "session", content, file.filename, in_context=in_context
+    # Upload stores the file and may convert the PDF to markdown — blocking.
+    return await asyncio.to_thread(
+        _upload_pdf,
+        session_id,
+        "session",
+        content,
+        file.filename,
+        in_context=in_context,
     )
 
 
@@ -676,8 +723,14 @@ async def upload_session_text(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return _upload_text(
-        session_id, "session", body.content, body.filename, in_context=body.in_context
+    # Writes the markdown file and updates the metadata store — blocking I/O.
+    return await asyncio.to_thread(
+        _upload_text,
+        session_id,
+        "session",
+        body.content,
+        body.filename,
+        in_context=body.in_context,
     )
 
 
@@ -696,9 +749,15 @@ async def upload_session_url(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # Network download + storage — run on a worker thread.
     try:
-        return _upload_url(
-            session_id, "session", body.url, body.context, in_context=body.in_context
+        return await asyncio.to_thread(
+            _upload_url,
+            session_id,
+            "session",
+            body.url,
+            body.context,
+            in_context=body.in_context,
         )
     except (ValueError, ConnectionError) as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -763,7 +822,11 @@ async def set_session_document_context(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    tokens = _mark_in_context(session_id, "session", doc_id, body.in_context)
+    # _mark_in_context -> DocumentService.set_in_context -> ensure_markdown ->
+    # pymupdf4llm: ~16s for a 50-page paper. Never on the event loop.
+    tokens = await asyncio.to_thread(
+        _mark_in_context, session_id, "session", doc_id, body.in_context
+    )
     return DocumentContextResponse(
         doc_id=doc_id, in_context=body.in_context, context_tokens=tokens
     )
@@ -780,7 +843,8 @@ async def delete_session_document(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    _delete_document(session_id, "session", doc_id)
+    # Directory scan + file deletion — blocking filesystem I/O.
+    await asyncio.to_thread(_delete_document, session_id, "session", doc_id)
 
 
 @router.post(
@@ -866,22 +930,27 @@ async def update_project_indexing_config(
             )
         indexing["conversion_method"] = body.conversion_method
 
-    project_service.save(data)
-
     # If settings actually changed and index exists, delete it so next build
     # does a full rebuild
     settings_changed = (
         indexing.get("chunk_sizes") != old_chunk_sizes
         or indexing.get("conversion_method") != old_conversion
     )
-    if settings_changed:
-        with get_document_service(project_id, "project") as doc_service:
-            if doc_service.index_exists():
-                logger.info(
-                    f"Indexing settings changed for project {project_id}, "
-                    "deleting index"
-                )
-                doc_service.delete_index()
+
+    def _persist_and_invalidate() -> None:
+        # Config write + possible index directory deletion: both blocking.
+        # Service is created and closed on the worker thread.
+        project_service.save(data)
+        if settings_changed:
+            with get_document_service(project_id, "project") as doc_service:
+                if doc_service.index_exists():
+                    logger.info(
+                        f"Indexing settings changed for project {project_id}, "
+                        "deleting index"
+                    )
+                    doc_service.delete_index()
+
+    await asyncio.to_thread(_persist_and_invalidate)
 
     return IndexingConfig(**indexing)
 
@@ -898,7 +967,7 @@ async def list_project_documents(
 ) -> DocumentListResponse:
     """List all documents in a project."""
     _get_project_or_404(project_id, project_service)
-    return _list_documents(project_id, "project")
+    return await asyncio.to_thread(_list_documents, project_id, "project")
 
 
 @router.post(
@@ -918,7 +987,9 @@ async def upload_project_document(
         raise HTTPException(status_code=400, detail="File must be a PDF")
 
     content = await file.read()
-    return _upload_pdf(project_id, "project", content, file.filename)
+    return await asyncio.to_thread(
+        _upload_pdf, project_id, "project", content, file.filename
+    )
 
 
 @router.post(
@@ -933,7 +1004,9 @@ async def upload_project_text(
 ) -> DocumentUploadResponse:
     """Upload text/markdown content to a project."""
     _get_project_or_404(project_id, project_service)
-    return _upload_text(project_id, "project", body.content, body.filename)
+    return await asyncio.to_thread(
+        _upload_text, project_id, "project", body.content, body.filename
+    )
 
 
 @router.post(
@@ -950,7 +1023,9 @@ async def upload_project_url(
     _get_project_or_404(project_id, project_service)
 
     try:
-        return _upload_url(project_id, "project", body.url, body.context)
+        return await asyncio.to_thread(
+            _upload_url, project_id, "project", body.url, body.context
+        )
     except (ValueError, ConnectionError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -993,7 +1068,7 @@ async def delete_project_document(
 ) -> None:
     """Delete a document from a project."""
     _get_project_or_404(project_id, project_service)
-    _delete_document(project_id, "project", doc_id)
+    await asyncio.to_thread(_delete_document, project_id, "project", doc_id)
 
 
 @router.post(
@@ -1074,7 +1149,8 @@ async def add_catalog_module(
     if "catalog_modules" not in project:
         project["catalog_modules"] = {}
     project["catalog_modules"][module_name] = {"status": "indexed"}
-    project_service.save(data)
+    # Project config write (JSON on disk) — keep it off the event loop.
+    await asyncio.to_thread(project_service.save, data)
 
     return CatalogModuleAddResponse(
         module_name=module_name,
@@ -1112,7 +1188,7 @@ async def remove_catalog_module(
         )
 
     del project["catalog_modules"][module_name]
-    project_service.save(data)
+    await asyncio.to_thread(project_service.save, data)
 
     return CatalogModuleRemoveResponse(
         module_name=module_name,

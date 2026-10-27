@@ -1,6 +1,7 @@
 """FastAPI application factory and entry point."""
 
 import argparse
+import asyncio
 import logging
 import mimetypes
 from contextlib import asynccontextmanager
@@ -55,6 +56,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info("Initializing TensorTruth API...")
 
+    # Watch for synchronous calls accidentally blocking the single event loop.
+    # Silent when healthy; logs a WARNING plus the main-thread stack when a
+    # request handler stalls the loop past the threshold.
+    from tensortruth.services.loop_watchdog import (
+        start_loop_watchdog,
+        stop_loop_watchdog,
+    )
+
+    start_loop_watchdog(asyncio.get_running_loop(), threshold=0.5)
+
     startup_service = get_startup_service()
 
     # Check resources and log status (non-blocking)
@@ -105,6 +116,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown - cleanup resources
     logger.info("Shutting down TensorTruth API...")
+
+    # Stop the event-loop watchdog thread
+    try:
+        stop_loop_watchdog()
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("Failed to stop loop watchdog: %s", e)
 
     # Stop task runner
     task_runner = get_task_runner()

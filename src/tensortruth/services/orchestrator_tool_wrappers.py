@@ -1003,17 +1003,21 @@ async def _discover_links(
 
     exclude_urls = fetched_urls_getter() if fetched_urls_getter else set()
 
-    # Collect links from all pages, tracking which page they came from
-    all_links: List[tuple] = []  # (anchor_text, url, page_title_or_url)
-    seen_urls: set = set()
-    for page_url, content in page_contents:
-        links = extract_links_from_markdown(content, page_url, exclude_urls)
-        for anchor, link_url in links:
-            if link_url not in seen_urls:
-                seen_urls.add(link_url)
-                # Use domain as source identifier
-                source_domain = urlparse(page_url).netloc
-                all_links.append((anchor, link_url, source_domain))
+    # Collect links from all pages, tracking which page they came from.
+    # Regex over multi-KB page text is CPU work — run it on a worker thread.
+    def _extract_all_links() -> List[tuple]:
+        links_out: List[tuple] = []  # (anchor_text, url, page_title_or_url)
+        seen: set = set()
+        for page_url, content in page_contents:
+            links = extract_links_from_markdown(content, page_url, exclude_urls)
+            for anchor, link_url in links:
+                if link_url not in seen:
+                    seen.add(link_url)
+                    # Use domain as source identifier
+                    links_out.append((anchor, link_url, urlparse(page_url).netloc))
+        return links_out
+
+    all_links = await asyncio.to_thread(_extract_all_links)
 
     if not all_links:
         return ""
@@ -1275,7 +1279,8 @@ def create_list_mcp_servers_tool(
                 message="Listing MCP server configurations...",
             ),
         )
-        servers = mcp_server_service.list_all()
+        # Reads the MCP config from disk — off the event loop.
+        servers = await asyncio.to_thread(mcp_server_service.list_all)
         return json.dumps(servers, indent=2)
 
     return FunctionTool.from_defaults(
@@ -1313,7 +1318,7 @@ def create_get_mcp_presets_tool(
                 message="Fetching MCP server presets...",
             ),
         )
-        presets = mcp_server_service.get_presets()
+        presets = await asyncio.to_thread(mcp_server_service.get_presets)
         return json.dumps(presets, indent=2)
 
     return FunctionTool.from_defaults(
@@ -1407,7 +1412,7 @@ def create_manage_mcp_server_tool(
 
         # Auto-fill from preset if name matches and key fields are missing
         if action == "add" and not command and not url:
-            presets = mcp_server_service.get_presets()
+            presets = await asyncio.to_thread(mcp_server_service.get_presets)
             preset = presets.get(name)
             if preset:
                 type = type or preset.get("type", "stdio")
@@ -1470,7 +1475,7 @@ def create_manage_mcp_server_tool(
 
         # Validate: for remove, check server exists and is user-configured
         if action == "remove":
-            all_servers = mcp_server_service.list_all()
+            all_servers = await asyncio.to_thread(mcp_server_service.list_all)
             target = next((s for s in all_servers if s["name"] == name), None)
             if target is None:
                 return f"Error: Server '{name}' not found."
@@ -1538,13 +1543,17 @@ def create_manage_mcp_server_tool(
             return f"Confirmation timed out for {action} MCP server '{name}'."
 
         # Apply the change directly
-        try:
+        def _apply_config_change() -> None:
+            # YAML config read-modify-write — blocking filesystem I/O.
             if action == "add":
                 mcp_server_service.add(config)
             elif action == "update":
                 mcp_server_service.update(name, config)
             elif action == "remove":
                 mcp_server_service.remove(name)
+
+        try:
+            await asyncio.to_thread(_apply_config_change)
 
             # Reload tools so the new/changed MCP server is available
             await tool_service.reload()
@@ -1752,7 +1761,12 @@ def create_add_arxiv_paper_tool(
             ),
         )
 
-        try:
+        def _store_paper():
+            """Upload + persist metadata on a worker thread.
+
+            DocumentService is created and closed here so its stores keep
+            thread affinity; the whole block is blocking filesystem I/O.
+            """
             filename = f"{paper.title}.pdf"
             with get_document_service(scope_id, scope_type) as doc_service:
                 metadata = doc_service.upload(pdf_bytes, filename)
@@ -1772,6 +1786,10 @@ def create_add_arxiv_paper_tool(
             }
             with get_document_service(scope_id, scope_type) as doc_service:
                 doc_service.set_metadata(metadata.pdf_id, arxiv_metadata)
+            return metadata, authors_str
+
+        try:
+            metadata, authors_str = await asyncio.to_thread(_store_paper)
         except Exception as e:
             logger.error("Failed to upload arXiv paper %s: %s", arxiv_id, e)
             return f"Error: downloaded paper but failed to upload — {e}"
@@ -1787,9 +1805,16 @@ def create_add_arxiv_paper_tool(
                     message="Extracting paper text for context...",
                 ),
             )
-            try:
+
+            def _attach_to_context() -> int | None:
+                # set_in_context may run pymupdf4llm over the whole paper
+                # (~16s for 50 pages). Service is created and closed on the
+                # worker thread so its stores keep thread affinity.
                 with get_document_service(scope_id, scope_type) as doc_service:
-                    context_chars = doc_service.set_in_context(metadata.pdf_id, True)
+                    return doc_service.set_in_context(metadata.pdf_id, True)
+
+            try:
+                context_chars = await asyncio.to_thread(_attach_to_context)
             except Exception as e:
                 # The PDF is stored; only the text extraction failed. Keep the
                 # add and report it instead of pretending the paper is readable.
@@ -1949,10 +1974,19 @@ def create_build_index_tool(
         # Pre-flight: surface "nothing to do" cases as friendly strings before
         # asking the user to approve anything.
         try:
-            with get_document_service(scope_id, scope_type) as doc_service:
-                pdf_count = doc_service.get_pdf_count()
-                md_count = len(doc_service.get_all_markdown_files())
-                unindexed = doc_service.get_unindexed_doc_ids()
+
+            def _preflight():
+                # Directory walks + metadata reads on a worker thread.
+                with get_document_service(scope_id, scope_type) as doc_service:
+                    return (
+                        doc_service.get_pdf_count(),
+                        len(doc_service.get_all_markdown_files()),
+                        doc_service.get_unindexed_doc_ids(),
+                    )
+
+            pdf_count, md_count, unindexed = await asyncio.to_thread(_preflight)
+        except HTTPException as e:
+            return f"Could not inspect documents: {e.detail}"
         except Exception as e:
             logger.error("build_index: failed to inspect %s scope: %s", scope, e)
             return f"Error: could not inspect {scope} documents — {e}"
