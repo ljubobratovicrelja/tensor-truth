@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Square, Bot, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ContextMeter } from "@/components/chat/ContextMeter";
 import { Select, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { ModelSelectContent, decodeModelValue } from "./ModelSelectContent";
 import { ImagePreviewStrip } from "./ImagePreviewStrip";
@@ -42,6 +43,10 @@ interface ChatInputProps {
   sessionDocuments?: DocumentInfo[];
   /** Whether this is a project session (hides session-level system prompt). */
   isProjectSession?: boolean;
+  /** Run /compact for this conversation. */
+  onCompact?: () => void;
+  /** True while a compaction request is in flight. */
+  compactPending?: boolean;
 }
 
 export function ChatInput({
@@ -61,6 +66,8 @@ export function ChatInput({
   projectDocuments,
   sessionDocuments,
   isProjectSession,
+  onCompact,
+  compactPending = false,
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const {
@@ -108,6 +115,12 @@ export function ChatInput({
 
   const handleSend = () => {
     const trimmed = message.trim();
+    // Slash commands handled by the client (they are not chat messages).
+    if (trimmed.toLowerCase() === "/compact" && onCompact && !isStreaming) {
+      onCompact();
+      setMessage("");
+      return;
+    }
     if ((trimmed || hasImages) && !isStreaming) {
       // Detach images (clear state without revoking blob URLs) so the
       // pending message display can still use the preview URLs.
@@ -324,9 +337,25 @@ export function ChatInput({
           </div>
         </div>
       </div>
-      <p className="text-muted-foreground hidden text-center text-xs md:block">
-        Press Enter to send, Shift+Enter for new line
-      </p>
+      {/* Status bar: context breakdown + typing hint */}
+      {sessionId && (
+        <div className="flex items-center justify-between gap-2">
+          <ContextMeter
+            sessionId={sessionId}
+            onCompact={onCompact}
+            compactPending={compactPending}
+            className="max-w-[320px]"
+          />
+          <p className="text-muted-foreground hidden text-xs md:block">
+            Enter to send · Shift+Enter for new line
+          </p>
+        </div>
+      )}
+      {!sessionId && (
+        <p className="text-muted-foreground hidden text-center text-xs md:block">
+          Press Enter to send, Shift+Enter for new line
+        </p>
+      )}
     </div>
   );
 }

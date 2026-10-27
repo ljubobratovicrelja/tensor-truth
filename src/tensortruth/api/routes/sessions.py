@@ -10,9 +10,12 @@ from tensortruth.api.deps import (
     SessionServiceDep,
 )
 from tensortruth.api.schemas import (
+    CompactRequest,
+    CompactResponse,
     MessageCreate,
     MessageResponse,
     MessagesResponse,
+    SessionContextResponse,
     SessionCreate,
     SessionListResponse,
     SessionResponse,
@@ -320,3 +323,197 @@ async def add_message(
     session_service.save(new_data)
 
     return MessageResponse(role=body.role, content=body.content)
+
+
+# ---------------------------------------------------------------------------
+# Context accounting + compaction
+# ---------------------------------------------------------------------------
+
+
+def _history_chars(objects: list) -> int:
+    """Sum content lengths, tolerating dicts and ChatHistoryMessage objects."""
+    total = 0
+    for item in objects:
+        content = (
+            item.get("content", "")
+            if isinstance(item, dict)
+            else getattr(item, "content", "")
+        )
+        total += len(str(content or ""))
+    return total
+
+
+def _live_context(
+    session_id: str,
+    session: dict,
+    config,
+    chat_history_service,
+) -> SessionContextResponse:
+    """Best-effort breakdown when no turn has been measured yet."""
+    from tensortruth.services.context_accounting import (
+        build_report,
+        get_static_overhead,
+    )
+
+    params = session.get("params", {})
+    messages = session.get("messages", [])
+    compiled = chat_history_service.build_history(
+        messages,
+        max_turns=params.get("max_history_turns"),
+        apply_cleaning=config.history_cleaning.enabled,
+    )
+
+    document_chars = 0
+    try:
+        from tensortruth.api.deps import get_document_service
+
+        document_chars = sum(
+            len(doc.get("text", ""))
+            for doc in get_document_service(session_id).get_context_documents()
+        )
+    except Exception:
+        pass
+
+    overhead = get_static_overhead()
+    chars = {
+        "system": overhead.get("system", 0),
+        "tools": overhead.get("tools", 0),
+        "modules": overhead.get("modules", 0),
+        "documents": document_chars,
+        "history": _history_chars(compiled.messages),
+        "prompt": 0,
+    }
+    report = build_report(
+        chars,
+        context_window=params.get("context_window", 0) or 0,
+        measured=False,
+        model_name=params.get("model"),
+        messages_included=len(compiled.messages),
+        messages_total=len(messages),
+    )
+    return SessionContextResponse(**report)
+
+
+@router.get("/{session_id}/context", response_model=SessionContextResponse)
+async def get_session_context(
+    session_id: str,
+    session_service: SessionServiceDep,
+    config_service: ConfigServiceDep,
+    chat_history_service: ChatHistoryServiceDep,
+) -> SessionContextResponse:
+    """Per-category breakdown of the context sent to the LLM.
+
+    Uses the last prompt the orchestrator actually composed when available
+    (``measured: true``); otherwise falls back to live estimates so the status
+    bar has something useful before the first turn.
+    """
+    from tensortruth.services.context_accounting import report_for_session
+
+    data = session_service.load()
+    session = session_service.get_session(session_id, data)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    measured = report_for_session(session_id)
+    if measured is not None:
+        return SessionContextResponse(**measured)
+
+    return _live_context(
+        session_id, session, config_service.load(), chat_history_service
+    )
+
+
+@router.post("/{session_id}/compact", response_model=CompactResponse)
+async def compact_session(
+    session_id: str,
+    body: CompactRequest,
+    session_service: SessionServiceDep,
+    chat_history_service: ChatHistoryServiceDep,
+) -> CompactResponse:
+    """Summarise older messages into one, keeping the newest ones verbatim."""
+    import asyncio
+
+    from tensortruth.core.providers import create_llm, resolve_model_from_params
+    from tensortruth.services import context_compaction as compaction
+    from tensortruth.services.context_accounting import clear_snapshot
+
+    data = session_service.load()
+    session = session_service.get_session(session_id, data)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    messages = list(session.get("messages", []))
+    plan = compaction.plan_compaction(messages, body.keep_last)
+    if plan is None:
+        return CompactResponse(
+            compacted=False,
+            message=(
+                "Nothing to compact: the conversation is already shorter than "
+                f"the {body.keep_last} messages kept verbatim."
+            ),
+            messages_before=len(messages),
+            messages_after=len(messages),
+        )
+
+    params = session.get("params", {})
+    model_name = params.get("model")
+    try:
+        model_ref = resolve_model_from_params(params, model_name or "")
+        llm = create_llm(
+            model_ref, context_window=params.get("context_window") or 32768
+        )
+    except Exception as exc:  # noqa: BLE001 - surfaced to the user
+        raise HTTPException(
+            status_code=503,
+            detail=f"No language model available to summarise the conversation: {exc}",
+        )
+
+    def _summarize(transcript: str) -> str:
+        response = llm.complete(compaction.SUMMARY_PROMPT.format(transcript=transcript))
+        return str(response).strip()
+
+    try:
+        summary = await asyncio.to_thread(
+            compaction.summarize_transcript, _summarize, plan["transcript"]
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger = __import__("logging").getLogger(__name__)
+        logger.exception("Compaction failed for session %s", session_id)
+        raise HTTPException(status_code=502, detail=f"Compaction failed: {exc}")
+
+    backup = compaction.backup_replaced_messages(
+        session_service.sessions_dir, session_id, plan, summary
+    )
+    new_messages = compaction.apply_compaction(messages, summary, body.keep_last)
+
+    updated_session = dict(session)
+    updated_session["messages"] = new_messages
+    updated_session["compaction"] = {
+        "compacted_at": __import__("time").time(),
+        "messages_compacted": len(plan["older"]),
+        "summary_chars": len(summary),
+        "backup_path": str(backup) if backup else None,
+    }
+    sessions = dict(data.sessions)
+    sessions[session_id] = updated_session
+    session_service.save(type(data)(current_id=data.current_id, sessions=sessions))
+    clear_snapshot(session_id)
+
+    chars_before = plan["older_chars"] + plan["recent_chars"]
+    chars_after = _history_chars(new_messages)
+
+    return CompactResponse(
+        compacted=True,
+        message=(
+            f"Compacted {len(plan['older'])} messages into a {len(summary)} "
+            "character summary."
+        ),
+        messages_before=len(messages),
+        messages_after=len(new_messages),
+        messages_compacted=len(plan["older"]),
+        chars_before=chars_before,
+        chars_after=chars_after,
+        tokens_saved=max(0, (chars_before - chars_after) // 4),
+        summary_chars=len(summary),
+        backup_path=str(backup) if backup else None,
+    )

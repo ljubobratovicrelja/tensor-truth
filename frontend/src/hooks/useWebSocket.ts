@@ -117,6 +117,10 @@ export function applyStreamMessage(
         queryKey: QUERY_KEYS.messages(ctx.sessionId),
       });
       ctx.queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
+      // The context breakdown was just re-measured on this turn.
+      ctx.queryClient.invalidateQueries({
+        queryKey: ["session-context", ctx.sessionId],
+      });
       break;
 
     case "error":

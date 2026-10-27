@@ -458,6 +458,31 @@ class OrchestratorService:
 
         return _internal_emitter
 
+    def _record_static_overhead(self, tools: List[FunctionTool]) -> None:
+        """Measure the fixed per-turn cost (system prompt + tool schemas).
+
+        Recorded once per orchestrator build so the context meter has real
+        overhead numbers even before the first tool-capable turn.
+        """
+        try:
+            from tensortruth.services.context_accounting import (
+                record_static_overhead,
+                tool_schema_chars,
+            )
+
+            with_modules = self._build_system_prompt(tools)
+            without_modules = self._build_system_prompt(tools, include_modules=False)
+            modules_chars = max(0, len(with_modules) - len(without_modules))
+            record_static_overhead(
+                {
+                    "system": len(without_modules),
+                    "tools": tool_schema_chars(tools),
+                    "modules": modules_chars,
+                }
+            )
+        except Exception:  # pragma: no cover - accounting must never break a turn
+            logger.debug("Static context accounting failed", exc_info=True)
+
     def _build_tools(self) -> List[FunctionTool]:
         """Build the complete tool set for the orchestrator.
 
@@ -629,7 +654,10 @@ class OrchestratorService:
     # ------------------------------------------------------------------
 
     def _build_system_prompt(
-        self, tools: List[FunctionTool], in_context_block: str = ""
+        self,
+        tools: List[FunctionTool],
+        in_context_block: str = "",
+        include_modules: bool = True,
     ) -> str:
         """Compose the orchestrator system prompt.
 
@@ -664,7 +692,7 @@ class OrchestratorService:
         )
 
         # --- Indexed modules ---
-        if self._module_descriptions:
+        if include_modules and self._module_descriptions:
             module_lines = []
             for mod in self._module_descriptions:
                 module_lines.append(
@@ -1177,6 +1205,32 @@ class OrchestratorService:
         ):
             fast_text = await self._try_fast_path(prompt)
             if fast_text is not None:
+                # The fast path sends no tools and no history; record what it
+                # actually sent so the meter does not claim otherwise.
+                try:
+                    from tensortruth.services.context_accounting import (
+                        get_static_overhead,
+                        record_snapshot,
+                    )
+
+                    overhead = get_static_overhead()
+                    record_snapshot(
+                        self._session_id or "",
+                        {
+                            "system": overhead.get("system", 0),
+                            "tools": 0,
+                            "modules": overhead.get("modules", 0),
+                            "documents": 0,
+                            "history": 0,
+                            "prompt": len(prompt),
+                        },
+                        context_window=self._context_window,
+                        model_name=getattr(self._model_ref, "model_name", None),
+                        messages_included=0,
+                        messages_total=len(chat_history or []),
+                    )
+                except Exception:  # pragma: no cover
+                    pass
                 logger.info(
                     "Fast path: no-tools response for prompt (len=%d)", len(prompt)
                 )
@@ -1196,6 +1250,7 @@ class OrchestratorService:
         # --- Build tools and agent (cached across execute() calls) ---
         if self._tools is None:
             self._tools = self._build_tools()
+            self._record_static_overhead(self._tools)
         tools = self._tools
 
         # Get (or reuse) orchestrator LLM singleton
@@ -1234,14 +1289,45 @@ class OrchestratorService:
             // CHARS_PER_TOKEN
         )
         user_tokens = len(prompt) // CHARS_PER_TOKEN
-        tool_schema_chars = 0
-        for t in tools:
-            tool_schema_chars += len(t.metadata.name or "")
-            tool_schema_chars += len(t.metadata.description or "")
-            if t.metadata.fn_schema:
-                tool_schema_chars += len(
-                    json.dumps(t.metadata.fn_schema.model_json_schema())
-                )
+        from tensortruth.services.context_accounting import (
+            record_snapshot,
+        )
+        from tensortruth.services.context_accounting import (
+            tool_schema_chars as _tool_schema_chars,
+        )
+
+        tool_schema_chars = _tool_schema_chars(tools)
+
+        # Per-category breakdown for the status bar and /compact decisions.
+        # Measured, not estimated: these are the exact strings we send.
+        try:
+            prompt_without_modules = self._build_system_prompt(
+                tools, in_context_block=in_context_block, include_modules=False
+            )
+            modules_chars = max(0, len(system_prompt) - len(prompt_without_modules))
+            record_snapshot(
+                self._session_id or "",
+                {
+                    "system": max(
+                        0,
+                        len(system_prompt) - len(in_context_block) - modules_chars,
+                    ),
+                    "tools": tool_schema_chars,
+                    "modules": modules_chars,
+                    "documents": len(in_context_block),
+                    "history": sum(
+                        len(str(m.get("content", ""))) for m in budgeted_history
+                    ),
+                    "prompt": len(prompt),
+                },
+                context_window=self._context_window,
+                model_name=getattr(self._model_ref, "model_name", None),
+                messages_included=len(budgeted_history),
+                messages_total=len(chat_history or []),
+            )
+        except Exception:  # pragma: no cover - accounting must never break a turn
+            logger.debug("Context accounting failed", exc_info=True)
+
         tool_tokens = tool_schema_chars // CHARS_PER_TOKEN
         total_tokens = system_tokens + tool_tokens + history_tokens + user_tokens
         logger.info(
