@@ -82,7 +82,9 @@ export function MessageList({
     scrollToBottom,
     reEngage,
   } = useAutoScroll({
-    nearBottomThreshold: 50,
+    // Re-engage only when the user's own gesture lands this close to the
+    // bottom; gestures are what disengage, never content growth.
+    nearBottomThreshold: 24,
     deps: [
       messages,
       pendingUserMessage,

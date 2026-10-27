@@ -20,114 +20,310 @@ interface UseAutoScrollResult {
   reEngage: () => void;
 }
 
+/** A scroll landing this close to the position we assigned is ours, not the user's. */
+const PROGRAMMATIC_TOLERANCE_PX = 2;
 /**
- * Reusable auto-scroll hook. Auto-scrolls to the bottom on content changes
- * unless the user has scrolled away.
+ * Cumulative upward travel (px) from scroll events alone before we believe the
+ * user moved the view. A native scrollbar drag dispatches no pointer events, so
+ * it can only be seen as scroll deltas — but so can per-frame scroll-anchoring
+ * adjustments, and a slow 2px-per-event drag never trips a single-delta test.
+ * Summing consecutive upward movement separates the two: a drag passes this in a
+ * few frames, anchoring noise does not.
+ */
+const UPWARD_DISENGAGE_PX = 6;
+/** Finger travel (px) before a touch is treated as a deliberate upward drag. */
+const TOUCH_INTENT_PX = 2;
+/** Pointer travel (px) before a drag is treated as a deliberate upward drag. */
+const POINTER_INTENT_PX = 4;
+
+function distanceFromBottom(el: HTMLElement): number {
+  return el.scrollHeight - el.scrollTop - el.clientHeight;
+}
+
+/**
+ * Reusable auto-scroll hook. Follows new content while the user is at the
+ * bottom; once the user takes the scroll away with a gesture it stays put.
  *
- * Uses a ref + state dual-tracking pattern:
- * - Ref (`isScrolledAwayRef`) for synchronous checks inside effects (immediate,
- *   survives the React render cycle)
- * - State (`isScrolledAway`) for UI (scroll-to-bottom button visibility)
+ * Intent comes from **input events** (`wheel`, touch, pointer, keydown), never
+ * from scroll-position deltas: wheel/touch/key are unambiguous, whereas deltas
+ * are corrupted by coalesced wheel events, scrollbar drags, momentum scrolling
+ * and content growth.
  *
- * Detects scroll **direction**: any upward scroll disengages immediately,
- * even if still within the near-bottom threshold. Programmatic scrolls always
- * go downward (to max position), so they never trigger disengagement.
- * Re-engage only happens when scrolling back down to within the threshold.
+ * Our own scrolls are recognised by remembering the exact `scrollTop` we
+ * assigned (`programmaticTopRef`) and comparing the arriving scroll event
+ * against it. That is a value comparison, not a one-shot boolean, so a
+ * programmatic scroll that is a no-op (already at the bottom → no scroll event)
+ * cannot leave a flag armed to swallow the user's next scroll.
+ *
+ * Dual tracking: `isScrolledAwayRef` for synchronous checks inside effects and
+ * event handlers, `isScrolledAway` state for UI (scroll-to-bottom button).
  */
 export function useAutoScroll({
-  nearBottomThreshold = 50,
+  nearBottomThreshold = 24,
   deps,
   enabled = true,
 }: UseAutoScrollOptions): UseAutoScrollResult {
   const containerRef = useRef<HTMLElement | null>(null);
 
-  // Dual tracking: ref for synchronous effect checks, state for UI rendering
+  // Dual tracking: ref for synchronous checks, state for UI rendering
   const isScrolledAwayRef = useRef(false);
   const [isScrolledAway, setIsScrolledAway] = useState(false);
 
-  // Track last scroll position for direction detection
-  const lastScrollTopRef = useRef(0);
+  /** scrollTop we last assigned programmatically (null when unknown) */
+  const programmaticTopRef = useRef<number | null>(null);
+  /** Last scrollTop observed — scrollbar-drag fallback only */
+  const lastTopRef = useRef(0);
+  /** Consecutive upward scroll travel, reset on any downward movement */
+  const upwardTravelRef = useRef(0);
+  /** Gesture bookkeeping for touch / pointer direction inference */
+  const touchStartYRef = useRef<number | null>(null);
+  const pointerStartYRef = useRef<number | null>(null);
+  const pointerActiveRef = useRef(false);
+  const gestureStartTopRef = useRef(0);
 
-  // Flag to suppress scroll-handler during programmatic scrolls
-  const isProgrammaticRef = useRef(false);
+  /** Removes every listener currently attached to the container */
+  const detachRef = useRef<(() => void) | null>(null);
 
-  // Helper: update both ref and state in sync
+  // Helper: update ref first (synchronous), then state only when it changes
   const setScrolledAway = useCallback((value: boolean) => {
+    if (isScrolledAwayRef.current === value) return;
     isScrolledAwayRef.current = value;
     setIsScrolledAway(value);
   }, []);
 
+  const disengage = useCallback(() => setScrolledAway(true), [setScrolledAway]);
+  const engage = useCallback(() => setScrolledAway(false), [setScrolledAway]);
+
+  const engageIfNearBottom = useCallback(
+    (el: HTMLElement) => {
+      if (distanceFromBottom(el) <= nearBottomThreshold) engage();
+    },
+    [engage, nearBottomThreshold]
+  );
+
   // ------------------------------------------------------------------
-  // Passive scroll listener — direction-based user intent detection
+  // scroll — only re-engages; upward intent comes from gestures
   // ------------------------------------------------------------------
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    const { scrollTop, scrollHeight, clientHeight } = el;
+    const top = el.scrollTop;
+    const target = programmaticTopRef.current;
 
-    // Skip handling for programmatic scrolls — clear flag synchronously
-    if (isProgrammaticRef.current) {
-      isProgrammaticRef.current = false;
-      lastScrollTopRef.current = scrollTop;
+    // Our own scroll: never touches intent state.
+    if (target !== null && Math.abs(top - target) <= PROGRAMMATIC_TOLERANCE_PX) {
+      lastTopRef.current = top;
+      upwardTravelRef.current = 0;
       return;
     }
+    programmaticTopRef.current = null;
 
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    const scrollingUp = scrollTop < lastScrollTopRef.current;
-    lastScrollTopRef.current = scrollTop;
+    const previousTop = lastTopRef.current;
+    lastTopRef.current = top;
 
-    if (scrollingUp) {
-      // Any upward user scroll → disengage immediately
-      setScrolledAway(true);
-    } else if (distanceFromBottom <= nearBottomThreshold) {
-      // User scrolled back down to bottom → re-engage
-      setScrolledAway(false);
+    // Fallback for scrollbar drags / momentum, which can reach us as scroll
+    // events only (native scrollbars do not dispatch pointer events). Sum
+    // consecutive upward travel so a slow drag is still recognised while a
+    // couple of pixels of scroll-anchoring jitter are not.
+    if (top < previousTop) {
+      upwardTravelRef.current += previousTop - top;
+      if (upwardTravelRef.current >= UPWARD_DISENGAGE_PX) {
+        disengage();
+        return;
+      }
+    } else {
+      upwardTravelRef.current = 0;
     }
-  }, [nearBottomThreshold, setScrolledAway]);
+
+    engageIfNearBottom(el);
+  }, [disengage, engageIfNearBottom]);
 
   // ------------------------------------------------------------------
-  // Ref callback — attach/detach scroll listener
+  // wheel — synchronous disengage on upward intent
+  // ------------------------------------------------------------------
+  const handleWheel = useCallback(
+    (event: WheelEvent) => {
+      const el = containerRef.current;
+      programmaticTopRef.current = null;
+      if (event.deltaY < 0) {
+        disengage();
+        return;
+      }
+      if (el && event.deltaY > 0) engageIfNearBottom(el);
+    },
+    [disengage, engageIfNearBottom]
+  );
+
+  // ------------------------------------------------------------------
+  // touch — finger moving down drags the content up
+  // ------------------------------------------------------------------
+  const handleTouchStart = useCallback((event: TouchEvent) => {
+    programmaticTopRef.current = null;
+    const touch = event.touches[0];
+    touchStartYRef.current = touch ? touch.clientY : null;
+    const el = containerRef.current;
+    gestureStartTopRef.current = el ? el.scrollTop : 0;
+  }, []);
+
+  const handleTouchMove = useCallback(
+    (event: TouchEvent) => {
+      const startY = touchStartYRef.current;
+      const touch = event.touches[0];
+      if (startY === null || !touch) return;
+      if (touch.clientY - startY > TOUCH_INTENT_PX) {
+        touchStartYRef.current = touch.clientY;
+        programmaticTopRef.current = null;
+        disengage();
+      }
+    },
+    [disengage]
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    touchStartYRef.current = null;
+  }, []);
+
+  // ------------------------------------------------------------------
+  // pointer — scrollbar drag or drag-anywhere; direction from Y / scrollTop
+  // ------------------------------------------------------------------
+  const handlePointerDown = useCallback((event: PointerEvent) => {
+    const el = containerRef.current;
+    programmaticTopRef.current = null;
+    pointerActiveRef.current = true;
+    pointerStartYRef.current = event.clientY;
+    gestureStartTopRef.current = el ? el.scrollTop : 0;
+  }, []);
+
+  const handlePointerMove = useCallback(
+    (event: PointerEvent) => {
+      if (!pointerActiveRef.current) return;
+      const startY = pointerStartYRef.current;
+      if (startY === null) return;
+
+      const el = containerRef.current;
+      const draggedDown = event.clientY - startY > POINTER_INTENT_PX;
+      const scrolledUp = !!el && el.scrollTop < gestureStartTopRef.current - 1;
+
+      if (draggedDown || scrolledUp) {
+        pointerStartYRef.current = event.clientY;
+        programmaticTopRef.current = null;
+        disengage();
+      }
+    },
+    [disengage]
+  );
+
+  const handlePointerEnd = useCallback(() => {
+    pointerActiveRef.current = false;
+    pointerStartYRef.current = null;
+  }, []);
+
+  // ------------------------------------------------------------------
+  // keydown — keyboard scrolling is unambiguous intent
+  // ------------------------------------------------------------------
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+      ) {
+        return;
+      }
+
+      if (event.key === "ArrowUp" || event.key === "PageUp" || event.key === "Home") {
+        programmaticTopRef.current = null;
+        disengage();
+      } else if (
+        event.key === "ArrowDown" ||
+        event.key === "PageDown" ||
+        event.key === "End"
+      ) {
+        // The resulting scroll event re-engages if it lands near the bottom.
+        programmaticTopRef.current = null;
+      }
+    },
+    [disengage]
+  );
+
+  // ------------------------------------------------------------------
+  // Ref callback — symmetric attach/detach of every listener
   // ------------------------------------------------------------------
   const scrollRefCb = useCallback(
     (node: HTMLElement | null) => {
-      if (containerRef.current) {
-        containerRef.current.removeEventListener("scroll", handleScroll);
-      }
+      detachRef.current?.();
+      detachRef.current = null;
       containerRef.current = node;
-      if (node) {
-        node.addEventListener("scroll", handleScroll, { passive: true });
-        // Initialize last scroll position
-        lastScrollTopRef.current = node.scrollTop;
+      if (!node) return;
+
+      lastTopRef.current = node.scrollTop;
+      programmaticTopRef.current = null;
+      touchStartYRef.current = null;
+      pointerStartYRef.current = null;
+      pointerActiveRef.current = false;
+
+      const listeners: [string, EventListener, AddEventListenerOptions][] = [
+        ["scroll", handleScroll as EventListener, { passive: true }],
+        ["wheel", handleWheel as EventListener, { passive: true }],
+        ["touchstart", handleTouchStart as EventListener, { passive: true }],
+        ["touchmove", handleTouchMove as EventListener, { passive: true }],
+        ["touchend", handleTouchEnd as EventListener, { passive: true }],
+        ["touchcancel", handleTouchEnd as EventListener, { passive: true }],
+        ["pointerdown", handlePointerDown as EventListener, {}],
+        ["pointermove", handlePointerMove as EventListener, {}],
+        ["pointerup", handlePointerEnd as EventListener, {}],
+        ["pointercancel", handlePointerEnd as EventListener, {}],
+        ["keydown", handleKeyDown as EventListener, {}],
+      ];
+
+      for (const [type, listener, options] of listeners) {
+        node.addEventListener(type, listener, options);
       }
+
+      detachRef.current = () => {
+        for (const [type, listener, options] of listeners) {
+          node.removeEventListener(type, listener, options);
+        }
+      };
     },
-    [handleScroll]
+    [
+      handleScroll,
+      handleWheel,
+      handleTouchStart,
+      handleTouchMove,
+      handleTouchEnd,
+      handlePointerDown,
+      handlePointerMove,
+      handlePointerEnd,
+      handleKeyDown,
+    ]
   );
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (containerRef.current) {
-        containerRef.current.removeEventListener("scroll", handleScroll);
-      }
+      detachRef.current?.();
+      detachRef.current = null;
     };
-  }, [handleScroll]);
+  }, []);
 
   // ------------------------------------------------------------------
-  // Programmatic scroll helper
+  // Programmatic scroll helpers
   // ------------------------------------------------------------------
   const doScrollToBottom = useCallback((behavior: ScrollBehavior = "instant") => {
     const el = containerRef.current;
     if (!el) return;
 
-    isProgrammaticRef.current = true;
-    if (behavior === "instant") {
-      el.scrollTop = el.scrollHeight;
+    const maxScroll = el.scrollHeight - el.clientHeight;
+    programmaticTopRef.current = maxScroll;
+
+    if (behavior !== "instant" && typeof el.scrollTo === "function") {
+      el.scrollTo({ top: maxScroll, behavior });
     } else {
-      el.scrollTo({ top: el.scrollHeight, behavior });
+      el.scrollTop = maxScroll;
     }
-    // Update baseline so next user scroll detects direction correctly
-    lastScrollTopRef.current = el.scrollTop;
+    lastTopRef.current = el.scrollTop;
   }, []);
 
   // ------------------------------------------------------------------
@@ -149,13 +345,16 @@ export function useAutoScroll({
   }, [setScrolledAway]);
 
   // ------------------------------------------------------------------
-  // Auto-scroll on content changes — check REF (not state) for immediate value
+  // Auto-scroll on content changes — REF check, never re-engages
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!enabled || isScrolledAwayRef.current) return;
+    const el = containerRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.clientHeight <= 0) return;
     doScrollToBottom("instant");
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps spread from caller; isScrolledAway state included to re-run when re-engaged
-  }, [enabled, isScrolledAway, doScrollToBottom, ...deps]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are caller-supplied content deps; isScrolledAway state is deliberately excluded so that running this effect can never re-engage
+  }, [enabled, doScrollToBottom, ...deps]);
 
   return { scrollRef: scrollRefCb, isScrolledAway, scrollToBottom, reEngage };
 }
