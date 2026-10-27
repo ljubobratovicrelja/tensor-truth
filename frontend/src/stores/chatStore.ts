@@ -295,9 +295,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   // fails with "already approved" and the waiting tool hangs.
   addConfirmationRequest: (req) =>
     set((state) =>
-      state.confirmationRequests.some(
-        (r) => r.confirmation_id === req.confirmation_id
-      )
+      state.confirmationRequests.some((r) => r.confirmation_id === req.confirmation_id)
         ? state
         : { confirmationRequests: [...state.confirmationRequests, req] }
     ),

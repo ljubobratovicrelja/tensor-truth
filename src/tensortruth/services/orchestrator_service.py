@@ -678,7 +678,9 @@ class OrchestratorService:
         sections.append(
             "Tool routing:\n"
             "- For questions about topics covered by the indexed modules, "
-            "search the knowledge base.\n"
+            "search the knowledge base. rag_query returns verbatim excerpts "
+            "from the indexed documents — quote and cite them instead of "
+            "answering from memory.\n"
             "- For current events, recent developments, or topics NOT in the "
             "indexed modules, search the web. CRITICAL: web_search returns "
             "ONLY titles and URLs — NO page content at all. You MUST call "

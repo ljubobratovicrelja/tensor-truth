@@ -215,19 +215,13 @@ describe("ToolSteps", () => {
     const queryClient = new QueryClient();
     render(
       <QueryClientProvider client={queryClient}>
-        <ToolSteps
-          steps={steps}
-          defaultOpen
-          confirmationRequests={confirmations}
-        />
+        <ToolSteps steps={steps} defaultOpen confirmationRequests={confirmations} />
       </QueryClientProvider>
     );
 
     // Only the still-running step owns a card, and it owns the second request.
     expect(screen.getAllByText("Approve")).toHaveLength(1);
     expect(screen.getByText("Add arXiv paper 2301.08243")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Add arXiv paper 2511.08544")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Add arXiv paper 2511.08544")).not.toBeInTheDocument();
   });
 });

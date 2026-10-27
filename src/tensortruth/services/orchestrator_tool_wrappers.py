@@ -25,6 +25,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from pydantic import BaseModel, Field
 
 from tensortruth.agents.tool_output import extract_tool_text
+from tensortruth.services.context_documents import CHARS_PER_TOKEN
 from tensortruth.services.models import ToolProgress
 from tensortruth.services.tool_service import ToolService
 
@@ -50,9 +51,40 @@ RAGResultCallback = Callable[["RAGRetrievalResult"], None]
 # Type alias for a callback that receives web SourceNodes from fetch_pages_batch.
 WebResultCallback = Callable[[List["SourceNode"]], None]
 
-# Type alias for a callback that receives full tool output for the synthesizer.
-# Args: (tool_name, full_output_text).
+# Type alias for a callback that receives full tool output (used by the
+# stream translator / UI). Args: (tool_name, full_output_text).
 FullOutputCallback = Callable[[str, str], None]
+
+# --- Tool content budgets -------------------------------------------------
+# Tools must hand their *content* back to the calling LLM, not just a summary:
+# the orchestrator agent has no separate synthesizer, so whatever the tool
+# returns is the only material the model can read. Output is capped as a share
+# of the context window so a single call cannot crowd out the conversation.
+RAG_CONTENT_PCT = 0.12
+FETCH_PAGE_CONTENT_PCT = 0.15
+FETCH_BATCH_CONTENT_PCT = 0.25
+MIN_TOOL_CONTENT_CHARS = 2000
+MAX_TOOL_CONTENT_CHARS = 48000
+# Hard cap per RAG source excerpt, regardless of how much budget is left.
+RAG_SOURCE_MAX_CHARS = 1500
+
+
+def _tool_content_budget(context_window: int, pct: float) -> int:
+    """Character budget for one tool result, as a share of the context window."""
+    total_chars = max(1, int(context_window or 16384)) * CHARS_PER_TOKEN
+    return max(
+        MIN_TOOL_CONTENT_CHARS,
+        min(MAX_TOOL_CONTENT_CHARS, int(total_chars * pct)),
+    )
+
+
+def _fit_tool_text(text: str, budget: int) -> tuple[str, bool]:
+    """Truncate ``text`` to ``budget`` chars, appending an explicit marker."""
+    if budget <= 0 or len(text) <= budget:
+        return text, False
+    marker = "\n\n...[truncated to fit the context budget]"
+    keep = max(0, budget - len(marker))
+    return text[:keep].rstrip() + marker, True
 
 
 # --- Pydantic schemas for FunctionTool parameter validation ---
@@ -190,6 +222,7 @@ def create_rag_tool(
     session_messages: Optional[List[Dict[str, object]]] = None,
     rag_result_callback: Optional[RAGResultCallback] = None,
     full_output_callback: Optional[FullOutputCallback] = None,
+    context_window: int = 16384,
 ) -> FunctionTool:
     """Create a rag_query FunctionTool for the orchestrator.
 
@@ -209,6 +242,8 @@ def create_rag_tool(
         session_messages: Chat history for query condensation.
         rag_result_callback: Optional callback to receive the raw
             RAGRetrievalResult for source extraction by the stream translator.
+        context_window: Model context window in tokens, used to cap the size
+            of the excerpts returned to the agent.
 
     Returns:
         A FunctionTool wrapping RAGService.retrieve().
@@ -252,13 +287,17 @@ def create_rag_tool(
         if rag_result_callback is not None:
             rag_result_callback(result)
 
-        # Full output for the synthesizer (via side-channel callback)
-        full_output = _format_retrieval_result(result)
+        # Format source excerpts (+ scores, confidence, metrics) for the agent.
+        # The orchestrator has no separate synthesizer: this text IS what the
+        # model reads, so it must carry the chunk content, budget-capped.
+        output = _format_retrieval_result(
+            result,
+            max_chars=_tool_content_budget(context_window, RAG_CONTENT_PCT),
+        )
         if full_output_callback is not None:
-            full_output_callback("rag_query", full_output)
+            full_output_callback("rag_query", output)
 
-        # Return compact summary for orchestrator scratchpad
-        return _summarize_rag_result(result)
+        return output
 
     return FunctionTool.from_defaults(
         async_fn=rag_query,
@@ -266,25 +305,32 @@ def create_rag_tool(
         description=(
             "Search the indexed knowledge base (documents, papers, books, "
             "uploaded PDFs) for information relevant to a query. Returns "
-            "source excerpts with relevance scores and a confidence level. "
-            "Best for questions about topics covered by the loaded document "
-            "modules. Not suitable for current events or live information."
+            "source excerpts (actual text) with relevance scores and a "
+            "confidence level. Always call this when the answer may be in the "
+            "attached documents — do not answer from memory. Not suitable for "
+            "current events or live information."
         ),
         fn_schema=RAGQueryInput,
     )
 
 
-def _format_retrieval_result(result: "RAGRetrievalResult") -> str:
+def _format_retrieval_result(
+    result: "RAGRetrievalResult", max_chars: Optional[int] = None
+) -> str:
     """Format a RAGRetrievalResult as a structured string for LLM consumption.
 
-    Produces a clear text summary of sources with scores, confidence level,
-    and key metrics. The orchestrator LLM reads this to synthesize its response.
+    Includes the confidence level, per-source titles/scores and the actual
+    chunk text, which is what the orchestrator agent reads. Excerpts are
+    clipped to a per-source share of ``max_chars`` so a single retrieval
+    cannot exhaust the context window.
 
     Args:
         result: RAGRetrievalResult from RAGService.retrieve().
+        max_chars: Total character budget for all excerpts. None keeps the
+            legacy per-source cap only.
 
     Returns:
-        Formatted string with source summaries and metadata.
+        Formatted string with source excerpts and metadata.
     """
     if not result.source_nodes:
         return (
@@ -299,6 +345,12 @@ def _format_retrieval_result(result: "RAGRetrievalResult") -> str:
     )
     lines.append(f"Query used: {result.condensed_query}")
     lines.append("")
+
+    num_sources = max(1, len(result.source_nodes))
+    per_source_cap = RAG_SOURCE_MAX_CHARS
+    if max_chars is not None:
+        per_source_cap = min(RAG_SOURCE_MAX_CHARS, max(max_chars // num_sources, 0))
+    any_truncated = False
 
     for i, node in enumerate(result.source_nodes, 1):
         # Extract metadata
@@ -328,12 +380,19 @@ def _format_retrieval_result(result: "RAGRetrievalResult") -> str:
             text = str(node)
 
         # Truncate long content to keep tool output manageable
-        max_chars = 1500
-        if len(text) > max_chars:
-            text = text[:max_chars] + "... [truncated]"
+        if len(text) > per_source_cap:
+            text = text[: max(0, per_source_cap - 16)] + "... [truncated]"
+            any_truncated = True
 
         lines.append(f"--- Source {i}: {title} (score: {score_str}) ---")
         lines.append(text)
+        lines.append("")
+
+    if any_truncated:
+        lines.append(
+            "Note: one or more excerpts were truncated to fit the context "
+            "budget. Run a narrower query if you need the missing text."
+        )
         lines.append("")
 
     # Append key metrics summary
@@ -357,38 +416,6 @@ def _format_retrieval_result(result: "RAGRetrievalResult") -> str:
         if metrics_parts:
             lines.append(f"Metrics: {', '.join(metrics_parts)}")
 
-    return "\n".join(lines)
-
-
-def _summarize_rag_result(result: "RAGRetrievalResult") -> str:
-    """Produce a compact summary of a RAG result for the orchestrator scratchpad.
-
-    Includes source count, confidence level, and titles+scores — but no chunk
-    text. The full formatted output is sent separately via the callback.
-    """
-    if not result.source_nodes:
-        return f"No relevant sources found. " f"Confidence: {result.confidence_level}"
-
-    lines = [
-        f"Found {result.num_sources} source(s) "
-        f"(confidence: {result.confidence_level})"
-    ]
-    for i, node in enumerate(result.source_nodes, 1):
-        inner_node = getattr(node, "node", node)
-        metadata = {}
-        if hasattr(inner_node, "metadata") and inner_node.metadata:
-            metadata = inner_node.metadata
-        elif hasattr(node, "metadata") and node.metadata:
-            metadata = node.metadata
-        title = (
-            metadata.get("display_name")
-            or metadata.get("title")
-            or metadata.get("file_name")
-            or "Untitled"
-        )
-        score = node.score if hasattr(node, "score") else None
-        score_str = f"{score:.4f}" if score is not None else "N/A"
-        lines.append(f"  {i}. {title} (score: {score_str})")
     return "\n".join(lines)
 
 
@@ -569,6 +596,7 @@ def create_fetch_page_tool(
     fetched_urls_getter: Optional[Callable[[], set]] = None,
     fetched_urls_updater: Optional[Callable[[List[str]], None]] = None,
     full_output_callback: Optional[FullOutputCallback] = None,
+    context_window: int = 16384,
 ) -> FunctionTool:
     """Create a fetch_page FunctionTool for the orchestrator.
 
@@ -635,7 +663,16 @@ def create_fetch_page_tool(
                 title = stripped[2:].strip()
                 break
 
-        return _summarize_fetch_page(url, title, len(content))
+        # Return the page text itself — a summary would leave the agent with
+        # nothing to read. Budget-capped so one page cannot flood the window.
+        body, truncated = _fit_tool_text(
+            content, _tool_content_budget(context_window, FETCH_PAGE_CONTENT_PCT)
+        )
+        header = (
+            f'Fetched: "{title}" ({url}) — {len(content)} chars'
+            f"{' (truncated)' if truncated else ''}\n\n"
+        )
+        return header + body
 
     return FunctionTool.from_defaults(
         async_fn=fetch_page,
@@ -823,12 +860,18 @@ def create_fetch_pages_batch_tool(
         if discovered_section:
             output += "\n\n" + discovered_section
 
-        # Full output for synthesizer (via side-channel callback)
         if full_output_callback is not None:
             full_output_callback("fetch_pages_batch", output)
 
-        # Return compact summary for orchestrator scratchpad
-        return _summarize_fetch_pages_batch(fitted_pages, source_nodes, total)
+        # Return the fitted page content itself (already sized to the context
+        # window by the pipeline) rather than a titles-only summary.
+        body, truncated = _fit_tool_text(
+            output, _tool_content_budget(context_window, FETCH_BATCH_CONTENT_PCT)
+        )
+        summary = _summarize_fetch_pages_batch(fitted_pages, source_nodes, total)
+        if truncated:
+            summary += "\n(content truncated to fit the context budget)"
+        return f"{summary}\n\n{body}"
 
     return FunctionTool.from_defaults(
         async_fn=fetch_pages_batch,
@@ -837,8 +880,8 @@ def create_fetch_pages_batch_tool(
             "Fetch multiple web pages in parallel given a list of URLs. Pages "
             "are fetched simultaneously, ranked by content relevance to the "
             "current query, and fitted to the context window. Accepts a list "
-            "of URLs (recommended 3-5). Returns full page content as formatted "
-            "markdown sections ready for synthesis."
+            "of URLs (recommended 3-5). Returns the full page content as "
+            "formatted markdown sections plus per-page relevance scores."
         ),
         fn_schema=FetchPagesBatchInput,
     )
@@ -1740,6 +1783,7 @@ def create_all_tool_wrappers(
                 session_messages=session_messages,
                 rag_result_callback=rag_result_callback,
                 full_output_callback=full_output_callback,
+                context_window=context_window,
             )
         )
 
@@ -1761,6 +1805,7 @@ def create_all_tool_wrappers(
                 fetched_urls_getter=fetched_urls_getter,
                 fetched_urls_updater=fetched_urls_updater,
                 full_output_callback=full_output_callback,
+                context_window=context_window,
             ),
             create_fetch_pages_batch_tool(
                 tool_service,
