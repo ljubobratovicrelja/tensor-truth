@@ -423,6 +423,32 @@ class OrchestratorService:
     # Tool assembly
     # ------------------------------------------------------------------
 
+    def _make_internal_emitter(self) -> ProgressEmitter:
+        """Build the progress emitter handed to every wrapped tool.
+
+        Tool wrappers are built once and cached, so the emitter resolves the
+        active external emitter lazily on each call.
+
+        Delivery is mutually exclusive:
+        - external emitter attached (WebSocket streaming): forward the phase
+          directly. Do NOT also queue it — the queue is drained after the next
+          ``ToolCall``/``ToolCallResult`` and yielded as an event, so the
+          client would receive the same phase twice. For
+          ``confirmation_request`` phases that duplicate is fatal: two approval
+          cards share one ``confirmation_id``, the second Approve fails with
+          "already approved", and the tool blocks until its 300s timeout.
+        - no external emitter: queue the phase so it is drained into the
+          orchestrator event stream.
+        """
+
+        def _internal_emitter(tp: ToolProgress) -> None:
+            if self._current_external_emitter is not None:
+                self._current_external_emitter(tp)
+                return
+            self._pending_phases.append(tp)
+
+        return _internal_emitter
+
     def _build_tools(self) -> List[FunctionTool]:
         """Build the complete tool set for the orchestrator.
 
@@ -433,9 +459,11 @@ class OrchestratorService:
         Built-in ToolService tools that are already wrapped are filtered out
         to avoid duplicates.
 
-        The internal emitter stores phases in ``_pending_phases`` and forwards
-        to ``_current_external_emitter`` (set per execute() call), so tools
-        can be built once and reused — the emitter reference resolves lazily.
+        The internal emitter either forwards to ``_current_external_emitter``
+        (set per execute() call) or, when no external emitter is attached,
+        queues phases in ``_pending_phases`` for draining into the event
+        stream. Tools can be built once and reused — the emitter reference
+        resolves lazily.
 
         Returns:
             Complete list of FunctionTool instances.
@@ -443,10 +471,7 @@ class OrchestratorService:
 
         # Internal emitter — reads self._current_external_emitter dynamically
         # so tool closures work correctly across execute() calls.
-        def _internal_emitter(tp: ToolProgress) -> None:
-            self._pending_phases.append(tp)
-            if self._current_external_emitter:
-                self._current_external_emitter(tp)
+        _internal_emitter = self._make_internal_emitter()
 
         # RAG result callback stores the raw retrieval result for the
         # stream translator to extract proper sources and metrics.

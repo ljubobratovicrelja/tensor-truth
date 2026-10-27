@@ -673,6 +673,43 @@ class TestExecuteFlow:
         error_text = "".join(e.token for e in token_events)
         assert "error" in error_text.lower()
 
+    def test_phase_forwarded_not_queued_when_external_emitter_set(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """With a streaming emitter attached, a phase must not also be queued.
+
+        Queueing as well would drain the same phase into the event stream and
+        deliver it to the client twice — duplicate confirmation cards sharing
+        one confirmation_id, the second unsolvable.
+        """
+        svc = _create_service(tool_service, rag_service_not_loaded)
+        received = []
+        svc._current_external_emitter = received.append
+        emitter = svc._make_internal_emitter()
+
+        tp = ToolProgress(
+            tool_id="add_arxiv_paper",
+            phase="confirmation_request",
+            message="Awaiting user approval",
+            metadata={"confirmation_id": "abc-123"},
+        )
+        emitter(tp)
+
+        assert received == [tp]
+        assert svc._pending_phases == []
+
+    def test_phase_queued_when_no_external_emitter(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """Without a streaming emitter the phase is queued for the event stream."""
+        svc = _create_service(tool_service, rag_service_not_loaded)
+        emitter = svc._make_internal_emitter()
+
+        tp = ToolProgress(tool_id="web_search", phase="searching", message="...")
+        emitter(tp)
+
+        assert svc._pending_phases == [tp]
+
     @pytest.mark.asyncio
     async def test_pending_phases_drained_after_tool_call(
         self, tool_service, rag_service_not_loaded

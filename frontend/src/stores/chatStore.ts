@@ -290,10 +290,17 @@ export const useChatStore = create<ChatStore>((set) => ({
     })),
   clearReasoning: () => set({ streamingReasoning: "" }),
 
+  // Idempotent by confirmation_id: a duplicate frame must never render a
+  // second card for the same confirmation, otherwise the second Approve
+  // fails with "already approved" and the waiting tool hangs.
   addConfirmationRequest: (req) =>
-    set((state) => ({
-      confirmationRequests: [...state.confirmationRequests, req],
-    })),
+    set((state) =>
+      state.confirmationRequests.some(
+        (r) => r.confirmation_id === req.confirmation_id
+      )
+        ? state
+        : { confirmationRequests: [...state.confirmationRequests, req] }
+    ),
   resolveConfirmationRequest: (confirmationId, outcome) =>
     set((state) => ({
       confirmationRequests: state.confirmationRequests.map((r) =>

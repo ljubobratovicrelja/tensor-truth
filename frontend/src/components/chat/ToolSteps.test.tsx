@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ToolSteps } from "./ToolSteps";
 import type { ToolStepWithStatus } from "./ToolSteps";
+import type { StreamConfirmationRequest } from "@/api/types";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 describe("ToolSteps", () => {
   it("renders nothing when steps array is empty", () => {
@@ -172,5 +174,60 @@ describe("ToolSteps", () => {
     const toolName = screen.getByText("search");
     const collapsibleDiv = toolName.closest('[class*="max-h-"]');
     expect(collapsibleDiv?.className).toContain("max-h-[2000px]");
+  });
+
+  it("pairs same-tool confirmations to their own steps positionally", () => {
+    const steps: ToolStepWithStatus[] = [
+      {
+        tool: "add_arxiv_paper",
+        params: { arxiv_id: "2511.08544" },
+        output: "added",
+        is_error: false,
+        status: "completed",
+      },
+      {
+        tool: "add_arxiv_paper",
+        params: { arxiv_id: "2301.08243" },
+        output: "",
+        is_error: false,
+        status: "calling",
+      },
+    ];
+    const confirmations: StreamConfirmationRequest[] = [
+      {
+        confirmation_id: "id-1",
+        tool_name: "add_arxiv_paper",
+        action_type: "add_document",
+        title: "Add arXiv paper 2511.08544",
+        summary: "",
+        details: { arxiv_id: "2511.08544" },
+      },
+      {
+        confirmation_id: "id-2",
+        tool_name: "add_arxiv_paper",
+        action_type: "add_document",
+        title: "Add arXiv paper 2301.08243",
+        summary: "",
+        details: { arxiv_id: "2301.08243" },
+      },
+    ];
+
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ToolSteps
+          steps={steps}
+          defaultOpen
+          confirmationRequests={confirmations}
+        />
+      </QueryClientProvider>
+    );
+
+    // Only the still-running step owns a card, and it owns the second request.
+    expect(screen.getAllByText("Approve")).toHaveLength(1);
+    expect(screen.getByText("Add arXiv paper 2301.08243")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Add arXiv paper 2511.08544")
+    ).not.toBeInTheDocument();
   });
 });

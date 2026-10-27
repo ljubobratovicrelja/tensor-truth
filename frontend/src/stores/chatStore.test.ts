@@ -121,4 +121,33 @@ describe("chatStore", () => {
       expect(state.pendingUserMessage).toBe("User message");
     });
   });
+
+  describe("confirmation requests", () => {
+    const make = (id: string) => ({
+      confirmation_id: id,
+      tool_name: "add_arxiv_paper",
+      action_type: "add_document",
+      title: `Add arXiv paper ${id}`,
+      summary: "",
+      details: {},
+    });
+
+    beforeEach(() => {
+      useChatStore.setState({ confirmationRequests: [] });
+    });
+
+    it("appends distinct confirmation requests", () => {
+      useChatStore.getState().addConfirmationRequest(make("a"));
+      useChatStore.getState().addConfirmationRequest(make("b"));
+      expect(useChatStore.getState().confirmationRequests).toHaveLength(2);
+    });
+
+    it("ignores a duplicate frame for the same confirmation_id", () => {
+      useChatStore.getState().addConfirmationRequest(make("a"));
+      useChatStore.getState().addConfirmationRequest(make("a"));
+      const requests = useChatStore.getState().confirmationRequests;
+      expect(requests).toHaveLength(1);
+      expect(requests[0].confirmation_id).toBe("a");
+    });
+  });
 });
