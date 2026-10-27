@@ -24,8 +24,16 @@ from .logging_config import logger
 # ---------------------------------------------------------------------------
 
 
-def _strip_markdown(text: str) -> str:
-    """Strip common markdown syntax to plain text."""
+def _strip_markdown(text: Optional[str]) -> str:
+    """Strip common markdown syntax to plain text.
+
+    Tolerates ``None``: OpenAI-compatible servers return ``content: null``
+    when a reasoning model spends its whole token budget on ``reasoning``
+    (observed with deepseek-v4.1-flash at max_tokens=30), and that must not
+    raise — the title path is best-effort.
+    """
+    if not text:
+        return ""
     text = text[:200]
     # Remove code fences
     text = re.sub(r"```[\s\S]*?```", " ", text)
@@ -90,9 +98,9 @@ def _make_fallback_title(text: str, max_len: int = 60) -> str:
     return truncated + ".."
 
 
-def _clean_title(raw: str, max_words: int = 5) -> Optional[str]:
+def _clean_title(raw: Optional[str], max_words: int = 5) -> Optional[str]:
     """Strip markdown, enforce word limit, return *None* if empty."""
-    title = _strip_markdown(raw)
+    title = _strip_markdown(raw).rstrip(".,;:")
     words = title.split()
     if len(words) > max_words:
         title = " ".join(words[:max_words])
@@ -165,7 +173,7 @@ async def _generate_title_tool_mode(
         ],
         "tools": [_TITLE_TOOL],
         "stream": False,
-        "options": {"num_ctx": context_window},
+        "options": {"num_ctx": context_window, "num_predict": 256},
     }
 
     timeout = aiohttp.ClientTimeout(total=15)
@@ -213,7 +221,7 @@ async def _generate_title_prompt_mode(
         "model": model_name,
         "prompt": prompt,
         "stream": False,
-        "options": {"num_ctx": context_window, "temperature": 0.8},
+        "options": {"num_ctx": context_window, "temperature": 0.8, "num_predict": 256},
     }
 
     timeout = aiohttp.ClientTimeout(total=10)
@@ -231,6 +239,28 @@ async def _generate_title_prompt_mode(
 # ---------------------------------------------------------------------------
 
 
+#: Token budget for the title call. Reasoning models spend this budget on
+#: hidden ``reasoning`` first, so 30 tokens (the old value) produced
+#: ``content: null`` every time and the caller silently fell back to a
+#: truncated prompt. 512 clears the observed 164-token reasoning preamble.
+TITLE_MAX_TOKENS = 512
+TITLE_RETRY_MAX_TOKENS = 2048
+
+
+def _choice_text(choices) -> tuple[Optional[str], Optional[str]]:
+    """Return (content, finish_reason) from an OpenAI-style ``choices`` list.
+
+    ``content`` is ``None`` for a reasoning-only completion; that is a
+    normal response, not an error.
+    """
+    if not choices or not isinstance(choices, list):
+        return None, None
+    choice = choices[0] or {}
+    message = choice.get("message") or {}
+    content = message.get("content")
+    return (content if isinstance(content, str) else None), choice.get("finish_reason")
+
+
 async def _generate_title_openai_mode(
     text: str,
     model_name: str,
@@ -238,42 +268,61 @@ async def _generate_title_openai_mode(
     api_key: str,
     context_window: int,
 ) -> Optional[str]:
-    """Generate a title via OpenAI-compatible ``/chat/completions``."""
-    payload = {
-        "model": model_name,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Generate a concise 2-5 word title for this conversation. "
-                    "No markdown, no punctuation, no quotes. Just a short label."
-                ),
-            },
-            {"role": "user", "content": text[:1000]},
-        ],
-        "max_tokens": 30,
-        "temperature": 0.8,
-    }
+    """Generate a title via OpenAI-compatible ``/chat/completions``.
 
+    Retries once with a larger budget when the model burned the whole
+    allowance on reasoning and returned no content.
+    """
     headers: dict = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    timeout = aiohttp.ClientTimeout(total=15)
     url = f"{base_url.rstrip('/')}/chat/completions"
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(url, json=payload, headers=headers) as resp:
-            if resp.status != 200:
-                return None
-            try:
-                data = await resp.json()
-            except Exception:
-                return None
+    timeout = aiohttp.ClientTimeout(total=30)
 
-    choices = data.get("choices", [])
-    if choices:
-        content = choices[0].get("message", {}).get("content", "")
-        return _clean_title(content)
+    for max_tokens in (TITLE_MAX_TOKENS, TITLE_RETRY_MAX_TOKENS):
+        payload = {
+            "model": model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Generate a concise 2-5 word title for this conversation. "
+                        "No markdown, no punctuation, no quotes. Just a short label."
+                    ),
+                },
+                {"role": "user", "content": text[:1000]},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.8,
+        }
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, json=payload, headers=headers) as resp:
+                if resp.status != 200:
+                    return None
+                try:
+                    data = await resp.json()
+                except Exception:
+                    return None
+
+        if not isinstance(data, dict):
+            return None
+        content, finish_reason = _choice_text(data.get("choices"))
+        title = _clean_title(content)
+        if title:
+            return title
+        if content is not None or finish_reason != "length":
+            # Empty/garbage answer that was not a token-budget cut: retrying
+            # with more room cannot help.
+            return None
+        logger.debug(
+            "Title completion returned no content (finish=length) at "
+            "max_tokens=%s; retrying with %s",
+            max_tokens,
+            TITLE_RETRY_MAX_TOKENS,
+        )
+
     return None
 
 
@@ -302,9 +351,27 @@ async def generate_smart_title_async(
         return _make_fallback_title(text)
 
     # Resolve provider to determine which path to use
-    from tensortruth.core.providers import resolve_model_from_params
+    from tensortruth.core.providers import ProviderRegistry, resolve_model_from_params
 
     model_ref = resolve_model_from_params({"provider_id": provider_id}, model_name)
+
+    # ``resolve_model`` invents an Ollama reference when it cannot match the
+    # model anywhere. If no such provider is actually configured, every call
+    # would burn its timeout on a refused connection — fall back immediately.
+    try:
+        registry = ProviderRegistry.get_instance()
+        configured = registry.get_provider(model_ref.provider_id) is not None
+    except Exception:
+        configured = True
+    if not configured:
+        logger.warning(
+            "Title generation skipped: model '%s' resolved to unconfigured "
+            "provider '%s' (base_url=%s)",
+            model_name,
+            model_ref.provider_id,
+            model_ref.base_url,
+        )
+        return _make_fallback_title(text)
 
     try:
         if model_ref.provider_type in ("openai_compatible", "llama_cpp"):
