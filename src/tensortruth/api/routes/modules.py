@@ -1,5 +1,6 @@
 """Modules and models listing endpoints."""
 
+import asyncio
 import logging
 from typing import Dict, List
 
@@ -154,10 +155,90 @@ async def list_embedding_models(
     )
 
 
+def _fetch_ollama_models_sync(provider) -> List[ModelInfo]:
+    """Synchronously fetch models from an Ollama provider (blocking worker)."""
+    from tensortruth.core.ollama import get_model_info, supports_thinking_levels
+
+    base = provider.base_url.rstrip("/")
+    response = requests.get(f"{base}/api/tags", timeout=10)
+    response.raise_for_status()
+    data = response.json()
+
+    # Query loaded models for status
+    loaded_names: set = set()
+    try:
+        ps_resp = requests.get(f"{base}/api/ps", timeout=2)
+        if ps_resp.status_code == 200:
+            for rm in ps_resp.json().get("models", []):
+                loaded_names.add(rm.get("name", ""))
+    except Exception:
+        pass  # If ps fails, all models show as unloaded
+
+    models = []
+    for m in data.get("models", []):
+        name = m.get("name", "")
+        if not name:
+            continue
+        info = get_model_info(name)
+        capabilities = list(info.get("capabilities", []))
+        if "thinking" in capabilities and supports_thinking_levels(name):
+            capabilities.append("thinking_levels")
+        models.append(
+            ModelInfo(
+                name=name,
+                provider_id=provider.id,
+                provider_type="ollama",
+                display_name=name,
+                size=m.get("size", 0),
+                modified_at=m.get("modified_at", ""),
+                capabilities=capabilities,
+                status="loaded" if name in loaded_names else "unloaded",
+            )
+        )
+    return models
+
+
+def _fetch_openai_compatible_models_sync(provider) -> List[str]:
+    """Synchronously fetch dynamic model names from an OpenAI-compatible provider."""
+    base = provider.base_url.rstrip("/")
+    headers = {}
+    if provider.api_key:
+        headers["Authorization"] = f"Bearer {provider.api_key}"
+
+    # Try /v1/models first, fall back to /models
+    resp = None
+    for models_path in (f"{base}/v1/models", f"{base}/models"):
+        try:
+            resp = requests.get(
+                models_path,
+                headers=headers,
+                timeout=5,
+                allow_redirects=False,
+            )
+            if resp.status_code == 200:
+                break
+        except Exception:
+            continue
+
+    if resp is not None and resp.status_code == 200:
+        data = resp.json()
+        model_list = data.get("data", []) if isinstance(data, dict) else []
+        if isinstance(model_list, list):
+            return [m.get("id", "") for m in model_list if m.get("id")]
+    return []
+
+
+def _fetch_llama_cpp_models_sync(provider):
+    """Synchronously fetch models from a llama.cpp provider."""
+    from tensortruth.core.llama_cpp import get_available_models as get_llama_cpp_models
+
+    base = provider.base_url.rstrip("/")
+    return get_llama_cpp_models(base)
+
+
 @router.get("/models", response_model=ModelsResponse)
 async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
     """List available models from all configured providers."""
-    from tensortruth.core.ollama import supports_thinking_levels
     from tensortruth.core.providers import ProviderRegistry
     from tensortruth.core.reasoning_levels import levels_for_model
 
@@ -170,47 +251,12 @@ async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
         if provider.type == "ollama":
             # Query Ollama API for live model list with extra metadata
             try:
-                base = provider.base_url.rstrip("/")
-                response = requests.get(f"{base}/api/tags", timeout=10)
-                response.raise_for_status()
-                data = response.json()
-
-                # Query loaded models for status
-                loaded_names: set = set()
-                try:
-                    ps_resp = requests.get(f"{base}/api/ps", timeout=2)
-                    if ps_resp.status_code == 200:
-                        for rm in ps_resp.json().get("models", []):
-                            loaded_names.add(rm.get("name", ""))
-                except Exception:
-                    pass  # If ps fails, all models show as unloaded
-
-                for m in data.get("models", []):
-                    name = m.get("name", "")
-                    if not name:
-                        continue
-                    from tensortruth.core.ollama import get_model_info
-
-                    info = get_model_info(name)
-                    capabilities = list(info.get("capabilities", []))
-
-                    if "thinking" in capabilities and supports_thinking_levels(name):
-                        capabilities.append("thinking_levels")
-
-                    models.append(
-                        ModelInfo(
-                            name=name,
-                            provider_id=provider.id,
-                            provider_type="ollama",
-                            display_name=name,
-                            size=m.get("size", 0),
-                            modified_at=m.get("modified_at", ""),
-                            capabilities=capabilities,
-                            status="loaded" if name in loaded_names else "unloaded",
-                        )
-                    )
+                provider_models = await asyncio.to_thread(
+                    _fetch_ollama_models_sync, provider
+                )
+                models.extend(provider_models)
+                if provider_models:
                     has_any_models = True
-
             except Exception as e:
                 logger.warning(
                     "Failed to fetch models from Ollama provider '%s': %s",
@@ -227,31 +273,9 @@ async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
             # Prefer dynamic discovery; fall back to static-only list if server is unreachable
             dynamic_names: list[str] = []
             try:
-                base = provider.base_url.rstrip("/")
-                headers = {}
-                if provider.api_key:
-                    headers["Authorization"] = f"Bearer {provider.api_key}"
-                # Try /v1/models first, fall back to /models
-                resp = None
-                for models_path in (f"{base}/v1/models", f"{base}/models"):
-                    try:
-                        resp = requests.get(
-                            models_path,
-                            headers=headers,
-                            timeout=5,
-                            allow_redirects=False,
-                        )
-                        if resp.status_code == 200:
-                            break
-                    except Exception:
-                        continue
-                if resp is not None and resp.status_code == 200:
-                    data = resp.json()
-                    model_list = data.get("data", []) if isinstance(data, dict) else []
-                    if isinstance(model_list, list):
-                        dynamic_names = [
-                            m.get("id", "") for m in model_list if m.get("id")
-                        ]
+                dynamic_names = await asyncio.to_thread(
+                    _fetch_openai_compatible_models_sync, provider
+                )
             except Exception as e:
                 logger.warning(
                     "Failed to fetch models from openai_compatible provider '%s': %s",
@@ -287,12 +311,10 @@ async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
                 from tensortruth.core.llama_cpp import (
                     format_display_name,
                 )
-                from tensortruth.core.llama_cpp import (
-                    get_available_models as get_llama_cpp_models,
-                )
 
-                base = provider.base_url.rstrip("/")
-                server_models = get_llama_cpp_models(base)
+                server_models = await asyncio.to_thread(
+                    _fetch_llama_cpp_models_sync, provider
+                )
 
                 # Build lookup from static config for capability enrichment
                 static_lookup = {}
