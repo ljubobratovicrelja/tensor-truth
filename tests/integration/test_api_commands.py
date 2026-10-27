@@ -4,6 +4,8 @@ Following TDD: These tests are written BEFORE implementation.
 They will fail initially, then pass once we implement the command system.
 """
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -418,6 +420,25 @@ def mock_session_paths(tmp_path, monkeypatch):
     return sessions_file, sessions_dir
 
 
+def _drain_session_run(client, session_id: str, timeout: float = 15.0) -> None:
+    """Wait for the session's server-owned run to finish before socket teardown.
+
+    Generation now outlives the WebSocket — that is the entire point of runs —
+    so closing the socket while the turn's asyncio task is still alive makes
+    the TestClient portal cancel it on exit and raise CancelledError. Poll the
+    run to completion (cancelling if it lingers past ``timeout``) while the
+    socket is still open.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/sessions/{session_id}/runs/active")
+        active = response.json() if response.status_code == 200 else None
+        if not active:
+            return
+        client.post(f"/api/runs/{active['run_id']}/cancel")
+        time.sleep(0.05)
+
+
 class TestCommandIntegration:
     """Integration tests for command execution via WebSocket."""
 
@@ -450,6 +471,9 @@ class TestCommandIntegration:
             assert "content" in done_msg
             assert len(done_msg["content"]) > 0
 
+            # The run outlives the socket; let it finish before teardown.
+            _drain_session_run(client, session_id)
+
     @pytest.mark.asyncio
     async def test_unknown_command_via_websocket(self, client, mock_session_paths):
         """Test that unknown commands return helpful error."""
@@ -470,6 +494,8 @@ class TestCommandIntegration:
             assert msg.get("type") == "error"
             assert "Unknown command" in msg.get("detail", "")
             assert "/help" in msg.get("detail", "")
+
+            _drain_session_run(client, session_id)
 
     @pytest.mark.asyncio
     async def test_command_in_middle_of_message(self, client, mock_session_paths):
@@ -495,3 +521,6 @@ class TestCommandIntegration:
             # Should have processed as help command
             final_msg = messages[-1]
             assert final_msg["type"] == "done"
+
+            # The run outlives the socket; let it finish before teardown.
+            _drain_session_run(client, session_id)

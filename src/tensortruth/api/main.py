@@ -27,6 +27,7 @@ from tensortruth.api.routes import (
     projects,
     providers,
     rerankers,
+    runs,
     sessions,
     startup,
     system,
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
     app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
     app.include_router(chat.rest_router, prefix="/api", tags=["chat"])
+    app.include_router(runs.router, prefix="/api", tags=["runs"])
     app.include_router(commands.router, prefix="/api", tags=["commands"])
     app.include_router(config.router, prefix="/api/config", tags=["config"])
     app.include_router(providers.router, prefix="/api/providers", tags=["providers"])

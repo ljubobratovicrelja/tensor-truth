@@ -113,7 +113,7 @@ class TestOrchestratorEnableDisable:
         mock_registry = MagicMock()
         mock_registry.check_tool_support.return_value = True
         with patch(
-            "tensortruth.api.routes.chat.ProviderRegistry.get_instance",
+            "tensortruth.services.chat_runner.ProviderRegistry.get_instance",
             return_value=mock_registry,
         ):
             assert _is_orchestrator_enabled(session, "qwen3:32b") is True
@@ -132,7 +132,7 @@ class TestOrchestratorEnableDisable:
         mock_registry = MagicMock()
         mock_registry.check_tool_support.return_value = False
         with patch(
-            "tensortruth.api.routes.chat.ProviderRegistry.get_instance",
+            "tensortruth.services.chat_runner.ProviderRegistry.get_instance",
             return_value=mock_registry,
         ):
             assert _is_orchestrator_enabled(session, "llama3.1:8b") is False

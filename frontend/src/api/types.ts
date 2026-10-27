@@ -259,6 +259,53 @@ export type StreamMessage =
   | StreamWebSearchSources
   | StreamConfirmationRequest;
 
+// Chat run types (server-owned resumable runs, see docs/RUNS.md)
+
+export type RunStatus = "running" | "completed" | "failed" | "cancelled";
+
+/**
+ * Summary of a server-owned chat run. A run outlives the socket that created
+ * it, so the client can re-attach and replay its event log after a reload.
+ */
+export interface RunSummary {
+  run_id: string;
+  session_id: string;
+  /** The user prompt that started the run (used to rehydrate the chat store). */
+  prompt: string;
+  status: RunStatus;
+  error?: string | null;
+  created_at?: string;
+  finished_at?: string | null;
+}
+
+/**
+ * A run event is exactly the payload the live socket sends, plus the
+ * monotonic per-run `seq` used for cursor replay and client-side dedupe.
+ */
+export type RunEvent = StreamMessage & { seq: number };
+
+/** `POST /api/sessions/{id}/runs` — flat run payload; only run_id is needed. */
+export interface StartRunResponse {
+  run_id: string;
+}
+
+/** Flat run payload returned by the runs REST endpoints (docs/RUNS.md). */
+export interface RunPayload extends RunSummary {
+  events: RunEvent[];
+}
+
+/** `GET /api/sessions/{id}/runs/active` — JSON null when the session is idle. */
+export type ActiveRunResponse = RunPayload | null;
+
+/** `GET /api/runs/{id}?after=N` — run status plus events with seq > N. */
+export type RunEventsResponse = RunPayload;
+
+export interface RunImagePayload {
+  data: string;
+  mimetype: string;
+  filename: string;
+}
+
 // Config types
 export interface OllamaConfig {
   base_url: string;

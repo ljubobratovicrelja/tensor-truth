@@ -5,10 +5,19 @@ import type { ReactNode } from "react";
 import { useWebSocketChat } from "./useWebSocket";
 import { useChatStore } from "@/stores";
 import * as sessionsApi from "@/api/sessions";
+import * as runsApi from "@/api/runs";
 
 // Mock the sessions API
 vi.mock("@/api/sessions", () => ({
   addSessionMessage: vi.fn().mockResolvedValue({}),
+}));
+
+// Mock the runs API (server-owned resumable runs)
+vi.mock("@/api/runs", () => ({
+  startRun: vi.fn(),
+  getActiveRun: vi.fn(),
+  getRunEvents: vi.fn(),
+  cancelRun: vi.fn(),
 }));
 
 // Mock WebSocket
@@ -24,8 +33,8 @@ class MockWebSocket {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_url: string) {
     MockWebSocket.instances.push(this);
-    // Simulate async connection
-    setTimeout(() => this.onopen?.(), 0);
+    // Simulate async connection (microtask: resolved by any await in tests)
+    Promise.resolve().then(() => this.onopen?.());
   }
 
   send(data: string) {
@@ -33,6 +42,7 @@ class MockWebSocket {
   }
 
   close() {
+    this.readyState = 3; // CLOSED
     this.onclose?.();
   }
 
@@ -48,6 +58,22 @@ beforeEach(() => {
   MockWebSocket.instances = [];
   global.WebSocket = MockWebSocket as unknown as typeof WebSocket;
   vi.clearAllMocks();
+  useChatStore.getState().reset();
+  vi.mocked(runsApi.startRun).mockResolvedValue({ run_id: "run-1" });
+  vi.mocked(runsApi.getActiveRun).mockResolvedValue(null);
+  vi.mocked(runsApi.getRunEvents).mockResolvedValue({
+    run_id: "run-1",
+    session_id: "test-session",
+    prompt: "",
+    status: "completed",
+    events: [],
+  });
+  vi.mocked(runsApi.cancelRun).mockResolvedValue({
+    run_id: "run-1",
+    session_id: "test-session",
+    prompt: "",
+    status: "cancelled",
+  });
 });
 afterEach(() => {
   global.WebSocket = originalWebSocket;
@@ -63,6 +89,10 @@ function createWrapper() {
   );
 }
 
+function attachFrame(runId: string, after: number) {
+  return JSON.stringify({ type: "attach", run_id: runId, after });
+}
+
 describe("useWebSocketChat", () => {
   it("should NOT call addSessionMessage API - backend handles message persistence", async () => {
     const { result } = renderHook(
@@ -70,45 +100,47 @@ describe("useWebSocketChat", () => {
       { wrapper: createWrapper() }
     );
 
-    // Send a message
     await act(async () => {
-      result.current.sendMessage("Hello");
+      await result.current.sendMessage("Hello");
     });
 
-    // Wait for WebSocket to connect
     await waitFor(() => {
       expect(MockWebSocket.instances.length).toBe(1);
     });
 
     const ws = MockWebSocket.instances[0];
 
-    // Simulate the full streaming response
     await act(async () => {
-      ws.simulateMessage({ type: "token", content: "Hi " });
-      ws.simulateMessage({ type: "token", content: "there!" });
-      ws.simulateMessage({ type: "sources", data: [] });
+      ws.simulateMessage({ seq: 1, type: "token", content: "Hi " });
+      ws.simulateMessage({ seq: 2, type: "token", content: "there!" });
+      ws.simulateMessage({ seq: 3, type: "sources", data: [] });
       ws.simulateMessage({
+        seq: 4,
         type: "done",
         content: "Hi there!",
         confidence_level: "normal",
       });
     });
 
-    // The bug: addSessionMessage should NOT be called at all
-    // Backend WebSocket handler already saves messages
-    // If this fails, we have duplicate message saving
     expect(sessionsApi.addSessionMessage).not.toHaveBeenCalled();
   });
 
-  it("should send prompt over WebSocket", async () => {
+  it("should POST the run first, then attach with after: 0", async () => {
     const { result } = renderHook(
       () => useWebSocketChat({ sessionId: "test-session", onError: vi.fn() }),
       { wrapper: createWrapper() }
     );
 
     await act(async () => {
-      result.current.sendMessage("Test prompt");
+      await result.current.sendMessage("Test prompt");
     });
+
+    expect(runsApi.startRun).toHaveBeenCalledWith(
+      "test-session",
+      "Test prompt",
+      undefined
+    );
+    expect(runsApi.startRun).toHaveBeenCalledTimes(1);
 
     await waitFor(() => {
       expect(MockWebSocket.instances.length).toBe(1);
@@ -117,8 +149,11 @@ describe("useWebSocketChat", () => {
     const ws = MockWebSocket.instances[0];
 
     await waitFor(() => {
-      expect(ws.sentMessages).toContainEqual(JSON.stringify({ prompt: "Test prompt" }));
+      expect(ws.sentMessages).toContainEqual(attachFrame("run-1", 0));
     });
+
+    // The prompt travels in the POST body, not as a bare socket message.
+    expect(ws.sentMessages).not.toContainEqual(JSON.stringify({ prompt: "Test prompt" }));
   });
 
   it("should handle status messages and update store", async () => {
@@ -127,13 +162,8 @@ describe("useWebSocketChat", () => {
       { wrapper: createWrapper() }
     );
 
-    // Reset store
     await act(async () => {
-      useChatStore.getState().reset();
-    });
-
-    await act(async () => {
-      result.current.sendMessage("Test");
+      await result.current.sendMessage("Test");
     });
 
     await waitFor(() => {
@@ -141,22 +171,22 @@ describe("useWebSocketChat", () => {
     });
 
     const ws = MockWebSocket.instances[0];
+    let seq = 0;
 
-    // Simulate status updates
     await act(async () => {
-      ws.simulateMessage({ type: "status", status: "retrieving" });
+      ws.simulateMessage({ seq: ++seq, type: "status", status: "retrieving" });
     });
 
     expect(useChatStore.getState().pipelineStatus).toBe("retrieving");
 
     await act(async () => {
-      ws.simulateMessage({ type: "status", status: "thinking" });
+      ws.simulateMessage({ seq: ++seq, type: "status", status: "thinking" });
     });
 
     expect(useChatStore.getState().pipelineStatus).toBe("thinking");
 
     await act(async () => {
-      ws.simulateMessage({ type: "status", status: "generating" });
+      ws.simulateMessage({ seq: ++seq, type: "status", status: "generating" });
     });
 
     expect(useChatStore.getState().pipelineStatus).toBe("generating");
@@ -168,13 +198,8 @@ describe("useWebSocketChat", () => {
       { wrapper: createWrapper() }
     );
 
-    // Reset store
     await act(async () => {
-      useChatStore.getState().reset();
-    });
-
-    await act(async () => {
-      result.current.sendMessage("Test");
+      await result.current.sendMessage("Test");
     });
 
     await waitFor(() => {
@@ -183,11 +208,10 @@ describe("useWebSocketChat", () => {
 
     const ws = MockWebSocket.instances[0];
 
-    // Simulate thinking tokens
     await act(async () => {
-      ws.simulateMessage({ type: "thinking", content: "Let me " });
-      ws.simulateMessage({ type: "thinking", content: "analyze " });
-      ws.simulateMessage({ type: "thinking", content: "this." });
+      ws.simulateMessage({ seq: 1, type: "thinking", content: "Let me " });
+      ws.simulateMessage({ seq: 2, type: "thinking", content: "analyze " });
+      ws.simulateMessage({ seq: 3, type: "thinking", content: "this." });
     });
 
     expect(useChatStore.getState().streamingThinking).toBe("Let me analyze this.");
@@ -199,13 +223,8 @@ describe("useWebSocketChat", () => {
       { wrapper: createWrapper() }
     );
 
-    // Reset store
     await act(async () => {
-      useChatStore.getState().reset();
-    });
-
-    await act(async () => {
-      result.current.sendMessage("Test");
+      await result.current.sendMessage("Test");
     });
 
     await waitFor(() => {
@@ -214,20 +233,41 @@ describe("useWebSocketChat", () => {
 
     const ws = MockWebSocket.instances[0];
 
-    // Simulate full streaming flow
     await act(async () => {
-      ws.simulateMessage({ type: "status", status: "retrieving" });
-      ws.simulateMessage({ type: "status", status: "generating" });
-      ws.simulateMessage({ type: "token", content: "Response" });
+      ws.simulateMessage({ seq: 1, type: "status", status: "retrieving" });
+      ws.simulateMessage({ seq: 2, type: "status", status: "generating" });
+      ws.simulateMessage({ seq: 3, type: "token", content: "Response" });
       ws.simulateMessage({
+        seq: 4,
         type: "done",
         content: "Response",
         confidence_level: "normal",
       });
     });
 
-    // Status should be cleared after done
     expect(useChatStore.getState().pipelineStatus).toBe(null);
+    expect(useChatStore.getState().isStreaming).toBe(false);
+  });
+
+  it("should POST the cancel endpoint when the user cancels", async () => {
+    const { result } = renderHook(
+      () => useWebSocketChat({ sessionId: "test-session", onError: vi.fn() }),
+      { wrapper: createWrapper() }
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("Test");
+    });
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances.length).toBe(1);
+    });
+
+    await act(async () => {
+      result.current.cancelStreaming();
+    });
+
+    expect(runsApi.cancelRun).toHaveBeenCalledWith("run-1");
     expect(useChatStore.getState().isStreaming).toBe(false);
   });
 });
