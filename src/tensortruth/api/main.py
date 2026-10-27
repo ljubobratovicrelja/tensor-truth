@@ -88,6 +88,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await task_runner.start()
     logger.info("✓ TaskRunner started")
 
+    # Warm the RAG models in a daemon thread so the first RAG query does not
+    # pay the HuggingFace load cost and startup never blocks on it.
+    try:
+        from tensortruth.services.model_preload import get_preload_manager
+
+        get_preload_manager().start()
+        logger.info("✓ RAG model preload started in background")
+    except Exception as e:
+        logger.warning(f"Failed to start RAG model preload: {e}")
+
     logger.info("✓ TensorTruth API startup complete")
 
     yield

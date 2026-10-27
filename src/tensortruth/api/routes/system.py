@@ -358,6 +358,54 @@ class RestartEngineResponse(BaseModel):
     message: str
 
 
+class ModelLoadStateResponse(BaseModel):
+    """Per-model preload state (no model work is done to build this)."""
+
+    kind: str
+    state: str  # idle | loading | ready | error
+    model_name: Optional[str] = None
+    device: Optional[str] = None
+    step: str = ""
+    started_at: Optional[float] = None
+    finished_at: Optional[float] = None
+    elapsed_seconds: float = 0.0
+    error: Optional[str] = None
+
+
+class ModelPreloadStatusResponse(BaseModel):
+    """Response schema for the RAG model preload status endpoint."""
+
+    embedder: ModelLoadStateResponse
+    reranker: ModelLoadStateResponse
+    any_loading: bool
+    all_ready: bool
+
+
+@router.get("/model-preload/status", response_model=ModelPreloadStatusResponse)
+async def get_model_preload_status() -> ModelPreloadStatusResponse:
+    """Get background preload state for the embedder and reranker.
+
+    Cheap: reads in-memory state only, never touches models or the GPU.
+    """
+    from tensortruth.services.model_preload import get_preload_manager
+
+    return ModelPreloadStatusResponse(**get_preload_manager().status())
+
+
+@router.post("/model-preload", response_model=ModelPreloadStatusResponse)
+async def trigger_model_preload_endpoint() -> ModelPreloadStatusResponse:
+    """Idempotently warm the configured embedding model and reranker.
+
+    Starts a daemon thread (never blocks the event loop). A call while a load
+    is already in flight joins that load; a call after both models are ready is
+    a no-op. Failures are reported in the per-model state and do not affect the
+    lazy load path used by the first RAG request.
+    """
+    from tensortruth.services.model_preload import get_preload_manager
+
+    return ModelPreloadStatusResponse(**get_preload_manager().start())
+
+
 @router.post("/restart-engine", response_model=RestartEngineResponse)
 async def restart_engine() -> RestartEngineResponse:
     """Restart the RAG engine by clearing memory and caches.
