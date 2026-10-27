@@ -23,6 +23,7 @@ import {
 } from "@/hooks";
 import { useChatStore } from "@/stores";
 import { ModuleSelector } from "@/components/chat/ModuleSelector";
+import { previewSessionTitle } from "@/api/sessions";
 import { CommandAutocomplete } from "@/components/chat/CommandAutocomplete";
 import { ImagePreviewStrip } from "@/components/chat/ImagePreviewStrip";
 import { ThinkingSelect } from "@/components/chat/ThinkingSelect";
@@ -51,6 +52,10 @@ const SUBTITLES = [
 ];
 
 // Pick random title/subtitle once at module load time (stable across re-renders)
+// Type this many words and the composer starts previewing a chat title.
+const TITLE_PREVIEW_MIN_WORDS = 8;
+const TITLE_PREVIEW_DEBOUNCE_MS = 900;
+
 const initialTitle = TITLES[Math.floor(Math.random() * TITLES.length)];
 const initialSubtitle = SUBTITLES[Math.floor(Math.random() * SUBTITLES.length)];
 
@@ -63,6 +68,12 @@ export function WelcomePage() {
   const [sessionParams, setSessionParams] = useState<Record<string, unknown>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [autocompleteHasResults, setAutocompleteHasResults] = useState(false);
+  // Title previewed while typing the first prompt: {text, title}. Kept with the
+  // text it was generated for so a stale preview is never applied.
+  const [titlePreview, setTitlePreview] = useState<{
+    text: string;
+    title: string;
+  } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const {
     attachedImages,
@@ -136,6 +147,37 @@ export function WelcomePage() {
     handleThinkingModelChange(modelName);
   };
 
+  // Speculative title: after a few words the composer asks the model for a
+  // title, so the session is already labelled when it is created instead of
+  // showing "New Session" until the first answer finishes.
+  const wordsInMessage = message.trim().split(/\s+/).filter(Boolean).length;
+  const titlePreviewEligible = wordsInMessage >= TITLE_PREVIEW_MIN_WORDS;
+  const titlePreviewKey = titlePreviewEligible ? message.trim() : "";
+
+  useEffect(() => {
+    if (!titlePreviewKey) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      previewSessionTitle({
+        prompt: titlePreviewKey,
+        model: effectiveModel || null,
+        provider_id: effectiveProviderId,
+      })
+        .then((result) => {
+          if (!cancelled && result.title) {
+            setTitlePreview({ text: titlePreviewKey, title: result.title });
+          }
+        })
+        .catch(() => {
+          // Preview is best-effort; a failure just means no early title.
+        });
+    }, TITLE_PREVIEW_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [titlePreviewKey, effectiveModel, effectiveProviderId]);
+
   const handleSubmit = async (promptText?: string) => {
     const text = promptText ?? message.trim();
     if ((!text && !hasImages) || isSubmitting) return;
@@ -150,9 +192,12 @@ export function WelcomePage() {
         ...(thinkingValue !== undefined && { thinking: thinkingValue }),
       };
 
+      const previewedTitle = titlePreview?.text === text ? titlePreview.title : null;
+
       const result = await createSession.mutateAsync({
         modules: selectedModules.length > 0 ? selectedModules : undefined,
         params,
+        ...(previewedTitle && { title: previewedTitle }),
       });
 
       // Set the pending message so it shows immediately in chat

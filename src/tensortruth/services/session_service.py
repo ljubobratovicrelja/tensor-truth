@@ -413,6 +413,7 @@ class SessionService:
         params: Dict[str, Any],
         data: SessionData,
         config_service: Optional["ConfigService"] = None,
+        title: Optional[str] = None,
     ) -> Tuple[str, SessionData]:
         """Create a new chat session.
 
@@ -421,6 +422,8 @@ class SessionService:
             params: Session parameters (model, temperature, etc).
             data: Current session data.
             config_service: Optional ConfigService for applying defaults.
+            title: Optional client-chosen title (e.g. previewed while typing).
+                When given, the first turn does not regenerate it.
 
         Returns:
             Tuple of (new_session_id, updated_SessionData).
@@ -431,12 +434,12 @@ class SessionService:
 
         new_id = str(uuid.uuid4())
         new_session = {
-            "title": "New Session",
+            "title": title or "New Session",
             "created_at": str(datetime.now()),
             "messages": [],
             "modules": modules,
             "params": params,  # Now contains complete defaults
-            "title_needs_update": True,
+            "title_needs_update": not title,
         }
 
         # Create new sessions dict with the new session

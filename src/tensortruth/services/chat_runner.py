@@ -32,7 +32,11 @@ from tensortruth.api.deps import (
 )
 from tensortruth.api.routes.commands import registry as command_registry
 from tensortruth.app_utils.paths import get_project_index_dir
-from tensortruth.app_utils.title_generation import generate_smart_title_async
+from tensortruth.app_utils.title_generation import (
+    build_title_source,
+    generate_smart_title_async,
+    make_fallback_title,
+)
 from tensortruth.core.ollama import get_ollama_url
 from tensortruth.core.providers import ProviderRegistry, resolve_model_from_params
 from tensortruth.services.chat_run_service import ChatRun
@@ -124,6 +128,28 @@ async def _localize_images(content: str, session_id: str) -> str:
             )
 
     return new_content
+
+
+async def _apply_provisional_title(
+    sink: EventSink,
+    session_service: SessionService,
+    session_id: str,
+    prompt: str,
+) -> None:
+    """Title the session from the user's own words before the answer streams.
+
+    The model-written title only lands after the whole turn finishes, which
+    used to leave the sidebar showing "New Session" for the entire first
+    answer. Deriving the title from the user's message costs nothing, is
+    truthful, and is replaced by the model's refinement later in the turn.
+    """
+    provisional = make_fallback_title(build_title_source(prompt))
+    if not provisional or provisional == "New Chat":
+        return
+    fresh_data = session_service.load()
+    fresh_data = session_service.update_title(session_id, provisional, fresh_data)
+    session_service.save(fresh_data)
+    await sink.send_json({"type": "title", "title": provisional})
 
 
 @dataclass
@@ -548,7 +574,7 @@ async def _run_orchestrator_path(
     if needs_title and result.full_response:
         try:
             title = await generate_smart_title_async(
-                result.full_response,
+                build_title_source(context.prompt, result.full_response),
                 model_name,
                 context_window,
                 provider_id=params.get("provider_id"),
@@ -686,6 +712,10 @@ async def run_turn(
 
             # Check if we need to generate a title (first message in session)
             needs_title = session_service.needs_title_update(session_id, data)
+            if needs_title:
+                await _apply_provisional_title(
+                    sink, session_service, session_id, prompt
+                )
 
             # Execute command (streams response through the capturing sink)
             wrapper = _ResponseCapturingSink(sink)
@@ -722,7 +752,7 @@ async def run_turn(
                     cmd_ctx = session.get("params", {}).get("context_window", 16384)
                     cmd_provider = session.get("params", {}).get("provider_id")
                     title = await generate_smart_title_async(
-                        full_response,
+                        build_title_source(prompt, full_response),
                         cmd_model,
                         cmd_ctx,
                         provider_id=cmd_provider,
@@ -774,6 +804,8 @@ async def run_turn(
 
     # Check if we need to generate a title (first message in session)
     needs_title = session_service.needs_title_update(session_id, data)
+    if needs_title:
+        await _apply_provisional_title(sink, session_service, session_id, prompt)
 
     # Determine model name from session params
     model_name = context.params.get("model")
@@ -934,7 +966,7 @@ async def run_turn(
         if needs_title:
             try:
                 title = await generate_smart_title_async(
-                    full_response,
+                    build_title_source(prompt, full_response),
                     model_name,
                     context.params.get("context_window", 16384),
                     provider_id=context.params.get("provider_id"),

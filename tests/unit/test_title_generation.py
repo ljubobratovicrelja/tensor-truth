@@ -6,6 +6,8 @@ from tensortruth.app_utils.title_generation import (
     _clean_title,
     _make_fallback_title,
     _strip_markdown,
+    build_title_source,
+    make_fallback_title,
 )
 
 
@@ -132,6 +134,55 @@ class TestMakeFallbackTitle:
         """Text exactly at max_len should not get .. suffix."""
         text = "a" * 60
         assert _make_fallback_title(text) == text
+
+
+@pytest.mark.unit
+class TestBuildTitleSource:
+    """Titles must describe what the user asked, not the assistant's narration."""
+
+    def test_user_message_wins_over_assistant_text(self):
+        source = build_title_source(
+            "Find the ResNet and BERT papers on arXiv",
+            "I'll search arXiv for both papers. Found both. Adding them now.",
+        )
+        assert source == "Find the ResNet and BERT papers on arXiv"
+
+    def test_short_user_message_still_uses_user_text(self):
+        assert build_title_source("what is RAG?") == "what is RAG?"
+
+    def test_short_user_message_appends_assistant_context(self):
+        source = build_title_source(
+            "this one", "The paper is about gaze classification."
+        )
+        assert source.startswith("this one")
+        assert "gaze classification" in source
+
+    def test_empty_user_falls_back_to_assistant(self):
+        assert build_title_source("", "Backpropagation explained") == (
+            "Backpropagation explained"
+        )
+
+    def test_empty_both_is_empty(self):
+        assert build_title_source("", "") == ""
+
+
+@pytest.mark.unit
+class TestMakeFallbackTitlePublic:
+    """make_fallback_title is the public, durable title used before generation."""
+
+    def test_truncates_a_long_prompt(self):
+        title = make_fallback_title(
+            "Find both papers on arXiv and add them to the project index please"
+        )
+        assert len(title) <= 62
+        assert title.endswith("..")
+
+    def test_strips_a_leading_slash_command(self):
+        assert (
+            make_fallback_title("/arxiv 1706.03762 attention")
+            != "arxiv 1706.03762 attention"
+        )
+        assert make_fallback_title("/arxiv") == "New Chat"
 
 
 @pytest.mark.unit

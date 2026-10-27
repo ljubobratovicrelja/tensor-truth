@@ -15,6 +15,28 @@ class SessionCreate(BaseModel):
         default_factory=dict,
         description="Session parameters (model, temperature, etc.)",
     )
+    title: Optional[str] = Field(
+        default=None,
+        description=(
+            "Title chosen by the client (e.g. previewed while the user was "
+            "typing). When set, no title is regenerated after the first turn."
+        ),
+    )
+
+
+class TitlePreviewRequest(BaseModel):
+    """Request body for previewing a session title from a drafted prompt."""
+
+    prompt: str = Field(..., description="The prompt the user is drafting")
+    model: Optional[str] = None
+    provider_id: Optional[str] = None
+    context_window: int = 16384
+
+
+class TitlePreviewResponse(BaseModel):
+    """Response for a previewed session title."""
+
+    title: str
 
 
 class SessionResponse(BaseModel):
@@ -76,6 +98,56 @@ class MessagesResponse(BaseModel):
     """Response for listing session messages."""
 
     messages: List[MessageResponse]
+
+
+class ContextCategory(BaseModel):
+    """One slice of the context window."""
+
+    id: str
+    label: str
+    hint: str = ""
+    chars: int = 0
+    tokens: int = 0
+    share: float = 0.0
+
+
+class SessionContextResponse(BaseModel):
+    """Per-category breakdown of the context sent to the LLM."""
+
+    measured: bool = False
+    categories: List[ContextCategory] = []
+    total_chars: int = 0
+    total_tokens: int = 0
+    context_window: int = 0
+    used_percent: float = 0.0
+    remaining_tokens: Optional[int] = None
+    model_name: Optional[str] = None
+    messages_included: int = 0
+    messages_total: int = 0
+    measured_at: Optional[float] = None
+
+
+class CompactRequest(BaseModel):
+    """Request body for /compact."""
+
+    keep_last: int = 6
+    target_tokens: Optional[int] = None
+
+
+class CompactResponse(BaseModel):
+    """Result of compacting a conversation."""
+
+    compacted: bool
+    message: str = ""
+    messages_before: int = 0
+    messages_after: int = 0
+    messages_compacted: int = 0
+    chars_before: int = 0
+    chars_after: int = 0
+    tokens_saved: int = 0
+    summary_chars: int = 0
+    backup_path: Optional[str] = None
+    context: Optional[SessionContextResponse] = None
 
 
 class SessionStatsResponse(BaseModel):

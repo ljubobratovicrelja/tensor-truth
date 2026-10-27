@@ -11,6 +11,7 @@ import {
   useProject,
   useModels,
   useDocuments,
+  useCompactSession,
   paramToThinking,
   thinkingToParam,
 } from "@/hooks";
@@ -146,6 +147,8 @@ export function ChatContainer() {
     }
   }, [messagesLoading, location.hash]);
 
+  const compact = useCompactSession(urlSessionId);
+
   const { sendMessage, cancelStreaming } = useWebSocketChat({
     sessionId: urlSessionId ?? null,
     onError: (err) => toast.error(err),
@@ -195,6 +198,11 @@ export function ChatContainer() {
       </div>
     );
   }
+
+  const handleCompact = () => {
+    if (!urlSessionId) return;
+    compact.mutate({});
+  };
 
   const handleSend = (
     message: string,
@@ -352,6 +360,8 @@ export function ChatContainer() {
             projectDocuments={projectData?.documents}
             sessionDocuments={sessionDocuments}
             isProjectSession={!!sessionProjectId}
+            onCompact={handleCompact}
+            compactPending={compact.isPending}
           />
         </div>
       </div>

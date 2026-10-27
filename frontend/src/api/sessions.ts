@@ -7,6 +7,8 @@ import type {
   MessagesResponse,
   MessageCreate,
   MessageResponse,
+  TitlePreviewRequest,
+  TitlePreviewResponse,
 } from "./types";
 
 export async function listSessions(): Promise<SessionListResponse> {
@@ -15,6 +17,15 @@ export async function listSessions(): Promise<SessionListResponse> {
 
 export async function createSession(data: SessionCreate = {}): Promise<SessionResponse> {
   return apiPost<SessionResponse, SessionCreate>("/sessions", data);
+}
+
+export async function previewSessionTitle(
+  data: TitlePreviewRequest
+): Promise<TitlePreviewResponse> {
+  return apiPost<TitlePreviewResponse, TitlePreviewRequest>(
+    "/sessions/title-preview",
+    data
+  );
 }
 
 export async function getSession(sessionId: string): Promise<SessionResponse> {
@@ -70,4 +81,56 @@ export async function deleteMessage(
 
 export async function getSessionStats(sessionId: string): Promise<SessionStatsResponse> {
   return apiGet<SessionStatsResponse>(`/sessions/${sessionId}/stats`);
+}
+
+export interface ContextCategory {
+  id: string;
+  label: string;
+  hint: string;
+  chars: number;
+  tokens: number;
+  share: number;
+}
+
+export interface SessionContextResponse {
+  measured: boolean;
+  categories: ContextCategory[];
+  total_chars: number;
+  total_tokens: number;
+  context_window: number;
+  used_percent: number;
+  remaining_tokens: number | null;
+  model_name: string | null;
+  messages_included: number;
+  messages_total: number;
+  measured_at: number | null;
+}
+
+export interface CompactResponse {
+  compacted: boolean;
+  message: string;
+  messages_before: number;
+  messages_after: number;
+  messages_compacted: number;
+  chars_before: number;
+  chars_after: number;
+  tokens_saved: number;
+  summary_chars: number;
+  backup_path: string | null;
+}
+
+export async function getSessionContext(
+  sessionId: string
+): Promise<SessionContextResponse> {
+  return apiGet<SessionContextResponse>(`/sessions/${sessionId}/context`);
+}
+
+export async function compactSession(
+  sessionId: string,
+  keepLast = 6
+): Promise<CompactResponse> {
+  return apiPost<CompactResponse, { keep_last: number }>(
+    `/sessions/${sessionId}/compact`,
+    { keep_last: keepLast }
+  );
 }
