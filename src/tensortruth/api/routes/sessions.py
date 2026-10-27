@@ -172,6 +172,11 @@ async def delete_session(
     new_data = session_service.delete(session_id, data, session_dir=session_dir)
     session_service.save(new_data)
 
+    # Drop the persisted context snapshot for the deleted session.
+    from tensortruth.services.context_accounting import clear_snapshot
+
+    clear_snapshot(session_id)
+
 
 @router.delete("/{session_id}/messages/{message_index}", status_code=204)
 async def delete_message(
