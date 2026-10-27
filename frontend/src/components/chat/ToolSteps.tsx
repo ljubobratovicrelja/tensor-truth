@@ -1,5 +1,13 @@
 import { useState, useCallback } from "react";
-import { ChevronDown, ChevronUp, Wrench, Check, X, Loader2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Wrench,
+  Check,
+  X,
+  Loader2,
+  ShieldAlert,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ToolStep, ToolStepProgress, StreamConfirmationRequest } from "@/api/types";
 import { ConfirmationCard } from "./ConfirmationCard";
@@ -14,12 +22,23 @@ interface ToolStepCardProps {
   confirmation?: StreamConfirmationRequest;
 }
 
+const STATUS_LABELS: Record<ToolStepWithStatus["status"], string> = {
+  calling: "Calling",
+  completed: "Done",
+  failed: "Failed",
+};
+
 function StatusDot({ status }: { status: ToolStepWithStatus["status"] }) {
+  // The dot conveys status visually; keep a text label for screen readers and
+  // tests (the label used to be a visible badge).
+  const label = <span className="sr-only">{STATUS_LABELS[status]}</span>;
+
   if (status === "calling") {
     return (
       <span className="relative flex h-4 w-4 items-center justify-center">
         <span className="bg-primary/40 absolute h-4 w-4 animate-ping rounded-full" />
         <Loader2 className="text-primary relative h-3 w-3 animate-spin" />
+        {label}
       </span>
     );
   }
@@ -27,12 +46,14 @@ function StatusDot({ status }: { status: ToolStepWithStatus["status"] }) {
     return (
       <span className="flex h-4 w-4 items-center justify-center rounded-full bg-green-500/20">
         <Check className="h-2.5 w-2.5 text-green-500" />
+        {label}
       </span>
     );
   }
   return (
     <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500/20">
       <X className="h-2.5 w-2.5 text-red-500" />
+      {label}
     </span>
   );
 }
@@ -117,6 +138,15 @@ function ToolStepCard({ step, isLast, confirmation }: ToolStepCardProps) {
             </span>
           )}
         </button>
+        {confirmation && step.status === "calling" && (
+          <span
+            data-testid="step-awaiting-approval"
+            className="mt-1 inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-500"
+          >
+            <ShieldAlert className="h-2.5 w-2.5" />
+            Approval needed
+          </span>
+        )}
         {step.status === "calling" && step.progress && (
           <StepProgress progress={step.progress} />
         )}
@@ -147,10 +177,27 @@ export function ToolSteps({
   confirmationRequests,
 }: ToolStepsProps) {
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
-  const collapsed = userToggle !== null ? !userToggle : !defaultOpen;
+  // Once a confirmation has appeared, keep the panel open by default: the user
+  // needs to see the follow-up steps too, not just the card. Adjusting state
+  // during render (instead of in an effect) avoids a cascading re-render.
+  const [stickyOpen, setStickyOpen] = useState(false);
+  const pendingApprovals = confirmationRequests?.length ?? 0;
+  if (pendingApprovals > 0 && !stickyOpen) {
+    setStickyOpen(true);
+  }
+
+  // An approval that is waiting for the user must never be hidden behind a
+  // collapsed panel — force it open while one is pending.
+  const open =
+    pendingApprovals > 0
+      ? true
+      : userToggle !== null
+        ? userToggle
+        : defaultOpen || stickyOpen;
+  const collapsed = !open;
   const toggle = useCallback(
-    () => setUserToggle((prev) => !(prev ?? defaultOpen)),
-    [defaultOpen]
+    () => setUserToggle((prev) => !(prev ?? (defaultOpen || stickyOpen))),
+    [defaultOpen, stickyOpen]
   );
 
   if (steps.length === 0) return null;
@@ -174,6 +221,17 @@ export function ToolSteps({
             {failed > 0 && <> | {failed} failed</>}
             {calling > 0 && <> | {calling} running</>}
           </span>
+          {pendingApprovals > 0 && (
+            <span
+              data-testid="steps-approval-badge"
+              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium tracking-normal text-amber-500 normal-case"
+            >
+              <ShieldAlert className="h-3 w-3" />
+              {pendingApprovals === 1
+                ? "Approval needed"
+                : `${pendingApprovals} approvals needed`}
+            </span>
+          )}
         </div>
         {collapsed ? (
           <ChevronDown className="h-3.5 w-3.5 shrink-0" />

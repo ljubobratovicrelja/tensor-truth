@@ -269,4 +269,89 @@ describe("ToolSteps", () => {
     expect(screen.getByText("Add arXiv paper 2301.08243")).toBeInTheDocument();
     expect(screen.queryByText("Add arXiv paper 2511.08544")).not.toBeInTheDocument();
   });
+
+  it("auto-expands when an approval is pending", () => {
+    const steps: ToolStepWithStatus[] = [
+      {
+        tool: "add_arxiv_paper",
+        params: { arxiv_id: "2511.08544" },
+        output: "",
+        is_error: false,
+        status: "calling",
+      },
+    ];
+    const confirmations: StreamConfirmationRequest[] = [
+      {
+        confirmation_id: "id-1",
+        tool_name: "add_arxiv_paper",
+        action_type: "add_document",
+        title: "Add arXiv paper 2511.08544",
+        summary: "Download arXiv:2511.08544",
+        details: { arxiv_id: "2511.08544" },
+      },
+    ];
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ToolSteps
+          steps={steps}
+          defaultOpen={false}
+          confirmationRequests={confirmations}
+        />
+      </QueryClientProvider>
+    );
+
+    // Panel is open without any user interaction, so the approve buttons show.
+    expect(screen.getByText("Add arXiv paper 2511.08544")).toBeInTheDocument();
+    expect(screen.getByText("Approve")).toBeInTheDocument();
+  });
+
+  it("flags pending approvals in the collapsed header", () => {
+    const steps: ToolStepWithStatus[] = [
+      {
+        tool: "add_arxiv_paper",
+        params: { arxiv_id: "2511.08544" },
+        output: "",
+        is_error: false,
+        status: "calling",
+      },
+    ];
+    const confirmations: StreamConfirmationRequest[] = [
+      {
+        confirmation_id: "id-1",
+        tool_name: "add_arxiv_paper",
+        action_type: "add_document",
+        title: "Add arXiv paper 2511.08544",
+        summary: "",
+        details: {},
+      },
+    ];
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ToolSteps steps={steps} confirmationRequests={confirmations} />
+      </QueryClientProvider>
+    );
+
+    expect(screen.getByTestId("steps-approval-badge")).toHaveTextContent(
+      "Approval needed"
+    );
+    expect(screen.getByTestId("step-awaiting-approval")).toBeInTheDocument();
+  });
+
+  it("shows no approval badge when nothing is pending", () => {
+    const steps: ToolStepWithStatus[] = [
+      {
+        tool: "search_arxiv",
+        params: {},
+        output: "",
+        is_error: false,
+        status: "calling",
+      },
+    ];
+
+    render(<ToolSteps steps={steps} />);
+
+    expect(screen.queryByTestId("steps-approval-badge")).not.toBeInTheDocument();
+  });
 });
