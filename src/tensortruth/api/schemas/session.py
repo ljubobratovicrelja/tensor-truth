@@ -30,7 +30,7 @@ class TitlePreviewRequest(BaseModel):
     prompt: str = Field(..., description="The prompt the user is drafting")
     model: Optional[str] = None
     provider_id: Optional[str] = None
-    context_window: int = 16384
+    context_window: Optional[int] = None
 
 
 class TitlePreviewResponse(BaseModel):

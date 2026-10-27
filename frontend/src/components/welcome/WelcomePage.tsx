@@ -86,8 +86,10 @@ export function WelcomePage() {
   } = useImageAttachment();
 
   const [selectOpen, setSelectOpen] = useState(false);
+  // Load the model list eagerly: the title preview needs the real model and
+  // provider, and without it the session was created with a truncation.
   const { data: modelsData, isLoading: modelsLoading } = useModels(
-    selectOpen ? 2000 : false
+    selectOpen ? 2000 : undefined
   );
   const { data: projectsData } = useProjects();
   const { data: config } = useConfig();
@@ -124,15 +126,17 @@ export function WelcomePage() {
     config?.llm.default_model ||
     modelsData?.models[0]?.name ||
     "";
-  const effectiveProviderId = (() => {
+  // Provider that serves the active model. `undefined` when it is not known
+  // yet — never a guess, so the title preview cannot ping the wrong endpoint.
+  const activeProviderId = (() => {
     if (decodedSelected?.providerId) return decodedSelected.providerId;
-    // Resolve provider from models list when using config default
     if (effectiveModel && modelsData?.models) {
       const info = modelsData.models.find((m) => m.name === effectiveModel);
       if (info?.provider_id) return info.provider_id;
     }
-    return "ollama";
+    return undefined;
   })();
+  const effectiveProviderId = activeProviderId ?? "ollama";
 
   const {
     thinking,
@@ -161,7 +165,7 @@ export function WelcomePage() {
       previewSessionTitle({
         prompt: titlePreviewKey,
         model: effectiveModel || null,
-        provider_id: effectiveProviderId,
+        provider_id: activeProviderId,
       })
         .then((result) => {
           if (!cancelled && result.title) {
@@ -176,7 +180,7 @@ export function WelcomePage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [titlePreviewKey, effectiveModel, effectiveProviderId]);
+  }, [titlePreviewKey, effectiveModel, activeProviderId]);
 
   const handleSubmit = async (promptText?: string) => {
     const text = promptText ?? message.trim();

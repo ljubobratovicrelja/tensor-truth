@@ -249,6 +249,50 @@ describe("useWebSocketChat", () => {
     expect(useChatStore.getState().isStreaming).toBe(false);
   });
 
+  it("picks up the title event that lands after `done`", async () => {
+    // The first-turn title is generated after the answer, so its event sits
+    // behind `done` in the run log while the socket is already closing. The
+    // sidebar used to keep the provisional title until an unrelated refetch.
+    const { result } = renderHook(
+      () => useWebSocketChat({ sessionId: "test-session", onError: vi.fn() }),
+      { wrapper: createWrapper() }
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("Fetch the BYOL paper");
+    });
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances.length).toBe(1);
+    });
+
+    const ws = MockWebSocket.instances[0];
+
+    vi.mocked(runsApi.getRunEvents).mockResolvedValue({
+      run_id: "run-1",
+      session_id: "test-session",
+      prompt: "",
+      status: "completed",
+      events: [{ seq: 2, type: "title", title: "Study BYOL Paper" } as never],
+    });
+
+    await act(async () => {
+      ws.simulateMessage({
+        seq: 1,
+        type: "done",
+        content: "Answer",
+        title_pending: true,
+      });
+    });
+
+    await waitFor(
+      () => {
+        expect(runsApi.getRunEvents).toHaveBeenCalledWith("run-1", 1);
+      },
+      { timeout: 4000 }
+    );
+  });
+
   it("should POST the cancel endpoint when the user cancels", async () => {
     const { result } = renderHook(
       () => useWebSocketChat({ sessionId: "test-session", onError: vi.fn() }),

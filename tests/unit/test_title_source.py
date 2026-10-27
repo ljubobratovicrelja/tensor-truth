@@ -25,6 +25,29 @@ class _FakeSink:
         self.sent.append(payload)
 
 
+class _FakeConfigService:
+    """Minimal ConfigService stand-in: the defaults the preview falls back to."""
+
+    def __init__(self, default_model: str = "") -> None:
+        self.default_model = default_model
+
+    def load(self):
+        return type(
+            "Config",
+            (),
+            {
+                "llm": type(
+                    "LLM",
+                    (),
+                    {
+                        "default_model": self.default_model,
+                        "default_context_window": 65536,
+                    },
+                )()
+            },
+        )()
+
+
 class _FakeSessionService:
     def __init__(self) -> None:
         self.titles = []
@@ -58,7 +81,8 @@ async def test_preview_titles_from_the_user_prompt(monkeypatch):
     )
 
     response = await preview_title(
-        TitlePreviewRequest(prompt=USER_PROMPT, model="qwen", provider_id="ollama")
+        TitlePreviewRequest(prompt=USER_PROMPT, model="qwen", provider_id="ollama"),
+        _FakeConfigService(),
     )
 
     assert response.title == "ResNet And BERT Papers"
@@ -67,9 +91,41 @@ async def test_preview_titles_from_the_user_prompt(monkeypatch):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_preview_falls_back_to_the_configured_default_model(monkeypatch):
+    """The welcome screen has no model loaded yet; the server must pick one.
+
+    Regression: with ``model: null`` the preview returned a raw truncation of
+    the prompt, which then became the session title.
+    """
+    captured = {}
+
+    async def fake_generate(
+        text, model_name=None, context_window=16384, provider_id=None
+    ):
+        captured["model"] = model_name
+        captured["context_window"] = context_window
+        return "Study BYOL Paper"
+
+    monkeypatch.setattr(
+        "tensortruth.app_utils.title_generation.generate_smart_title_async",
+        fake_generate,
+    )
+
+    response = await preview_title(
+        TitlePreviewRequest(prompt=USER_PROMPT),
+        _FakeConfigService(default_model="deepseek/deepseek-v4.1-flash-1017"),
+    )
+
+    assert response.title == "Study BYOL Paper"
+    assert captured["model"] == "deepseek/deepseek-v4.1-flash-1017"
+    assert captured["context_window"] == 65536
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_preview_rejects_an_empty_prompt():
     with pytest.raises(HTTPException) as exc:
-        await preview_title(TitlePreviewRequest(prompt="   "))
+        await preview_title(TitlePreviewRequest(prompt="   "), _FakeConfigService())
     assert exc.value.status_code == 400
 
 
