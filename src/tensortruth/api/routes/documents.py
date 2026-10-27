@@ -6,7 +6,7 @@ import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 from urllib.parse import urlparse
 
 import arxiv
@@ -327,13 +327,39 @@ def _get_indexing_config(
     return IndexingConfig()
 
 
+def _count_index_chunks(doc_service) -> Optional[int]:
+    """Best-effort count of vectors in the scope's index.
+
+    Returns None when the index does not exist or its store cannot be read.
+    """
+    try:
+        builder = doc_service._get_index_builder()
+        if not builder.index_exists():
+            return None
+        collection = builder._get_chroma_client().get_or_create_collection("data")
+        return int(collection.count())
+    except Exception as e:  # pragma: no cover - defensive, chroma internals
+        logger.debug("Could not count index chunks: %s", e)
+        return None
+
+
 async def _build_index(
     scope_id: str,
     scope_type: str,
     task_runner: TaskRunner,
     project_service: Optional[ProjectService] = None,
+    on_complete: Optional[Callable] = None,
 ) -> ReindexTaskResponse:
-    """Submit an incremental build-index job to the TaskRunner."""
+    """Submit an incremental build-index job to the TaskRunner.
+
+    Shared by the REST endpoints and the ``build_index`` agent tool so both
+    paths resolve indexing config, progress reporting and completion
+    bookkeeping identically.
+
+    Args:
+        on_complete: Optional TaskRunner completion callback (receives the
+            TaskInfo). Used to clear the RAG engine cache after a build.
+    """
     with get_document_service(scope_id, scope_type) as doc_service:
         pdf_count = doc_service.get_pdf_count()
         md_count = len(doc_service.get_all_markdown_files())
@@ -354,10 +380,18 @@ async def _build_index(
                 progress_callback=progress_callback,
                 conversion_method=indexing_cfg.conversion_method,
             )
+            chunk_count = _count_index_chunks(doc_service)
+        return {
+            "scope_id": scope_id,
+            "scope_type": scope_type,
+            "documents_indexed": len(unindexed),
+            "chunks": chunk_count,
+        }
 
     task_id = await task_runner.submit(
         "build-index",
         _do_build,
+        on_complete=on_complete,
         metadata={"scope_id": scope_id, "scope_type": scope_type},
     )
     return ReindexTaskResponse(task_id=task_id, pdf_count=len(unindexed))
@@ -649,7 +683,11 @@ async def build_session_index(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return await _build_index(session_id, "session", task_runner)
+    from tensortruth.api.routes.index_management import _make_on_complete
+
+    return await _build_index(
+        session_id, "session", task_runner, on_complete=_make_on_complete()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -855,7 +893,16 @@ async def build_project_index(
 ) -> ReindexTaskResponse:
     """Build the vector index for project documents (incremental)."""
     _get_project_or_404(project_id, project_service)
-    return await _build_index(project_id, "project", task_runner, project_service)
+
+    from tensortruth.api.routes.index_management import _make_on_complete
+
+    return await _build_index(
+        project_id,
+        "project",
+        task_runner,
+        project_service,
+        on_complete=_make_on_complete(),
+    )
 
 
 # ---------------------------------------------------------------------------

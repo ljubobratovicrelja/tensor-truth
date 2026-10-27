@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { ChevronDown, ChevronUp, Wrench, Check, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ToolStep, StreamConfirmationRequest } from "@/api/types";
+import type { ToolStep, ToolStepProgress, StreamConfirmationRequest } from "@/api/types";
 import { ConfirmationCard } from "./ConfirmationCard";
 
 export type ToolStepWithStatus = ToolStep & {
@@ -34,6 +34,31 @@ function StatusDot({ status }: { status: ToolStepWithStatus["status"] }) {
     <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500/20">
       <X className="h-2.5 w-2.5 text-red-500" />
     </span>
+  );
+}
+
+function StepProgress({ progress }: { progress: ToolStepProgress }) {
+  const percent = Math.max(0, Math.min(100, progress.percent));
+  const label = Math.round(percent);
+
+  return (
+    <div className="mt-1.5 space-y-1" data-testid="tool-step-progress">
+      <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
+        <div
+          role="progressbar"
+          aria-valuenow={label}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={progress.message}
+          className="bg-primary h-full rounded-full transition-all duration-300"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <div className="text-muted-foreground flex items-center gap-2 text-xs">
+        <span className="min-w-0 flex-1 truncate">{progress.message}</span>
+        <span className="shrink-0 tabular-nums">{label}%</span>
+      </div>
+    </div>
   );
 }
 
@@ -92,6 +117,9 @@ function ToolStepCard({ step, isLast, confirmation }: ToolStepCardProps) {
             </span>
           )}
         </button>
+        {step.status === "calling" && step.progress && (
+          <StepProgress progress={step.progress} />
+        )}
         {expanded && step.output && (
           <div className="bg-muted/40 mt-1.5 max-h-48 overflow-auto rounded-lg px-3 py-2">
             <pre className="text-muted-foreground text-[11px] leading-relaxed break-words whitespace-pre-wrap">

@@ -11,6 +11,10 @@ import type {
 } from "@/api/types";
 import type { AttachedImage } from "@/hooks/useWebSocket";
 
+export type ToolStepWithStatus = ToolStep & {
+  status: "calling" | "completed" | "failed";
+};
+
 export interface ResponseStats {
   inputTokens: number;
   outputTokens: number;
@@ -42,7 +46,7 @@ interface ChatStore {
   pendingAttachedImages: AttachedImage[] | null;
 
   // Agent/tool progress
-  streamingToolSteps: (ToolStep & { status: "calling" | "completed" | "failed" })[];
+  streamingToolSteps: ToolStepWithStatus[];
   agentProgress: StreamAgentProgress | null;
   toolPhase: StreamToolPhase | null;
   streamingReasoning: string;
@@ -283,7 +287,54 @@ export const useChatStore = create<ChatStore>((set) => ({
       return { streamingToolSteps: steps };
     }),
   setAgentProgress: (progress) => set({ agentProgress: progress }),
-  setToolPhase: (phase) => set({ toolPhase: phase }),
+  // Phases carrying a numeric `percent` are in-step progress: attach them to
+  // the running step for that tool (so each step renders its own bar) while
+  // still keeping the latest phase for the global indicator. Same-tool
+  // concurrent calls are disambiguated by the `scope` param when present;
+  // otherwise the most recently started still-running call owns the phase.
+  setToolPhase: (phase) =>
+    set((state) => {
+      if (!phase) return { toolPhase: null };
+
+      const rawPercent = phase.metadata?.percent;
+      const percent =
+        typeof rawPercent === "number" && Number.isFinite(rawPercent)
+          ? Math.max(0, Math.min(100, rawPercent))
+          : null;
+
+      if (percent === null) {
+        return { toolPhase: phase };
+      }
+
+      const scope = phase.metadata?.scope;
+      const isRunningForTool = (s: (typeof state.streamingToolSteps)[number]) =>
+        s.status === "calling" &&
+        (s.tool === phase.tool_id || s.tool_id === phase.tool_id);
+
+      let idx = -1;
+      if (scope !== undefined) {
+        idx = state.streamingToolSteps.findLastIndex(
+          (s) => isRunningForTool(s) && s.params?.scope === scope
+        );
+      }
+      if (idx === -1) {
+        idx = state.streamingToolSteps.findLastIndex(isRunningForTool);
+      }
+      if (idx === -1) {
+        return { toolPhase: phase };
+      }
+
+      const steps = [...state.streamingToolSteps];
+      steps[idx] = {
+        ...steps[idx],
+        progress: {
+          percent,
+          message: phase.message,
+          stage: phase.phase,
+        },
+      };
+      return { toolPhase: phase, streamingToolSteps: steps };
+    }),
   appendReasoning: (reasoning) =>
     set((state) => ({
       streamingReasoning: state.streamingReasoning + reasoning,
@@ -295,9 +346,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   // fails with "already approved" and the waiting tool hangs.
   addConfirmationRequest: (req) =>
     set((state) =>
-      state.confirmationRequests.some(
-        (r) => r.confirmation_id === req.confirmation_id
-      )
+      state.confirmationRequests.some((r) => r.confirmation_id === req.confirmation_id)
         ? state
         : { confirmationRequests: [...state.confirmationRequests, req] }
     ),

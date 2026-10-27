@@ -150,4 +150,72 @@ describe("chatStore", () => {
       expect(requests[0].confirmation_id).toBe("a");
     });
   });
+
+  describe("tool phase progress", () => {
+    const calling = (tool: string, params: Record<string, unknown> = {}) => ({
+      type: "tool_progress" as const,
+      tool,
+      action: "calling" as const,
+      params,
+      tool_id: tool,
+    });
+
+    const phase = (
+      tool: string,
+      percent: number,
+      metadata: Record<string, unknown> = {}
+    ) => ({
+      type: "tool_phase" as const,
+      tool_id: tool,
+      phase: "converting",
+      message: `Converting 1/2: ${tool}.pdf`,
+      metadata: { percent, message: `Converting 1/2: ${tool}.pdf`, ...metadata },
+    });
+
+    beforeEach(() => {
+      useChatStore.getState().startStreaming("index my docs");
+    });
+
+    it("attaches percent phases to the running step for that tool", () => {
+      useChatStore.getState().addToolStep(calling("build_index"));
+      useChatStore.getState().addToolStep(calling("web_search"));
+
+      useChatStore.getState().setToolPhase(phase("build_index", 35));
+
+      const steps = useChatStore.getState().streamingToolSteps;
+      expect(steps[0].progress).toEqual({
+        percent: 35,
+        message: "Converting 1/2: build_index.pdf",
+        stage: "converting",
+      });
+      expect(steps[1].progress).toBeUndefined();
+    });
+
+    it("does not clobber two concurrent same-tool calls with distinct scopes", () => {
+      useChatStore.getState().addToolStep(calling("build_index", { scope: "session" }));
+      useChatStore.getState().addToolStep(calling("build_index", { scope: "project" }));
+
+      useChatStore
+        .getState()
+        .setToolPhase(phase("build_index", 80, { scope: "project" }));
+
+      const steps = useChatStore.getState().streamingToolSteps;
+      expect(steps[0].progress).toBeUndefined();
+      expect(steps[1].progress?.percent).toBe(80);
+    });
+
+    it("keeps phases without a percent out of the step model", () => {
+      useChatStore.getState().addToolStep(calling("build_index"));
+      useChatStore.getState().setToolPhase({
+        type: "tool_phase",
+        tool_id: "build_index",
+        phase: "generating",
+        message: "Thinking...",
+        metadata: {},
+      });
+
+      expect(useChatStore.getState().streamingToolSteps[0].progress).toBeUndefined();
+      expect(useChatStore.getState().toolPhase?.phase).toBe("generating");
+    });
+  });
 });

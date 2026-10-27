@@ -176,6 +176,51 @@ describe("ToolSteps", () => {
     expect(collapsibleDiv?.className).toContain("max-h-[2000px]");
   });
 
+  it("renders a live progress bar and stage line for a step with progress", () => {
+    const steps: ToolStepWithStatus[] = [
+      {
+        tool: "build_index",
+        params: { scope: "session" },
+        output: "",
+        is_error: false,
+        tool_id: "build_index",
+        status: "calling",
+        progress: {
+          percent: 35,
+          message: "Converting 1/2: Attention_Is_All_You_Need.pdf",
+          stage: "converting",
+        },
+      },
+    ];
+    render(<ToolSteps steps={steps} defaultOpen />);
+
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "35");
+    expect(bar).toHaveAttribute("aria-valuemin", "0");
+    expect(bar).toHaveAttribute("aria-valuemax", "100");
+    expect(bar).toHaveStyle({ width: "35%" });
+    expect(
+      screen.getByText("Converting 1/2: Attention_Is_All_You_Need.pdf")
+    ).toBeInTheDocument();
+    expect(screen.getByText("35%")).toBeInTheDocument();
+  });
+
+  it("does not render a progress bar once the step is no longer running", () => {
+    const steps: ToolStepWithStatus[] = [
+      {
+        tool: "build_index",
+        params: {},
+        output: "done",
+        is_error: false,
+        status: "completed",
+        progress: { percent: 100, message: "Indexed 2 documents." },
+      },
+    ];
+    render(<ToolSteps steps={steps} defaultOpen />);
+
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
   it("pairs same-tool confirmations to their own steps positionally", () => {
     const steps: ToolStepWithStatus[] = [
       {
@@ -215,19 +260,13 @@ describe("ToolSteps", () => {
     const queryClient = new QueryClient();
     render(
       <QueryClientProvider client={queryClient}>
-        <ToolSteps
-          steps={steps}
-          defaultOpen
-          confirmationRequests={confirmations}
-        />
+        <ToolSteps steps={steps} defaultOpen confirmationRequests={confirmations} />
       </QueryClientProvider>
     );
 
     // Only the still-running step owns a card, and it owns the second request.
     expect(screen.getAllByText("Approve")).toHaveLength(1);
     expect(screen.getByText("Add arXiv paper 2301.08243")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Add arXiv paper 2511.08544")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Add arXiv paper 2511.08544")).not.toBeInTheDocument();
   });
 });

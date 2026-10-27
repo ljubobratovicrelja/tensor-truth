@@ -89,6 +89,12 @@ export function StreamingIndicator({ status }: StreamingIndicatorProps) {
     return config ? pickRandom(config.labels) : "Processing...";
   }, [status]);
 
+  // Per-step progress (numeric `percent`, e.g. build_index) renders inside the
+  // owning ToolSteps entry as a bar, so suppress the generic global spinner.
+  if (toolPhase && typeof toolPhase.metadata?.percent === "number") {
+    return null;
+  }
+
   // When toolPhase is present, delegate to ToolPhaseIndicator
   if (toolPhase) {
     return <ToolPhaseIndicator phase={toolPhase} />;
