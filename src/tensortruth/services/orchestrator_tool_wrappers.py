@@ -102,10 +102,10 @@ class AddArxivPaperInput(BaseModel):
     scope: str = Field(
         default="session",
         description=(
-            'Where to add the paper: "session" (default) adds to the '
-            'current chat session, "project" adds to the parent project, '
-            '"context" attaches its full text to the session conversation '
-            "context (no vector index needed — best for large-context models)."
+            'Where to add the paper: "session" (default) adds it to the '
+            "current chat session and attaches its text to the conversation "
+            'context so it can be read immediately, "project" adds it to the '
+            'parent project, "context" is an alias for the session behaviour.'
         ),
     )
 
@@ -1549,7 +1549,10 @@ def create_add_arxiv_paper_tool(
         assert (scope != "project") or (project_id is not None)
         scope_id: str = project_id if scope == "project" else session_id  # type: ignore[assignment]
         scope_type = "project" if scope == "project" else "session"
-        add_to_context = scope == "context"
+        # Session adds are attached to the conversation context automatically:
+        # the user should never have to click "Build Index" before the agent
+        # can read a paper it just added.
+        add_to_context = scope in ("session", "context")
 
         # Validate arXiv ID
         normalized = validate_arxiv_id(arxiv_id)
@@ -1658,6 +1661,7 @@ def create_add_arxiv_paper_tool(
             return f"Error: downloaded paper but failed to upload — {e}"
 
         context_chars: int | None = None
+        context_error: str | None = None
         if add_to_context:
             await _emit(
                 progress_emitter,
@@ -1671,35 +1675,45 @@ def create_add_arxiv_paper_tool(
                 with get_document_service(scope_id, scope_type) as doc_service:
                     context_chars = doc_service.set_in_context(metadata.pdf_id, True)
             except Exception as e:
+                # The PDF is stored; only the text extraction failed. Keep the
+                # add and report it instead of pretending the paper is readable.
+                context_error = str(e)
                 logger.error(
                     "Failed to attach arXiv paper %s to context: %s", arxiv_id, e
-                )
-                return (
-                    f"Error: uploaded the paper ({metadata.pdf_id}) but could not "
-                    f"extract its text for direct context — {e}. It can still be "
-                    "indexed from the documents panel."
                 )
 
         authors_short = (
             authors_str[:80] + "..." if len(authors_str) > 80 else authors_str
         )
 
-        if add_to_context:
+        if add_to_context and context_chars is not None:
             from tensortruth.services.context_documents import CHARS_PER_TOKEN
 
             tokens = (context_chars or 0) // CHARS_PER_TOKEN
             return (
-                f"Successfully added arXiv paper to the conversation context "
-                f"(no index needed).\n"
+                "Successfully added arXiv paper and attached it to this "
+                "conversation's context.\n"
                 f"Title: {paper.title}\n"
                 f"Authors: {authors_short}\n"
                 f"Doc ID: {metadata.pdf_id}\n"
-                f"Attached directly to context: ~{tokens:,} tokens.\n"
-                "The full text will be included in the prompt on this and "
-                "subsequent turns, so you can answer questions about it right "
-                "away without any RAG query. If it exceeds the context budget "
-                "it is truncated automatically and the truncation is reported "
-                "to you in the prompt."
+                f"Attached to context: ~{tokens:,} tokens.\n"
+                "The full text is included in the prompt on this and subsequent "
+                "turns, so answer directly from it — no RAG query and no index "
+                "build are needed. Do NOT ask the user to build an index just to "
+                "read or discuss this paper. If it exceeds the context budget it "
+                "is truncated automatically and the truncation is reported in "
+                "your prompt."
+            )
+
+        if context_error is not None:
+            return (
+                f"Successfully added arXiv paper to {scope} documents, but its "
+                f"text could not be extracted for direct context ({context_error}).\n"
+                f"Title: {paper.title}\n"
+                f"Authors: {authors_short}\n"
+                f"Doc ID: {metadata.pdf_id}\n"
+                "You cannot quote its body yet. Say so plainly; the user can "
+                "build the index from the documents panel if they want RAG search."
             )
 
         return (
@@ -1707,9 +1721,8 @@ def create_add_arxiv_paper_tool(
             f"Title: {paper.title}\n"
             f"Authors: {authors_short}\n"
             f"Doc ID: {metadata.pdf_id}\n"
-            f"IMPORTANT: Tell the user they need to click 'Build Index' in the "
-            f"documents panel to index this paper before it can be searched via "
-            f"RAG queries."
+            "This paper is not attached to the conversation context, so you "
+            "cannot quote its body. Do not claim to have read it."
         )
 
     return FunctionTool.from_defaults(
@@ -1721,12 +1734,11 @@ def create_add_arxiv_paper_tool(
             "until they respond. Use when the user asks to save/add/download an "
             "arXiv paper they found or mentioned. Accepts arXiv IDs like "
             "'2301.12345' or full URLs. "
-            "Use scope='context' to attach the paper's full text directly to "
-            "the conversation context instead of indexing it — no index build "
-            "is needed and the agent can read it immediately. "
-            "After success with scope='session'/'project', always remind the "
-            "user to build the index from the documents panel so the paper "
-            "becomes searchable."
+            "Papers added to a session (scope='session', the default) are also "
+            "attached to the conversation context automatically, so you can "
+            "read and quote them immediately without any index build — never "
+            "ask the user to click 'Build Index' just to discuss a paper. "
+            "scope='project' stores the paper in the project instead."
         ),
         fn_schema=AddArxivPaperInput,
     )

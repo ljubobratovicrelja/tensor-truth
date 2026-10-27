@@ -15,6 +15,7 @@ from llama_index.core.schema import NodeWithScore, TextNode
 
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
 from tensortruth.services.orchestrator_tool_wrappers import (
+    create_add_arxiv_paper_tool,
     create_all_tool_wrappers,
     create_fetch_page_tool,
     create_fetch_pages_batch_tool,
@@ -736,3 +737,100 @@ class TestFullOutputCallback:
         assert len(captured) == 1
         assert captured[0][0] == "fetch_pages_batch"
         assert "Complete page body text" in captured[0][1]
+
+
+class TestAddArxivPaperDefaults:
+    """Adding a paper to a session must not require a manual index build."""
+
+    @pytest.fixture
+    def fake_arxiv(self, monkeypatch):
+        class _Author:
+            name = "A. Author"
+
+        class _Paper:
+            title = "Test Paper"
+            authors = [_Author()]
+
+            def download_pdf(self, dirpath, filename):
+                from pathlib import Path
+
+                Path(dirpath, filename).write_bytes(b"%PDF-1.4 fake")
+
+        class _Search:
+            def __init__(self, id_list=None):
+                self.id_list = id_list
+
+            def results(self):
+                return iter([_Paper()])
+
+        import arxiv
+
+        monkeypatch.setattr(arxiv, "Search", _Search)
+
+    @pytest.mark.asyncio
+    async def test_session_add_attaches_to_context_and_never_nags(
+        self, progress_emitter, fake_arxiv, monkeypatch
+    ):
+        import tensortruth.services.orchestrator_tool_wrappers as wrappers
+
+        async def _approve(**kwargs):
+            return "approved"
+
+        monkeypatch.setattr(wrappers, "request_confirmation", _approve)
+
+        doc_service = MagicMock()
+        doc_service.upload.return_value = MagicMock(pdf_id="pdf_abc123")
+        doc_service.set_in_context.return_value = 40_000
+        ctx = MagicMock()
+        ctx.__enter__.return_value = doc_service
+        ctx.__exit__.return_value = False
+
+        monkeypatch.setattr(
+            "tensortruth.api.deps.get_document_service", lambda *a, **k: ctx
+        )
+
+        tool = create_add_arxiv_paper_tool(
+            progress_emitter=progress_emitter,
+            confirmation_service=MagicMock(),
+            session_id="sess_1",
+        )
+        result = str(await tool.acall(arxiv_id="2301.08243", scope="session"))
+
+        doc_service.set_in_context.assert_called_with("pdf_abc123", True)
+        assert "attached it to this conversation" in result
+        assert "~10,000 tokens" in result
+        # The old behaviour told the agent to demand a manual index build
+        assert "click 'Build Index'" not in result
+        assert "no index build" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_session_add_survives_extraction_failure(
+        self, progress_emitter, fake_arxiv, monkeypatch
+    ):
+        import tensortruth.services.orchestrator_tool_wrappers as wrappers
+
+        async def _approve(**kwargs):
+            return "approved"
+
+        monkeypatch.setattr(wrappers, "request_confirmation", _approve)
+
+        doc_service = MagicMock()
+        doc_service.upload.return_value = MagicMock(pdf_id="pdf_def456")
+        doc_service.set_in_context.side_effect = ValueError("no text")
+        ctx = MagicMock()
+        ctx.__enter__.return_value = doc_service
+        ctx.__exit__.return_value = False
+
+        monkeypatch.setattr(
+            "tensortruth.api.deps.get_document_service", lambda *a, **k: ctx
+        )
+
+        tool = create_add_arxiv_paper_tool(
+            progress_emitter=progress_emitter,
+            confirmation_service=MagicMock(),
+            session_id="sess_1",
+        )
+        result = str(await tool.acall(arxiv_id="2301.08243", scope="session"))
+
+        assert "could not be extracted" in result
+        assert "click 'Build Index'" not in result
