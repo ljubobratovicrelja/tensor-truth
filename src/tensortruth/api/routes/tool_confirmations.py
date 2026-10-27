@@ -8,6 +8,7 @@ wrapper applies the action after being unblocked.
 import logging
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from tensortruth.api.deps import get_tool_confirmation_service
 
@@ -44,6 +45,33 @@ async def approve_confirmation(confirmation_id: str):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "approved"}
+
+
+class ResolveConfirmationRequest(BaseModel):
+    """Body for resolving a confirmation with an arbitrary outcome token."""
+
+    outcome: str
+
+
+@router.post("/{confirmation_id}/resolve")
+async def resolve_confirmation(confirmation_id: str, body: ResolveConfirmationRequest):
+    """Resolve a confirmation with a specific outcome.
+
+    Used by cards that offer more than approve/reject — e.g. add_arxiv_paper
+    offers "add directly to context" as an alternative to indexing.
+    """
+    outcome = (body.outcome or "").strip()
+    if not outcome:
+        raise HTTPException(status_code=400, detail="outcome must not be empty")
+    service = get_tool_confirmation_service()
+    try:
+        service.resolve(confirmation_id, outcome)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "status": "approved" if outcome not in ("approved", "rejected") else outcome,
+        "outcome": outcome,
+    }
 
 
 @router.post("/{confirmation_id}/reject")

@@ -740,7 +740,7 @@ class TestFullOutputCallback:
 
 
 class TestAddArxivPaperDefaults:
-    """Adding a paper to a session must not require a manual index build."""
+    """Adding a paper defaults to indexing; context is an explicit choice."""
 
     @pytest.fixture
     def fake_arxiv(self, monkeypatch):
@@ -767,27 +767,38 @@ class TestAddArxivPaperDefaults:
 
         monkeypatch.setattr(arxiv, "Search", _Search)
 
-    @pytest.mark.asyncio
-    async def test_session_add_attaches_to_context_and_never_nags(
-        self, progress_emitter, fake_arxiv, monkeypatch
-    ):
-        import tensortruth.services.orchestrator_tool_wrappers as wrappers
-
-        async def _approve(**kwargs):
-            return "approved"
-
-        monkeypatch.setattr(wrappers, "request_confirmation", _approve)
-
+    def _doc_service(self, monkeypatch, pdf_id="pdf_abc123"):
         doc_service = MagicMock()
-        doc_service.upload.return_value = MagicMock(pdf_id="pdf_abc123")
+        doc_service.upload.return_value = MagicMock(pdf_id=pdf_id)
         doc_service.set_in_context.return_value = 40_000
         ctx = MagicMock()
         ctx.__enter__.return_value = doc_service
         ctx.__exit__.return_value = False
-
         monkeypatch.setattr(
             "tensortruth.api.deps.get_document_service", lambda *a, **k: ctx
         )
+        return doc_service
+
+    @pytest.mark.asyncio
+    async def test_session_add_indexes_by_default(
+        self, progress_emitter, fake_arxiv, monkeypatch
+    ):
+        """Default destination is the index: no context attach, build queued."""
+        import tensortruth.services.orchestrator_tool_wrappers as wrappers
+
+        async def _approve(**kwargs):
+            return "approved"
+
+        monkeypatch.setattr(wrappers, "request_confirmation", _approve)
+        doc_service = self._doc_service(monkeypatch)
+
+        queued = []
+
+        async def _fake_queue(scope_id, scope_type):
+            queued.append((scope_id, scope_type))
+            return "task-123"
+
+        monkeypatch.setattr(wrappers, "_queue_index_build", _fake_queue)
 
         tool = create_add_arxiv_paper_tool(
             progress_emitter=progress_emitter,
@@ -796,15 +807,13 @@ class TestAddArxivPaperDefaults:
         )
         result = str(await tool.acall(arxiv_id="2301.08243", scope="session"))
 
-        doc_service.set_in_context.assert_called_with("pdf_abc123", True)
-        assert "attached it to this conversation" in result
-        assert "~10,000 tokens" in result
-        # The old behaviour told the agent to demand a manual index build
-        assert "click 'Build Index'" not in result
-        assert "no index build" in result.lower()
+        doc_service.set_in_context.assert_not_called()
+        assert queued == [("sess_1", "session")]
+        assert "queued an index build (task task-123)" in result
+        assert "Do NOT ask the user to click 'Build Index'" in result
 
     @pytest.mark.asyncio
-    async def test_session_add_survives_extraction_failure(
+    async def test_destination_context_attaches_instead(
         self, progress_emitter, fake_arxiv, monkeypatch
     ):
         import tensortruth.services.orchestrator_tool_wrappers as wrappers
@@ -813,17 +822,48 @@ class TestAddArxivPaperDefaults:
             return "approved"
 
         monkeypatch.setattr(wrappers, "request_confirmation", _approve)
+        doc_service = self._doc_service(monkeypatch)
 
-        doc_service = MagicMock()
-        doc_service.upload.return_value = MagicMock(pdf_id="pdf_def456")
-        doc_service.set_in_context.side_effect = ValueError("no text")
-        ctx = MagicMock()
-        ctx.__enter__.return_value = doc_service
-        ctx.__exit__.return_value = False
+        async def _should_not_queue(*a, **k):
+            raise AssertionError("index build must not be queued for context")
 
-        monkeypatch.setattr(
-            "tensortruth.api.deps.get_document_service", lambda *a, **k: ctx
+        monkeypatch.setattr(wrappers, "_queue_index_build", _should_not_queue)
+
+        tool = create_add_arxiv_paper_tool(
+            progress_emitter=progress_emitter,
+            confirmation_service=MagicMock(),
+            session_id="sess_1",
         )
+        result = str(
+            await tool.acall(
+                arxiv_id="2301.08243", scope="session", destination="context"
+            )
+        )
+
+        doc_service.set_in_context.assert_called_with("pdf_abc123", True)
+        assert "attached it to this conversation" in result
+        assert "~10,000 tokens" in result
+
+    @pytest.mark.asyncio
+    async def test_alternative_outcome_from_card_attaches_to_context(
+        self, progress_emitter, fake_arxiv, monkeypatch
+    ):
+        """User clicks the third button ("add directly to context")."""
+        import tensortruth.services.orchestrator_tool_wrappers as wrappers
+
+        captured_details = {}
+
+        async def _choose_context(**kwargs):
+            captured_details.update(kwargs["details"])
+            return "context"
+
+        monkeypatch.setattr(wrappers, "request_confirmation", _choose_context)
+        doc_service = self._doc_service(monkeypatch)
+
+        async def _should_not_queue(*a, **k):
+            raise AssertionError("index build must not be queued")
+
+        monkeypatch.setattr(wrappers, "_queue_index_build", _should_not_queue)
 
         tool = create_add_arxiv_paper_tool(
             progress_emitter=progress_emitter,
@@ -832,5 +872,63 @@ class TestAddArxivPaperDefaults:
         )
         result = str(await tool.acall(arxiv_id="2301.08243", scope="session"))
 
+        # The card is offered the context alternative up front
+        alternatives = captured_details.get("alternatives") or []
+        assert [a["id"] for a in alternatives] == ["context"]
+        doc_service.set_in_context.assert_called_with("pdf_abc123", True)
+        assert "attached it to this conversation" in result
+
+    @pytest.mark.asyncio
+    async def test_context_extraction_failure_keeps_the_paper(
+        self, progress_emitter, fake_arxiv, monkeypatch
+    ):
+        import tensortruth.services.orchestrator_tool_wrappers as wrappers
+
+        async def _approve(**kwargs):
+            return "approved"
+
+        monkeypatch.setattr(wrappers, "request_confirmation", _approve)
+        doc_service = self._doc_service(monkeypatch, pdf_id="pdf_def456")
+        doc_service.set_in_context.side_effect = ValueError("no text")
+
+        tool = create_add_arxiv_paper_tool(
+            progress_emitter=progress_emitter,
+            confirmation_service=MagicMock(),
+            session_id="sess_1",
+        )
+        result = str(
+            await tool.acall(
+                arxiv_id="2301.08243", scope="session", destination="context"
+            )
+        )
+
         assert "could not be extracted" in result
+        assert "click 'Build Index'" not in result
+
+    @pytest.mark.asyncio
+    async def test_index_queue_unavailable_falls_back_to_tool_hint(
+        self, progress_emitter, fake_arxiv, monkeypatch
+    ):
+        """Without a running TaskRunner the agent is told to use build_index."""
+        import tensortruth.services.orchestrator_tool_wrappers as wrappers
+
+        async def _approve(**kwargs):
+            return "approved"
+
+        monkeypatch.setattr(wrappers, "request_confirmation", _approve)
+        self._doc_service(monkeypatch)
+
+        async def _no_runner(*a, **k):
+            return None
+
+        monkeypatch.setattr(wrappers, "_queue_index_build", _no_runner)
+
+        tool = create_add_arxiv_paper_tool(
+            progress_emitter=progress_emitter,
+            confirmation_service=MagicMock(),
+            session_id="sess_1",
+        )
+        result = str(await tool.acall(arxiv_id="2301.08243", scope="session"))
+
+        assert "build_index tool" in result
         assert "click 'Build Index'" not in result

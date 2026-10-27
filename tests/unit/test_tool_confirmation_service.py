@@ -65,6 +65,16 @@ class TestResolve:
         with pytest.raises(ValueError, match="not found"):
             service.resolve("nonexistent", "approved")
 
+    def test_custom_alternative_outcome(self, service):
+        """A tool-defined outcome (e.g. "context") is terminal and reported."""
+        c = service.create_confirmation("t", "a", "title", "summary", {}, "s1")
+        service.resolve(c.confirmation_id, "context")
+        # Existing UI checks only know approved/rejected, so status stays
+        # "approved" while the precise choice is preserved.
+        assert c.status == "approved"
+        assert c._outcome == "context"
+        assert c._event.is_set()
+
     def test_raises_for_already_resolved(self, service):
         c = service.create_confirmation("t", "a", "title", "summary", {}, "s1")
         service.resolve(c.confirmation_id, "approved")

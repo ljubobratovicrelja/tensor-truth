@@ -104,9 +104,17 @@ class AddArxivPaperInput(BaseModel):
         default="session",
         description=(
             'Where to add the paper: "session" (default) adds it to the '
-            "current chat session and attaches its text to the conversation "
-            'context so it can be read immediately, "project" adds it to the '
-            'parent project, "context" is an alias for the session behaviour.'
+            'current chat session, "project" adds it to the parent project.'
+        ),
+    )
+    destination: str = Field(
+        default="index",
+        description=(
+            'How the paper becomes usable: "index" (default) indexes it for '
+            'rag_query; "context" attaches its full text to this session\'s '
+            "conversation context instead (no index build, needs a large "
+            "context window). The user can also pick the other option from the "
+            "approval card."
         ),
     )
 
@@ -162,6 +170,39 @@ async def _emit(emitter: ProgressEmitter, progress: ToolProgress) -> None:
     result = emitter(progress)
     if asyncio.iscoroutine(result):
         await result
+
+
+async def _queue_index_build(scope_id: str, scope_type: str) -> Optional[str]:
+    """Submit an incremental index build for a scope.
+
+    Used after adding a document so the default "index" destination needs no
+    user click. Returns the task id, or None when the TaskRunner is not running
+    (the agent can then fall back to the build_index tool).
+    """
+    try:
+        from tensortruth.api.deps import get_document_service, get_task_runner
+
+        runner = get_task_runner()
+        if getattr(runner, "_worker_task", None) is None:
+            logger.info("TaskRunner not started; skipping automatic index build")
+            return None
+
+        def _do_build(progress_callback):
+            with get_document_service(scope_id, scope_type) as doc_service:
+                doc_service.build_index(progress_callback=progress_callback)
+
+        return await runner.submit(
+            "build-index",
+            _do_build,
+            metadata={
+                "scope_id": scope_id,
+                "scope_type": scope_type,
+                "source": "add_arxiv_paper",
+            },
+        )
+    except Exception as e:
+        logger.warning("Could not queue index build for %s: %s", scope_id, e)
+        return None
 
 
 async def request_confirmation(
@@ -1549,24 +1590,26 @@ def create_add_arxiv_paper_tool(
     REST endpoint in ``documents.py``.
     """
 
-    async def add_arxiv_paper(arxiv_id: str, scope: str = "session") -> str:
+    async def add_arxiv_paper(
+        arxiv_id: str, scope: str = "session", destination: str = "index"
+    ) -> str:
         """Download an arXiv paper and add it to the session or project documents.
 
         Use this tool when the user asks you to add, save, or download an arXiv
         paper to their session or project. The user will be prompted to approve
         the download; the tool blocks until they respond.
 
-        With scope="session" or "project" the paper must be vector-indexed
-        before it can be used for RAG queries. With scope="context" the paper's
-        extracted text is attached directly to this session's conversation
-        context instead — no index build is needed, which is the right choice
-        when the user wants to discuss the paper immediately and the model has
-        a large context window.
+        Indexing is the default: the paper is stored and an index build is
+        queued automatically, so it becomes searchable through rag_query
+        without the user clicking anything. The approval card also offers
+        "add directly to context", which pastes the paper's text into the
+        conversation instead (no index; suits large-context models).
 
         Args:
             arxiv_id: arXiv identifier (e.g. "2301.12345") or full URL.
-            scope: "session" (default), "project", or "context" (session
-                documents + attached directly to the conversation context).
+            scope: "session" (default) or "project".
+            destination: "index" (default) or "context". The user's choice on
+                the approval card overrides this.
 
         Returns:
             Success message with paper details, or an error string.
@@ -1579,11 +1622,18 @@ def create_add_arxiv_paper_tool(
         from tensortruth.api.deps import get_document_service
         from tensortruth.utils.validation import validate_arxiv_id
 
-        # Validate scope
-        if scope not in ("session", "project", "context"):
+        # Legacy alias: scope="context" used to mean session + attach to context
+        if scope == "context":
+            scope = "session"
+            destination = "context"
+
+        # Validate scope / destination
+        if scope not in ("session", "project"):
+            return f"Error: scope must be 'session' or 'project', got '{scope}'"
+        if destination not in ("index", "context"):
             return (
-                "Error: scope must be 'session', 'project' or 'context', "
-                f"got '{scope}'"
+                "Error: destination must be 'index' or 'context', "
+                f"got '{destination}'"
             )
 
         if scope == "project" and not project_id:
@@ -1595,10 +1645,9 @@ def create_add_arxiv_paper_tool(
         assert (scope != "project") or (project_id is not None)
         scope_id: str = project_id if scope == "project" else session_id  # type: ignore[assignment]
         scope_type = "project" if scope == "project" else "session"
-        # Session adds are attached to the conversation context automatically:
-        # the user should never have to click "Build Index" before the agent
-        # can read a paper it just added.
-        add_to_context = scope in ("session", "context")
+        # Indexing is the default; context is an opt-in alternative (either
+        # requested by the agent or chosen by the user on the approval card).
+        add_to_context = destination == "context"
 
         # Validate arXiv ID
         normalized = validate_arxiv_id(arxiv_id)
@@ -1616,13 +1665,31 @@ def create_add_arxiv_paper_tool(
                 f"Download arXiv:{normalized} and attach it directly to the "
                 "conversation context (no index)."
                 if add_to_context
-                else f"Download arXiv:{normalized} and add it to {scope} documents."
+                else (
+                    f"Download arXiv:{normalized}, add it to {scope} documents "
+                    "and index it for search."
+                )
             ),
             details={
                 "arxiv_id": normalized,
                 "url": f"https://arxiv.org/abs/{normalized}",
                 "scope": scope,
                 "in_context": add_to_context,
+                # Extra choice rendered as a third button on the approval card
+                "alternatives": (
+                    []
+                    if add_to_context
+                    else [
+                        {
+                            "id": "context",
+                            "label": "Add directly to context",
+                            "description": (
+                                "Skip indexing; paste the full text into this "
+                                "conversation instead (large-context models)."
+                            ),
+                        }
+                    ]
+                ),
             },
             session_id=session_id,
         )
@@ -1631,6 +1698,9 @@ def create_add_arxiv_paper_tool(
             return "User rejected the proposal to add the arXiv paper."
         if outcome == "expired":
             return "Confirmation timed out for adding the arXiv paper."
+        if outcome == "context":
+            # User explicitly chose the context buffer over indexing.
+            add_to_context = True
 
         # Emit progress
         await _emit(
@@ -1762,13 +1832,40 @@ def create_add_arxiv_paper_tool(
                 "build the index from the documents panel if they want RAG search."
             )
 
+        # Default destination: index. Queue the build so the paper becomes
+        # searchable without the user clicking anything.
+        await _emit(
+            progress_emitter,
+            ToolProgress(
+                tool_id="add_arxiv_paper",
+                phase="indexing",
+                message="Queuing index build...",
+            ),
+        )
+        task_id = await _queue_index_build(scope_id, scope_type)
+
+        if task_id:
+            return (
+                f"Successfully added arXiv paper to {scope} documents and "
+                f"queued an index build (task {task_id}).\n"
+                f"Title: {paper.title}\n"
+                f"Authors: {authors_short}\n"
+                f"Doc ID: {metadata.pdf_id}\n"
+                "Indexing runs in the background (a few minutes for a long "
+                "paper). Until it finishes you cannot quote the paper's body, "
+                "so do not claim to have read it; once it is indexed, rag_query "
+                "will find it. Do NOT ask the user to click 'Build Index' — no "
+                "action is needed from them."
+            )
+
         return (
             f"Successfully added arXiv paper to {scope} documents.\n"
             f"Title: {paper.title}\n"
             f"Authors: {authors_short}\n"
             f"Doc ID: {metadata.pdf_id}\n"
-            "This paper is not attached to the conversation context, so you "
-            "cannot quote its body. Do not claim to have read it."
+            "It is not indexed yet and not attached to the context, so you "
+            "cannot quote its body. You can start indexing yourself with the "
+            "build_index tool; do not ask the user to click anything."
         )
 
     return FunctionTool.from_defaults(
@@ -1780,11 +1877,12 @@ def create_add_arxiv_paper_tool(
             "until they respond. Use when the user asks to save/add/download an "
             "arXiv paper they found or mentioned. Accepts arXiv IDs like "
             "'2301.12345' or full URLs. "
-            "Papers added to a session (scope='session', the default) are also "
-            "attached to the conversation context automatically, so you can "
-            "read and quote them immediately without any index build — never "
-            "ask the user to click 'Build Index' just to discuss a paper. "
-            "scope='project' stores the paper in the project instead."
+            "Indexing is the default destination: the paper is stored and an "
+            "index build is queued automatically, so never ask the user to "
+            "click 'Build Index'. The approval card also offers 'Add directly "
+            "to context', which pastes the paper's text into the conversation "
+            "instead of indexing it (large-context models only). Use "
+            "destination='context' when the user explicitly asks for that."
         ),
         fn_schema=AddArxivPaperInput,
     )

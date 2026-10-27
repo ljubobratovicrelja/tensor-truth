@@ -129,6 +129,17 @@ export async function rejectToolConfirmation(confirmationId: string): Promise<vo
   await apiPost(`/tool-confirmations/${confirmationId}/reject`);
 }
 
+/**
+ * Resolve a confirmation with a tool-defined outcome (e.g. "context" for
+ * add_arxiv_paper, which offers an alternative to indexing).
+ */
+export async function resolveToolConfirmation(
+  confirmationId: string,
+  outcome: string
+): Promise<void> {
+  await apiPost(`/tool-confirmations/${confirmationId}/resolve`, { outcome });
+}
+
 // WebSocket factory
 export function createWebSocket(sessionId: string): WebSocket {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";

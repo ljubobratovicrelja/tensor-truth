@@ -8,10 +8,12 @@ import {
   Trash2,
   Loader2,
   ShieldQuestion,
+  FileInput,
 } from "lucide-react";
 import {
   approveToolConfirmation,
   rejectToolConfirmation,
+  resolveToolConfirmation,
   getToolConfirmationStatus,
 } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -111,6 +113,27 @@ export function ConfirmationCard({ request, isLive }: ConfirmationCardProps) {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to approve");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** Tool-offered alternative to plain approval (e.g. "add to context"). */
+  const alternative =
+    ((details.alternatives as
+      | { id: string; label: string; description?: string }[]
+      | undefined) ?? [])[0] ?? null;
+
+  const handleAlternative = async () => {
+    if (!alternative) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await resolveToolConfirmation(request.confirmation_id, alternative.id);
+      setStatus("approved");
+      resolveConfirmationRequest(request.confirmation_id, "approved");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply choice");
     } finally {
       setLoading(false);
     }
@@ -220,6 +243,17 @@ export function ConfirmationCard({ request, isLive }: ConfirmationCardProps) {
             <Check className="h-3 w-3" />
             Approve
           </button>
+          {alternative && (
+            <button
+              onClick={handleAlternative}
+              disabled={loading}
+              title={alternative.description}
+              className="border-border bg-muted/40 hover:bg-muted inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+            >
+              <FileInput className="h-3 w-3" />
+              {alternative.label}
+            </button>
+          )}
           <button
             onClick={handleReject}
             disabled={loading}

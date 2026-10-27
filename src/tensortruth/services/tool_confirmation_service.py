@@ -125,7 +125,10 @@ class ToolConfirmationService:
 
         Args:
             confirmation_id: The confirmation to resolve.
-            outcome: "approved" or "rejected".
+            outcome: "approved", "rejected", or a tool-defined alternative id
+                (e.g. "context" for add_arxiv_paper). Alternatives are terminal
+                and reported as ``approved`` in ``status`` so existing UI
+                checks keep working; the exact choice is kept in ``_outcome``.
 
         Raises:
             ValueError: If confirmation not found or already resolved.
@@ -139,7 +142,9 @@ class ToolConfirmationService:
                 f"Confirmation '{confirmation_id}' already {confirmation.status}"
             )
 
-        confirmation.status = outcome
+        confirmation.status = (
+            outcome if outcome in ("approved", "rejected") else "approved"
+        )
         confirmation._outcome = outcome
         confirmation._event.set()
         logger.info("Resolved confirmation %s: %s", confirmation_id, outcome)
