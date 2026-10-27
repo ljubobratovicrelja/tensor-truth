@@ -1,9 +1,24 @@
 import { useCallback } from "react";
-import { FileText, FileCode, Link, Trash2, Loader2, Hammer, Check } from "lucide-react";
+import {
+  FileText,
+  FileCode,
+  Link,
+  Trash2,
+  Loader2,
+  Hammer,
+  Check,
+  Pin,
+  PinOff,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useDocuments, useDeleteDocument, useBuildIndex } from "@/hooks";
+import {
+  useDocuments,
+  useDeleteDocument,
+  useBuildIndex,
+  useSetDocumentContext,
+} from "@/hooks";
 import { useTaskProgress } from "@/hooks/useTasks";
 import type { ScopeType } from "@/api/types";
 import { DocumentUploader } from "./DocumentUploader";
@@ -14,6 +29,11 @@ interface DocumentListProps {
   scopeType: ScopeType;
   buildTaskId: string | null;
   onBuildTaskIdChange: (id: string | null) => void;
+}
+
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) return `${tokens}`;
+  return `${(tokens / 1000).toFixed(1)}k`;
 }
 
 function formatFileSize(bytes: number): string {
@@ -42,6 +62,7 @@ export function DocumentList({
   const { data, isLoading } = useDocuments(scopeId, scopeType);
   const deleteDoc = useDeleteDocument();
   const buildIdx = useBuildIndex();
+  const setContext = useSetDocumentContext();
 
   const onTaskError = useCallback(
     (task: { error?: string | null }) => {
@@ -72,6 +93,18 @@ export function DocumentList({
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Delete failed";
       toast.error(`Failed to delete document: ${msg}`);
+    }
+  };
+
+  const handleToggleContext = async (docId: string, inContext: boolean) => {
+    try {
+      await setContext.mutateAsync({ scopeId, scopeType, docId, inContext });
+      toast.success(
+        inContext ? "Document attached to context" : "Document detached from context"
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Update failed";
+      toast.error(`Failed to update context attachment: ${msg}`);
     }
   };
 
@@ -165,6 +198,20 @@ export function DocumentList({
                         New
                       </span>
                     )}
+                    {doc.in_context && (
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 gap-1 px-1.5 py-0 text-[10px] font-medium"
+                      >
+                        <Pin className="h-2.5 w-2.5" />
+                        In context
+                        {doc.context_tokens != null && (
+                          <span className="text-muted-foreground">
+                            &middot; ~{formatTokens(doc.context_tokens)} tok
+                          </span>
+                        )}
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-muted-foreground text-xs">
                     {doc.page_count > 0 && <>{doc.page_count} pages &middot; </>}
@@ -172,15 +219,35 @@ export function DocumentList({
                   </p>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDelete(doc.doc_id)}
-                disabled={deleteDoc.isPending}
-                className="shrink-0"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex shrink-0 items-center">
+                {scopeType === "session" && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleToggleContext(doc.doc_id, !doc.in_context)}
+                    disabled={setContext.isPending}
+                    title={
+                      doc.in_context
+                        ? "Remove from chat context (keeps the document)"
+                        : "Attach directly to chat context (no index)"
+                    }
+                  >
+                    {doc.in_context ? (
+                      <PinOff className="h-4 w-4" />
+                    ) : (
+                      <Pin className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDelete(doc.doc_id)}
+                  disabled={deleteDoc.isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           ))}
         </div>

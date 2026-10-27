@@ -375,6 +375,10 @@ export interface DocumentListItem {
   page_count: number;
   uploaded_at?: string | null;
   is_indexed?: boolean;
+  /** Attached directly to the session chat context (no index). */
+  in_context?: boolean;
+  /** Approximate token cost of the in-context text. */
+  context_tokens?: number | null;
 }
 
 export interface DocumentListResponse {
@@ -389,16 +393,26 @@ export interface DocumentUploadResponse {
   filename: string;
   file_size: number;
   page_count: number;
+  in_context?: boolean;
+  context_tokens?: number | null;
+}
+
+export interface DocumentContextResponse {
+  doc_id: string;
+  in_context: boolean;
+  context_tokens?: number | null;
 }
 
 export interface TextUploadRequest {
   content: string;
   filename: string;
+  in_context?: boolean;
 }
 
 export interface UrlUploadRequest {
   url: string;
   context?: string;
+  in_context?: boolean;
 }
 
 export interface ArxivLookupResponse {
@@ -413,6 +427,7 @@ export interface ArxivLookupResponse {
 
 export interface ArxivUploadRequest {
   arxiv_id: string;
+  in_context?: boolean;
 }
 
 export interface FileUrlInfoResponse {
@@ -425,6 +440,7 @@ export interface FileUrlInfoResponse {
 
 export interface FileUrlUploadRequest {
   url: string;
+  in_context?: boolean;
 }
 
 // Indexing config types

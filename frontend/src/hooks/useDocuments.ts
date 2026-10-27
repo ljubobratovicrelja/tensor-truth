@@ -15,6 +15,7 @@ import {
   updateIndexingConfig,
   addCatalogModule,
   removeCatalogModule,
+  setDocumentContext,
 } from "@/api/documents";
 import type {
   ArxivUploadRequest,
@@ -46,11 +47,13 @@ export function useUploadDocument() {
       scopeId,
       scopeType,
       file,
+      inContext = false,
     }: {
       scopeId: string;
       scopeType: ScopeType;
       file: File;
-    }) => uploadDocument(scopeId, scopeType, file),
+      inContext?: boolean;
+    }) => uploadDocument(scopeId, scopeType, file, inContext),
     onSuccess: (_, { scopeId, scopeType }) => {
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.documents(scopeType, scopeId),
@@ -60,6 +63,29 @@ export function useUploadDocument() {
           queryKey: QUERY_KEYS.project(scopeId),
         });
       }
+    },
+  });
+}
+
+export function useSetDocumentContext() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      scopeId,
+      scopeType,
+      docId,
+      inContext,
+    }: {
+      scopeId: string;
+      scopeType: ScopeType;
+      docId: string;
+      inContext: boolean;
+    }) => setDocumentContext(scopeId, scopeType, docId, inContext),
+    onSuccess: (_, { scopeId, scopeType }) => {
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.documents(scopeType, scopeId),
+      });
     },
   });
 }

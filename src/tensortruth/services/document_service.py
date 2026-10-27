@@ -237,6 +237,127 @@ class DocumentService:
             self._metadata_store.set(doc_id, metadata)
             self._metadata_store.save()
 
+    # ------------------------------------------------------------------
+    # Direct-to-context attachments (no vector index)
+    # ------------------------------------------------------------------
+
+    def _find_markdown(self, doc_id: str) -> Optional[Path]:
+        """Find the markdown file belonging to ``doc_id`` in this scope."""
+        for md_path in self.get_all_markdown_files():
+            if md_path.stem == doc_id or md_path.stem.startswith(f"{doc_id}_"):
+                return md_path
+        return None
+
+    def _find_pdf(self, doc_id: str) -> Optional[Path]:
+        """Find the PDF file belonging to ``doc_id`` in this scope."""
+        for pdf_path in self.get_all_pdf_files():
+            if pdf_path.stem == doc_id or pdf_path.stem.startswith(f"{doc_id}_"):
+                return pdf_path
+        return None
+
+    def ensure_markdown(self, doc_id: str) -> Optional[Path]:
+        """Return the document's markdown text path, converting a PDF if needed.
+
+        Uploaded text/URL documents already live as markdown. PDFs are
+        converted with the fast pymupdf converter (not marker) because this
+        path only needs readable text, not high-fidelity math.
+        """
+        md_path = self._find_markdown(doc_id)
+        if md_path is not None:
+            return md_path
+
+        pdf_path = self._find_pdf(doc_id)
+        if pdf_path is None:
+            return None
+
+        try:
+            return self.convert_to_markdown(pdf_path, use_marker=False)
+        except Exception:
+            logger.exception("Failed to extract markdown for %s", doc_id)
+            return None
+
+    def set_in_context(self, doc_id: str, in_context: bool = True) -> Optional[int]:
+        """Mark (or unmark) a document as attached directly to the context.
+
+        Args:
+            doc_id: Document identifier.
+            in_context: True to attach, False to detach.
+
+        Returns:
+            Character count of the extracted text when attaching, else None.
+
+        Raises:
+            ValueError: If attaching a document with no readable text.
+        """
+        from datetime import datetime, timezone
+
+        metadata = dict(self.metadata_cache.get(doc_id) or {})
+
+        if not in_context:
+            metadata.pop("in_context", None)
+            metadata.pop("context_chars", None)
+            metadata.pop("context_added_at", None)
+            self.metadata_cache[doc_id] = metadata
+            if self._metadata_store is not None:
+                self._metadata_store.set(doc_id, metadata)
+                self._metadata_store.save()
+            return None
+
+        md_path = self.ensure_markdown(doc_id)
+        if md_path is None or not md_path.exists():
+            raise ValueError(f"No extracted text available for document {doc_id}")
+
+        text = md_path.read_text(encoding="utf-8")
+        metadata["in_context"] = True
+        metadata["context_chars"] = len(text)
+        metadata["context_added_at"] = datetime.now(timezone.utc).isoformat()
+        self.metadata_cache[doc_id] = metadata
+        if self._metadata_store is not None:
+            self._metadata_store.set(doc_id, metadata)
+            self._metadata_store.save()
+        return len(text)
+
+    def is_in_context(self, doc_id: str) -> bool:
+        """Whether the document is attached directly to the conversation context."""
+        return bool((self.metadata_cache.get(doc_id) or {}).get("in_context"))
+
+    def get_context_documents(self) -> List[Dict]:
+        """Return in-context documents with their full extracted text.
+
+        Returns:
+            List of ``{"doc_id", "filename", "text", "chars"}`` dicts.
+        """
+        from tensortruth.api.routes.documents import get_display_name
+
+        documents: List[Dict] = []
+        for doc_id, metadata in list(self.metadata_cache.items()):
+            if not (metadata or {}).get("in_context"):
+                continue
+
+            md_path = self._find_markdown(doc_id)
+            if md_path is None or not md_path.exists():
+                logger.warning(
+                    "Document %s is marked in-context but its text is missing; "
+                    "skipping",
+                    doc_id,
+                )
+                continue
+
+            text = md_path.read_text(encoding="utf-8")
+            filename = metadata.get("display_name")
+            if not filename:
+                pdf_path = self._find_pdf(doc_id)
+                filename = get_display_name(pdf_path or md_path)
+            documents.append(
+                {
+                    "doc_id": doc_id,
+                    "filename": filename,
+                    "text": text,
+                    "chars": len(text),
+                }
+            )
+        return documents
+
     def _persist_metadata(self) -> None:
         """Persist current metadata cache to disk via the store."""
         if self._metadata_store is not None:

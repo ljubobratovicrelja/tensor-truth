@@ -26,6 +26,8 @@ from .document import (
     CatalogModuleAddRequest,
     CatalogModuleAddResponse,
     CatalogModuleRemoveResponse,
+    DocumentContextRequest,
+    DocumentContextResponse,
     DocumentListItem,
     DocumentListResponse,
     DocumentUploadResponse,
@@ -155,6 +157,8 @@ __all__ = [
     # Document
     "ArxivLookupResponse",
     "ArxivUploadRequest",
+    "DocumentContextRequest",
+    "DocumentContextResponse",
     "DocumentUploadResponse",
     "DocumentListItem",
     "DocumentListResponse",

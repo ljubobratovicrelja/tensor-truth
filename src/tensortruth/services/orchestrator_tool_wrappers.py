@@ -71,7 +71,9 @@ class AddArxivPaperInput(BaseModel):
         default="session",
         description=(
             'Where to add the paper: "session" (default) adds to the '
-            'current chat session, "project" adds to the parent project.'
+            'current chat session, "project" adds to the parent project, '
+            '"context" attaches its full text to the session conversation '
+            "context (no vector index needed — best for large-context models)."
         ),
     )
 
@@ -1463,13 +1465,19 @@ def create_add_arxiv_paper_tool(
 
         Use this tool when the user asks you to add, save, or download an arXiv
         paper to their session or project. The user will be prompted to approve
-        the download; the tool blocks until they respond. The paper will appear
-        in the documents panel and must be indexed before it can be used for
-        RAG queries.
+        the download; the tool blocks until they respond.
+
+        With scope="session" or "project" the paper must be vector-indexed
+        before it can be used for RAG queries. With scope="context" the paper's
+        extracted text is attached directly to this session's conversation
+        context instead — no index build is needed, which is the right choice
+        when the user wants to discuss the paper immediately and the model has
+        a large context window.
 
         Args:
             arxiv_id: arXiv identifier (e.g. "2301.12345") or full URL.
-            scope: "session" (default) or "project".
+            scope: "session" (default), "project", or "context" (session
+                documents + attached directly to the conversation context).
 
         Returns:
             Success message with paper details, or an error string.
@@ -1483,8 +1491,11 @@ def create_add_arxiv_paper_tool(
         from tensortruth.utils.validation import validate_arxiv_id
 
         # Validate scope
-        if scope not in ("session", "project"):
-            return f"Error: scope must be 'session' or 'project', got '{scope}'"
+        if scope not in ("session", "project", "context"):
+            return (
+                "Error: scope must be 'session', 'project' or 'context', "
+                f"got '{scope}'"
+            )
 
         if scope == "project" and not project_id:
             return (
@@ -1494,7 +1505,8 @@ def create_add_arxiv_paper_tool(
 
         assert (scope != "project") or (project_id is not None)
         scope_id: str = project_id if scope == "project" else session_id  # type: ignore[assignment]
-        scope_type = scope
+        scope_type = "project" if scope == "project" else "session"
+        add_to_context = scope == "context"
 
         # Validate arXiv ID
         normalized = validate_arxiv_id(arxiv_id)
@@ -1508,11 +1520,17 @@ def create_add_arxiv_paper_tool(
             tool_name="add_arxiv_paper",
             action_type="add_document",
             title=f"Add arXiv paper {normalized}",
-            summary=f"Download arXiv:{normalized} and add it to {scope} documents.",
+            summary=(
+                f"Download arXiv:{normalized} and attach it directly to the "
+                "conversation context (no index)."
+                if add_to_context
+                else f"Download arXiv:{normalized} and add it to {scope} documents."
+            ),
             details={
                 "arxiv_id": normalized,
                 "url": f"https://arxiv.org/abs/{normalized}",
                 "scope": scope,
+                "in_context": add_to_context,
             },
             session_id=session_id,
         )
@@ -1596,9 +1614,51 @@ def create_add_arxiv_paper_tool(
             logger.error("Failed to upload arXiv paper %s: %s", arxiv_id, e)
             return f"Error: downloaded paper but failed to upload — {e}"
 
+        context_chars: int | None = None
+        if add_to_context:
+            await _emit(
+                progress_emitter,
+                ToolProgress(
+                    tool_id="add_arxiv_paper",
+                    phase="extracting",
+                    message="Extracting paper text for context...",
+                ),
+            )
+            try:
+                with get_document_service(scope_id, scope_type) as doc_service:
+                    context_chars = doc_service.set_in_context(metadata.pdf_id, True)
+            except Exception as e:
+                logger.error(
+                    "Failed to attach arXiv paper %s to context: %s", arxiv_id, e
+                )
+                return (
+                    f"Error: uploaded the paper ({metadata.pdf_id}) but could not "
+                    f"extract its text for direct context — {e}. It can still be "
+                    "indexed from the documents panel."
+                )
+
         authors_short = (
             authors_str[:80] + "..." if len(authors_str) > 80 else authors_str
         )
+
+        if add_to_context:
+            from tensortruth.services.context_documents import CHARS_PER_TOKEN
+
+            tokens = (context_chars or 0) // CHARS_PER_TOKEN
+            return (
+                f"Successfully added arXiv paper to the conversation context "
+                f"(no index needed).\n"
+                f"Title: {paper.title}\n"
+                f"Authors: {authors_short}\n"
+                f"Doc ID: {metadata.pdf_id}\n"
+                f"Attached directly to context: ~{tokens:,} tokens.\n"
+                "The full text will be included in the prompt on this and "
+                "subsequent turns, so you can answer questions about it right "
+                "away without any RAG query. If it exceeds the context budget "
+                "it is truncated automatically and the truncation is reported "
+                "to you in the prompt."
+            )
+
         return (
             f"Successfully added arXiv paper to {scope} documents.\n"
             f"Title: {paper.title}\n"
@@ -1618,8 +1678,12 @@ def create_add_arxiv_paper_tool(
             "until they respond. Use when the user asks to save/add/download an "
             "arXiv paper they found or mentioned. Accepts arXiv IDs like "
             "'2301.12345' or full URLs. "
-            "After success, always remind the user to build the index from the "
-            "documents panel so the paper becomes searchable."
+            "Use scope='context' to attach the paper's full text directly to "
+            "the conversation context instead of indexing it — no index build "
+            "is needed and the agent can read it immediately. "
+            "After success with scope='session'/'project', always remind the "
+            "user to build the index from the documents panel so the paper "
+            "becomes searchable."
         ),
         fn_schema=AddArxivPaperInput,
     )

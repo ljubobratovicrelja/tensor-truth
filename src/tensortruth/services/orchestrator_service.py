@@ -45,6 +45,11 @@ from tensortruth.core.providers import (
 from tensortruth.core.providers import (
     resolve_model_from_params,
 )
+from tensortruth.services.context_documents import (
+    CONTEXT_BUDGET_PCT,
+    MIN_HISTORY_PCT,
+    build_context_block,
+)
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
 from tensortruth.services.orchestrator_tool_wrappers import (
     ProgressEmitter,
@@ -619,7 +624,9 @@ class OrchestratorService:
     # System prompt composition
     # ------------------------------------------------------------------
 
-    def _build_system_prompt(self, tools: List[FunctionTool]) -> str:
+    def _build_system_prompt(
+        self, tools: List[FunctionTool], in_context_block: str = ""
+    ) -> str:
         """Compose the orchestrator system prompt.
 
         Includes:
@@ -627,10 +634,12 @@ class OrchestratorService:
         - Active indexed modules with descriptions
         - Tool usage guidance
         - Custom instructions / project metadata
+        - Attached (direct-to-context) documents, when present
         - Explicit tool list to prevent hallucination
 
         Args:
             tools: The full tool set (used to list available tool names).
+            in_context_block: Pre-rendered attached-documents block.
 
         Returns:
             Complete system prompt string.
@@ -786,6 +795,10 @@ class OrchestratorService:
                 f"Additional instructions from the user:\n{self._custom_instructions}"
             )
 
+        # --- Attached documents (direct-to-context, no index) ---
+        if in_context_block:
+            sections.append(in_context_block)
+
         # --- Explicit tool list (prevent hallucination) ---
         tool_names = [t.metadata.name for t in tools if t.metadata.name]
         tool_list_str = ", ".join(tool_names)
@@ -795,6 +808,83 @@ class OrchestratorService:
         )
 
         return "\n\n".join(sections)
+
+    # ------------------------------------------------------------------
+    # Direct-to-context documents (no index)
+    # ------------------------------------------------------------------
+
+    def _load_in_context_documents(self) -> List[Dict[str, Any]]:
+        """Load documents attached directly to this session's context.
+
+        These live in the session's ``markdown/`` directory and are flagged
+        in the session metadata; no vector index is involved.
+        """
+        if not self._session_id:
+            return []
+        try:
+            from tensortruth.api.deps import get_document_service
+
+            with get_document_service(self._session_id, "session") as doc_service:
+                return doc_service.get_context_documents()
+        except Exception:
+            logger.exception("Failed to load in-context documents for session")
+            return []
+
+    def _context_documents_budget(
+        self, base_system_prompt: str, user_prompt: str
+    ) -> int:
+        """Character budget for the attached-documents block.
+
+        Capped at ``CONTEXT_BUDGET_PCT`` of the window and never more than
+        what remains after the base system prompt, the user prompt, the
+        response buffer and the minimum history reserve.
+        """
+        total_chars = self._context_window * CHARS_PER_TOKEN
+        response_buffer = int(total_chars * RESPONSE_BUFFER_PCT)
+        history_reserve = int(total_chars * MIN_HISTORY_PCT)
+        available = (
+            total_chars
+            - len(base_system_prompt)
+            - len(user_prompt)
+            - response_buffer
+            - history_reserve
+        )
+        cap = int(total_chars * CONTEXT_BUDGET_PCT)
+        return max(0, min(cap, available))
+
+    def _build_in_context_block(
+        self,
+        documents: List[Dict[str, Any]],
+        base_system_prompt: str,
+        user_prompt: str,
+    ) -> str:
+        """Render the attached-documents block and log truncation decisions."""
+        if not documents:
+            return ""
+
+        budget = self._context_documents_budget(base_system_prompt, user_prompt)
+        block, report = build_context_block(documents, budget)
+
+        for entry in report:
+            if not entry["included"]:
+                logger.warning(
+                    "In-context document %s (%s) did not fit the budget "
+                    "(%d chars, budget=%d) and was omitted from the prompt",
+                    entry["doc_id"],
+                    entry["filename"],
+                    entry["chars"],
+                    budget,
+                )
+            elif entry["truncated"]:
+                logger.warning(
+                    "In-context document %s (%s) truncated: kept %d of %d chars",
+                    entry["doc_id"],
+                    entry["filename"],
+                    entry["kept_chars"],
+                    entry["chars"],
+                )
+
+        return block
 
     # ------------------------------------------------------------------
     # Context window budgeting
@@ -888,6 +978,7 @@ class OrchestratorService:
         history: List[Dict[str, Any]],
         prompt: str,
         tools: List[FunctionTool],
+        in_context_block: str = "",
     ) -> List[Dict[str, Any]]:
         """Transform context before every LLM call.
 
@@ -919,7 +1010,9 @@ class OrchestratorService:
                         step["output"] = output[:500] + "...[truncated]"
 
         # 3. Budget history
-        system_prompt = self._build_system_prompt(tools)
+        system_prompt = self._build_system_prompt(
+            tools, in_context_block=in_context_block
+        )
         budgeted = self._budget_history(history, system_prompt, prompt)
 
         # 4. Recent-N floor — ensure at least 6 newest messages
@@ -1056,6 +1149,10 @@ class OrchestratorService:
         if progress_emitter:
             progress_emitter(boot_phase)
 
+        # Documents attached directly to the session context (no index).
+        # Loaded per execution so adding/removing one takes effect next turn.
+        in_context_documents = self._load_in_context_documents()
+
         # ---- Phase 3 Lever 1: No-tools fast path ----
         try:
             from tensortruth.api.deps import get_config_service as _get_cfg
@@ -1065,7 +1162,12 @@ class OrchestratorService:
         except Exception:
             _use_fast = False
 
-        if _use_fast and not images and self._is_simple_prompt(prompt):
+        if (
+            _use_fast
+            and not images
+            and not in_context_documents
+            and self._is_simple_prompt(prompt)
+        ):
             fast_text = await self._try_fast_path(prompt)
             if fast_text is not None:
                 logger.info(
@@ -1096,14 +1198,22 @@ class OrchestratorService:
                 self._context_window,
             )
 
-        # Compose system prompt
-        system_prompt = self._build_system_prompt(tools)
+        # Compose system prompt; attached documents get their own section
+        # under a hard char budget (see _context_documents_budget).
+        base_system_prompt = self._build_system_prompt(tools)
+        in_context_block = self._build_in_context_block(
+            in_context_documents, base_system_prompt, prompt
+        )
+        system_prompt = self._build_system_prompt(
+            tools, in_context_block=in_context_block
+        )
 
         # Phase 5: context transform (budget + compaction + floor)
         budgeted_history = self._transform_context(
             chat_history or [],
             prompt,
             tools,
+            in_context_block=in_context_block,
         )
 
         # Convert budgeted history to LlamaIndex ChatMessage objects

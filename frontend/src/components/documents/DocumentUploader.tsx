@@ -5,7 +5,9 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -77,6 +79,9 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
   const [urlValue, setUrlValue] = useState("");
   const [urlContext, setUrlContext] = useState("");
 
+  // "Add directly to context" applies to every tab (session scope only)
+  const [inContext, setInContext] = useState(false);
+
   // arXiv tab state
   const [arxivInput, setArxivInput] = useState("");
   const debouncedArxivId = useDebounce(arxivInput.trim(), 500);
@@ -101,10 +106,14 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
             await uploadText.mutateAsync({
               scopeId,
               scopeType,
-              data: { content: text, filename: file.name },
+              data: {
+                content: text,
+                filename: file.name,
+                in_context: inContext,
+              },
             });
           } else {
-            await uploadDoc.mutateAsync({ scopeId, scopeType, file });
+            await uploadDoc.mutateAsync({ scopeId, scopeType, file, inContext });
           }
         })
       );
@@ -122,7 +131,7 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
         toast.error(msg);
       }
     },
-    [scopeId, scopeType, uploadDoc, uploadText]
+    [scopeId, scopeType, uploadDoc, uploadText, inContext]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -150,7 +159,7 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
         await uploadFileUrlMutation.mutateAsync({
           scopeId,
           scopeType,
-          data: { url: fileUrlInfo.data.url },
+          data: { url: fileUrlInfo.data.url, in_context: inContext },
         });
         clearStaged();
         toast.success("File added");
@@ -169,7 +178,11 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
       await uploadUrlMutation.mutateAsync({
         scopeId,
         scopeType,
-        data: { url: trimmedUrl, context: urlContext.trim() || undefined },
+        data: {
+          url: trimmedUrl,
+          context: urlContext.trim() || undefined,
+          in_context: inContext,
+        },
       });
       setUrlValue("");
       setUrlContext("");
@@ -188,7 +201,7 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
       await uploadArxivMutation.mutateAsync({
         scopeId,
         scopeType,
-        data: { arxiv_id: id },
+        data: { arxiv_id: id, in_context: inContext },
       });
       setArxivInput("");
       toast.success("arXiv paper added");
@@ -223,6 +236,29 @@ export function DocumentUploader({ scopeId, scopeType }: DocumentUploaderProps) 
           arXiv
         </TabsTrigger>
       </TabsList>
+
+      {scopeType === "session" && (
+        <div className="mt-3 flex items-start gap-2 rounded-md border border-dashed px-3 py-2.5">
+          <Checkbox
+            id="in-context-toggle"
+            checked={inContext}
+            onCheckedChange={(value) => setInContext(value === true)}
+            className="mt-0.5"
+          />
+          <div className="space-y-0.5">
+            <Label
+              htmlFor="in-context-toggle"
+              className="cursor-pointer text-xs font-medium"
+            >
+              Add directly to context (no indexing)
+            </Label>
+            <p className="text-muted-foreground text-[11px] leading-snug">
+              Pastes the full document text into the chat instead of building an index.
+              Only worth it with large-context models — big documents eat the window.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Files tab */}
       <TabsContent value="files" className="mt-3">

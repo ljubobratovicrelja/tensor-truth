@@ -12,6 +12,8 @@ class DocumentUploadResponse(BaseModel):
     filename: str
     file_size: int
     page_count: int
+    in_context: bool = False
+    context_tokens: Optional[int] = None
 
 
 class DocumentListItem(BaseModel):
@@ -23,6 +25,8 @@ class DocumentListItem(BaseModel):
     page_count: int
     uploaded_at: Optional[str] = None
     is_indexed: bool = False
+    in_context: bool = False
+    context_tokens: Optional[int] = None
 
 
 class DocumentListResponse(BaseModel):
@@ -39,6 +43,7 @@ class UrlUploadRequest(BaseModel):
 
     url: str
     context: str = ""
+    in_context: bool = False
 
 
 class TextUploadRequest(BaseModel):
@@ -46,6 +51,7 @@ class TextUploadRequest(BaseModel):
 
     content: str
     filename: str
+    in_context: bool = False
 
 
 class CatalogModuleAddRequest(BaseModel):
@@ -78,6 +84,21 @@ class ArxivUploadRequest(BaseModel):
     """Request body for uploading an arXiv paper as PDF."""
 
     arxiv_id: str
+    in_context: bool = False
+
+
+class DocumentContextRequest(BaseModel):
+    """Request body for toggling a document's direct-to-context attachment."""
+
+    in_context: bool = True
+
+
+class DocumentContextResponse(BaseModel):
+    """Response for a direct-to-context attachment toggle."""
+
+    doc_id: str
+    in_context: bool
+    context_tokens: Optional[int] = None
 
 
 class FileUrlInfoResponse(BaseModel):
@@ -94,6 +115,7 @@ class FileUrlUploadRequest(BaseModel):
     """Request body for downloading and uploading a file from a URL."""
 
     url: str
+    in_context: bool = False
 
 
 class CatalogModuleRemoveResponse(BaseModel):

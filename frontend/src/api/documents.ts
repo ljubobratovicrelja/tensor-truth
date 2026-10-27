@@ -13,6 +13,7 @@ import type {
   UrlUploadRequest,
   ReindexResponse,
   CatalogModuleAddResponse,
+  DocumentContextResponse,
 } from "./types";
 
 function scopePrefix(scopeType: ScopeType, scopeId: string): string {
@@ -29,12 +30,14 @@ export async function listDocuments(
 export async function uploadDocument(
   scopeId: string,
   scopeType: ScopeType,
-  file: File
+  file: File,
+  inContext = false
 ): Promise<DocumentUploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
+  const query = inContext ? "?in_context=true" : "";
   return apiPostFormData<DocumentUploadResponse>(
-    `${scopePrefix(scopeType, scopeId)}/upload`,
+    `${scopePrefix(scopeType, scopeId)}/upload${query}`,
     formData
   );
 }
@@ -67,6 +70,18 @@ export async function deleteDocument(
   docId: string
 ): Promise<void> {
   return apiDelete(`${scopePrefix(scopeType, scopeId)}/${docId}`);
+}
+
+export async function setDocumentContext(
+  scopeId: string,
+  scopeType: ScopeType,
+  docId: string,
+  inContext: boolean
+): Promise<DocumentContextResponse> {
+  return apiPatch<DocumentContextResponse, { in_context: boolean }>(
+    `${scopePrefix(scopeType, scopeId)}/${docId}/context`,
+    { in_context: inContext }
+  );
 }
 
 export async function buildIndex(

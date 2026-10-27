@@ -25,6 +25,8 @@ from tensortruth.api.schemas import (
     CatalogModuleAddRequest,
     CatalogModuleAddResponse,
     CatalogModuleRemoveResponse,
+    DocumentContextRequest,
+    DocumentContextResponse,
     DocumentListItem,
     DocumentListResponse,
     DocumentUploadResponse,
@@ -39,6 +41,7 @@ from tensortruth.api.schemas import (
 from tensortruth.app_utils.paths import get_indexes_dir
 from tensortruth.indexing.metadata import sanitize_model_id
 from tensortruth.services import ProjectService, TaskRunner
+from tensortruth.services.context_documents import CHARS_PER_TOKEN
 from tensortruth.utils.validation import validate_arxiv_id
 
 logger = logging.getLogger(__name__)
@@ -108,6 +111,31 @@ def get_display_name(file_path: Path) -> str:
     return strip_doc_prefix(file_path.name)
 
 
+def _context_tokens(chars: Optional[int]) -> Optional[int]:
+    """Approximate token cost of in-context text (matches orchestrator)."""
+    if chars is None:
+        return None
+    return chars // CHARS_PER_TOKEN
+
+
+def _mark_in_context(
+    scope_id: str, scope_type: str, doc_id: str, in_context: bool = True
+) -> Optional[int]:
+    """Attach/detach a document to the conversation context.
+
+    Returns the approximate token cost when attaching, else None.
+
+    Raises:
+        HTTPException: 400 when the document has no extractable text.
+    """
+    try:
+        with get_document_service(scope_id, scope_type) as doc_service:
+            chars = doc_service.set_in_context(doc_id, in_context)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _context_tokens(chars)
+
+
 def _mtime_iso(path: Path) -> Optional[str]:
     """Return file mtime as ISO-8601 UTC string, or None on error."""
     try:
@@ -126,6 +154,12 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
         index_dir = doc_service.get_index_path()
         builder = doc_service._get_index_builder()
         indexed_doc_ids = builder.get_indexed_doc_ids() if has_index else set()
+        # Snapshot in-context flags so document listings can badge them.
+        context_docs = {
+            doc_id: metadata.get("context_chars")
+            for doc_id, metadata in doc_service.get_metadata_cache().items()
+            if (metadata or {}).get("in_context")
+        }
 
     # Compute index mtime if an index exists
     index_updated_at: Optional[str] = None
@@ -162,6 +196,8 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
                 page_count=page_count,
                 uploaded_at=_mtime_iso(pdf_path),
                 is_indexed=is_indexed,
+                in_context=doc_id in context_docs,
+                context_tokens=_context_tokens(context_docs.get(doc_id)),
             )
         )
 
@@ -182,6 +218,8 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
                 page_count=0,
                 uploaded_at=_mtime_iso(md_path),
                 is_indexed=is_indexed,
+                in_context=md_doc_id in context_docs,
+                context_tokens=_context_tokens(context_docs.get(md_doc_id)),
             )
         )
 
@@ -194,52 +232,79 @@ def _list_documents(scope_id: str, scope_type: str) -> DocumentListResponse:
 
 
 def _upload_pdf(
-    scope_id: str, scope_type: str, content: bytes, filename: str
+    scope_id: str,
+    scope_type: str,
+    content: bytes,
+    filename: str,
+    in_context: bool = False,
 ) -> DocumentUploadResponse:
     """Upload a PDF document to a scope."""
     with get_document_service(scope_id, scope_type) as doc_service:
         metadata = doc_service.upload(content, filename)
 
+    tokens = (
+        _mark_in_context(scope_id, scope_type, metadata.pdf_id) if in_context else None
+    )
     return DocumentUploadResponse(
         doc_id=metadata.pdf_id,
         filename=metadata.filename,
         file_size=metadata.file_size,
         page_count=metadata.page_count,
+        in_context=in_context,
+        context_tokens=tokens,
     )
 
 
 def _upload_text(
-    scope_id: str, scope_type: str, content: str, filename: str
+    scope_id: str,
+    scope_type: str,
+    content: str,
+    filename: str,
+    in_context: bool = False,
 ) -> DocumentUploadResponse:
     """Upload a text/markdown document to a scope."""
     with get_document_service(scope_id, scope_type) as doc_service:
         metadata = doc_service.upload_text(content.encode("utf-8"), filename)
 
+    tokens = (
+        _mark_in_context(scope_id, scope_type, metadata.pdf_id) if in_context else None
+    )
     return DocumentUploadResponse(
         doc_id=metadata.pdf_id,
         filename=metadata.filename,
         file_size=metadata.file_size,
         page_count=metadata.page_count,
+        in_context=in_context,
+        context_tokens=tokens,
     )
 
 
 def _upload_url(
-    scope_id: str, scope_type: str, url: str, context: str = ""
+    scope_id: str,
+    scope_type: str,
+    url: str,
+    context: str = "",
+    in_context: bool = False,
 ) -> DocumentUploadResponse:
     """Upload content from a URL to a scope."""
     with get_document_service(scope_id, scope_type) as doc_service:
         metadata = doc_service.upload_url(url, context=context)
 
+    tokens = (
+        _mark_in_context(scope_id, scope_type, metadata.pdf_id) if in_context else None
+    )
     return DocumentUploadResponse(
         doc_id=metadata.pdf_id,
         filename=metadata.filename,
         file_size=metadata.file_size,
         page_count=metadata.page_count,
+        in_context=in_context,
+        context_tokens=tokens,
     )
 
 
 async def _upload_arxiv(
-    scope_id: str, scope_type: str, arxiv_id: str
+    scope_id: str, scope_type: str, arxiv_id: str, in_context: bool = False
 ) -> DocumentUploadResponse:
     """Download an arXiv paper PDF and upload it to a scope."""
     normalized = validate_arxiv_id(arxiv_id)
@@ -276,6 +341,8 @@ async def _upload_arxiv(
 
     filename = f"{title}.pdf"
     result = _upload_pdf(scope_id, scope_type, pdf_bytes, filename)
+    if in_context:
+        result = result.model_copy(update={"in_context": False, "context_tokens": None})
 
     # Persist arXiv metadata so the indexer skips LLM extraction
     from tensortruth.utils.metadata import format_authors as _fmt_authors
@@ -292,6 +359,12 @@ async def _upload_arxiv(
     }
     with get_document_service(scope_id, scope_type) as doc_service:
         doc_service.set_metadata(result.doc_id, arxiv_metadata)
+
+    if in_context:
+        tokens = _mark_in_context(scope_id, scope_type, result.doc_id)
+        result = result.model_copy(
+            update={"in_context": True, "context_tokens": tokens}
+        )
 
     return result
 
@@ -462,7 +535,7 @@ async def probe_file_url(
 
 
 async def _upload_file_url(
-    scope_id: str, scope_type: str, url: str
+    scope_id: str, scope_type: str, url: str, in_context: bool = False
 ) -> DocumentUploadResponse:
     """Download a file from a URL and upload it to a scope."""
     _validate_url(url)
@@ -491,13 +564,16 @@ async def _upload_file_url(
     filename = _filename_from_response(resp, url)
 
     if content_type == "application/pdf":
-        return _upload_pdf(scope_id, scope_type, resp.content, filename)
+        return _upload_pdf(
+            scope_id, scope_type, resp.content, filename, in_context=in_context
+        )
     elif content_type in ("text/plain", "text/markdown"):
         return _upload_text(
             scope_id,
             scope_type,
             resp.content.decode("utf-8", errors="replace"),
             filename,
+            in_context=in_context,
         )
     else:
         raise HTTPException(
@@ -533,6 +609,9 @@ async def upload_session_document(
     session_id: str,
     session_service: SessionServiceDep,
     file: UploadFile = File(...),
+    in_context: bool = Query(
+        False, description="Attach the document text to the chat context (no index)"
+    ),
 ) -> DocumentUploadResponse:
     """Upload a PDF document to a session."""
     data = session_service.load()
@@ -543,7 +622,9 @@ async def upload_session_document(
         raise HTTPException(status_code=400, detail="File must be a PDF")
 
     content = await file.read()
-    return _upload_pdf(session_id, "session", content, file.filename)
+    return _upload_pdf(
+        session_id, "session", content, file.filename, in_context=in_context
+    )
 
 
 @router.post(
@@ -561,7 +642,9 @@ async def upload_session_text(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return _upload_text(session_id, "session", body.content, body.filename)
+    return _upload_text(
+        session_id, "session", body.content, body.filename, in_context=body.in_context
+    )
 
 
 @router.post(
@@ -580,7 +663,9 @@ async def upload_session_url(
         raise HTTPException(status_code=404, detail="Session not found")
 
     try:
-        return _upload_url(session_id, "session", body.url, body.context)
+        return _upload_url(
+            session_id, "session", body.url, body.context, in_context=body.in_context
+        )
     except (ValueError, ConnectionError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -600,7 +685,9 @@ async def upload_session_arxiv(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return await _upload_arxiv(session_id, "session", body.arxiv_id)
+    return await _upload_arxiv(
+        session_id, "session", body.arxiv_id, in_context=body.in_context
+    )
 
 
 @router.post(
@@ -618,7 +705,34 @@ async def upload_session_file_url(
     if session_id not in data.sessions:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return await _upload_file_url(session_id, "session", body.url)
+    return await _upload_file_url(
+        session_id, "session", body.url, in_context=body.in_context
+    )
+
+
+@router.patch(
+    "/sessions/{session_id}/documents/{doc_id}/context",
+    response_model=DocumentContextResponse,
+)
+async def set_session_document_context(
+    session_id: str,
+    doc_id: str,
+    body: DocumentContextRequest,
+    session_service: SessionServiceDep,
+) -> DocumentContextResponse:
+    """Attach or detach a document from the session's chat context.
+
+    Attached documents are pasted verbatim into the LLM context on every
+    turn — no vector index is built or needed.
+    """
+    data = session_service.load()
+    if session_id not in data.sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    tokens = _mark_in_context(session_id, "session", doc_id, body.in_context)
+    return DocumentContextResponse(
+        doc_id=doc_id, in_context=body.in_context, context_tokens=tokens
+    )
 
 
 @router.delete("/sessions/{session_id}/documents/{doc_id}", status_code=204)
