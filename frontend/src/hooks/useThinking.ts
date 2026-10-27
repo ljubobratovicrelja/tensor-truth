@@ -1,4 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getModelReasoningLevels } from "@/api/providers";
 import type { ModelsResponse } from "@/api/types";
 
 const COOKIE_NAME = "thinking_preference";
@@ -14,7 +16,8 @@ function writeThinkingCookie(value: string): void {
 
 interface ThinkingSupport {
   thinking: boolean;
-  levels: boolean;
+  /** Reasoning-effort values the model's endpoint actually accepts. */
+  levels: string[];
 }
 
 interface UseThinkingOptions {
@@ -52,14 +55,49 @@ export function paramToThinking(value: unknown): string {
 function getThinkingSupport(
   modelsData: ModelsResponse | undefined,
   effectiveModel: string
-): ThinkingSupport {
-  if (!modelsData?.models?.length) return { thinking: false, levels: false };
+): { thinking: boolean; staticLevels: string[] } {
+  if (!modelsData?.models?.length) return { thinking: false, staticLevels: [] };
   const model = modelsData.models.find((m) => m.name === effectiveModel);
   const caps = model?.capabilities ?? [];
   return {
     thinking: caps.includes("thinking"),
-    levels: caps.includes("thinking_levels"),
+    // Ollama models report level support statically; OpenAI-compatible models
+    // are probed (see useReasoningLevels) because the endpoint decides.
+    staticLevels: caps.includes("thinking_levels")
+      ? ["low", "medium", "high"]
+      : (model?.reasoning_levels ?? []),
   };
+}
+
+/**
+ * Ask the backend which reasoning levels the selected model accepts.
+ *
+ * The backend pings the endpoint once per candidate level and caches the
+ * answer; this hook only runs for OpenAI-compatible models that advertise
+ * thinking support and have not been probed already.
+ */
+export function useReasoningLevels(
+  modelsData: ModelsResponse | undefined,
+  effectiveModel: string
+): string[] {
+  const model = modelsData?.models?.find((m) => m.name === effectiveModel);
+  const staticLevels = getThinkingSupport(modelsData, effectiveModel).staticLevels;
+  const canProbe =
+    !!model &&
+    model.provider_type === "openai_compatible" &&
+    (model.capabilities ?? []).includes("thinking") &&
+    staticLevels.length === 0;
+
+  const { data } = useQuery({
+    queryKey: ["reasoning-levels", model?.provider_id ?? "", effectiveModel],
+    queryFn: () => getModelReasoningLevels(model!.provider_id, effectiveModel, false),
+    enabled: canProbe,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
+
+  if (staticLevels.length > 0) return staticLevels;
+  return data?.levels ?? [];
 }
 
 /**
@@ -72,10 +110,11 @@ export function useThinking({
 }: UseThinkingOptions): UseThinkingReturn {
   const [thinking, setThinkingState] = useState(() => readThinkingCookie());
 
-  const thinkingSupport = useMemo(
-    () => getThinkingSupport(modelsData, effectiveModel),
-    [modelsData, effectiveModel]
-  );
+  const probedLevels = useReasoningLevels(modelsData, effectiveModel);
+  const thinkingSupport = useMemo<ThinkingSupport>(() => {
+    const base = getThinkingSupport(modelsData, effectiveModel);
+    return { thinking: base.thinking, levels: probedLevels };
+  }, [modelsData, effectiveModel, probedLevels]);
 
   const handleModelChange = useCallback(
     (model: string) => {
@@ -83,7 +122,8 @@ export function useThinking({
       const support = getThinkingSupport(modelsData, model);
       if (
         !support.thinking ||
-        (!support.levels && ["low", "medium", "high"].includes(thinking))
+        (support.staticLevels.length === 0 &&
+          ["minimal", "low", "medium", "high"].includes(thinking))
       ) {
         setThinkingState("auto");
         writeThinkingCookie("auto");
@@ -110,8 +150,9 @@ export function useThinkingSupport(
   modelsData: ModelsResponse | undefined,
   effectiveModel: string
 ): ThinkingSupport {
-  return useMemo(
-    () => getThinkingSupport(modelsData, effectiveModel),
-    [modelsData, effectiveModel]
-  );
+  const probedLevels = useReasoningLevels(modelsData, effectiveModel);
+  return useMemo(() => {
+    const base = getThinkingSupport(modelsData, effectiveModel);
+    return { thinking: base.thinking, levels: probedLevels };
+  }, [modelsData, effectiveModel, probedLevels]);
 }

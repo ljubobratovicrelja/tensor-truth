@@ -7,6 +7,7 @@ import type {
   ProviderTestRequest,
   ProviderTestResponse,
   DiscoverResponse,
+  ReasoningLevelsResponse,
 } from "./types";
 
 export async function getProviders(): Promise<ProviderListResponse> {
@@ -38,4 +39,17 @@ export async function testProviderUrl(
 
 export async function discoverServers(): Promise<DiscoverResponse> {
   return apiGet<DiscoverResponse>("/providers/discover");
+}
+
+export async function getModelReasoningLevels(
+  providerId: string,
+  modelName: string,
+  refresh = false
+): Promise<ReasoningLevelsResponse> {
+  const q = refresh ? "?refresh=true" : "";
+  // modelName may contain slashes (e.g. "openai/gpt-5.5"); the backend route
+  // uses a :path converter, so pass it through unencoded.
+  return apiGet<ReasoningLevelsResponse>(
+    `/providers/${encodeURIComponent(providerId)}/models/${modelName}/reasoning-levels${q}`
+  );
 }

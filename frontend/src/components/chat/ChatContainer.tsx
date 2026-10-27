@@ -122,7 +122,7 @@ export function ChatContainer() {
     const caps = info?.capabilities ?? [];
     return {
       thinking: caps.includes("thinking"),
-      levels: caps.includes("thinking_levels"),
+      levels: (info?.reasoning_levels ?? []).length > 0,
     };
   };
 
@@ -236,13 +236,10 @@ export function ChatContainer() {
     // Reset thinking if incompatible with new model
     if (model && newParams.thinking !== undefined) {
       const support = modelThinkingSupport(model);
-      const thinkingVal = newParams.thinking;
-      if (
-        !support.thinking ||
-        (!support.levels &&
-          typeof thinkingVal === "string" &&
-          ["low", "medium", "high"].includes(thinkingVal))
-      ) {
+      // Level support for OpenAI-compatible models is probed lazily, so an
+      // empty list here does not mean unsupported — only drop the preference
+      // when the model cannot reason at all.
+      if (!support.thinking) {
         newParams = Object.fromEntries(
           Object.entries(newParams).filter(([k]) => k !== "thinking")
         );

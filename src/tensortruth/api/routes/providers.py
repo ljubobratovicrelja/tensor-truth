@@ -1,13 +1,15 @@
 """Provider management routes."""
 
+import asyncio
 import ipaddress
 import logging
 import socket
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests as _requests
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from tensortruth.api.deps import ConfigServiceDep
 from tensortruth.api.schemas.provider import (
@@ -26,6 +28,18 @@ from tensortruth.app_utils.config_schema import ProviderConfig
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class ReasoningLevelsResponse(BaseModel):
+    """Reasoning-effort levels a model accepts (probed against the endpoint)."""
+
+    model: str
+    provider_id: str
+    levels: List[str] = []
+    accepted: List[str] = []
+    reasoning: bool = False
+    cached: bool = False
+    checked_at: Optional[float] = None
 
 
 def _validate_provider_url(url: str) -> None:
@@ -451,6 +465,58 @@ def discover_servers(config_service: ConfigServiceDep) -> DiscoverResponse:
             )
 
     return DiscoverResponse(servers=servers)
+
+
+@router.get(
+    "/{provider_id}/models/{model_name:path}/reasoning-levels",
+    response_model=ReasoningLevelsResponse,
+)
+async def get_model_reasoning_levels(
+    provider_id: str,
+    model_name: str,
+    refresh: bool = False,
+) -> ReasoningLevelsResponse:
+    """Probe an OpenAI-compatible model for the reasoning levels it accepts.
+
+    The probe sends one tiny completion per candidate ``reasoning_effort``
+    value and reports the ones the endpoint accepts. Results are cached
+    on disk (7 days) so the model dropdown does not hammer the API; pass
+    ``?refresh=true`` to re-probe.
+    """
+    from tensortruth.core.providers import ProviderRegistry
+    from tensortruth.core.reasoning_levels import probe_and_cache, selectable_levels
+
+    provider = ProviderRegistry.get_instance().get_provider(provider_id)
+    if provider is None:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    if provider.type != "openai_compatible":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Reasoning-level probing is only supported for "
+                "openai_compatible providers"
+            ),
+        )
+
+    probe = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: probe_and_cache(
+            provider_id=provider_id,
+            base_url=provider.base_url,
+            api_key=provider.api_key,
+            model_name=model_name,
+            force=refresh,
+        ),
+    )
+    return ReasoningLevelsResponse(
+        model=model_name,
+        provider_id=provider_id,
+        levels=selectable_levels(probe),
+        accepted=probe.get("levels") or [],
+        reasoning=bool(probe.get("reasoning")),
+        cached=bool(probe.get("cached")),
+        checked_at=probe.get("checked_at"),
+    )
 
 
 def _reset_provider_registry() -> None:

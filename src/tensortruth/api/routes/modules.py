@@ -41,6 +41,9 @@ class ModelInfo(BaseModel):
     modified_at: str = ""
     capabilities: List[str] = []
     status: str | None = None
+    # Reasoning-effort values the endpoint accepted for this model, when it
+    # has been probed (see /providers/{id}/models/{name}/reasoning-levels).
+    reasoning_levels: List[str] = []
 
 
 class ModelsResponse(BaseModel):
@@ -156,6 +159,7 @@ async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
     """List available models from all configured providers."""
     from tensortruth.core.ollama import supports_thinking_levels
     from tensortruth.core.providers import ProviderRegistry
+    from tensortruth.core.reasoning_levels import levels_for_model
 
     registry = ProviderRegistry.get_instance()
 
@@ -272,6 +276,7 @@ async def list_models(config_service: ConfigServiceDep) -> ModelsResponse:
                         provider_type="openai_compatible",
                         display_name=static.get("display_name") or name,
                         capabilities=caps,
+                        reasoning_levels=levels_for_model(provider.id, name),
                     )
                 )
                 has_any_models = True

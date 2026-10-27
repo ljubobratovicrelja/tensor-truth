@@ -341,6 +341,18 @@ export interface ModelInfo {
   modified_at: string;
   capabilities?: string[];
   status?: "loaded" | "loading" | "unloaded" | null;
+  /** Reasoning-effort values the endpoint accepted (probed, cached). */
+  reasoning_levels?: string[];
+}
+
+export interface ReasoningLevelsResponse {
+  model: string;
+  provider_id: string;
+  levels: string[];
+  accepted: string[];
+  reasoning: boolean;
+  cached: boolean;
+  checked_at?: number | null;
 }
 
 export interface ModelsResponse {

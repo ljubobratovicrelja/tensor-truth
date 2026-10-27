@@ -534,11 +534,35 @@ def _create_openai_like_llm(model_ref: ModelReference, **kwargs) -> LLM:
     from llama_index.llms.openai_like import OpenAILike
 
     ctx = kwargs.pop("context_window", model_ref.context_window)
-    # OpenAILike does not use additional_kwargs; translate to max_tokens
+    # OpenAILike forwards additional_kwargs into the request body, so that is
+    # where provider-specific knobs (reasoning_effort) go.
     additional = kwargs.pop("additional_kwargs", {})
     max_tokens = kwargs.pop("max_tokens", additional.get("num_predict", None))
-    # Strip Ollama-specific kwargs
-    kwargs.pop("thinking", None)
+    kwargs.pop("num_ctx", None)
+    kwargs.pop("num_predict", None)
+
+    # Thinking preference -> reasoning_effort. Level strings are sent verbatim;
+    # an explicit "off" is only sent as "none" when this endpoint accepted it
+    # during probing (otherwise it would be a 400 on many gateways).
+    thinking = kwargs.pop("thinking", None)
+    if isinstance(thinking, str) and thinking.lower() in (
+        "minimal",
+        "low",
+        "medium",
+        "high",
+    ):
+        additional["reasoning_effort"] = thinking.lower()
+    elif thinking is False:
+        try:
+            from tensortruth.core.reasoning_levels import get_cached
+
+            cached = get_cached(model_ref.provider_id, model_ref.model_name)
+            if cached and "none" in (cached.get("levels") or []):
+                additional["reasoning_effort"] = "none"
+        except Exception:
+            pass
+    additional.pop("num_ctx", None)
+    additional.pop("num_predict", None)
 
     llm_kwargs: Dict[str, Any] = {
         "model": model_ref.model_name,
@@ -554,6 +578,9 @@ def _create_openai_like_llm(model_ref: ModelReference, **kwargs) -> LLM:
     # Enable function calling if model advertises tool support
     if "tools" in model_ref.capabilities:
         llm_kwargs.setdefault("is_function_calling_model", True)
+
+    if additional:
+        llm_kwargs["additional_kwargs"] = additional
 
     # Pass through remaining kwargs
     llm_kwargs.update(kwargs)
@@ -600,32 +627,46 @@ _tool_llm_instance: Optional[LLM] = None
 _tool_llm_key: Optional[Tuple] = None
 
 
-def get_orchestrator_llm(model_ref: ModelReference, context_window: int) -> LLM:
-    """Get or create a cached LLM for orchestrator use (thinking disabled)."""
+def get_orchestrator_llm(
+    model_ref: ModelReference,
+    context_window: int,
+    thinking: Optional[Union[bool, str]] = None,
+) -> LLM:
+    """Get or create a cached LLM for orchestrator use.
+
+    ``thinking`` comes from the session's Think selector. When it is a level
+    string ("low"/"medium"/"high"/"minimal") it is forwarded as
+    ``reasoning_effort`` for OpenAI-compatible providers; ``None``/``False``
+    keep the previous behaviour (no explicit effort).
+    """
     global _orchestrator_llm_instance, _orchestrator_llm_key
+
+    resolved_thinking: Union[bool, str, None] = thinking
 
     key = (
         model_ref.provider_id,
         model_ref.model_name,
         model_ref.base_url,
         context_window,
+        str(resolved_thinking),
     )
 
     if _orchestrator_llm_instance is not None and _orchestrator_llm_key == key:
         return _orchestrator_llm_instance
 
     logger.info(
-        "Creating orchestrator LLM: provider=%s, model=%s, ctx=%d",
+        "Creating orchestrator LLM: provider=%s, model=%s, ctx=%d, thinking=%s",
         model_ref.provider_id,
         model_ref.model_name,
         context_window,
+        resolved_thinking,
     )
 
     _orchestrator_llm_instance = create_llm(
         model_ref,
         temperature=0.2,
         context_window=context_window,
-        thinking=False,
+        thinking=resolved_thinking,
         request_timeout=120.0,
     )
     _orchestrator_llm_key = key

@@ -293,7 +293,7 @@ export function ChatInput({
                 value={thinking}
                 onValueChange={onThinkingChange}
                 disabled={isStreaming}
-                supportsLevels={thinkingSupport.levels}
+                levels={thinkingSupport.levels}
               />
             )}
           </div>

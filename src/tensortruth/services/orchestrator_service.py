@@ -187,6 +187,9 @@ def _compute_cache_identity(
             custom_instructions,
             project_metadata,
             (session_params or {}).get("provider_id"),
+            # Think level changes the LLM (reasoning_effort), so it must
+            # invalidate the cached agent instance.
+            (session_params or {}).get("thinking"),
             max_iterations,
         )
     )
@@ -1081,6 +1084,7 @@ class OrchestratorService:
             self._llm = _providers_get_orchestrator_llm(
                 self._model_ref,
                 self._context_window,
+                thinking=self._session_params.get("thinking"),
             )
 
         fast_system = (
@@ -1198,6 +1202,7 @@ class OrchestratorService:
             self._llm = _providers_get_orchestrator_llm(
                 self._model_ref,
                 self._context_window,
+                thinking=self._session_params.get("thinking"),
             )
 
         # Compose system prompt; attached documents get their own section

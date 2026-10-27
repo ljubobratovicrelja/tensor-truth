@@ -316,7 +316,7 @@ export function WelcomePage() {
                     value={thinking}
                     onValueChange={setThinking}
                     disabled={isSubmitting}
-                    supportsLevels={thinkingSupport.levels}
+                    levels={thinkingSupport.levels}
                   />
                 )}
               </div>
