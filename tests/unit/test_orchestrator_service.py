@@ -1794,6 +1794,77 @@ class TestAgentStreamEventRouting:
         assert text1 in token_text
         assert text2 in token_text
 
+    @pytest.mark.asyncio
+    async def test_tool_calling_step_emits_narration_segment(
+        self, tool_service, rag_service_not_loaded
+    ):
+        """Text from a step that calls a tool is marked as narration."""
+        from llama_index.core.agent.workflow import (
+            AgentOutput,
+            AgentStream,
+        )
+        from llama_index.core.agent.workflow import ToolCall as LIToolCall
+        from llama_index.core.base.llms.types import ChatMessage, MessageRole
+        from llama_index.core.llms.llm import ToolSelection
+
+        svc = _create_service(tool_service, rag_service_not_loaded)
+
+        narration = "Let me check the README first."
+        answer = "Direct answer."
+        selection = ToolSelection(
+            tool_id="tc_1",
+            tool_name="fetch_page",
+            tool_kwargs={"url": "https://example.com"},
+        )
+        tc = LIToolCall(
+            tool_name="fetch_page",
+            tool_kwargs={"url": "https://example.com"},
+            tool_id="tc_1",
+        )
+        # The final AgentOutput also carries prior tool results at runtime, so
+        # make sure that bookkeeping does not make it look like narration.
+        final_output = AgentOutput(
+            response=ChatMessage(role=MessageRole.ASSISTANT, content=answer),
+            tool_calls=[],
+            current_agent_name="orchestrator",
+        )
+        final_output.tool_calls.append(MagicMock())
+
+        async def stream_events():
+            yield AgentStream(
+                delta=narration, response="", current_agent_name="orchestrator"
+            )
+            yield AgentOutput(
+                response=ChatMessage(role=MessageRole.ASSISTANT, content=narration),
+                tool_calls=[selection],
+                current_agent_name="orchestrator",
+            )
+            yield tc
+            yield AgentStream(
+                delta=answer, response="", current_agent_name="orchestrator"
+            )
+            yield final_output
+
+        handler = _make_awaitable_handler(stream_events, answer)
+
+        with (
+            patch(
+                "tensortruth.services.orchestrator_service.LIFunctionAgent",
+                return_value=MagicMock(run=MagicMock(return_value=handler)),
+            ),
+            patch(
+                "tensortruth.services.orchestrator_service._providers_get_orchestrator_llm",
+                return_value=MagicMock(),
+            ),
+        ):
+            events = []
+            async for event in svc.execute("check the readme"):
+                events.append(event)
+
+        narration_events = [e for e in events if e.narration is not None]
+        assert [e.narration for e in narration_events] == [narration]
+        assert all(e.narration != answer for e in narration_events)
+
 
 # ---------------------------------------------------------------
 # Phase 2: Agent Cache

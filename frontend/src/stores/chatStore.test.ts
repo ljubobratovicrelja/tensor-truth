@@ -8,6 +8,7 @@ describe("chatStore", () => {
       isStreaming: false,
       streamingContent: "",
       streamingThinking: "",
+      narrationSegments: [],
       streamingSources: [],
       streamingMetrics: null,
       confidenceLevel: null,
@@ -96,6 +97,19 @@ describe("chatStore", () => {
       useChatStore.getState().appendThinking("think...");
 
       expect(useChatStore.getState().streamingThinking).toBe("Let me think...");
+    });
+
+    it("moves a completed narration step out of the answer", () => {
+      useChatStore.getState().startStreaming("User message");
+
+      useChatStore.getState().appendToken("Let me check the README.");
+      useChatStore.getState().commitNarrationSegment("Let me check the README.");
+      useChatStore.getState().appendToken("Direct answer.");
+
+      expect(useChatStore.getState().streamingContent).toBe("Direct answer.");
+      expect(useChatStore.getState().narrationSegments).toEqual([
+        "Let me check the README.",
+      ]);
     });
 
     it("should clear all streaming state except pendingUserMessage on reset", () => {

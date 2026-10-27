@@ -39,6 +39,8 @@ class OrchestratorStreamResult:
 
     Attributes:
         full_response: Accumulated text from all token events.
+        full_thinking: Accumulated thinking text.
+        narration_segments: Intermediate narration blocks emitted between tools.
         sources: Batched source dicts in API schema format.
         metrics: RAG retrieval metrics (only when RAG was called).
         confidence_level: Derived from RAG result or default "high".
@@ -52,6 +54,7 @@ class OrchestratorStreamResult:
 
     full_response: str = ""
     full_thinking: str = ""
+    narration_segments: List[str] = field(default_factory=list)
     sources: List[Dict[str, Any]] = field(default_factory=list)
     metrics: Optional[Dict[str, Any]] = None
     confidence_level: str = "high"
@@ -89,6 +92,11 @@ def translate_event(event: Any) -> Optional[Dict[str, Any]]:
     # Agent intermediate reasoning delta (ephemeral, not accumulated)
     if getattr(event, "reasoning", None) is not None:
         return {"type": "reasoning", "content": event.reasoning}
+
+    # Agent narration from an intermediate (tool-calling) step. Kept separate
+    # from the final answer so the client can render it as its own block.
+    if getattr(event, "narration", None) is not None:
+        return {"type": "narration", "content": event.narration}
 
     # Token delta
     if event.token is not None:
@@ -178,6 +186,7 @@ class OrchestratorStreamTranslator:
         # Internal accumulation state
         self._full_response = ""
         self._full_thinking = ""
+        self._narration_segments: List[str] = []
         self._rag_sources: List[Dict[str, Any]] = []
         self._web_sources: List[Dict[str, Any]] = []
         self._rag_metrics: Optional[Dict[str, Any]] = None
@@ -254,6 +263,26 @@ class OrchestratorStreamTranslator:
         if event.token is not None:
             self._full_response += event.token
 
+        # Reclassify the tokens belonging to an intermediate step as narration.
+        # The tokens were streamed before the step's tool decision was known;
+        # remove exactly that step's text from the response tail.
+        narration = getattr(event, "narration", None)
+        if narration is not None and narration.strip():
+            self._narration_segments.append(narration)
+            if self._full_response.endswith(narration):
+                self._full_response = self._full_response[: -len(narration)]
+            else:
+                # Defensive fallback: exact suffix matching can fail only if a
+                # transport rebuilt the stream. Drop the last occurrence so the
+                # narration never leaks into the saved answer.
+                idx = self._full_response.rfind(narration)
+                if idx != -1:
+                    self._full_response = (
+                        self._full_response[:idx]
+                        + self._full_response[idx + len(narration) :]
+                    )
+            self._full_response = self._full_response.rstrip()
+
         # Track tool call results for source extraction and step storage
         if event.tool_call_result is not None:
             tcr = event.tool_call_result
@@ -322,6 +351,7 @@ class OrchestratorStreamTranslator:
         result = OrchestratorStreamResult(
             full_response=self._full_response,
             full_thinking=self._full_thinking,
+            narration_segments=self._narration_segments,
             sources=all_sources,
             metrics=self._rag_metrics,
             confidence_level=confidence,
@@ -392,6 +422,8 @@ class OrchestratorStreamTranslator:
         }
         if title_pending:
             msg["title_pending"] = True
+        if result.narration_segments:
+            msg["narration_segments"] = result.narration_segments
         return msg
 
     # ------------------------------------------------------------------

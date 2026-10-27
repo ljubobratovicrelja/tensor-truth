@@ -224,6 +224,7 @@ async def get_messages(
                 content=msg.get("content", ""),
                 sources=msg.get("sources"),
                 thinking=msg.get("thinking"),
+                narration_segments=msg.get("narration_segments"),
                 metrics=msg.get("metrics"),
                 tool_steps=msg.get("tool_steps"),
                 confidence_level=msg.get("confidence_level"),

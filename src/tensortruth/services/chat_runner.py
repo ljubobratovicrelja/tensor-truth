@@ -557,6 +557,8 @@ async def _run_orchestrator_path(
     }
     if result.full_thinking:
         assistant_message["thinking"] = result.full_thinking
+    if result.narration_segments:
+        assistant_message["narration_segments"] = result.narration_segments
     if result.sources:
         assistant_message["sources"] = result.sources
     if result.metrics:

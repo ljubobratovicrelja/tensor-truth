@@ -55,6 +55,8 @@ export interface MessageResponse {
   content: string;
   sources?: SourceNode[] | null;
   thinking?: string | null;
+  /** Intermediate narration blocks emitted while the agent was using tools. */
+  narration_segments?: string[] | null;
   metrics?: RetrievalMetrics | null;
   tool_steps?: ToolStep[] | null;
   confidence_level?: string | null;
@@ -134,6 +136,7 @@ export interface StreamDone {
   title_pending?: boolean;
   input_tokens?: number;
   output_tokens?: number;
+  narration_segments?: string[];
 }
 
 export interface StreamError {
@@ -153,6 +156,12 @@ export interface StreamThinking {
 
 export interface StreamReasoning {
   type: "reasoning";
+  content: string;
+}
+
+/** A completed intermediate narration segment emitted before a tool call. */
+export interface StreamNarration {
+  type: "narration";
   content: string;
 }
 
@@ -265,6 +274,7 @@ export type StreamMessage =
   | StreamTitle
   | StreamThinking
   | StreamReasoning
+  | StreamNarration
   | StreamStatus
   | StreamToolProgress
   | StreamToolPhase

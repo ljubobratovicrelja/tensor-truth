@@ -56,6 +56,7 @@ class StreamDone(BaseModel):
     confidence_level: str = "normal"
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
+    narration_segments: Optional[List[str]] = None
 
 
 class StreamThinking(BaseModel):
@@ -73,6 +74,18 @@ class StreamReasoning(BaseModel):
     """
 
     type: Literal["reasoning"] = "reasoning"
+    content: str
+
+
+class StreamNarration(BaseModel):
+    """WebSocket message for a completed intermediate narration segment.
+
+    The segment's tokens were streamed live before the agent decided to call a
+    tool. This event marks the completed text so clients can move it out of the
+    answer and render it as a distinct narration block.
+    """
+
+    type: Literal["narration"] = "narration"
     content: str
 
 

@@ -29,11 +29,17 @@ from typing import (
     cast,
 )
 
-from llama_index.core.agent.workflow import AgentStream, ToolCall, ToolCallResult
+from llama_index.core.agent.workflow import (
+    AgentOutput,
+    AgentStream,
+    ToolCall,
+    ToolCallResult,
+)
 from llama_index.core.agent.workflow.function_agent import (
     FunctionAgent as LIFunctionAgent,
 )
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
+from llama_index.core.llms.llm import ToolSelection
 from llama_index.core.tools import FunctionTool
 from llama_index.core.workflow.errors import WorkflowRuntimeError
 
@@ -257,6 +263,12 @@ class OrchestratorEvent:
 
     # Intermediate reasoning delta from the FunctionAgent between tool calls
     reasoning: Optional[str] = None
+
+    # Text the FunctionAgent emitted while deciding to call a tool. This is
+    # narration, not the answer: it is streamed live as tokens before the tool
+    # call is known, then reclassified here so consumers can keep it out of the
+    # final response.
+    narration: Optional[str] = None
 
     # Phase-level progress from a tool wrapper (ToolProgress)
     tool_phase: Optional[ToolProgress] = None
@@ -1403,10 +1415,15 @@ class OrchestratorService:
         tool_results_context: List[str] = []
         agent_final_response = ""
         agent_deltas: List[str] = []
+        # Text accumulated for the current LLM step. AgentOutput tells us
+        # whether that step was narration (it requested a tool) or the final
+        # answer, so this buffer is what lets us separate the two.
+        step_text = ""
 
         max_attempts = 2
 
         for attempt in range(max_attempts):
+            step_text = ""
             try:
                 # Build user message — multimodal if images provided
                 if images:
@@ -1438,6 +1455,14 @@ class OrchestratorService:
                 async for event in handler.stream_events():
                     if isinstance(event, ToolCall):
                         tools_called.append(event.tool_name)
+
+                        # A tool call proves the text streamed immediately before
+                        # it was narration, not an answer. AgentOutput normally
+                        # reports this first; this fallback keeps older/mocked
+                        # event streams from leaking narration into the answer.
+                        if step_text.strip():
+                            yield OrchestratorEvent(narration=step_text)
+                            step_text = ""
 
                         # Yield tool call event
                         yield OrchestratorEvent(
@@ -1532,13 +1557,38 @@ class OrchestratorService:
                             )
                         )
 
+                    elif isinstance(event, AgentOutput):
+                        # One LLM step has finished. Its streamed text is either
+                        # narration (this step requested tools) or the answer.
+                        # Tokens were already sent live; this event lets the
+                        # stream translator move the narration out of the final
+                        # response and lets the UI render it as separate blocks.
+                        step_content = step_text
+                        if not step_content and event.response is not None:
+                            step_content = str(event.response.content or "")
+                        # The final AgentOutput also carries the prior tool
+                        # results for run bookkeeping, so "non-empty
+                        # tool_calls" alone is not a tool request. Only a
+                        # ToolSelection means this step asked to call a tool.
+                        requested_tools = any(
+                            isinstance(tc, ToolSelection) for tc in event.tool_calls
+                        )
+                        if requested_tools:
+                            if step_content.strip():
+                                yield OrchestratorEvent(narration=step_content)
+                            # A tool-calling step is never the final answer.
+                            agent_final_response = ""
+                        else:
+                            agent_final_response = step_content
+                        step_text = ""
+
                     elif isinstance(event, AgentStream):
                         # Stream the agent's text directly as the final response
                         # tokens. thinking_delta is forwarded as thinking events.
                         if event.thinking_delta:
                             yield OrchestratorEvent(thinking=event.thinking_delta)
                         if event.delta:
-                            agent_final_response += event.delta
+                            step_text += event.delta
                             agent_deltas.append(event.delta)
                             yield OrchestratorEvent(token=event.delta)
 

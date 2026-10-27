@@ -32,6 +32,7 @@ interface MessageListProps {
   pendingUserMessage?: string | null;
   streamingContent?: string;
   streamingThinking?: string;
+  narrationSegments?: string[];
   streamingSources?: SourceNode[];
   streamingMetrics?: RetrievalMetrics | null;
   streamingToolSteps?: ToolStepWithStatus[];
@@ -52,6 +53,7 @@ export function MessageList({
   pendingUserMessage,
   streamingContent,
   streamingThinking,
+  narrationSegments,
   streamingSources,
   streamingMetrics,
   streamingToolSteps,
@@ -91,6 +93,7 @@ export function MessageList({
       streamingContent,
       streamingThinking,
       streamingReasoning,
+      narrationSegments,
     ],
     enabled: true,
   });
@@ -234,46 +237,53 @@ export function MessageList({
             {/* Streaming: show unified activity box before content appears.
                 Thinking is displayed inside ToolPhaseIndicator (via StreamingIndicator)
                 alongside reasoning — no separate ThinkingBox needed here. */}
-            {isStreaming && !streamingContent && !streamingThinking && (
-              <>
-                {agentProgress ? (
-                  <AgentProgress progress={agentProgress} />
-                ) : (
-                  <StreamingIndicator status={pipelineStatus} />
-                )}
-                {streamingToolSteps && streamingToolSteps.length > 0 && (
-                  <div className="mb-2 px-4">
-                    <ToolSteps
-                      steps={streamingToolSteps}
-                      defaultOpen
-                      confirmationRequests={confirmationRequests}
-                    />
-                  </div>
-                )}
-              </>
-            )}
+            {isStreaming &&
+              !streamingContent &&
+              !streamingThinking &&
+              !(narrationSegments?.length ?? 0) && (
+                <>
+                  {agentProgress ? (
+                    <AgentProgress progress={agentProgress} />
+                  ) : (
+                    <StreamingIndicator status={pipelineStatus} />
+                  )}
+                  {streamingToolSteps && streamingToolSteps.length > 0 && (
+                    <div className="mb-2 px-4">
+                      <ToolSteps
+                        steps={streamingToolSteps}
+                        defaultOpen
+                        confirmationRequests={confirmationRequests}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
             {/* Streaming / transition: show streaming response with thinking and status.
                 After finishStreaming, streamingContent persists (only reset() clears it)
                 so the MessageItem stays mounted until the refetch deduplicates it. */}
-            {(streamingContent || streamingThinking) && !streamingDeduplicated && (
-              <>
-                {agentProgress ? (
-                  <AgentProgress progress={agentProgress} />
-                ) : (
-                  pipelineStatus && <StreamingIndicator status={pipelineStatus} />
-                )}
-                <MessageItem
-                  message={{ role: "assistant", content: streamingContent ?? "" }}
-                  sources={streamingSources}
-                  metrics={streamingMetrics}
-                  thinking={streamingThinking || savedThinking}
-                  toolSteps={streamingToolSteps}
-                  confidenceLevel={confidenceLevel ?? undefined}
-                  isStreaming={!!isStreaming}
-                  confirmationRequests={confirmationRequests}
-                />
-              </>
-            )}
+            {(streamingContent ||
+              streamingThinking ||
+              (narrationSegments?.length ?? 0) > 0) &&
+              !streamingDeduplicated && (
+                <>
+                  {agentProgress ? (
+                    <AgentProgress progress={agentProgress} />
+                  ) : (
+                    pipelineStatus && <StreamingIndicator status={pipelineStatus} />
+                  )}
+                  <MessageItem
+                    message={{ role: "assistant", content: streamingContent ?? "" }}
+                    sources={streamingSources}
+                    metrics={streamingMetrics}
+                    thinking={streamingThinking || savedThinking}
+                    narrationSegments={narrationSegments}
+                    toolSteps={streamingToolSteps}
+                    confidenceLevel={confidenceLevel ?? undefined}
+                    isStreaming={!!isStreaming}
+                    confirmationRequests={confirmationRequests}
+                  />
+                </>
+              )}
           </div>
         )}
       </div>

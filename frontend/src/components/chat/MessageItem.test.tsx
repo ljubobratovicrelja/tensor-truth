@@ -137,6 +137,42 @@ describe("MessageItem", () => {
     });
   });
 
+  describe("narration rendering", () => {
+    it("renders every narration segment as its own block above the answer", () => {
+      const message = {
+        role: "assistant" as const,
+        content: "Here is the answer.",
+        narration_segments: [
+          "Let me check the README.",
+          "The page redirected, so I will fetch the source.",
+        ],
+      };
+      const { container } = render(<MessageItem message={message} />);
+
+      const blocks = container.querySelectorAll('[data-testid="narration-block"]');
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0].textContent).toContain("Let me check the README.");
+      expect(blocks[1].textContent).toContain("The page redirected");
+      expect(container.textContent).toContain("Here is the answer.");
+    });
+
+    it("keeps streaming narration separate from the final answer", () => {
+      const message = { role: "assistant" as const, content: "Final answer." };
+      const { container } = render(
+        <MessageItem
+          message={message}
+          narrationSegments={["Looking at the first result."]}
+          isStreaming
+        />
+      );
+
+      const narration = container.querySelector('[data-testid="assistant-narration"]');
+      const block = container.querySelector('[data-testid="narration-block"]');
+      expect(narration).toBeTruthy();
+      expect(block?.textContent).toContain("Looking at the first result.");
+    });
+  });
+
   describe("user vs assistant styling", () => {
     it("renders user messages with user icon", () => {
       const message = { role: "user" as const, content: "Hello" };
