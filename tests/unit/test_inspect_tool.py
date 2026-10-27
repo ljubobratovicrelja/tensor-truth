@@ -72,9 +72,15 @@ def _record(repo_dir: Path, name: str = "acme/widget") -> RepoRecord:
 
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
-    """A session workspace holding one cloned repository on disk."""
+    """A session workspace holding one cloned repository on disk.
+
+    Layout matches ``repo_workspace``: the checkout lives in
+    ``<scope>/repos/<slug>/repo`` and the metadata sidecar sits beside it, so
+    the metadata never pollutes the work tree.
+    """
     ws = tmp_path / "sessions" / "s-1"
-    repo_dir = ws / "repos" / "acme__widget"
+    slug_dir = ws / "repos" / "acme__widget"
+    repo_dir = slug_dir / "repo"
     (repo_dir / "src").mkdir(parents=True)
     (repo_dir / "README.md").write_text("# Widget\n\nA widget.\n")
     (repo_dir / "src" / "main.py").write_text(
@@ -86,7 +92,7 @@ def workspace(tmp_path: Path) -> Path:
     _git(repo_dir, "commit", "-qm", "initial import")
 
     record = _record(repo_dir)
-    (repo_dir / ".repo_meta.json").write_text(json.dumps(record.to_dict()))
+    (slug_dir / ".repo_meta.json").write_text(json.dumps(record.to_dict()))
     return ws
 
 
@@ -320,7 +326,7 @@ class TestReadOnlyActions:
         tool = create_inspect_tool(
             emitter, session_id="s-1", scope_dir=workspace, context_window=1024
         )
-        (workspace / "repos" / "acme__widget" / "big.txt").write_text(
+        (workspace / "repos" / "acme__widget" / "repo" / "big.txt").write_text(
             "x" * 50_000 + "\n"
         )
 
@@ -360,8 +366,9 @@ class TestNoShell:
             if isinstance(node, ast.Name):
                 assert node.id != "eval"
 
-        assert "shell=True" not in source
-        # The only subprocess entry point allowed is an argv list.
+        # The docstring names the forbidden construct; only the AST is
+        # authoritative: no call may pass shell=True and no subprocess helper
+        # other than an argv-list run may appear.
         assert "subprocess.run(" in source
 
 

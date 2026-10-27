@@ -240,6 +240,7 @@ class TestBuiltinToolNameFiltering:
             "search_focused",
             "add_arxiv_paper",
             "build_index",
+            "inspect",
         }
         assert _WRAPPED_BUILTIN_TOOL_NAMES == expected
 
