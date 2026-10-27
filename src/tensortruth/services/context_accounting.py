@@ -19,10 +19,13 @@ labelled as estimates everywhere they surface.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -72,6 +75,67 @@ class ContextSnapshot:
 
 _snapshots: Dict[str, ContextSnapshot] = {}
 
+#: Snapshots are in-memory for speed but persisted so the meter still shows
+#: measured numbers after a server restart.
+_STATE_PATH = Path.home() / ".tensortruth" / "context_snapshots.json"
+_loaded = False
+
+
+def _persist_locked() -> None:
+    """Write snapshots + static overhead to disk (caller holds the lock)."""
+    try:
+        _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        recent = sorted(_snapshots.items(), key=lambda kv: kv[1].measured_at)[
+            -_MAX_SNAPSHOTS:
+        ]
+        payload = {
+            "static_overhead": _static_overhead,
+            "snapshots": {
+                sid: {
+                    "chars": snap.chars,
+                    "context_window": snap.context_window,
+                    "model_name": snap.model_name,
+                    "messages_included": snap.messages_included,
+                    "messages_total": snap.messages_total,
+                    "measured_at": snap.measured_at,
+                }
+                for sid, snap in recent
+            },
+        }
+        tmp = _STATE_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        os.replace(tmp, _STATE_PATH)
+    except Exception:  # pragma: no cover - persistence is best effort
+        logger.debug("Could not persist context snapshots", exc_info=True)
+
+
+def _ensure_loaded() -> None:
+    """Load persisted state once, before the first read."""
+    global _loaded
+    if _loaded:
+        return
+    with _lock:
+        if _loaded:
+            return
+        _loaded = True
+        try:
+            payload = json.loads(_STATE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        for key, value in (payload.get("static_overhead") or {}).items():
+            _static_overhead[key] = int(value)
+        for sid, raw in (payload.get("snapshots") or {}).items():
+            _snapshots[sid] = ContextSnapshot(
+                session_id=sid,
+                chars={k: int(v) for k, v in (raw.get("chars") or {}).items()},
+                context_window=int(raw.get("context_window") or 0),
+                model_name=raw.get("model_name"),
+                messages_included=int(raw.get("messages_included") or 0),
+                messages_total=int(raw.get("messages_total") or 0),
+                measured_at=float(raw.get("measured_at") or 0.0),
+            )
+
+
 #: Last measured system/tools/modules overhead. These are constant for a given
 #: model + module set, so an unmeasured session can still show them instead of
 #: pretending they are zero.
@@ -108,11 +172,13 @@ def record_snapshot(
             oldest = sorted(_snapshots.items(), key=lambda kv: kv[1].measured_at)
             for stale_id, _ in oldest[: len(_snapshots) - _MAX_SNAPSHOTS]:
                 _snapshots.pop(stale_id, None)
+        _persist_locked()
     return snapshot
 
 
 def get_snapshot(session_id: str) -> Optional[ContextSnapshot]:
     """Return the last measured snapshot for a session, if any."""
+    _ensure_loaded()
     with _lock:
         return _snapshots.get(session_id)
 
@@ -121,6 +187,7 @@ def clear_snapshot(session_id: str) -> None:
     """Drop a session's snapshot (after compaction or message deletion)."""
     with _lock:
         _snapshots.pop(session_id, None)
+        _persist_locked()
 
 
 def record_static_overhead(chars: Dict[str, int]) -> None:
@@ -137,10 +204,12 @@ def record_static_overhead(chars: Dict[str, int]) -> None:
                 "modules": max(0, int(chars.get("modules", 0))),
             }
         )
+        _persist_locked()
 
 
 def get_static_overhead() -> Dict[str, int]:
     """Last measured system/tools/modules char counts (empty before a turn)."""
+    _ensure_loaded()
     with _lock:
         return dict(_static_overhead)
 

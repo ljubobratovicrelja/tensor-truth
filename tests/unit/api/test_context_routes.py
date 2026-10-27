@@ -44,6 +44,8 @@ def _session(messages, params=None):
 
 @pytest.fixture
 def client_factory(tmp_path, monkeypatch):
+    monkeypatch.setattr(acc, "_STATE_PATH", tmp_path / "context_snapshots.json")
+
     def _make(session):
         service = FakeSessionService(session, tmp_path)
         config = SimpleNamespace(history_cleaning=SimpleNamespace(enabled=False))

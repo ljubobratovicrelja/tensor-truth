@@ -8,12 +8,16 @@ from tensortruth.services import context_accounting as acc
 
 
 @pytest.fixture(autouse=True)
-def _clean():
+def _clean(tmp_path, monkeypatch):
+    """Isolate module state and persistence from the real ~/.tensortruth."""
+    monkeypatch.setattr(acc, "_STATE_PATH", tmp_path / "context_snapshots.json")
     acc.clear_all()
     acc._static_overhead.clear()
+    acc._loaded = False
     yield
     acc.clear_all()
     acc._static_overhead.clear()
+    acc._loaded = False
 
 
 @pytest.mark.unit
@@ -79,6 +83,29 @@ class TestSnapshots:
         acc.record_snapshot("s1", {"system": 1})
         acc.clear_snapshot("s1")
         assert acc.report_for_session("s1") is None
+
+    def test_survives_a_restart(self, tmp_path, monkeypatch):
+        """Snapshots and static overhead are persisted, then reloaded."""
+        acc.record_static_overhead({"system": 500, "tools": 900, "modules": 0})
+        acc.record_snapshot(
+            "s1",
+            {"system": 500, "tools": 900, "history": 400},
+            context_window=100_000,
+            messages_included=4,
+            messages_total=6,
+        )
+        assert acc._STATE_PATH.exists()
+
+        # Simulate a fresh process: wipe memory, keep the file.
+        acc._snapshots.clear()
+        acc._static_overhead.clear()
+        acc._loaded = False
+
+        report = acc.report_for_session("s1")
+        assert report is not None and report["measured"] is True
+        assert report["context_window"] == 100_000
+        assert report["messages_included"] == 4
+        assert acc.get_static_overhead()["tools"] == 900
 
     def test_cache_is_bounded(self):
         for i in range(acc._MAX_SNAPSHOTS + 20):
