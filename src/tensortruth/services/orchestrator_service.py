@@ -48,9 +48,7 @@ from tensortruth.core.prompts import current_date_context
 from tensortruth.core.providers import (
     get_orchestrator_llm as _providers_get_orchestrator_llm,
 )
-from tensortruth.core.providers import (
-    resolve_model_from_params,
-)
+from tensortruth.core.providers import resolve_model_from_params
 from tensortruth.services.context_documents import (
     CONTEXT_BUDGET_PCT,
     MIN_HISTORY_PCT,

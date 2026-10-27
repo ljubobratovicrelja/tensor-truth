@@ -96,7 +96,7 @@ dev = [
 
     # Code Quality
     "black>=26.1.0,<26.2",
-    "isort>=7.0.0",
+    "isort>=9.0.2,<10",
     "flake8>=7.3.0",
     "mypy>=1.4.0",
     "types-requests>=2.31.0",

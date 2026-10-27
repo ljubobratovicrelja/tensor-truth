@@ -56,9 +56,7 @@ class AgentService:
     def _import_factories(self) -> None:
         """Import agent factories to trigger self-registration."""
         try:
-            from tensortruth.agents.function import (  # noqa: F401
-                factory as function_factory,
-            )
+            from tensortruth.agents.function import factory  # noqa: F401
 
             logger.info("Agent factories imported and registered")
         except ImportError as e:
