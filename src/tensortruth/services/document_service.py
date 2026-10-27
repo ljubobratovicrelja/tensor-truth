@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from tensortruth.document_index import DocumentIndexBuilder
 from tensortruth.pdf_handler import PDFHandler
 from tensortruth.scrapers.url_fetcher import fetch_url_as_markdown
+from tensortruth.utils.progress import monotonic_callback, stage_heartbeat
 
 from .metadata_store import MetadataStore
 from .models import PDFMetadata
@@ -347,7 +348,7 @@ class DocumentService:
         if chunk_sizes is None:
             chunk_sizes = [2048, 512, 256]
 
-        cb = progress_callback or (lambda *a: None)
+        cb = monotonic_callback(progress_callback or (lambda *a: None))
         builder = self._get_index_builder()
 
         # If settings changed, delete index and do full rebuild
@@ -399,13 +400,15 @@ class DocumentService:
             reader = PDFReader()
             for i, did in enumerate(unindexed):
                 if did in pdf_by_id:
-                    pct = int(i / total * 60)
-                    cb(
+                    seg_start = int(i / total * 60)
+                    seg_end = int((i + 1) / total * 60)
+                    with stage_heartbeat(
+                        cb,
                         f"Loading {pdf_by_id[did].name} ({i + 1}/{total})",
-                        pct,
-                        100,
-                    )
-                    docs = reader.load_data(pdf_by_id[did])
+                        seg_start,
+                        seg_end,
+                    ):
+                        docs = reader.load_data(pdf_by_id[did])
                     for doc in docs:
                         doc.metadata["file_path"] = str(pdf_by_id[did])
                         doc.metadata["file_name"] = pdf_by_id[did].name
@@ -429,13 +432,15 @@ class DocumentService:
 
             for i, did in enumerate(unindexed):
                 if did in pdf_by_id:
-                    pct = int(i / total * 60)
-                    cb(
+                    seg_start = int(i / total * 60)
+                    seg_end = int((i + 1) / total * 60)
+                    with stage_heartbeat(
+                        cb,
                         f"Converting {pdf_by_id[did].name} ({i + 1}/{total})",
-                        pct,
-                        100,
-                    )
-                    md_path = self._convert_if_needed(pdf_by_id[did])
+                        seg_start,
+                        seg_end,
+                    ):
+                        md_path = self._convert_if_needed(pdf_by_id[did])
                     if md_path:
                         rdr = SimpleDirectoryReader(input_files=[str(md_path)])
                         docs = rdr.load_data()
@@ -480,7 +485,7 @@ class DocumentService:
         """
         pdf_files = self.get_all_pdf_files()
         existing_md = self.get_all_markdown_files()
-        cb = progress_callback or (lambda *a: None)
+        cb = monotonic_callback(progress_callback or (lambda *a: None))
 
         if conversion_method == "direct" or not pdf_files:
             # Legacy path or no PDFs (only markdown docs)
@@ -502,10 +507,20 @@ class DocumentService:
         if MARKER_CONVERTER is None:
             cb("Loading conversion models (one-time setup)...", 0, 100)
 
+        total_pdfs = len(pdf_files)
         for i, pdf in enumerate(pdf_files):
-            pct = int(i / len(pdf_files) * 60)
-            cb(f"Converting {pdf.name} ({i + 1}/{len(pdf_files)})", pct, 100)
-            md = self._convert_if_needed(pdf)
+            # Each document owns an equal slice of the 0-60% conversion band.
+            # Marker exposes no per-page callback, so the heartbeat is what keeps
+            # a multi-minute conversion from looking frozen at its slice start.
+            seg_start = int(i / total_pdfs * 60)
+            seg_end = int((i + 1) / total_pdfs * 60)
+            with stage_heartbeat(
+                cb,
+                f"Converting {pdf.name} ({i + 1}/{total_pdfs})",
+                seg_start,
+                seg_end,
+            ):
+                md = self._convert_if_needed(pdf)
             if md:
                 converted.append(md)
 

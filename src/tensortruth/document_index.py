@@ -20,6 +20,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 from .core.ollama import get_ollama_url
 from .rag_engine import get_embed_model
 from .utils.metadata import extract_uploaded_pdf_metadata
+from .utils.progress import monotonic_callback, stage_heartbeat
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -162,7 +163,7 @@ class DocumentIndexBuilder:
         if not pdf_files:
             raise ValueError("No PDF files provided")
 
-        cb = progress_callback or (lambda *a: None)
+        cb = monotonic_callback(progress_callback or (lambda *a: None))
 
         logger.info(
             f"Building index from {len(pdf_files)} PDFs (direct mode, no markdown)"
@@ -211,9 +212,11 @@ class DocumentIndexBuilder:
             cb("Extracting metadata", 40, 100)
             self._extract_and_inject_metadata(documents)
 
-            # Stage 3: Embedding documents (70%)
-            cb("Embedding documents", 70, 100)
-            self._build_vector_index(documents, chunk_sizes)
+            # Stage 3: Embedding documents (70-95%). Embedding all leaf nodes is a
+            # single blocking call (minutes on CPU) with no per-batch callback, so
+            # the heartbeat keeps the stage visibly progressing.
+            with stage_heartbeat(cb, "Embedding documents", 70, 95):
+                self._build_vector_index(documents, chunk_sizes)
 
             # Stage 4: Complete
             cb("Complete", 100, 100)
@@ -347,7 +350,7 @@ class DocumentIndexBuilder:
         if chunk_sizes is None:
             chunk_sizes = [2048, 512, 256]
 
-        cb = progress_callback or (lambda *a: None)
+        cb = monotonic_callback(progress_callback or (lambda *a: None))
 
         # Get markdown files
         if markdown_files is None:
@@ -394,9 +397,11 @@ class DocumentIndexBuilder:
             cb("Extracting metadata", 40, 100)
             self._extract_and_inject_metadata(documents)
 
-            # Stage 3: Embedding documents (70%)
-            cb("Embedding documents", 70, 100)
-            self._build_vector_index(documents, chunk_sizes)
+            # Stage 3: Embedding documents (70-95%). Embedding all leaf nodes is a
+            # single blocking call (minutes on CPU) with no per-batch callback, so
+            # the heartbeat keeps the stage visibly progressing.
+            with stage_heartbeat(cb, "Embedding documents", 70, 95):
+                self._build_vector_index(documents, chunk_sizes)
 
             # Stage 4: Complete
             cb("Complete", 100, 100)
@@ -490,7 +495,7 @@ class DocumentIndexBuilder:
             chunk_sizes: Hierarchical chunk sizes.
             progress_callback: Optional callback(stage, current, total).
         """
-        cb = progress_callback or (lambda *a: None)
+        cb = monotonic_callback(progress_callback or (lambda *a: None))
 
         # Set doc_id on each document
         for doc, doc_id in zip(documents, doc_ids):
@@ -522,9 +527,11 @@ class DocumentIndexBuilder:
         leaf_nodes = get_leaf_nodes(nodes)
         logger.info(f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves)")
 
-        # Add ALL nodes to docstore (for hierarchy), insert leaves into vector index
+        # Add ALL nodes to docstore (for hierarchy), insert leaves into vector index.
+        # insert_nodes embeds every leaf in one blocking call; heartbeat it.
         storage_context.docstore.add_documents(nodes)
-        index.insert_nodes(leaf_nodes)
+        with stage_heartbeat(cb, "Embedding documents", 70, 95):
+            index.insert_nodes(leaf_nodes)
 
         # Persist
         storage_context.persist(persist_dir=str(self.index_dir))

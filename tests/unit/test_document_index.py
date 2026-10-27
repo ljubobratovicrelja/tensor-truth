@@ -383,3 +383,47 @@ class TestGetDocumentCount:
 
         # Should still only count .md files
         assert document_builder.get_document_count() == len(sample_markdown_files)
+
+
+class TestEmbeddingProgress:
+    """Embedding a whole document set is one blocking call; keep it alive.
+
+    Regression: the embed stage reported a single "Embedding documents" tick and
+    then nothing until "Complete", so a CPU embedding pass showed a frozen bar.
+    """
+
+    @pytest.fixture(autouse=True)
+    def fast_heartbeat(self, monkeypatch):
+        from tensortruth.utils import progress as progress_mod
+
+        monkeypatch.setattr(progress_mod, "DEFAULT_HEARTBEAT_INTERVAL", 0.02)
+
+    def test_build_index_heartbeats_during_embedding(
+        self, document_builder, sample_markdown_files, monkeypatch
+    ):
+        import time
+
+        monkeypatch.setattr(
+            document_builder, "_extract_and_inject_metadata", lambda docs: None
+        )
+        monkeypatch.setattr(document_builder, "_get_chroma_client", lambda: Mock())
+        monkeypatch.setattr(
+            document_builder,
+            "_build_vector_index",
+            lambda documents, chunk_sizes: time.sleep(0.3),
+        )
+
+        calls = []
+        document_builder.build_index(
+            sample_markdown_files,
+            None,
+            lambda stage, current, total: calls.append((stage, current)),
+        )
+
+        pcts = [c[1] for c in calls]
+        embedding_pcts = [c[1] for c in calls if c[0].startswith("Embedding")]
+        assert len(embedding_pcts) >= 3, f"embedding reported only: {calls}"
+        assert max(embedding_pcts) > 70, "embedding never advanced past its start"
+        assert max(embedding_pcts) <= 95, "embedding claimed the next stage's band"
+        assert pcts[-1] == 100
+        assert pcts == sorted(pcts), f"progress went backwards: {pcts}"

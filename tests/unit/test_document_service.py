@@ -1,11 +1,14 @@
 """Unit tests for DocumentService."""
 
+import threading
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from tensortruth.services.document_service import DocumentService
+from tensortruth.utils import progress as progress_mod
 
 
 @pytest.fixture
@@ -256,3 +259,132 @@ class TestScopeTypePropagation:
             scope_dir=temp_scope_dir,
         )
         assert service._pdf_handler.scope_type == "session"
+
+
+class TestRebuildIndexProgress:
+    """Regression tests for progress reporting during long build stages.
+
+    A two-PDF rebuild used to report ``Converting a.pdf (1/2)`` at 0% and then
+    nothing for the entire Marker conversion (minutes), which the UI renders as
+    a frozen build.
+    """
+
+    @pytest.fixture(autouse=True)
+    def fast_heartbeat(self, monkeypatch):
+        monkeypatch.setattr(progress_mod, "DEFAULT_HEARTBEAT_INTERVAL", 0.02)
+
+    def _service_with_two_pdfs(self, session_service, tmp_path, monkeypatch):
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        pdf_a = docs_dir / "pdf_aaa_Paper A.pdf"
+        pdf_b = docs_dir / "pdf_bbb_Paper B.pdf"
+        pdf_a.write_bytes(b"%PDF-1.4")
+        pdf_b.write_bytes(b"%PDF-1.4")
+
+        md_path = tmp_path / "markdown" / "pdf_aaa.md"
+        md_path.parent.mkdir(parents=True, exist_ok=True)
+        md_path.write_text("# Paper A")
+
+        monkeypatch.setattr(
+            session_service, "get_all_pdf_files", lambda: [pdf_a, pdf_b]
+        )
+        monkeypatch.setattr(session_service, "get_all_markdown_files", lambda: [])
+        monkeypatch.setattr(
+            session_service, "index_from_markdown", lambda *a, **k: None
+        )
+        monkeypatch.setattr(session_service, "_persist_metadata", lambda: None)
+        monkeypatch.setattr(session_service, "_get_index_builder", lambda: MagicMock())
+        return pdf_a, pdf_b, md_path
+
+    def test_progress_advances_while_conversion_is_blocked(
+        self, session_service, tmp_path, monkeypatch
+    ):
+        """Progress must move during a conversion, not only after it."""
+        pdf_a, _pdf_b, md_path = self._service_with_two_pdfs(
+            session_service, tmp_path, monkeypatch
+        )
+
+        started = threading.Event()
+        release = threading.Event()
+
+        def blocking_convert(pdf):
+            if pdf.name == pdf_a.name:
+                started.set()
+                release.wait(timeout=10)
+            return md_path
+
+        monkeypatch.setattr(session_service, "_convert_if_needed", blocking_convert)
+
+        calls = []
+
+        def cb(stage, current, total):
+            calls.append((stage, current, total))
+
+        thread = threading.Thread(
+            target=lambda: session_service.rebuild_index(None, cb), daemon=True
+        )
+        thread.start()
+
+        assert started.wait(timeout=5), "conversion never started"
+
+        # While the first conversion is still blocked, the heartbeat must have
+        # reported something other than the initial 0%.
+        deadline = time.monotonic() + 5
+        observed = []
+        snapshot = []
+        while time.monotonic() < deadline:
+            snapshot = list(calls)
+            observed = [c[1] for c in snapshot]
+            if observed and max(observed) >= 2:
+                break
+            time.sleep(0.02)
+
+        assert observed, "no progress reported at all"
+        assert (
+            max(observed) >= 2
+        ), f"progress never advanced during a blocked conversion: {observed}"
+        assert (
+            "Converting" in snapshot[-1][0]
+        ), f"last stage was not the conversion: {snapshot[-1][0]}"
+
+        release.set()
+        thread.join(timeout=10)
+        assert not thread.is_alive(), "rebuild did not finish"
+
+        pcts = [c[1] for c in calls]
+        assert pcts[-1] == 100, f"build did not report completion: {pcts[-5:]}"
+        assert pcts == sorted(pcts), f"progress went backwards: {pcts}"
+
+    def test_conversion_progress_stays_inside_its_document_slice(
+        self, session_service, tmp_path, monkeypatch
+    ):
+        """The first of two documents owns 0-60% of the 0-60% conversion band."""
+        pdf_a, pdf_b, md_path = self._service_with_two_pdfs(
+            session_service, tmp_path, monkeypatch
+        )
+
+        seen = []
+
+        def slow_convert(pdf):
+            if pdf.name == pdf_a.name:
+                time.sleep(0.2)
+            return md_path
+
+        monkeypatch.setattr(session_service, "_convert_if_needed", slow_convert)
+        monkeypatch.setattr(
+            session_service,
+            "index_from_markdown",
+            lambda *a, **k: seen.append(("index",)),
+        )
+
+        calls = []
+        session_service.rebuild_index(
+            None, lambda stage, current, total: calls.append((stage, current))
+        )
+
+        assert calls[-1][1] == 100
+        # Both documents were converted before indexing started.
+        assert any("Paper A" in c[0] for c in calls)
+        assert any("Paper B" in c[0] for c in calls)
+        assert seen == [("index",)]
+        assert pdf_b.exists()
