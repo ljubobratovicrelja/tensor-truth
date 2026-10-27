@@ -86,8 +86,10 @@ export function WelcomePage() {
   } = useImageAttachment();
 
   const [selectOpen, setSelectOpen] = useState(false);
+  // Load the model list eagerly: the title preview needs the real model and
+  // provider, and without it the session was created with a truncation.
   const { data: modelsData, isLoading: modelsLoading } = useModels(
-    selectOpen ? 2000 : false
+    selectOpen ? 2000 : undefined
   );
   const { data: projectsData } = useProjects();
   const { data: config } = useConfig();

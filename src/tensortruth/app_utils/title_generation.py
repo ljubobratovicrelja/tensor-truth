@@ -357,12 +357,29 @@ async def generate_smart_title_async(
 
     # ``resolve_model`` invents an Ollama reference when it cannot match the
     # model anywhere. If no such provider is actually configured, every call
-    # would burn its timeout on a refused connection — fall back immediately.
+    # would burn its timeout on a refused connection — so look for a provider
+    # that explicitly lists this model before giving up.
     try:
         registry = ProviderRegistry.get_instance()
         configured = registry.get_provider(model_ref.provider_id) is not None
     except Exception:
+        registry = None
         configured = True
+    if not configured and registry is not None:
+        matching = next(
+            (
+                provider.id
+                for provider in registry.providers
+                if any(
+                    (m or {}).get("name") == model_name
+                    for m in (getattr(provider, "models", None) or [])
+                )
+            ),
+            None,
+        )
+        if matching:
+            model_ref = resolve_model_from_params({"provider_id": matching}, model_name)
+            configured = registry.get_provider(model_ref.provider_id) is not None
     if not configured:
         logger.warning(
             "Title generation skipped: model '%s' resolved to unconfigured "

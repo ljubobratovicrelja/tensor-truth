@@ -186,7 +186,17 @@ class TestOpenAITitleMode:
             ProviderRegistry,
             "get_instance",
             classmethod(
-                lambda cls: type("R", (), {"get_provider": lambda self, p: None})()
+                classmethod(
+                    lambda cls: type(
+                        "R",
+                        (),
+                        {
+                            "get_provider": lambda self, p: None,
+                            # no configured provider lists this model either
+                            "providers": [],
+                        },
+                    )()
+                ),
             ),
         )
 

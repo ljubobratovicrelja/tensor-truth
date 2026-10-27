@@ -211,6 +211,33 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
   );
 
   /**
+   * The first-turn title is generated *after* the answer completes, so its
+   * event is appended to the run log after `done` — and the socket closes on
+   * `done`. Without this the sidebar kept showing the provisional title until
+   * an unrelated refetch. Poll the run log (REST, bounded) until the run
+   * reports finished, then apply whatever arrived.
+   */
+  const settleTitle = useCallback(
+    async (runId: string) => {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        try {
+          const result = await getRunEvents(runId, lastAppliedSeqRef.current);
+          for (const ev of result.events ?? []) handleEvent(ev);
+          if (result.status !== "running") {
+            void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.sessions });
+            return;
+          }
+        } catch (err) {
+          console.warn("[WS] title tail fetch failed:", err);
+          return;
+        }
+      }
+    },
+    [handleEvent, queryClient]
+  );
+
+  /**
    * Open a socket and attach to `runId` from `after`. Re-attaches from the
    * current cursor with bounded backoff whenever the socket drops mid-run.
    * A transport failure is never rendered as an error card: the run is still
@@ -251,6 +278,10 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
           // Any delivered event is evidence the stream is healthy again.
           reconnectAttemptsRef.current = 0;
           handleEvent(data);
+
+          if (data.type === "done" && data.title_pending) {
+            void settleTitle(runId);
+          }
 
           if (applyStateRef.current.terminal) {
             manualCloseRef.current = true;
@@ -304,7 +335,7 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
 
       connect(after);
     },
-    [sessionId, clearReconnectTimer, handleEvent, finishStreaming]
+    [sessionId, clearReconnectTimer, handleEvent, finishStreaming, settleTitle]
   );
 
   // Hydrate any in-flight run on mount / session change: this is what makes a
