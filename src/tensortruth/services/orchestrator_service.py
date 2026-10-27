@@ -83,6 +83,7 @@ _WRAPPED_BUILTIN_TOOL_NAMES = frozenset(
         "search_focused",
         "add_arxiv_paper",
         "build_index",
+        "inspect",
     }
 )
 
@@ -96,6 +97,7 @@ _TOOL_ANALYZING_MESSAGES: Dict[str, str] = {
     "fetch_pages_batch": "Analyzing fetched pages...",
     "rag_query": "Analyzing knowledge base results...",
     "add_arxiv_paper": "Adding paper to documents...",
+    "inspect": "Analyzing repository...",
 }
 _DEFAULT_ANALYZING_MESSAGE = "Analyzing results..."
 
@@ -706,6 +708,13 @@ class OrchestratorService:
                 "covered by these modules."
             )
 
+        # --- Cloned repositories (session-scoped, rebuilt from disk each turn) ---
+        # Rendered from the workspace directory rather than stored in the
+        # transcript, so it survives conversation compaction and restarts.
+        _repos_block = self._repos_prompt_section()
+        if _repos_block:
+            sections.append(_repos_block)
+
         # --- Tool routing guidance ---
         sections.append(
             "Tool routing:\n"
@@ -842,6 +851,32 @@ class OrchestratorService:
         )
 
         return "\n\n".join(sections)
+
+    # ------------------------------------------------------------------
+    # Cloned repositories (session-scoped)
+    # ------------------------------------------------------------------
+
+    def _repos_prompt_section(self) -> str:
+        """Render the "cloned repositories" section of the system prompt.
+
+        Read from the session's workspace directory on every turn, so a repo
+        cloned (or dropped) mid-session is reflected immediately and the
+        information does not depend on the conversation history — compaction
+        rewrites messages only, never the system prompt. Failures are
+        swallowed: a broken workspace must not break the whole turn.
+        """
+        if not self._session_id:
+            return ""
+        try:
+            from tensortruth.app_utils.paths import get_session_dir
+            from tensortruth.services.repo_workspace import render_prompt_section
+
+            return render_prompt_section(get_session_dir(self._session_id))
+        except Exception:
+            logger.debug(
+                "Failed to build the cloned-repositories section", exc_info=True
+            )
+            return ""
 
     # ------------------------------------------------------------------
     # Direct-to-context documents (no index)

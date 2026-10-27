@@ -16,7 +16,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional
 from urllib.parse import urlparse
 
 from llama_index.core.tools import FunctionTool
@@ -31,6 +31,8 @@ from tensortruth.services.models import ToolProgress
 from tensortruth.services.tool_service import ToolService
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from tensortruth.core.source import SourceNode
     from tensortruth.services.mcp_server_service import MCPServerService
     from tensortruth.services.models import RAGRetrievalResult
@@ -64,6 +66,7 @@ FullOutputCallback = Callable[[str, str], None]
 RAG_CONTENT_PCT = 0.12
 FETCH_PAGE_CONTENT_PCT = 0.15
 FETCH_BATCH_CONTENT_PCT = 0.25
+REPO_CONTENT_PCT = 0.15
 MIN_TOOL_CONTENT_CHARS = 2000
 MAX_TOOL_CONTENT_CHARS = 48000
 # Hard cap per RAG source excerpt, regardless of how much budget is left.
@@ -159,6 +162,66 @@ class FetchPagesBatchInput(BaseModel):
             "List of URLs to fetch in parallel (recommended: 3-5 URLs). "
             "All pages are fetched simultaneously for efficiency."
         )
+    )
+
+
+class InspectInput(BaseModel):
+    """Input schema for the ``inspect`` repository tool.
+
+    ``action`` is a closed enum: anything outside the literal set is rejected
+    by pydantic before the tool body runs, so there is no passthrough to a
+    shell. Every other field is validated again inside the tool.
+    """
+
+    action: Literal["list", "clone", "tree", "read", "grep", "git", "drop"] = Field(
+        description=(
+            "list: repositories cloned into this session. "
+            "clone: clone a git repository (needs url). "
+            "tree: list a directory (path, depth). "
+            "read: read a text file (path, start_line, max_lines). "
+            "grep: search file contents (pattern, path, case_sensitive). "
+            "git: run log/show/blame (git_command, rev, path). "
+            "drop: delete a cloned repository."
+        )
+    )
+    url: Optional[str] = Field(
+        default=None,
+        description="action='clone': repository URL, e.g. https://github.com/owner/repo",
+    )
+    repo: Optional[str] = Field(
+        default=None,
+        description=(
+            "Repository selector as 'owner/repo'. Omit it when exactly one "
+            "repository is cloned into the session."
+        ),
+    )
+    path: Optional[str] = Field(
+        default=None,
+        description="Path relative to the repository root (directories allowed).",
+    )
+    pattern: Optional[str] = Field(
+        default=None, description="action='grep': Python regular expression."
+    )
+    git_command: Optional[Literal["log", "show", "blame"]] = Field(
+        default=None, description="action='git': which read-only git command to run."
+    )
+    rev: Optional[str] = Field(
+        default=None,
+        description="action='git': revision for show/blame (default HEAD).",
+    )
+    depth: int = Field(default=3, description="action='tree': depth, 1-6.")
+    start_line: int = Field(
+        default=1, description="action='read': first line to return (1-based)."
+    )
+    max_lines: int = Field(
+        default=200, description="action='read'/'git': maximum lines to return."
+    )
+    case_sensitive: bool = Field(
+        default=False, description="action='grep': case-sensitive matching."
+    )
+    full_history: bool = Field(
+        default=False,
+        description="action='clone': fetch full history instead of a shallow clone.",
     )
 
 
@@ -2191,6 +2254,282 @@ def create_build_index_tool(
     )
 
 
+_INSPECT_GIT_COMMANDS = ("log", "show", "blame")
+
+_INSPECT_DESCRIPTION = (
+    "Inspect a git repository cloned into this session. Read-only. This is NOT "
+    "a shell: no pipes, redirects, shell expansion or arbitrary commands are "
+    "accepted — only the fixed actions below. Actions: clone(url) · list · "
+    "tree(repo, path, depth) · read(repo, path, start_line, max_lines) · "
+    "grep(repo, pattern, path) · git(repo, git_command=log|show|blame, rev, "
+    "path) · drop(repo)."
+)
+
+
+def create_inspect_tool(
+    progress_emitter: ProgressEmitter,
+    session_id: str,
+    scope_dir: Optional["Path"] = None,
+    confirmation_service: Optional["ToolConfirmationService"] = None,
+    context_window: int = 16384,
+    full_output_callback: Optional[FullOutputCallback] = None,
+) -> FunctionTool:
+    """Create the ``inspect`` repository-inspection FunctionTool.
+
+    The tool exposes a *closed* set of read-only actions over git
+    repositories cloned into the session's workspace directory. It is not a
+    shell: ``action`` is a ``Literal`` enum, no argument is ever interpolated
+    into a command string, and the workspace module enforces the path jail.
+    All blocking work (clone, walk, grep, git subprocess) runs in a worker
+    thread so the event loop keeps serving other requests.
+
+    Args:
+        progress_emitter: Callable that receives ToolProgress updates.
+        session_id: Owning session; also used for confirmation cards.
+        scope_dir: Override for the session workspace root (tests).
+        confirmation_service: Gates the network+disk ``clone`` action when set.
+        context_window: Session context window, used for the output budget.
+        full_output_callback: Side-channel carrying the untruncated output.
+    """
+
+    async def inspect(
+        action: str,
+        url: Optional[str] = None,
+        repo: Optional[str] = None,
+        path: Optional[str] = None,
+        pattern: Optional[str] = None,
+        git_command: Optional[str] = None,
+        rev: Optional[str] = None,
+        depth: int = 3,
+        start_line: int = 1,
+        max_lines: int = 200,
+        case_sensitive: bool = False,
+        full_history: bool = False,
+    ) -> str:
+        """Inspect a git repository cloned into this session (read-only).
+
+        ``action`` is one of: list, clone, tree, read, grep, git, drop.
+        Returns file listings, file contents, matches or git output as text.
+        There is no shell access and no way to write inside the clone.
+        """
+        from tensortruth.app_utils.paths import get_session_dir
+        from tensortruth.services import repo_workspace as rw
+
+        workdir = scope_dir if scope_dir is not None else get_session_dir(session_id)
+        budget = _tool_content_budget(context_window, REPO_CONTENT_PCT)
+
+        def _deliver(text: str) -> str:
+            if full_output_callback is not None:
+                full_output_callback("inspect", text)
+            body, _truncated = _fit_tool_text(text, budget)
+            return body
+
+        if action == "list":
+            try:
+                records = rw.list_repos(workdir)
+            except rw.RepoError as exc:
+                return f"Error: {exc}"
+            if not records:
+                return (
+                    "No repositories are cloned in this session. Clone one first: "
+                    'inspect(action="clone", url="https://github.com/owner/repo").'
+                )
+            lines = [f"{len(records)} repository(ies) cloned in this session:"]
+            for rec in records:
+                lines.append(
+                    f"- {rec.name} @ {rec.short_sha} — branch {rec.branch}, "
+                    f"cloned {_format_age(rec.cloned_at)}"
+                )
+            return _deliver("\n".join(lines))
+
+        if action == "clone":
+            if not url or not url.strip():
+                return (
+                    "Error: action='clone' requires url, "
+                    'e.g. url="https://github.com/owner/repo".'
+                )
+            clean_url = url.strip()
+            if confirmation_service is not None and session_id:
+                outcome = await request_confirmation(
+                    confirmation_service=confirmation_service,
+                    progress_emitter=progress_emitter,
+                    tool_name="inspect",
+                    action_type="clone_repository",
+                    title=f"Clone {clean_url}",
+                    summary=(
+                        f"Clone {clean_url} into this session's workspace and "
+                        "inspect it read-only for the life of the session."
+                        + (
+                            " Full history."
+                            if full_history
+                            else " Shallow clone (depth 1)."
+                        )
+                    ),
+                    details={
+                        "url": clean_url,
+                        "full_history": full_history,
+                        "scope": "session",
+                        "alternatives": (
+                            []
+                            if full_history
+                            else [
+                                {
+                                    "id": "full_history",
+                                    "label": "Clone full history",
+                                    "description": (
+                                        "Fetch every commit instead of depth 1; "
+                                        "needed to inspect history with "
+                                        "git log/blame."
+                                    ),
+                                }
+                            ]
+                        ),
+                    },
+                    session_id=session_id,
+                )
+                if outcome == "rejected":
+                    return f"User rejected cloning {clean_url}."
+                if outcome == "full_history":
+                    full_history = True
+
+            await _emit(
+                progress_emitter,
+                ToolProgress(
+                    tool_id="inspect",
+                    phase="cloning",
+                    message=f"Cloning {clean_url}...",
+                    metadata={"url": clean_url},
+                ),
+            )
+            try:
+                record = await asyncio.to_thread(
+                    rw.clone_repo, workdir, clean_url, full_history=full_history
+                )
+            except rw.RepoError as exc:
+                return f"Error: {exc}"
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.exception("inspect clone failed for %s", clean_url)
+                return f"Error: could not clone {clean_url}: {exc}"
+            return _deliver(
+                f"Cloned {record.name} @ {record.short_sha} "
+                f"(branch {record.branch}) into this session's workspace.\n"
+                "It stays available for the life of the session — inspect it "
+                'with inspect(action="tree"), inspect(action="read", path=...), '
+                'inspect(action="grep", pattern=...) or '
+                'inspect(action="git", git_command="log").'
+            )
+
+        if action == "drop":
+            try:
+                record = await asyncio.to_thread(rw.drop_repo, workdir, repo or "")
+            except rw.RepoError as exc:
+                return f"Error: {exc}"
+            return f"Dropped {record.name} {record.short_sha} from this session."
+
+        if action not in ("tree", "read", "grep", "git"):
+            # Unreachable through the schema; kept for direct callers.
+            return (
+                f"Error: unknown action {action!r}. Valid actions: "
+                "list, clone, tree, read, grep, git, drop."
+            )
+
+        try:
+            record, root = await asyncio.to_thread(rw.find_repo, workdir, repo)
+        except rw.RepoError as exc:
+            return f"Error: {exc}"
+
+        rel_path = (path or "").strip()
+        phase = {"tree": "listing", "read": "reading", "grep": "searching"}.get(
+            action, "inspecting"
+        )
+        await _emit(
+            progress_emitter,
+            ToolProgress(
+                tool_id="inspect",
+                phase=phase,
+                message=f"{phase.capitalize()} {record.name} {rel_path or '/'}...",
+                metadata={"repo": record.name, "path": rel_path},
+            ),
+        )
+
+        try:
+            if action == "tree":
+                text = await asyncio.to_thread(
+                    rw.tree,
+                    record,
+                    root,
+                    rel_path,
+                    max(1, min(int(depth or 3), 6)),
+                )
+            elif action == "read":
+                text = await asyncio.to_thread(
+                    rw.read_text,
+                    record,
+                    root,
+                    rel_path,
+                    max(1, int(start_line or 1)),
+                    max(1, min(int(max_lines or 200), 2000)),
+                )
+            elif action == "grep":
+                if not pattern:
+                    return "Error: action='grep' requires pattern (a Python regex)."
+                text = await asyncio.to_thread(
+                    rw.grep,
+                    record,
+                    root,
+                    pattern,
+                    rel_path,
+                    case_sensitive=bool(case_sensitive),
+                )
+            else:
+                if git_command not in _INSPECT_GIT_COMMANDS:
+                    return (
+                        "Error: action='git' requires git_command, one of: "
+                        + ", ".join(_INSPECT_GIT_COMMANDS)
+                        + "."
+                    )
+                text = await asyncio.to_thread(
+                    rw.git,
+                    record,
+                    root,
+                    git_command,
+                    path=rel_path,
+                    rev=(rev or "HEAD"),
+                    max_lines=max(1, min(int(max_lines or 200), 2000)),
+                )
+        except rw.RepoError as exc:
+            return f"Error: {exc}"
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("inspect %s failed for %s", action, record.name)
+            return f"Error: {action} failed on {record.name}: {exc}"
+
+        return _deliver(text)
+
+    return FunctionTool.from_defaults(
+        async_fn=inspect,
+        name="inspect",
+        description=_INSPECT_DESCRIPTION,
+        fn_schema=InspectInput,
+    )
+
+
+def _format_age(cloned_at: float) -> str:
+    """Render a clone timestamp as a coarse age for progress narration."""
+    import time
+
+    try:
+        seconds = max(0.0, time.time() - float(cloned_at))
+    except (TypeError, ValueError):
+        return "recently"
+    if seconds < 120:
+        return "just now"
+    if seconds < 7200:
+        return f"{int(seconds // 60)} min ago"
+    if seconds < 172800:
+        return f"{int(seconds // 3600)} h ago"
+    return f"{int(seconds // 86400)} d ago"
+
+
 def create_all_tool_wrappers(
     tool_service: ToolService,
     progress_emitter: ProgressEmitter,
@@ -2312,6 +2651,18 @@ def create_all_tool_wrappers(
         tools.append(
             create_build_index_tool(
                 progress_emitter, confirmation_service, session_id, project_id
+            )
+        )
+
+    # Repository inspection (needs session_id: the workspace is session-scoped)
+    if session_id is not None:
+        tools.append(
+            create_inspect_tool(
+                progress_emitter,
+                session_id,
+                confirmation_service=confirmation_service,
+                context_window=context_window,
+                full_output_callback=full_output_callback,
             )
         )
 
