@@ -23,11 +23,14 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { LoadedModelCard } from "./LoadedModelCard";
 import { MemoryMonitor } from "./MemoryMonitor";
+import { ModelPreloadSection } from "./ModelPreloadSection";
 import {
   useDevices,
   useOllamaStatus,
   useLlamaCppStatus,
   useRAGStatus,
+  useModelPreloadStatus,
+  useModelPreloadHint,
   useSessionStats,
   useConfig,
 } from "@/hooks";
@@ -47,6 +50,9 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
   const { data: ollamaData, isLoading: ollamaLoading } = useOllamaStatus(isOpen);
   const { data: llamaCppData, isLoading: llamaCppLoading } = useLlamaCppStatus(isOpen);
   const { data: ragData, isLoading: ragLoading } = useRAGStatus(isOpen);
+  const { data: preloadData, isLoading: preloadLoading } = useModelPreloadStatus(isOpen);
+  // Cheap hint for the trigger: polls only while a model is warming up
+  const { data: preloadHint } = useModelPreloadHint();
   const { data: sessionStats, isLoading: sessionStatsLoading } = useSessionStats(
     activeSessionId,
     isOpen && !!activeSessionId
@@ -71,8 +77,25 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
         {trigger || (
-          <Button variant="ghost" size="sm" className="gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2"
+            title={
+              preloadHint?.any_loading ? "RAG models are warming up" : "System Status"
+            }
+          >
             <Activity className="h-4 w-4" />
+            {preloadHint?.any_loading && (
+              <span
+                data-testid="model-preload-dot"
+                aria-label="RAG models are warming up"
+                className="relative flex h-2 w-2"
+              >
+                <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
+                <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
+              </span>
+            )}
             <span className="hidden sm:inline">System Status</span>
           </Button>
         )}
@@ -85,6 +108,17 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
+          {/* RAG model preload state */}
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Database className="text-muted-foreground h-4 w-4" />
+              <h3 className="text-foreground text-sm font-semibold">RAG Models</h3>
+            </div>
+            <ModelPreloadSection status={preloadData} isLoading={preloadLoading} />
+          </section>
+
+          <Separator />
+
           {/* Memory Monitor */}
           <section>
             <MemoryMonitor enabled={isOpen} />
@@ -105,7 +139,7 @@ export function SystemStatusPanel({ trigger }: SystemStatusPanelProps) {
               <div className="space-y-2">
                 <Badge variant="secondary">Inactive</Badge>
                 <p className="text-muted-foreground text-xs">
-                  RAG models will load when you start a session with modules
+                  RAG models warm up in the background on app start
                 </p>
               </div>
             ) : (

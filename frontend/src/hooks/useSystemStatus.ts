@@ -9,12 +9,15 @@ import {
   getOllamaStatus,
   getLlamaCppStatus,
   getRAGStatus,
+  getModelPreloadStatus,
+  triggerModelPreload,
   restartEngine,
   type MemoryResponse,
   type DevicesResponse,
   type OllamaStatusResponse,
   type LlamaCppStatusResponse,
   type RAGStatusResponse,
+  type ModelPreloadStatusResponse,
   type RestartEngineResponse,
 } from "@/api/system";
 
@@ -97,6 +100,51 @@ export function useRAGStatus(enabled = true) {
     refetchInterval: enabled ? 1000 : false,
     staleTime: 800,
     enabled,
+  });
+}
+
+/**
+ * Hook to fetch background preload state for the RAG embedder and reranker.
+ *
+ * Polls only while enabled (the status sheet is open) — reads cheap in-memory
+ * state on the server, no model work.
+ *
+ * @param enabled - Whether to enable polling (default: true)
+ */
+export function useModelPreloadStatus(enabled = true) {
+  return useQuery<ModelPreloadStatusResponse>({
+    queryKey: ["system", "model-preload", "status"],
+    queryFn: getModelPreloadStatus,
+    refetchInterval: enabled ? 1000 : false,
+    staleTime: 500,
+    enabled,
+  });
+}
+
+/**
+ * Hook for the header/trigger hint: one cheap status read on mount, then
+ * polling only while a model is actually loading (stops once ready/idle/error).
+ */
+export function useModelPreloadHint() {
+  return useQuery<ModelPreloadStatusResponse>({
+    queryKey: ["system", "model-preload", "status"],
+    queryFn: getModelPreloadStatus,
+    refetchInterval: (query) => (query.state.data?.any_loading ? 1500 : false),
+    staleTime: 1000,
+  });
+}
+
+/**
+ * Hook to trigger the background RAG model preload (idempotent server-side)
+ */
+export function useTriggerModelPreload() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ModelPreloadStatusResponse, Error>({
+    mutationFn: triggerModelPreload,
+    onSuccess: (data) => {
+      queryClient.setQueryData(["system", "model-preload", "status"], data);
+    },
   });
 }
 

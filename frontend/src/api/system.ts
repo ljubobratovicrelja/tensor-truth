@@ -144,6 +144,41 @@ export interface RestartEngineResponse {
   message: string;
 }
 
+export type ModelLoadStateName = "idle" | "loading" | "ready" | "error";
+
+export interface ModelLoadState {
+  kind: string;
+  state: ModelLoadStateName;
+  model_name: string | null;
+  device: string | null;
+  step: string;
+  started_at: number | null;
+  finished_at: number | null;
+  elapsed_seconds: number;
+  error: string | null;
+}
+
+export interface ModelPreloadStatusResponse {
+  embedder: ModelLoadState;
+  reranker: ModelLoadState;
+  any_loading: boolean;
+  all_ready: boolean;
+}
+
+/**
+ * Get background preload state for the RAG embedder and reranker (cheap)
+ */
+export async function getModelPreloadStatus(): Promise<ModelPreloadStatusResponse> {
+  return apiGet<ModelPreloadStatusResponse>("/system/model-preload/status");
+}
+
+/**
+ * Idempotently warm the RAG models (returns immediately, load runs off-thread)
+ */
+export async function triggerModelPreload(): Promise<ModelPreloadStatusResponse> {
+  return apiPost<ModelPreloadStatusResponse>("/system/model-preload");
+}
+
 /**
  * Restart the RAG engine by clearing memory and caches
  */
