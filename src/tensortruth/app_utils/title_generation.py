@@ -49,9 +49,35 @@ def _strip_markdown(text: str) -> str:
     return text
 
 
+def build_title_source(
+    user_text: str, assistant_text: str = "", min_user_words: int = 3
+) -> str:
+    """Return the text a title should be derived from.
+
+    A title describes what the *user asked*, never what the assistant narrated
+    about its own tooling ("I'll search arXiv first.Found both..."). The user's
+    first message is therefore the primary source; the assistant reply is only
+    appended when the user typed almost nothing useful ("what is this?").
+    """
+    user = _strip_markdown(user_text or "")
+    if not user:
+        return _strip_markdown(assistant_text or "")
+    if len(user.split()) >= min_user_words:
+        return user
+    assistant = _strip_markdown(assistant_text or "")
+    return f"{user} {assistant}".strip() if assistant else user
+
+
+def make_fallback_title(text: str, max_len: int = 60) -> str:
+    """Create a clean fallback title from raw text (public alias)."""
+    return _make_fallback_title(text, max_len=max_len)
+
+
 def _make_fallback_title(text: str, max_len: int = 60) -> str:
     """Create a clean fallback title from raw text."""
     title = _strip_markdown(text)
+    # Drop a leading slash-command token ("/arxiv 1234.5678" -> "1234.5678")
+    title = re.sub(r"^/\w+\s*", "", title)
     if not title:
         return "New Chat"
     if len(title) <= max_len:
@@ -178,10 +204,10 @@ async def _generate_title_prompt_mode(
 ) -> Optional[str]:
     """Generate a title via a plain prompt on ``/api/generate``."""
     prompt = (
-        "Generate a 2-4 word title for this text. "
+        "Generate a 2-4 word title for what the user is asking about below. "
         "MAXIMUM 4 WORDS. No sentences. No punctuation. Just a short label. "
         "Examples: 'RAG Overview', 'Python Basics', 'Database Design'. "
-        f"Text: {text[:1000]}"
+        f"User message: {text[:1000]}"
     )
     payload = {
         "model": model_name,
@@ -263,7 +289,9 @@ async def generate_smart_title_async(
     to a plain prompt, and finally to a cleaned-up text truncation.
 
     Args:
-        text: The assistant response to derive a title from.
+        text: The user's first message (see :func:`build_title_source`). The
+            assistant reply is only a last-resort adjunct — titles derived from
+            the assistant's own narration describe its tooling, not the topic.
         model_name: Model name (from the session).  When *None* only
             the text-truncation fallback is used.
         context_window: Context window size — passed as ``num_ctx`` to Ollama

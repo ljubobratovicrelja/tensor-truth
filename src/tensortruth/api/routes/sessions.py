@@ -18,6 +18,8 @@ from tensortruth.api.schemas import (
     SessionResponse,
     SessionStatsResponse,
     SessionUpdate,
+    TitlePreviewRequest,
+    TitlePreviewResponse,
 )
 from tensortruth.app_utils.history_cleaner import (
     HistoryCleanerConfig,
@@ -65,10 +67,36 @@ async def create_session(
         params=body.params,
         data=data,
         config_service=config_service,
+        title=body.title,
     )
     session_service.save(new_data)
     session = new_data.sessions[new_id]
     return _session_to_response(new_id, session)
+
+
+@router.post("/title-preview", response_model=TitlePreviewResponse)
+async def preview_title(body: TitlePreviewRequest) -> TitlePreviewResponse:
+    """Title a session from a prompt the user is still drafting.
+
+    Called by the composer after a few words so the new chat is already
+    labelled when it is created, instead of showing "New Session" until the
+    first answer completes.
+    """
+    from tensortruth.app_utils.title_generation import (
+        build_title_source,
+        generate_smart_title_async,
+    )
+
+    text = build_title_source(body.prompt)
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty prompt")
+    title = await generate_smart_title_async(
+        text,
+        body.model,
+        body.context_window,
+        provider_id=body.provider_id,
+    )
+    return TitlePreviewResponse(title=title)
 
 
 @router.get("/{session_id}", response_model=SessionResponse)

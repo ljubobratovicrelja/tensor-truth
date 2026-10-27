@@ -395,6 +395,23 @@ class TestSessionServiceCreate:
         assert session["title_needs_update"] is True
         assert session["messages"] == []
 
+    def test_create_with_client_title_skips_generation(
+        self, session_service: SessionService
+    ):
+        """A client-supplied title is kept and no title generation is queued."""
+        data = SessionData(current_id=None, sessions={})
+
+        new_id, new_data = session_service.create(
+            modules=None,
+            params={},
+            data=data,
+            title="ResNet And BERT Papers",
+        )
+
+        session = new_data.sessions[new_id]
+        assert session["title"] == "ResNet And BERT Papers"
+        assert session["title_needs_update"] is False
+
     def test_create_preserves_existing_sessions(
         self, session_service: SessionService, sample_session_data: SessionData
     ):

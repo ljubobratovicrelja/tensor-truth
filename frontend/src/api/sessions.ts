@@ -7,6 +7,8 @@ import type {
   MessagesResponse,
   MessageCreate,
   MessageResponse,
+  TitlePreviewRequest,
+  TitlePreviewResponse,
 } from "./types";
 
 export async function listSessions(): Promise<SessionListResponse> {
@@ -15,6 +17,15 @@ export async function listSessions(): Promise<SessionListResponse> {
 
 export async function createSession(data: SessionCreate = {}): Promise<SessionResponse> {
   return apiPost<SessionResponse, SessionCreate>("/sessions", data);
+}
+
+export async function previewSessionTitle(
+  data: TitlePreviewRequest
+): Promise<TitlePreviewResponse> {
+  return apiPost<TitlePreviewResponse, TitlePreviewRequest>(
+    "/sessions/title-preview",
+    data
+  );
 }
 
 export async function getSession(sessionId: string): Promise<SessionResponse> {

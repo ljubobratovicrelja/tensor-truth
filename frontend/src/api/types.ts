@@ -2,6 +2,19 @@
 export interface SessionCreate {
   modules?: string[] | null;
   params?: Record<string, unknown>;
+  /** Title previewed from the drafted prompt; skips title generation later. */
+  title?: string | null;
+}
+
+export interface TitlePreviewRequest {
+  prompt: string;
+  model?: string | null;
+  provider_id?: string | null;
+  context_window?: number;
+}
+
+export interface TitlePreviewResponse {
+  title: string;
 }
 
 export interface SessionResponse {

@@ -15,6 +15,28 @@ class SessionCreate(BaseModel):
         default_factory=dict,
         description="Session parameters (model, temperature, etc.)",
     )
+    title: Optional[str] = Field(
+        default=None,
+        description=(
+            "Title chosen by the client (e.g. previewed while the user was "
+            "typing). When set, no title is regenerated after the first turn."
+        ),
+    )
+
+
+class TitlePreviewRequest(BaseModel):
+    """Request body for previewing a session title from a drafted prompt."""
+
+    prompt: str = Field(..., description="The prompt the user is drafting")
+    model: Optional[str] = None
+    provider_id: Optional[str] = None
+    context_window: int = 16384
+
+
+class TitlePreviewResponse(BaseModel):
+    """Response for a previewed session title."""
+
+    title: str
 
 
 class SessionResponse(BaseModel):

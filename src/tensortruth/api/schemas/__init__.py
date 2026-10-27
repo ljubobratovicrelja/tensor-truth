@@ -98,6 +98,8 @@ from .session import (
     SessionResponse,
     SessionStatsResponse,
     SessionUpdate,
+    TitlePreviewRequest,
+    TitlePreviewResponse,
 )
 from .startup import (
     IndexDownloadRequest,
@@ -121,6 +123,8 @@ __all__ = [
     "SessionListResponse",
     "SessionStatsResponse",
     "SessionUpdate",
+    "TitlePreviewRequest",
+    "TitlePreviewResponse",
     "MessageCreate",
     "MessageResponse",
     "MessagesResponse",
