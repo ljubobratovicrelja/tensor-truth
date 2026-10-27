@@ -1,0 +1,161 @@
+name: Publish to PyPI
+
+# Publishing is driven by a GitHub Release, not by a push: create the release
+# (draft -> publish) and this workflow builds, verifies and uploads the exact
+# commit that was tagged. Authentication uses PyPI Trusted Publishing (OIDC),
+# so there is no API token in the repository.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and upload (e.g. v0.2.1)"
+        required: true
+        type: string
+      confirm:
+        description: "Type 'publish' to confirm uploading to PyPI"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify tag matches the package version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Confirm the workflow_dispatch opt-in
+        if: github.event_name == 'workflow_dispatch' && inputs.confirm != 'publish'
+        run: |
+          echo "::error::Set confirm=publish to upload to PyPI."
+          exit 1
+
+      - name: Check out the tagged commit and compare versions
+        id: check
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          PYPROJECT_VERSION="$(python3 -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          TAG_VERSION="${TAG#v}"
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${PYPROJECT_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Tag: ${TAG} (${TAG_VERSION}) / pyproject: ${PYPROJECT_VERSION}"
+
+          if [ "${TAG_VERSION}" != "${PYPROJECT_VERSION}" ]; then
+            echo "::error::Tag ${TAG} does not match pyproject version ${PYPROJECT_VERSION}. Bump pyproject.toml or re-tag."
+            exit 1
+          fi
+
+      - name: Require the tag to be on main
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/main; then
+            echo "::error::The tagged commit is not on main. Releases must ship from main."
+            exit 1
+          fi
+
+      - name: Refuse to republish a version PyPI already has
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.check.outputs.version }}"
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/tensor-truth/${VERSION}/json")"
+          echo "PyPI lookup for ${VERSION}: HTTP ${CODE}"
+          if [ "${CODE}" = "200" ]; then
+            echo "::error::tensor-truth ${VERSION} is already on PyPI. Bump the version before releasing."
+            exit 1
+          fi
+
+  build:
+    name: Build sdist and wheel
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.verify.outputs.tag }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build
+        run: python -m build --sdist --wheel --outdir dist
+
+      - name: Check metadata
+        run: twine check --strict dist/*
+
+      - name: Show what is being shipped
+        run: |
+          ls -lh dist/
+          echo "Frontend assets in the wheel:"
+          python - <<'PY'
+          import glob, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          static = [n for n in names if "/static/" in n]
+          print(f"  {len(static)} files under tensortruth/static")
+          assert "tensortruth/static/index.html" in names, "frontend bundle missing from wheel"
+          print("  index.html present")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Upload to PyPI
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/tensor-truth/${{ needs.verify.outputs.version }}
+    permissions:
+      id-token: write # Trusted Publishing: no API token needed
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+          print-hash: true
+
+  release-notes:
+    name: Attach the built files to the GitHub release
+    needs: [verify, publish]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Upload artefacts to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.verify.outputs.tag }}
+        run: gh release upload "$TAG" dist/* --clobber
