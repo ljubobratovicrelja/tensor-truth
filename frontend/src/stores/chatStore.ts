@@ -34,6 +34,8 @@ interface ChatStore {
   isStreaming: boolean;
   streamingContent: string;
   streamingThinking: string;
+  /** Intermediate narration segments that must render outside the answer. */
+  narrationSegments: string[];
   streamingSources: SourceNode[];
   streamingMetrics: RetrievalMetrics | null;
   streamingSourceTypes: string[] | null;
@@ -67,13 +69,16 @@ interface ChatStore {
   ) => void;
   appendToken: (token: string) => void;
   appendThinking: (thinking: string) => void;
+  /** Move a completed intermediate step out of the answer into narration. */
+  commitNarrationSegment: (text: string) => void;
   setStatus: (status: PipelineStatus) => void;
   setSources: (sources: SourceNode[], sourceTypes?: string[]) => void;
   setMetrics: (metrics: RetrievalMetrics | null) => void;
   finishStreaming: (
     content: string,
     confidenceLevel: string,
-    backendTokens?: { inputTokens: number; outputTokens: number }
+    backendTokens?: { inputTokens: number; outputTokens: number },
+    narrationSegments?: string[]
   ) => void;
   setPendingUserMessage: (message: string | null) => void;
   setPendingAttachedImages: (images: AttachedImage[] | null) => void;
@@ -100,6 +105,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   isStreaming: false,
   streamingContent: "",
   streamingThinking: "",
+  narrationSegments: [],
   streamingSources: [],
   streamingMetrics: null,
   streamingSourceTypes: null,
@@ -128,6 +134,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       isStreaming: true,
       streamingContent: "",
       streamingThinking: "",
+      narrationSegments: [],
       streamingReasoning: "",
       streamingSources: [],
       streamingMetrics: null,
@@ -160,6 +167,30 @@ export const useChatStore = create<ChatStore>((set) => ({
       streamingThinking: state.streamingThinking + thinking,
     })),
 
+  commitNarrationSegment: (text) =>
+    set((state) => {
+      const segment = text.trim();
+      if (!segment) return state;
+
+      // The segment's tokens already went into streamingContent before the
+      // backend knew this step would call a tool. Remove that exact text from
+      // the tail so the final answer and narration cannot overlap.
+      let content = state.streamingContent;
+      if (content.endsWith(text)) {
+        content = content.slice(0, -text.length);
+      } else {
+        const idx = content.lastIndexOf(text);
+        if (idx !== -1) {
+          content = content.slice(0, idx) + content.slice(idx + text.length);
+        }
+      }
+
+      return {
+        streamingContent: content.replace(/\s+$/, ""),
+        narrationSegments: [...state.narrationSegments, segment],
+      };
+    }),
+
   setStatus: (status) => set({ pipelineStatus: status }),
 
   setSources: (sources, sourceTypes) =>
@@ -167,7 +198,7 @@ export const useChatStore = create<ChatStore>((set) => ({
 
   setMetrics: (metrics) => set({ streamingMetrics: metrics }),
 
-  finishStreaming: (content, confidenceLevel, backendTokens) =>
+  finishStreaming: (content, confidenceLevel, backendTokens, narrationSegments) =>
     set((state) => {
       const now = Date.now();
       const genElapsed = state.streamingStartTime
@@ -188,6 +219,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       return {
         isStreaming: false,
         streamingContent: content,
+        narrationSegments: narrationSegments ?? state.narrationSegments,
         confidenceLevel,
         pipelineStatus: null,
         toolPhase: null,
@@ -219,6 +251,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       toolPhase: null,
       streamingThinking: "",
       streamingReasoning: "",
+      narrationSegments: [],
       pendingUserMessage: null,
       pendingUserImages: null,
       pendingAttachedImages: null,
@@ -234,6 +267,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       isStreaming: false,
       streamingContent: "",
       streamingThinking: "",
+      narrationSegments: [],
       streamingReasoning: "",
       streamingSources: [],
       streamingMetrics: null,

@@ -18,6 +18,9 @@ vi.mock("@/hooks", () => ({
     scrollToBottom: vi.fn(),
     reEngage: vi.fn(),
   }),
+  useDeleteMessage: () => ({
+    mutate: vi.fn(),
+  }),
 }));
 
 vi.mock("@/stores", () => ({

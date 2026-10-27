@@ -217,6 +217,43 @@ describe("useWebSocketChat", () => {
     expect(useChatStore.getState().streamingThinking).toBe("Let me analyze this.");
   });
 
+  it("should move narration events out of the answer", async () => {
+    const { result } = renderHook(
+      () => useWebSocketChat({ sessionId: "test-session", onError: vi.fn() }),
+      { wrapper: createWrapper() }
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("Test");
+    });
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances.length).toBe(1);
+    });
+
+    const ws = MockWebSocket.instances[0];
+
+    await act(async () => {
+      ws.simulateMessage({ seq: 1, type: "token", content: "Let me check." });
+      ws.simulateMessage({
+        seq: 2,
+        type: "narration",
+        content: "Let me check.",
+      });
+      ws.simulateMessage({ seq: 3, type: "token", content: "The answer." });
+      ws.simulateMessage({
+        seq: 4,
+        type: "done",
+        content: "The answer.",
+        confidence_level: "normal",
+        narration_segments: ["Let me check."],
+      });
+    });
+
+    expect(useChatStore.getState().streamingContent).toBe("The answer.");
+    expect(useChatStore.getState().narrationSegments).toEqual(["Let me check."]);
+  });
+
   it("should clear status on streaming finish", async () => {
     const { result } = renderHook(
       () => useWebSocketChat({ sessionId: "test-session", onError: vi.fn() }),

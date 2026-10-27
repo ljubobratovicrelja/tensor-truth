@@ -30,6 +30,11 @@ class TestTranslateEvent:
         msg = translate_event(event)
         assert msg == {"type": "token", "content": "Hello"}
 
+    def test_narration_event(self):
+        event = OrchestratorEvent(narration="Let me fetch that page.")
+        msg = translate_event(event)
+        assert msg == {"type": "narration", "content": "Let me fetch that page."}
+
     def test_tool_call_event(self):
         event = OrchestratorEvent(
             tool_call={"tool": "web_search", "params": {"query": "test"}}
@@ -131,6 +136,24 @@ class TestStreamTranslator:
 
         result = translator.finalize()
         assert result.full_response == "Hello world"
+
+    def test_narration_is_removed_from_response_and_kept_separate(self):
+        translator = OrchestratorStreamTranslator()
+
+        # The step's tokens stream live before its tool decision is known.
+        for token in ["Let me ", "check the README."]:
+            translator.process_event(OrchestratorEvent(token=token))
+        translator.process_event(
+            OrchestratorEvent(narration="Let me check the README.")
+        )
+        # The actual answer arrives in the following step.
+        for token in ["Direct ", "answer."]:
+            translator.process_event(OrchestratorEvent(token=token))
+
+        result = translator.finalize()
+        assert result.full_response == "Direct answer."
+        assert result.narration_segments == ["Let me check the README."]
+        assert "narration_segments" in translator.build_done_message()
 
     def test_tool_steps_accumulated(self):
         translator = OrchestratorStreamTranslator()

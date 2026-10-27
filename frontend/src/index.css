@@ -391,6 +391,23 @@
   .streaming-blocks > .chat-markdown:not(:first-child) > :is(h1, h2, h3, h4):first-child {
     margin-top: 1.5rem;
   }
+
+  /*
+   * Narrator notes between tool calls are separate cards. Keep their internal
+   * spacing tight so every note reads as one block and consecutive notes never
+   * collapse into the answer's paragraph flow.
+   */
+  .chat-markdown-narration {
+    @apply text-sm leading-6;
+  }
+
+  .chat-markdown-narration p {
+    @apply my-1 first:mt-0 last:mb-0;
+  }
+
+  .chat-markdown-narration :is(h1, h2, h3, h4) {
+    @apply mt-2 mb-1 text-sm font-semibold first:mt-0;
+  }
 }
 
 /* Streaming cursor — appears inline after the deepest last text node */

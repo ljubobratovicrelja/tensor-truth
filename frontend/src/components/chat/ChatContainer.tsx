@@ -33,6 +33,7 @@ export function ChatContainer() {
   const {
     streamingContent,
     streamingThinking,
+    narrationSegments,
     streamingSources,
     streamingMetrics,
     isStreaming,
@@ -312,6 +313,7 @@ export function ChatContainer() {
         pendingUserMessage={pendingUserMessage}
         streamingContent={streamingContent || undefined}
         streamingThinking={streamingThinking || undefined}
+        narrationSegments={narrationSegments}
         streamingSources={streamingSources.length > 0 ? streamingSources : undefined}
         streamingMetrics={streamingMetrics}
         isStreaming={isStreaming}

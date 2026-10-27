@@ -88,6 +88,7 @@ class MessageResponse(BaseModel):
     content: str
     sources: Optional[List[Dict[str, Any]]] = None
     thinking: Optional[str] = None
+    narration_segments: Optional[List[str]] = None
     metrics: Optional[Dict[str, Any]] = None
     tool_steps: Optional[List[Dict[str, Any]]] = None
     confidence_level: Optional[str] = None

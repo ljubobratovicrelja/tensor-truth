@@ -80,6 +80,10 @@ export function applyStreamMessage(
       store.appendReasoning(data.content);
       break;
 
+    case "narration":
+      store.commitNarrationSegment(data.content);
+      break;
+
     case "token":
       // On first token, clear agent reasoning (response generation starting)
       // and fetch messages (backend has saved user message).
@@ -107,10 +111,15 @@ export function applyStreamMessage(
       state.terminal = true;
       state.fullContent = data.content;
       state.confidenceLevel = data.confidence_level;
-      store.finishStreaming(state.fullContent, state.confidenceLevel, {
-        inputTokens: data.input_tokens ?? 0,
-        outputTokens: data.output_tokens ?? 0,
-      });
+      store.finishStreaming(
+        state.fullContent,
+        state.confidenceLevel,
+        {
+          inputTokens: data.input_tokens ?? 0,
+          outputTokens: data.output_tokens ?? 0,
+        },
+        data.narration_segments
+      );
 
       // Refetch messages from server (backend already saved them)
       ctx.queryClient.invalidateQueries({

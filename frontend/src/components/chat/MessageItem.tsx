@@ -6,6 +6,7 @@ import { ToolSteps } from "./ToolSteps";
 import type { ToolStepWithStatus } from "./ToolSteps";
 import { ThinkingBox } from "./ThinkingBox";
 import { StreamingText } from "./StreamingText";
+import { NarrationBlock } from "./NarrationBlock";
 import { MemoizedMarkdown } from "./MemoizedMarkdown";
 import type {
   ImageRef,
@@ -22,6 +23,8 @@ interface MessageItemProps {
   metrics?: RetrievalMetrics | null;
   /** Override thinking content (used during streaming) */
   thinking?: string;
+  /** Override narration blocks (used during streaming; saved messages carry their own) */
+  narrationSegments?: string[];
   /** Tool steps to display (used during streaming or from saved message) */
   toolSteps?: ToolStepWithStatus[];
   /** Confidence level for RAG sources */
@@ -47,6 +50,7 @@ function MessageItemComponent({
   sources,
   metrics,
   thinking,
+  narrationSegments,
   toolSteps,
   confidenceLevel,
   isStreaming,
@@ -63,6 +67,8 @@ function MessageItemComponent({
   const messageMetrics = metrics ?? message.metrics;
   // Use prop thinking (streaming) or message.thinking (saved)
   const thinkingContent = thinking ?? message.thinking;
+  // Use streaming narration when present; otherwise the saved segments.
+  const messageNarration = narrationSegments ?? message.narration_segments ?? [];
   // Use prop toolSteps (streaming) or derive from saved message
   const messageToolSteps: ToolStepWithStatus[] =
     toolSteps ??
@@ -142,6 +148,14 @@ function MessageItemComponent({
     }
   };
 
+  const showAnswerBubble =
+    isUser ||
+    message.content.trim().length > 0 ||
+    messageNarration.length === 0 ||
+    messageToolSteps.length > 0 ||
+    !!messageSources?.length ||
+    !!messageMetrics;
+
   return (
     <div className={cn("flex gap-3 py-4", isUser ? "flex-row-reverse" : "flex-row")}>
       {isUser && <div className="hidden md:block md:w-[5%] md:shrink-0" />}
@@ -169,100 +183,110 @@ function MessageItemComponent({
             thinkingComplete={isStreaming && message.content.length > 0}
           />
         )}
-        <div
-          className={cn(
-            "relative rounded-2xl px-4 py-3",
-            isUser ? "bg-primary text-primary-foreground" : "bg-muted"
-          )}
-        >
-          {/* Inline header with icon - visible on mobile only */}
+        {/* Intermediate narration is deliberately outside the answer bubble. */}
+        {!isUser && messageNarration.length > 0 && (
+          <div className="space-y-2" data-testid="assistant-narration">
+            {messageNarration.map((segment, index) => (
+              <NarrationBlock key={index} content={segment} />
+            ))}
+          </div>
+        )}
+        {showAnswerBubble && (
           <div
             className={cn(
-              "mb-2 flex items-center gap-1.5 text-xs font-medium md:hidden",
-              isUser ? "text-primary-foreground/70" : "text-muted-foreground"
+              "relative rounded-2xl px-4 py-3",
+              isUser ? "bg-primary text-primary-foreground" : "bg-muted"
             )}
           >
+            {/* Inline header with icon - visible on mobile only */}
             <div
               className={cn(
-                "flex h-5 w-5 items-center justify-center rounded-full",
-                isUser ? "bg-primary-foreground/20" : "bg-background/50"
+                "mb-2 flex items-center gap-1.5 text-xs font-medium md:hidden",
+                isUser ? "text-primary-foreground/70" : "text-muted-foreground"
               )}
             >
-              {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
-            </div>
-            <span>{isUser ? "You" : "Assistant"}</span>
-          </div>
-
-          {/* Render images for user messages */}
-          {isUser && (message.images || pendingImages) && (
-            <div className="mb-2 flex flex-wrap gap-2">
-              {(pendingImages || message.images)?.map((img) => {
-                // Use previewUrl (blob URL) for pending images, server URL for saved
-                const src =
-                  "previewUrl" in img && (img as { previewUrl?: string }).previewUrl
-                    ? (img as { previewUrl: string }).previewUrl
-                    : sessionId
-                      ? `/api/sessions/${sessionId}/images/${img.id}`
-                      : undefined;
-                return (
-                  <img
-                    key={img.id}
-                    src={src}
-                    alt={img.filename}
-                    className="max-h-48 max-w-[200px] rounded-lg object-contain"
-                  />
-                );
-              })}
-            </div>
-          )}
-
-          {/* Always use StreamingText for assistant messages to isolate parsing errors per-block */}
-          {!isUser ? (
-            <div ref={contentRef}>
-              <StreamingText content={message.content} isStreaming={isStreaming} />
-            </div>
-          ) : (
-            <div ref={contentRef}>
               <div
-                ref={userContentRef}
-                className="overflow-hidden transition-[max-height] duration-300"
-                style={{
-                  maxHeight:
-                    userMsgOverflows && !userMsgExpanded
-                      ? `${USER_MSG_COLLAPSED_PX}px`
-                      : undefined,
-                }}
+                className={cn(
+                  "flex h-5 w-5 items-center justify-center rounded-full",
+                  isUser ? "bg-primary-foreground/20" : "bg-background/50"
+                )}
               >
-                <MemoizedMarkdown
-                  content={message.content}
-                  className="chat-markdown-user"
-                />
+                {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
               </div>
-              {userMsgOverflows && (
-                <button
-                  onClick={() => setUserMsgExpanded((v) => !v)}
-                  className="text-primary-foreground/70 hover:text-primary-foreground mt-1 text-xs font-medium"
-                >
-                  {userMsgExpanded ? "Show less" : "Show more"}
-                </button>
-              )}
+              <span>{isUser ? "You" : "Assistant"}</span>
             </div>
-          )}
-          {!isUser && (messageSources?.length || messageMetrics) && (
-            <SourcesList
-              sources={messageSources ?? []}
-              metrics={messageMetrics}
-              confidenceLevel={confidenceLevel ?? message.confidence_level ?? "normal"}
-            />
-          )}
-          {!isUser && messageToolSteps.length > 0 && (
-            <ToolSteps
-              steps={messageToolSteps}
-              defaultOpen={isStreaming && !message.content && !thinkingContent}
-              confirmationRequests={activeConfirmations}
-            />
-          )}
-        </div>
+
+            {/* Render images for user messages */}
+            {isUser && (message.images || pendingImages) && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {(pendingImages || message.images)?.map((img) => {
+                  // Use previewUrl (blob URL) for pending images, server URL for saved
+                  const src =
+                    "previewUrl" in img && (img as { previewUrl?: string }).previewUrl
+                      ? (img as { previewUrl: string }).previewUrl
+                      : sessionId
+                        ? `/api/sessions/${sessionId}/images/${img.id}`
+                        : undefined;
+                  return (
+                    <img
+                      key={img.id}
+                      src={src}
+                      alt={img.filename}
+                      className="max-h-48 max-w-[200px] rounded-lg object-contain"
+                    />
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Always use StreamingText for assistant messages to isolate parsing errors per-block */}
+            {!isUser ? (
+              <div ref={contentRef}>
+                <StreamingText content={message.content} isStreaming={isStreaming} />
+              </div>
+            ) : (
+              <div ref={contentRef}>
+                <div
+                  ref={userContentRef}
+                  className="overflow-hidden transition-[max-height] duration-300"
+                  style={{
+                    maxHeight:
+                      userMsgOverflows && !userMsgExpanded
+                        ? `${USER_MSG_COLLAPSED_PX}px`
+                        : undefined,
+                  }}
+                >
+                  <MemoizedMarkdown
+                    content={message.content}
+                    className="chat-markdown-user"
+                  />
+                </div>
+                {userMsgOverflows && (
+                  <button
+                    onClick={() => setUserMsgExpanded((v) => !v)}
+                    className="text-primary-foreground/70 hover:text-primary-foreground mt-1 text-xs font-medium"
+                  >
+                    {userMsgExpanded ? "Show less" : "Show more"}
+                  </button>
+                )}
+              </div>
+            )}
+            {!isUser && (messageSources?.length || messageMetrics) && (
+              <SourcesList
+                sources={messageSources ?? []}
+                metrics={messageMetrics}
+                confidenceLevel={confidenceLevel ?? message.confidence_level ?? "normal"}
+              />
+            )}
+            {!isUser && messageToolSteps.length > 0 && (
+              <ToolSteps
+                steps={messageToolSteps}
+                defaultOpen={isStreaming && !message.content && !thinkingContent}
+                confirmationRequests={activeConfirmations}
+              />
+            )}
+          </div>
+        )}
         {/* Action buttons below the bubble */}
         {!isStreaming && (
           <div
@@ -271,7 +295,7 @@ function MessageItemComponent({
               isUser ? "justify-end" : "justify-start"
             )}
           >
-            {!isUser && (
+            {!isUser && message.content.trim().length > 0 && (
               <button
                 onClick={handleCopy}
                 className="text-muted-foreground hover:text-foreground rounded p-1"
@@ -319,7 +343,9 @@ export const MessageItem = memo(MessageItemComponent, (prev, next) => {
   return (
     prev.message.content === next.message.content &&
     prev.message.role === next.message.role &&
+    prev.message.narration_segments === next.message.narration_segments &&
     prev.thinking === next.thinking &&
+    prev.narrationSegments === next.narrationSegments &&
     prev.sources === next.sources &&
     prev.metrics === next.metrics &&
     prev.toolSteps === next.toolSteps &&

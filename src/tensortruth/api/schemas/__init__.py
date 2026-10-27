@@ -5,6 +5,7 @@ from .chat import (
     ChatResponse,
     SourceNode,
     StreamDone,
+    StreamNarration,
     StreamSources,
     StreamToken,
 )
@@ -153,6 +154,7 @@ __all__ = [
     "StreamToken",
     "StreamSources",
     "StreamDone",
+    "StreamNarration",
     # Project
     "CatalogModuleStatus",
     "DocumentInfo",
