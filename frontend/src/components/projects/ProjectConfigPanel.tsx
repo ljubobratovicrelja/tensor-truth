@@ -1,13 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ContextWindowSelect } from "@/components/config/ContextWindowSelect";
 import {
   ModelSelectContent,
   decodeModelValue,
@@ -16,8 +11,6 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { useModels, useConfig, useModelActions } from "@/hooks";
 import type { ProjectResponse } from "@/api/types";
-
-const CONTEXT_WINDOW_OPTIONS = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
 
 interface ProjectConfigPanelProps {
   project: ProjectResponse;
@@ -170,21 +163,12 @@ export function ProjectConfigPanel({ project, onUpdate }: ProjectConfigPanelProp
       {/* Context Window */}
       <div className="space-y-2">
         <Label className="text-xs">Context Window</Label>
-        <Select
-          value={String(contextWindow)}
-          onValueChange={(v) => handleImmediateChange("context_window", Number(v))}
-        >
-          <SelectTrigger className="text-xs">
-            <SelectValue placeholder="Select context window" />
-          </SelectTrigger>
-          <SelectContent>
-            {CONTEXT_WINDOW_OPTIONS.map((size) => (
-              <SelectItem key={size} value={String(size)} className="text-xs">
-                {size.toLocaleString()}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <ContextWindowSelect
+          value={contextWindow}
+          onValueChange={(v) => handleImmediateChange("context_window", v)}
+          triggerClassName="text-xs"
+          itemClassName="text-xs"
+        />
       </div>
     </div>
   );

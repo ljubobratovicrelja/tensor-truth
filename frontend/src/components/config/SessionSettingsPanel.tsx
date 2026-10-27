@@ -22,6 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { ContextWindowSelect } from "@/components/config/ContextWindowSelect";
 import {
   useConfig,
   useUpdateSession,
@@ -48,7 +49,6 @@ function HelpTooltip({ text }: { text: string }) {
 
 const DEVICE_OPTIONS = ["cpu", "cuda", "mps"];
 const LLM_DEVICE_OPTIONS = ["cpu", "gpu"];
-const CONTEXT_WINDOW_OPTIONS = [2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144];
 
 interface SessionSettingsPanelProps {
   sessionId?: string;
@@ -268,21 +268,10 @@ export function SessionSettingsPanel({
               </div>
               <div className="space-y-2">
                 <Label>Context Window</Label>
-                <Select
-                  value={String(contextWindow)}
-                  onValueChange={(v) => setContextWindow(Number(v))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select context window" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CONTEXT_WINDOW_OPTIONS.map((size) => (
-                      <SelectItem key={size} value={String(size)}>
-                        {size.toLocaleString()}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ContextWindowSelect
+                  value={contextWindow}
+                  onValueChange={setContextWindow}
+                />
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">

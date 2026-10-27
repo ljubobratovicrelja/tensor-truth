@@ -57,6 +57,7 @@ import {
 } from "@/hooks";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 import { ProviderSetupPanel } from "@/components/providers/ProviderSetupPanel";
+import { ContextWindowSelect } from "@/components/config/ContextWindowSelect";
 import { McpServersSection } from "@/components/config/McpServersSection";
 import { ExtensionsSection } from "@/components/config/ExtensionsSection";
 import type { ConfigResponse } from "@/api/types";
@@ -101,8 +102,6 @@ function SectionHeader({ icon: Icon, title }: { icon: LucideIcon; title: string 
 }
 
 const DEVICE_OPTIONS = ["cpu", "cuda", "mps"];
-
-const CONTEXT_WINDOW_OPTIONS = [2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144];
 
 const REINITIALIZE_START_KEY = "tensortruth-reinitialize-start";
 
@@ -461,21 +460,7 @@ function ConfigForm({ config, onSave, isSaving }: ConfigFormProps) {
       </div>
       <div className="space-y-2">
         <Label>Context Window</Label>
-        <Select
-          value={String(contextWindow)}
-          onValueChange={(v) => setContextWindow(Number(v))}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select context window" />
-          </SelectTrigger>
-          <SelectContent>
-            {CONTEXT_WINDOW_OPTIONS.map((size) => (
-              <SelectItem key={size} value={String(size)}>
-                {size.toLocaleString()}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <ContextWindowSelect value={contextWindow} onValueChange={setContextWindow} />
       </div>
       <div className="space-y-2">
         <div className="flex items-center justify-between">
