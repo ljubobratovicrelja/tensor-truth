@@ -166,12 +166,24 @@ export interface StreamToolPhase {
   metadata: Record<string, unknown>;
 }
 
+/** Live progress reported by a tool phase, for in-step progress UI. */
+export interface ToolStepProgress {
+  /** Completion percentage, 0-100. */
+  percent: number;
+  /** Human-readable current stage, e.g. "Converting 1/2: Paper.pdf". */
+  message: string;
+  /** Raw backend phase name, e.g. "converting". */
+  stage?: string;
+}
+
 export interface ToolStep {
   tool: string;
   params: Record<string, unknown>;
   output: string;
   is_error: boolean;
   tool_id?: string;
+  /** Present while the backend reports machine-readable progress. */
+  progress?: ToolStepProgress | null;
 }
 
 export type AgentPhase =

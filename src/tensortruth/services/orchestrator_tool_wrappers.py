@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -106,6 +107,18 @@ class AddArxivPaperInput(BaseModel):
             "current chat session and attaches its text to the conversation "
             'context so it can be read immediately, "project" adds it to the '
             'parent project, "context" is an alias for the session behaviour.'
+        ),
+    )
+
+
+class BuildIndexInput(BaseModel):
+    """Input schema for build_index orchestrator tool."""
+
+    scope: str = Field(
+        default="session",
+        description=(
+            'Which document collection to index: "session" (default) for the '
+            'current chat session, "project" for the parent project.'
         ),
     )
 
@@ -210,6 +223,39 @@ async def request_confirmation(
     return await confirmation_service.await_resolution(
         confirmation.confirmation_id, timeout=timeout
     )
+
+
+_BUILD_DOC_STAGE_RE = re.compile(r"^(Converting|Loading) (.+?) \((\d+)/(\d+)\)$")
+
+_BUILD_INDEX_POLL_INTERVAL = 0.25
+_BUILD_INDEX_MAX_WAIT_SECONDS = 1800.0
+
+
+def _format_build_stage(stage: str) -> tuple[str, str]:
+    """Turn a raw build-index stage into (display message, phase name).
+
+    The indexer reports stages like ``"Converting pdf_ab12cd_Paper.pdf (1/2)"``.
+    The UI wants ``"Converting 1/2: Paper.pdf"`` so the reader sees position
+    and document title separately from the internal file name.
+    """
+    text = (stage or "").strip()
+    if not text:
+        return "Preparing index build...", "preparing"
+
+    match = _BUILD_DOC_STAGE_RE.match(text)
+    if match:
+        verb, filename, current, total = match.groups()
+        try:
+            from tensortruth.api.routes.documents import strip_doc_prefix
+
+            title = strip_doc_prefix(filename.rsplit("/", 1)[-1])
+        except Exception:  # pragma: no cover - defensive
+            title = filename.rsplit("/", 1)[-1]
+        return f"{verb} {current}/{total}: {title}", verb.lower()
+
+    words = text.split()
+    phase = words[0].lower().rstrip(":") if words else ""
+    return text, phase if phase.isalpha() else "building"
 
 
 # --- Factory functions ---
@@ -1744,6 +1790,275 @@ def create_add_arxiv_paper_tool(
     )
 
 
+def create_build_index_tool(
+    progress_emitter: ProgressEmitter,
+    confirmation_service: "ToolConfirmationService",
+    session_id: str,
+    project_id: Optional[str] = None,
+) -> FunctionTool:
+    """Create a build_index FunctionTool for the orchestrator.
+
+    Builds the vector index for the session's (or project's) uploaded
+    documents — the same incremental job the "Build Index" button in the
+    Documents panel triggers. It reuses ``_build_index`` from the documents
+    REST route, so config resolution, task submission and RAG cache eviction
+    are shared with the UI path.
+
+    The tool asks for confirmation first (it loads the embedding model and can
+    run for minutes), then blocks while polling the TaskRunner and emits
+    machine-readable progress for the frontend progress bar.
+    """
+
+    async def build_index(scope: str = "session") -> str:
+        """Build the vector index for uploaded session or project documents.
+
+        Use this when the user asks to index, re-index, or make their uploaded
+        documents searchable. The user is asked to approve first; the tool
+        blocks until the build finishes and reports what was indexed.
+
+        Args:
+            scope: "session" (default) or "project".
+
+        Returns:
+            Summary of the build, or an error string.
+        """
+        import time
+
+        from fastapi import HTTPException
+
+        from tensortruth.api.deps import (
+            get_document_service,
+            get_project_service,
+            get_task_runner,
+        )
+        from tensortruth.api.routes.documents import _build_index
+        from tensortruth.services.task_runner import TaskStatus
+
+        # Validate scope
+        if scope not in ("session", "project"):
+            return f"Error: scope must be 'session' or 'project', got '{scope}'"
+
+        if scope == "project" and not project_id:
+            return (
+                "Error: cannot build a project index — this session is not part "
+                "of a project. Use scope='session' instead."
+            )
+
+        assert (scope != "project") or (project_id is not None)
+        scope_id: str = project_id if scope == "project" else session_id  # type: ignore[assignment]
+        scope_type = scope
+
+        # Pre-flight: surface "nothing to do" cases as friendly strings before
+        # asking the user to approve anything.
+        try:
+            with get_document_service(scope_id, scope_type) as doc_service:
+                pdf_count = doc_service.get_pdf_count()
+                md_count = len(doc_service.get_all_markdown_files())
+                unindexed = doc_service.get_unindexed_doc_ids()
+        except Exception as e:
+            logger.error("build_index: failed to inspect %s scope: %s", scope, e)
+            return f"Error: could not inspect {scope} documents — {e}"
+
+        if pdf_count == 0 and md_count == 0:
+            return (
+                f"There are no documents in this {scope} to index. "
+                "Add a PDF, text, or URL document first."
+            )
+
+        if not unindexed:
+            return (
+                f"All {pdf_count + md_count} document(s) in this {scope} are "
+                "already indexed — nothing to build. New uploads are picked up "
+                "by the next build."
+            )
+
+        doc_word = "document" if len(unindexed) == 1 else "documents"
+        outcome = await request_confirmation(
+            confirmation_service=confirmation_service,
+            progress_emitter=progress_emitter,
+            tool_name="build_index",
+            action_type="build_index",
+            title=f"Build index for {len(unindexed)} {scope} {doc_word}",
+            summary=(
+                f"Convert and embed {len(unindexed)} {doc_word} in the {scope} "
+                "so they can be searched. This loads the embedding model and "
+                "may take several minutes."
+            ),
+            details={
+                "scope": scope,
+                "scope_id": scope_id,
+                "document_count": len(unindexed),
+            },
+            session_id=session_id,
+        )
+
+        if outcome == "rejected":
+            return "User rejected the proposal to build the index."
+        if outcome == "expired":
+            return "Confirmation timed out for building the index."
+
+        await _emit(
+            progress_emitter,
+            ToolProgress(
+                tool_id="build_index",
+                phase="starting",
+                message="Starting index build...",
+                metadata={
+                    "percent": 0,
+                    "message": "Starting index build...",
+                    "stage": "",
+                    "scope": scope,
+                    "tool": "build_index",
+                },
+            ),
+        )
+
+        project_service = get_project_service() if scope == "project" else None
+        task_runner = get_task_runner()
+
+        # Clear the RAG engine cache once the task settles so subsequent
+        # rag_query calls see the newly built index.
+        try:
+            from tensortruth.api.routes.index_management import _make_on_complete
+
+            on_complete = _make_on_complete()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("build_index: no RAG cache eviction callback: %s", e)
+            on_complete = None
+
+        try:
+            response = await _build_index(
+                scope_id,
+                scope_type,
+                task_runner,
+                project_service,
+                on_complete=on_complete,
+            )
+        except HTTPException as e:
+            return f"Could not start the index build: {e.detail}"
+        except Exception as e:
+            logger.error("build_index: failed to submit build: %s", e)
+            return f"Error: failed to start the index build — {e}"
+
+        task_id = response.task_id
+        started = time.monotonic()
+        loop = asyncio.get_running_loop()
+        deadline = started + _BUILD_INDEX_MAX_WAIT_SECONDS
+
+        last_stage: Optional[str] = None
+        last_percent = -1
+
+        while True:
+            task_info = task_runner.get_task(task_id)
+            if task_info is None:
+                return (
+                    f"Error: index build task {task_id} disappeared before "
+                    "finishing."
+                )
+
+            if task_info.status in (TaskStatus.COMPLETED, TaskStatus.ERROR):
+                break
+
+            stage = task_info.stage or ""
+            percent = int(task_info.progress or 0)
+            if stage != last_stage or percent != last_percent:
+                message, phase = _format_build_stage(stage)
+                if not stage and percent == 0:
+                    phase, message = "preparing", "Preparing index build..."
+                await _emit(
+                    progress_emitter,
+                    ToolProgress(
+                        tool_id="build_index",
+                        phase=phase,
+                        message=message,
+                        metadata={
+                            "percent": max(0, min(percent, 100)),
+                            "message": message,
+                            "stage": stage,
+                            "scope": scope,
+                            "scope_type": scope_type,
+                            "task_id": task_id,
+                            "tool": "build_index",
+                        },
+                    ),
+                )
+                last_stage, last_percent = stage, percent
+
+            if loop.time() >= deadline:
+                return (
+                    f"Index build is still running in the background "
+                    f"(task {task_id}, {last_percent}% — "
+                    f"{_format_build_stage(last_stage or '')[0]}). It will keep "
+                    "going; ask again later or check the Documents panel for "
+                    "status."
+                )
+
+            await asyncio.sleep(_BUILD_INDEX_POLL_INTERVAL)
+
+        elapsed = time.monotonic() - started
+
+        if task_info.status == TaskStatus.ERROR:
+            await _emit(
+                progress_emitter,
+                ToolProgress(
+                    tool_id="build_index",
+                    phase="failed",
+                    message="Index build failed.",
+                    metadata={
+                        "percent": last_percent if last_percent >= 0 else 0,
+                        "message": "Index build failed.",
+                        "stage": task_info.stage or "",
+                        "error": task_info.error,
+                        "scope": scope,
+                        "tool": "build_index",
+                    },
+                ),
+            )
+            return f"Error: index build failed — {task_info.error or 'unknown error'}"
+
+        result = task_info.result or {}
+        indexed = result.get("documents_indexed", len(unindexed))
+        chunks = result.get("chunks")
+
+        await _emit(
+            progress_emitter,
+            ToolProgress(
+                tool_id="build_index",
+                phase="complete",
+                message=f"Indexed {indexed} document(s).",
+                metadata={
+                    "percent": 100,
+                    "message": f"Indexed {indexed} document(s).",
+                    "stage": task_info.stage or "Complete",
+                    "scope": scope,
+                    "tool": "build_index",
+                },
+            ),
+        )
+
+        summary = (
+            f"Index build complete for the {scope}. " f"Documents indexed: {indexed}. "
+        )
+        if isinstance(chunks, int) and chunks > 0:
+            summary += f"Chunks in index: {chunks}. "
+        summary += f"Elapsed: {elapsed:.1f}s. The documents are now searchable."
+        return summary
+
+    return FunctionTool.from_defaults(
+        async_fn=build_index,
+        name="build_index",
+        description=(
+            "Build the vector index for documents uploaded to the current "
+            "session or its project. Use when the user asks to index, "
+            "re-index, or make uploaded documents searchable via rag_query. "
+            "The user is asked to approve first (it loads the embedding model); "
+            "the tool blocks until the build finishes. "
+            "scope='session' (default) or scope='project'."
+        ),
+        fn_schema=BuildIndexInput,
+    )
+
+
 def create_all_tool_wrappers(
     tool_service: ToolService,
     progress_emitter: ProgressEmitter,
@@ -1856,6 +2171,14 @@ def create_all_tool_wrappers(
     if session_id is not None and confirmation_service is not None:
         tools.append(
             create_add_arxiv_paper_tool(
+                progress_emitter, confirmation_service, session_id, project_id
+            )
+        )
+
+    # Build-index tool (needs session_id + confirmation_service)
+    if session_id is not None and confirmation_service is not None:
+        tools.append(
+            create_build_index_tool(
                 progress_emitter, confirmation_service, session_id, project_id
             )
         )
