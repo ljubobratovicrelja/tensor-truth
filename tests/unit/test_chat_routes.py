@@ -130,7 +130,7 @@ class TestChatContext:
 
         assert context.modules == []
 
-    @patch("tensortruth.api.routes.chat.get_project_index_dir")
+    @patch("tensortruth.services.chat_runner.get_project_index_dir")
     def test_from_session_with_project_merges_modules(self, mock_get_index_dir):
         """Test from_session merges project and session catalog modules."""
         mock_project_index = MagicMock()
@@ -171,7 +171,7 @@ class TestChatContext:
         # pending_module is excluded (not indexed)
         assert context.modules == ["project_module", "session_module"]
 
-    @patch("tensortruth.api.routes.chat.get_project_index_dir")
+    @patch("tensortruth.services.chat_runner.get_project_index_dir")
     def test_from_session_with_project_adds_project_index_path(
         self, mock_get_index_dir
     ):
@@ -215,7 +215,7 @@ class TestChatContext:
             "/session/pdf/index",
         ]
 
-    @patch("tensortruth.api.routes.chat.get_project_index_dir")
+    @patch("tensortruth.services.chat_runner.get_project_index_dir")
     def test_from_session_deduplicates_modules(self, mock_get_index_dir):
         """Test from_session deduplicates modules across project and session."""
         mock_project_index = MagicMock()

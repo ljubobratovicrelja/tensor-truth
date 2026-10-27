@@ -1,0 +1,947 @@
+"""Executes one chat turn, publishing events to a duck-typed sink.
+
+``run_turn`` is the per-prompt body that used to live inline in
+``websocket_chat``: image persistence, slash-command dispatch, the orchestrator
+path, the direct ``ChatService`` fallback, assistant-message persistence and
+title generation.
+
+The sink is anything with ``async send_json(dict)``. In production it is a
+``RunEventSink`` that appends to a :class:`ChatRun` log; the legacy path can
+pass a real WebSocket. Because the sink is not a socket handler, a client
+disconnect cannot propagate into the turn.
+
+``ChatContext`` and the helpers here are re-exported from
+``tensortruth.api.routes.chat`` for backwards compatibility.
+"""
+
+import asyncio
+import logging
+import re
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Protocol
+
+from tensortruth.api.deps import (
+    get_chat_service,
+    get_config_service,
+    get_document_service,
+    get_project_service,
+    get_rag_service,
+    get_session_service,
+    get_tool_confirmation_service,
+    get_tool_service,
+)
+from tensortruth.api.routes.commands import registry as command_registry
+from tensortruth.app_utils.paths import get_project_index_dir
+from tensortruth.app_utils.title_generation import generate_smart_title_async
+from tensortruth.core.ollama import get_ollama_url
+from tensortruth.core.providers import ProviderRegistry, resolve_model_from_params
+from tensortruth.services.chat_run_service import ChatRun
+from tensortruth.services.image_service import ImageService
+from tensortruth.services.models import ToolProgress
+from tensortruth.services.orchestrator_service import (
+    CHARS_PER_TOKEN,
+    OrchestratorService,
+    load_module_descriptions,
+)
+from tensortruth.services.orchestrator_stream import OrchestratorStreamTranslator
+from tensortruth.services.project_service import ProjectService
+from tensortruth.services.session_service import SessionService
+
+logger = logging.getLogger(__name__)
+
+# Regex for markdown images: ![alt](url) with optional trailing footnote like " [1]"
+_MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)(\s*\[\d+\])?")
+
+
+class EventSink(Protocol):
+    """Anything a turn can stream into."""
+
+    async def send_json(self, payload: Dict[str, Any]) -> None:
+        """Deliver one event."""
+        ...
+
+
+class RunEventSink:
+    """Duck-typed sink that publishes into a run's event log.
+
+    Delivery never raises: a dead subscriber is handled inside
+    :meth:`ChatRun.publish`, so the producer keeps going.
+    """
+
+    def __init__(self, run: ChatRun) -> None:
+        self.run = run
+        self.last_terminal_type: Optional[str] = None
+
+    async def send_json(self, payload: Dict[str, Any]) -> None:
+        event_type = payload.get("type")
+        if event_type in ("done", "error"):
+            self.last_terminal_type = str(event_type)
+        try:
+            self.run.publish(payload)
+        except Exception:  # pragma: no cover - publish is in-memory only
+            logger.exception("Failed to publish event for run %s", self.run.run_id)
+
+
+async def _localize_images(content: str, session_id: str) -> str:
+    """Download external images and replace URLs with local paths.
+
+    Scans for markdown ``![alt](url)`` patterns, downloads external images
+    concurrently, and replaces successful downloads with local API URLs.
+    Failed downloads are left unchanged.
+    """
+    if not content:
+        return content
+
+    matches = list(_MD_IMAGE_RE.finditer(content))
+    if not matches:
+        return content
+
+    # Filter to external URLs only (skip already-local images)
+    external: list[tuple[re.Match, str]] = []
+    for m in matches:
+        url = m.group(2)
+        if url.startswith(("http://", "https://")) and "/api/sessions/" not in url:
+            external.append((m, url))
+
+    if not external:
+        return content
+
+    image_service = ImageService()
+
+    # Download all external images concurrently
+    tasks = [image_service.save_image_from_url(session_id, url) for _, url in external]
+    results = await asyncio.gather(*tasks)
+
+    # Replace URLs back-to-front so offsets stay valid
+    new_content = content
+    for (m, _url), image_id in reversed(list(zip(external, results))):
+        if image_id is not None:
+            local_url = f"/api/sessions/{session_id}/images/{image_id}"
+            alt = m.group(1)
+            replacement = f"![{alt}]({local_url})"
+            new_content = (
+                new_content[: m.start()] + replacement + new_content[m.end() :]
+            )
+
+    return new_content
+
+
+@dataclass
+class ChatContext:
+    """Context for a chat request.
+
+    Encapsulates all the information needed to execute a chat query,
+    including session configuration and message history.
+    """
+
+    session_id: str
+    prompt: str
+    modules: List[str]
+    params: Dict[str, Any]
+    session_messages: List[Dict[str, Any]]
+    additional_index_paths: List[str] = field(default_factory=list)
+    images: List[Dict[str, Any]] = field(default_factory=list)
+
+    @classmethod
+    def from_session(
+        cls,
+        session_id: str,
+        prompt: str,
+        session: Dict[str, Any],
+        pdf_service: Any,
+        project_service: Optional[ProjectService] = None,
+    ) -> "ChatContext":
+        """Create ChatContext from session data and PDF service.
+
+        When the session belongs to a project, merges project-level catalog
+        modules and collects project/session index paths.
+
+        Args:
+            session_id: The session identifier.
+            prompt: The user's current prompt.
+            session: Session dict containing modules, params, messages.
+            pdf_service: PDFService instance to check for PDF index.
+            project_service: Optional ProjectService for project context resolution.
+
+        Returns:
+            ChatContext instance with all fields populated.
+        """
+        session_modules = session.get("modules") or []
+        additional_index_paths: List[str] = []
+
+        # Resolve project context if session belongs to a project
+        project_id = session.get("project_id")
+        project_modules: List[str] = []
+        composed_system_prompt: Optional[str] = None
+        project: Optional[Dict[str, Any]] = None
+        if project_id and project_service:
+            project_data = project_service.load()
+            project = project_service.get_project(project_id, project_data)
+            if project:
+                # Extract indexed catalog modules from project
+                # catalog_modules is a dict: {"module_name": {"status": "indexed"}}
+                catalog = project.get("catalog_modules", {})
+                project_modules = [
+                    module_name
+                    for module_name, mod_info in catalog.items()
+                    if isinstance(mod_info, dict)
+                    and mod_info.get("status") == "indexed"
+                ]
+
+                # Check for project index directory on disk
+                project_index_dir = get_project_index_dir(project_id)
+                chroma_db_path = project_index_dir / "chroma.sqlite3"
+                if chroma_db_path.exists():
+                    additional_index_paths.append(str(project_index_dir))
+
+                # Compose project context into system_prompt from
+                # project name, description, and custom instructions
+                parts: List[str] = []
+                project_name = (project.get("name") or "").strip()
+                project_desc = (project.get("description") or "").strip()
+                project_instructions = (
+                    (project.get("config") or {}).get("system_prompt") or ""
+                ).strip()
+
+                if project_name:
+                    parts.append(f"Project: {project_name}")
+                if project_desc:
+                    parts.append(project_desc)
+                if project_instructions:
+                    parts.append(project_instructions)
+
+                if parts:
+                    composed_system_prompt = "\n\n".join(parts)
+            else:
+                logger.warning(
+                    f"Project {project_id} not found for session {session_id}, "
+                    "falling back to session-only context"
+                )
+
+        # Merge modules: project modules first, then session, deduplicated
+        merged_modules = list(dict.fromkeys(project_modules + session_modules))
+
+        # Add session PDF index if it exists
+        session_index_path = pdf_service.get_index_path()
+        if session_index_path:
+            additional_index_paths.append(str(session_index_path))
+
+        # Build params, overriding system_prompt for project sessions
+        params = dict(session.get("params", {}))
+        if project and composed_system_prompt:
+            params["system_prompt"] = composed_system_prompt
+
+        return cls(
+            session_id=session_id,
+            prompt=prompt,
+            modules=merged_modules,
+            params=params,
+            session_messages=session.get("messages", []),
+            additional_index_paths=additional_index_paths,
+        )
+
+
+def _save_assistant_message(
+    session_service: SessionService,
+    session_id: str,
+    content: str,
+    sources: List[Dict[str, Any]],
+    metrics: Optional[Dict[str, Any]],
+) -> None:
+    """Save assistant message with sources and metrics to session.
+
+    Args:
+        session_service: The session service instance.
+        session_id: The session identifier.
+        content: The assistant's response content.
+        sources: List of source dicts (may be empty).
+        metrics: Optional retrieval metrics.
+    """
+    assistant_message: Dict[str, Any] = {"role": "assistant", "content": content}
+    if sources:
+        assistant_message["sources"] = sources
+    if metrics:
+        assistant_message["metrics"] = metrics
+
+    data = session_service.load()  # Reload in case of concurrent updates
+    data = session_service.add_message(session_id, assistant_message, data)
+    session_service.save(data)
+
+
+def _is_orchestrator_enabled(
+    session: Dict[str, Any],
+    model_name: Optional[str],
+) -> bool:
+    """Check if the orchestrator should be used for this session.
+
+    The orchestrator is enabled when both conditions are met:
+    1. Config check: session params has ``orchestrator_enabled=True`` (default True).
+    2. Model capability: the active model supports native tool-calling.
+
+    Args:
+        session: Session dict with params.
+        model_name: The model name for the session. If None, the
+            orchestrator is disabled.
+
+    Returns:
+        True if the orchestrator should be used, False otherwise.
+    """
+    if not model_name:
+        return False
+
+    params = session.get("params", {})
+    config_enabled = params.get("orchestrator_enabled", True)
+    if not config_enabled:
+        logger.debug("Orchestrator disabled by session config")
+        return False
+
+    try:
+        model_ref = resolve_model_from_params(params, model_name)
+        has_tools = ProviderRegistry.get_instance().check_tool_support(model_ref)
+    except Exception:
+        logger.warning(
+            "Failed to check tool-call support for model '%s', "
+            "disabling orchestrator",
+            model_name,
+        )
+        return False
+
+    if not has_tools:
+        logger.debug(
+            "Model '%s' does not support tool-calling, disabling orchestrator",
+            model_name,
+        )
+        return False
+
+    return True
+
+
+async def _run_orchestrator_path(
+    websocket: EventSink,
+    context: "ChatContext",
+    session: Dict[str, Any],
+    chat_service: Any,
+    session_service: SessionService,
+    needs_title: bool,
+) -> None:
+    """Execute the orchestrator path for a user prompt.
+
+    Creates an OrchestratorService, streams events via the
+    OrchestratorStreamTranslator, sends sources and done messages,
+    saves the assistant message, and generates a title if needed.
+
+    On orchestrator failure, falls back to the direct ChatService path.
+
+    Args:
+        websocket: The event sink (any object with ``async send_json(dict)``).
+        context: ChatContext with prompt, modules, params, etc.
+        session: Raw session dict.
+        chat_service: ChatService instance (for source extraction fallback).
+        session_service: SessionService for persisting messages.
+        needs_title: Whether a title generation is pending.
+    """
+    params = context.params
+    model_name = params.get("model")
+    context_window = params.get("context_window", 16384)
+
+    # Resolve base_url from the provider registry (provider-agnostic)
+    provider_id = params.get("provider_id")
+    if provider_id:
+        model_ref = resolve_model_from_params(params, model_name or "")
+        base_url = model_ref.base_url
+    else:
+        base_url = params.get("ollama_url") or get_ollama_url()
+
+    # Load config for module descriptions
+    config_service = get_config_service()
+    config = config_service.load()
+
+    # Load module descriptions for the orchestrator system prompt
+    module_descriptions = load_module_descriptions(context.modules, config)
+
+    # Extract custom instructions and project metadata from params
+    custom_instructions = params.get("system_prompt")
+    # Project metadata is the composed system_prompt for project sessions;
+    # for non-project sessions custom_instructions and project_metadata
+    # may be the same. The orchestrator handles deduplication internally.
+    project_metadata = None
+    project_id = session.get("project_id")
+    if project_id and custom_instructions:
+        # For project sessions, the system_prompt was composed from project
+        # metadata. Pass it as project_metadata to the orchestrator.
+        project_metadata = custom_instructions
+        custom_instructions = None
+
+    # Get services for orchestrator
+    tool_service = get_tool_service()
+    rag_service = get_rag_service()
+
+    # Ensure RAG engine is loaded for the current modules/params if needed
+    if context.modules or context.additional_index_paths:
+        if rag_service.needs_reload(
+            context.modules, params, context.additional_index_paths
+        ):
+            await websocket.send_json(
+                {
+                    "type": "tool_phase",
+                    "tool_id": "rag",
+                    "phase": "loading_models",
+                    "message": "Loading models...",
+                    "metadata": {},
+                }
+            )
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                rag_service.load_engine,
+                context.modules,
+                params,
+                context.additional_index_paths,
+            )
+
+    # Get MCP management services
+    confirmation_service = get_tool_confirmation_service()
+    from tensortruth.services.mcp_server_service import MCPServerService
+
+    mcp_server_service = MCPServerService()
+
+    # Create OrchestratorService (cached per session/config identity)
+    orchestrator = OrchestratorService.get_or_create(
+        session_id=context.session_id,
+        tool_service=tool_service,
+        rag_service=rag_service,
+        model=model_name or "",
+        base_url=base_url,
+        context_window=context_window,
+        session_params=params,
+        session_messages=context.session_messages,
+        module_descriptions=module_descriptions,
+        custom_instructions=custom_instructions,
+        project_metadata=project_metadata,
+        confirmation_service=confirmation_service,
+        mcp_server_service=mcp_server_service,
+        project_id=project_id,
+    )
+
+    # Create stream translator for event -> WebSocket message conversion
+    translator = OrchestratorStreamTranslator(chat_service=chat_service)
+
+    # Define progress emitter that sends StreamToolPhase messages via the sink.
+    # This is captured by tool wrappers at construction time.
+    async def _ws_progress_emitter(tp: ToolProgress) -> None:
+        try:
+            # Confirmation requests need a distinct message type so the
+            # frontend can render inline approval cards.
+            if tp.phase == "confirmation_request" and tp.metadata:
+                msg = {
+                    "type": "confirmation_request",
+                    "confirmation_id": tp.metadata.get("confirmation_id", ""),
+                    "tool_name": tp.metadata.get("tool_name", ""),
+                    "action_type": tp.metadata.get("action_type", ""),
+                    "title": tp.metadata.get("title", ""),
+                    "summary": tp.metadata.get("summary", ""),
+                    "details": tp.metadata.get("details", {}),
+                }
+                logger.info(
+                    "WS emitter: sending confirmation_request %s",
+                    msg.get("confirmation_id"),
+                )
+                await websocket.send_json(msg)
+            else:
+                await websocket.send_json(
+                    {
+                        "type": "tool_phase",
+                        "tool_id": tp.tool_id,
+                        "phase": tp.phase,
+                        "message": tp.message,
+                        "metadata": tp.metadata,
+                    }
+                )
+        except Exception:
+            logger.exception("WS emitter error for phase=%s", tp.phase)
+
+    # The OrchestratorService's progress_emitter is synchronous (called from
+    # sync tool wrappers). We wrap the async emitter to schedule it on the
+    # event loop without awaiting (fire-and-forget from the sync context).
+    loop = asyncio.get_event_loop()
+
+    def _sync_progress_emitter(tp: ToolProgress) -> None:
+        logger.info("sync_progress_emitter called: phase=%s", tp.phase)
+        try:
+            loop.call_soon_threadsafe(asyncio.ensure_future, _ws_progress_emitter(tp))
+        except Exception:
+            logger.exception("sync_progress_emitter failed for phase=%s", tp.phase)
+
+    # Stream orchestrator events
+    async for event in orchestrator.execute(
+        prompt=context.prompt,
+        chat_history=context.session_messages,
+        progress_emitter=_sync_progress_emitter,
+        images=context.images or None,
+    ):
+        msg = translator.process_event(event)
+        if msg is not None:
+            try:
+                await websocket.send_json(msg)
+            except Exception:
+                break
+
+    # Inject RAG retrieval result for proper source extraction
+    if orchestrator.last_rag_result:
+        translator.set_rag_retrieval_result(orchestrator.last_rag_result)
+
+    # Inject web source nodes from reranking pipeline (with real scores)
+    if orchestrator.last_web_sources:
+        translator.set_web_source_nodes(orchestrator.last_web_sources)
+
+    # Send sources message
+    sources_msg = translator.build_sources_message()
+    if sources_msg is not None:
+        await websocket.send_json(sources_msg)
+
+    # Estimate total input chars: current prompt + all history messages
+    input_chars = len(context.prompt) + sum(
+        len(str(m.get("content") or "")) for m in context.session_messages
+    )
+
+    # Send done message
+    done_msg = translator.build_done_message(
+        title_pending=needs_title, input_chars=input_chars
+    )
+    await websocket.send_json(done_msg)
+
+    # Finalize to get accumulated result data for saving
+    result = translator.finalize()
+
+    # Download and cache external images locally
+    localized_content = await _localize_images(result.full_response, context.session_id)
+    if localized_content != result.full_response:
+        result.full_response = localized_content
+        # Re-send done message with localized URLs so client renders local images
+        done_update = translator.build_done_message(
+            title_pending=needs_title, input_chars=input_chars
+        )
+        done_update["content"] = localized_content
+        await websocket.send_json(done_update)
+
+    # Save assistant message with tool steps
+    assistant_message: Dict[str, Any] = {
+        "role": "assistant",
+        "content": result.full_response,
+    }
+    if result.full_thinking:
+        assistant_message["thinking"] = result.full_thinking
+    if result.sources:
+        assistant_message["sources"] = result.sources
+    if result.metrics:
+        assistant_message["metrics"] = result.metrics
+    if result.confidence_level != "normal":
+        assistant_message["confidence_level"] = result.confidence_level
+    if result.tool_steps:
+        assistant_message["tool_steps"] = result.tool_steps
+
+    data = session_service.load()
+    data = session_service.add_message(context.session_id, assistant_message, data)
+    session_service.save(data)
+
+    # Generate title if needed
+    if needs_title and result.full_response:
+        try:
+            title = await generate_smart_title_async(
+                result.full_response,
+                model_name,
+                context_window,
+                provider_id=params.get("provider_id"),
+            )
+            fresh_data = session_service.load()
+            fresh_data = session_service.update_title(
+                context.session_id, title, fresh_data
+            )
+            session_service.save(fresh_data)
+            await websocket.send_json({"type": "title", "title": title})
+        except Exception:
+            pass
+
+
+class _ResponseCapturingSink:
+    """Sink wrapper that captures command response, sources, and tool steps."""
+
+    def __init__(self, sink: EventSink) -> None:
+        self.sink = sink
+        self.full_response = ""
+        self.sources: Optional[List[Dict[str, Any]]] = None
+        self.tool_steps: Optional[List[Dict[str, Any]]] = None
+        self.title_pending = False
+
+    async def send_json(self, payload: Dict[str, Any]) -> None:
+        # Capture response, sources, and tool_steps from done message
+        if payload.get("type") == "done":
+            if "content" in payload:
+                self.full_response = payload["content"]
+            if "sources" in payload:
+                self.sources = payload["sources"]
+            if "tool_steps" in payload:
+                self.tool_steps = payload["tool_steps"]
+            if payload.get("title_pending"):
+                self.title_pending = True
+        # Forward all messages to the real sink
+        await self.sink.send_json(payload)
+
+    # Forward other attributes (e.g. close) to the underlying sink
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.sink, name)
+
+
+async def run_turn(
+    sink: EventSink,
+    *,
+    session_id: str,
+    prompt: str,
+    images: Optional[List[Dict[str, Any]]] = None,
+    session_service: Optional[SessionService] = None,
+    chat_service: Any = None,
+    project_service: Optional[ProjectService] = None,
+) -> None:
+    """Execute one chat turn, streaming every event into ``sink``.
+
+    Behaviour is identical to the old inline ``websocket_chat`` body. Errors
+    that belong to the turn (unknown command, missing session) are published as
+    ``error`` events; unexpected exceptions propagate so the run registry can
+    mark the run ``failed``.
+
+    Args:
+        sink: Duck-typed socket with ``async send_json(dict)``.
+        session_id: Session to run the turn against.
+        prompt: The user's prompt.
+        images: Raw image dicts (``data``/``mimetype``/``filename``).
+        session_service: Optional injected service (resolved from deps if None).
+        chat_service: Optional injected ChatService.
+        project_service: Optional injected ProjectService.
+    """
+    session_service = session_service or get_session_service()
+    chat_service = chat_service or get_chat_service()
+    project_service = project_service or get_project_service()
+
+    raw_images: List[Dict[str, Any]] = list(images or [])
+
+    data = session_service.load()
+    session = session_service.get_session(session_id, data)
+    if session is None:
+        await sink.send_json({"type": "error", "detail": "Session not found"})
+        return
+
+    if not prompt and not raw_images:
+        await sink.send_json({"type": "error", "detail": "Empty prompt"})
+        return
+
+    # Default to a space prompt when only images are sent
+    if not prompt:
+        prompt = "Describe this image."
+
+    # Save images to disk and build metadata + raw data lists
+    image_refs: List[Dict[str, Any]] = []
+    images_for_llm: List[Dict[str, str]] = []
+    if raw_images:
+        image_service = ImageService()
+        for img in raw_images:
+            img_data = img.get("data", "")
+            img_mime = img.get("mimetype", "image/png")
+            img_filename = img.get("filename", "image.png")
+            try:
+                img_id = image_service.save_image(
+                    session_id, img_data, img_mime, img_filename
+                )
+                image_refs.append(
+                    {
+                        "id": img_id,
+                        "mimetype": img_mime,
+                        "filename": img_filename,
+                    }
+                )
+                images_for_llm.append(
+                    {
+                        "data": img_data,
+                        "mimetype": img_mime,
+                    }
+                )
+            except Exception as e:
+                logger.warning("Failed to save image: %s", e)
+
+    # Detect command in prompt (/ must be at start or after whitespace)
+    command_match = re.search(r"(?<!\S)/(\w+)(?:\s+(.+))?", prompt)
+
+    if command_match:
+        cmd_name = command_match.group(1)
+        cmd_args = command_match.group(2) or ""
+
+        command = command_registry.get(cmd_name)
+
+        if command:
+            # Save user message
+            data = session_service.load()
+            data = session_service.add_message(
+                session_id, {"role": "user", "content": prompt}, data
+            )
+            session_service.save(data)
+
+            # Check if we need to generate a title (first message in session)
+            needs_title = session_service.needs_title_update(session_id, data)
+
+            # Execute command (streams response through the capturing sink)
+            wrapper = _ResponseCapturingSink(sink)
+            # _ResponseCapturingSink duck-types WebSocket (safe)
+            await command.execute(cmd_args, session, wrapper)  # type: ignore
+
+            full_response = wrapper.full_response
+            captured_sources = wrapper.sources
+            captured_tool_steps = wrapper.tool_steps
+
+            # Save assistant response to session (with sources if available)
+            if full_response:
+                cmd_response: dict = {
+                    "role": "assistant",
+                    "content": full_response,
+                }
+                if captured_sources:
+                    cmd_response["sources"] = captured_sources
+                if captured_tool_steps:
+                    cmd_response["tool_steps"] = captured_tool_steps
+
+                data = session_service.load()
+                data = session_service.add_message(
+                    session_id,
+                    cmd_response,
+                    data,
+                )
+                session_service.save(data)
+
+            # Generate title for first message (same as regular chat)
+            if needs_title and full_response:
+                try:
+                    cmd_model = session.get("params", {}).get("model")
+                    cmd_ctx = session.get("params", {}).get("context_window", 16384)
+                    cmd_provider = session.get("params", {}).get("provider_id")
+                    title = await generate_smart_title_async(
+                        full_response,
+                        cmd_model,
+                        cmd_ctx,
+                        provider_id=cmd_provider,
+                    )
+                    fresh_data = session_service.load()
+                    fresh_data = session_service.update_title(
+                        session_id, title, fresh_data
+                    )
+                    session_service.save(fresh_data)
+                    await sink.send_json({"type": "title", "title": title})
+                except Exception:
+                    # Title generation failure is non-critical
+                    pass
+
+            return
+
+        # Unknown command - send error
+        error_msg = (
+            f"Unknown command: /{cmd_name}. " "Type /help for available commands."
+        )
+        await sink.send_json({"type": "error", "detail": error_msg})
+        return
+
+    # Reload session data to get updated modules/params (may have changed mid-session)
+    data = session_service.load()
+    session = session_service.get_session(session_id, data)
+    if session is None:
+        await sink.send_json({"type": "error", "detail": "Session not found"})
+        return
+
+    # Build context (resolves project modules + index paths)
+    with get_document_service(session_id, "session") as pdf_service:
+        context = ChatContext.from_session(
+            session_id,
+            prompt,
+            session,
+            pdf_service,
+            project_service=project_service,
+        )
+    context.images = images_for_llm
+
+    # Add user message (with image refs if present)
+    user_message: Dict[str, Any] = {"role": "user", "content": prompt}
+    if image_refs:
+        user_message["images"] = image_refs
+    data = session_service.load()
+    data = session_service.add_message(session_id, user_message, data)
+    session_service.save(data)
+
+    # Check if we need to generate a title (first message in session)
+    needs_title = session_service.needs_title_update(session_id, data)
+
+    # Determine model name from session params
+    model_name = context.params.get("model")
+
+    # Route through orchestrator if enabled, otherwise fallback
+    use_orchestrator = _is_orchestrator_enabled(session, model_name)
+
+    if use_orchestrator:
+        # --- Orchestrator path ---
+        try:
+            await _run_orchestrator_path(
+                websocket=sink,
+                context=context,
+                session=session,
+                chat_service=chat_service,
+                session_service=session_service,
+                needs_title=needs_title,
+            )
+        except Exception as orch_err:
+            logger.error(
+                "Orchestrator path failed, falling back to direct " "ChatService: %s",
+                orch_err,
+                exc_info=True,
+            )
+            # Fall through to the direct ChatService path below
+            use_orchestrator = False
+
+    if not use_orchestrator:
+        # --- Direct ChatService path (fallback) ---
+        # Stream response with status and thinking support
+        full_response = ""
+        full_thinking = ""
+        sources: List[Dict[str, Any]] = []
+        metrics_dict = None
+        confidence_level = "normal"
+
+        # Use ChatService for query routing (handles engine loading internally)
+        query_generator = chat_service.query(
+            prompt=context.prompt,
+            modules=context.modules,
+            params=context.params,
+            session_messages=context.session_messages,
+            additional_index_paths=context.additional_index_paths,
+            images=context.images or None,
+        )
+
+        # Iterate generator in thread pool to prevent blocking event loop
+        loop = asyncio.get_event_loop()
+
+        while True:
+            try:
+                # Get next chunk from generator in executor (non-blocking)
+                chunk = await loop.run_in_executor(None, next, query_generator)
+
+                if chunk.is_complete:
+                    # Use ChatService to extract sources
+                    sources = chat_service.extract_sources(chunk.source_nodes)
+                    metrics_dict = chunk.metrics
+                    confidence_level = chunk.confidence_level
+                    break
+                elif chunk.status:
+                    # Send legacy pipeline status update
+                    await sink.send_json(
+                        {
+                            "type": "status",
+                            "status": chunk.status,
+                        }
+                    )
+                    # Send tool_phase alongside if available
+                    if chunk.progress:
+                        await sink.send_json(
+                            {
+                                "type": "tool_phase",
+                                "tool_id": chunk.progress.tool_id,
+                                "phase": chunk.progress.phase,
+                                "message": chunk.progress.message,
+                                "metadata": chunk.progress.metadata,
+                            }
+                        )
+                elif chunk.thinking:
+                    full_thinking += chunk.thinking
+                    await sink.send_json(
+                        {
+                            "type": "thinking",
+                            "content": chunk.thinking,
+                        }
+                    )
+                elif chunk.text:
+                    full_response += chunk.text
+                    await sink.send_json(
+                        {
+                            "type": "token",
+                            "content": chunk.text,
+                        }
+                    )
+            except StopIteration:
+                break
+
+        # Send sources with metrics (only in RAG mode)
+        if sources:
+            await sink.send_json(
+                {
+                    "type": "sources",
+                    "data": sources,
+                    "metrics": metrics_dict,
+                }
+            )
+
+        # Send completion
+        direct_input_chars = len(context.prompt) + sum(
+            len(str(m.get("content") or "")) for m in context.session_messages
+        )
+        await sink.send_json(
+            {
+                "type": "done",
+                "content": full_response,
+                "confidence_level": confidence_level,
+                "title_pending": needs_title,
+                "input_tokens": direct_input_chars // CHARS_PER_TOKEN,
+                "output_tokens": len(full_response) // CHARS_PER_TOKEN,
+            }
+        )
+
+        # Download and cache external images locally
+        localized = await _localize_images(full_response, session_id)
+        if localized != full_response:
+            full_response = localized
+            # Re-send done with localized URLs
+            await sink.send_json(
+                {
+                    "type": "done",
+                    "content": full_response,
+                    "confidence_level": confidence_level,
+                    "title_pending": needs_title,
+                    "input_tokens": direct_input_chars // CHARS_PER_TOKEN,
+                    "output_tokens": len(full_response) // CHARS_PER_TOKEN,
+                }
+            )
+
+        # Save assistant response
+        assistant_message: dict = {
+            "role": "assistant",
+            "content": full_response,
+        }
+        if full_thinking:
+            assistant_message["thinking"] = full_thinking
+        if sources:
+            assistant_message["sources"] = sources
+        if metrics_dict:
+            assistant_message["metrics"] = metrics_dict
+        if confidence_level != "normal":
+            assistant_message["confidence_level"] = confidence_level
+        data = session_service.load()
+        data = session_service.add_message(session_id, assistant_message, data)
+        session_service.save(data)
+
+        # Generate title from the response
+        if needs_title:
+            try:
+                title = await generate_smart_title_async(
+                    full_response,
+                    model_name,
+                    context.params.get("context_window", 16384),
+                    provider_id=context.params.get("provider_id"),
+                )
+                fresh_data = session_service.load()
+                fresh_data = session_service.update_title(session_id, title, fresh_data)
+                session_service.save(fresh_data)
+                await sink.send_json({"type": "title", "title": title})
+            except Exception:
+                pass
