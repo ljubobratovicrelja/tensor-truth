@@ -239,6 +239,7 @@ class TestBuiltinToolNameFiltering:
             "fetch_pages_batch",
             "search_focused",
             "add_arxiv_paper",
+            "build_index",
         }
         assert _WRAPPED_BUILTIN_TOOL_NAMES == expected
 

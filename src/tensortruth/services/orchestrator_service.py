@@ -82,6 +82,7 @@ _WRAPPED_BUILTIN_TOOL_NAMES = frozenset(
         "fetch_pages_batch",
         "search_focused",
         "add_arxiv_paper",
+        "build_index",
     }
 )
 
