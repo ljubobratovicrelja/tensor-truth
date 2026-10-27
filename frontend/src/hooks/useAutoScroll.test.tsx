@@ -143,6 +143,28 @@ describe("useAutoScroll", () => {
     expect(el.scrollTop).toBe(500);
   });
 
+  it("disengages on a slow scrollbar drag delivered only as 2px scroll steps", () => {
+    const { el, metrics, rerenderWith } = setup();
+
+    metrics.scrollHeight = 1200;
+    rerenderWith({ content: 1, revision: 0 });
+    expect(el.scrollTop).toBe(700);
+
+    // Native scrollbars dispatch no pointer events and a slow drag moves a
+    // couple of pixels per event, so only accumulated travel can catch it.
+    scrollTo(el, 698);
+    expect(away()).toBe("no");
+    scrollTo(el, 696);
+    scrollTo(el, 694);
+    expect(away()).toBe("no");
+    scrollTo(el, 692);
+    expect(away()).toBe("yes");
+
+    metrics.scrollHeight = 1500;
+    rerenderWith({ content: 2, revision: 0 });
+    expect(el.scrollTop).toBe(692);
+  });
+
   it("re-engages when the user scrolls back within 24px of the bottom", () => {
     const { el, metrics, rerenderWith } = setup();
 

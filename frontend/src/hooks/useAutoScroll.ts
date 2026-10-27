@@ -22,6 +22,15 @@ interface UseAutoScrollResult {
 
 /** A scroll landing this close to the position we assigned is ours, not the user's. */
 const PROGRAMMATIC_TOLERANCE_PX = 2;
+/**
+ * Cumulative upward travel (px) from scroll events alone before we believe the
+ * user moved the view. A native scrollbar drag dispatches no pointer events, so
+ * it can only be seen as scroll deltas — but so can per-frame scroll-anchoring
+ * adjustments, and a slow 2px-per-event drag never trips a single-delta test.
+ * Summing consecutive upward movement separates the two: a drag passes this in a
+ * few frames, anchoring noise does not.
+ */
+const UPWARD_DISENGAGE_PX = 6;
 /** Finger travel (px) before a touch is treated as a deliberate upward drag. */
 const TOUCH_INTENT_PX = 2;
 /** Pointer travel (px) before a drag is treated as a deliberate upward drag. */
@@ -64,6 +73,8 @@ export function useAutoScroll({
   const programmaticTopRef = useRef<number | null>(null);
   /** Last scrollTop observed — scrollbar-drag fallback only */
   const lastTopRef = useRef(0);
+  /** Consecutive upward scroll travel, reset on any downward movement */
+  const upwardTravelRef = useRef(0);
   /** Gesture bookkeeping for touch / pointer direction inference */
   const touchStartYRef = useRef<number | null>(null);
   const pointerStartYRef = useRef<number | null>(null);
@@ -103,6 +114,7 @@ export function useAutoScroll({
     // Our own scroll: never touches intent state.
     if (target !== null && Math.abs(top - target) <= PROGRAMMATIC_TOLERANCE_PX) {
       lastTopRef.current = top;
+      upwardTravelRef.current = 0;
       return;
     }
     programmaticTopRef.current = null;
@@ -111,10 +123,17 @@ export function useAutoScroll({
     lastTopRef.current = top;
 
     // Fallback for scrollbar drags / momentum, which can reach us as scroll
-    // events only (native scrollbars do not dispatch pointer events).
-    if (top < previousTop - PROGRAMMATIC_TOLERANCE_PX) {
-      disengage();
-      return;
+    // events only (native scrollbars do not dispatch pointer events). Sum
+    // consecutive upward travel so a slow drag is still recognised while a
+    // couple of pixels of scroll-anchoring jitter are not.
+    if (top < previousTop) {
+      upwardTravelRef.current += previousTop - top;
+      if (upwardTravelRef.current >= UPWARD_DISENGAGE_PX) {
+        disengage();
+        return;
+      }
+    } else {
+      upwardTravelRef.current = 0;
     }
 
     engageIfNearBottom(el);
