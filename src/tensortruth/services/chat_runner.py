@@ -410,7 +410,10 @@ async def _run_orchestrator_path(
     # Ensure RAG engine is loaded for the current modules/params if needed
     if context.modules or context.additional_index_paths:
         if rag_service.needs_reload(
-            context.modules, params, context.additional_index_paths
+            context.modules,
+            params,
+            context.additional_index_paths,
+            owner=context.session_id,
         ):
             await websocket.send_json(
                 {
@@ -428,6 +431,7 @@ async def _run_orchestrator_path(
                 context.modules,
                 params,
                 context.additional_index_paths,
+                context.session_id,
             )
 
     # Get MCP management services
@@ -860,6 +864,7 @@ async def run_turn(
             session_messages=context.session_messages,
             additional_index_paths=context.additional_index_paths,
             images=context.images or None,
+            owner=context.session_id,
         )
 
         # Iterate generator in thread pool to prevent blocking event loop

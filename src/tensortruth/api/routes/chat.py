@@ -93,6 +93,7 @@ async def chat(
         params=context.params,
         session_messages=context.session_messages,
         additional_index_paths=context.additional_index_paths,
+        owner=session_id,
     )
 
     # 5. Save assistant message

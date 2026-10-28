@@ -10,6 +10,7 @@ from .chat_service import ChatResult, ChatService
 from .config_service import ConfigService
 from .document_service import DocumentService
 from .document_service import DocumentService as PDFService
+from .index_registry import ModuleIndexRegistry
 from .model_manager import ModelManager
 from .models import ProjectData, SessionData, ToolProgress
 from .orchestrator_service import OrchestratorService
@@ -32,6 +33,7 @@ __all__ = [
     "ProjectService",
     "DocumentService",
     "PDFService",
+    "ModuleIndexRegistry",
     "ModelManager",
     "OrchestratorService",
     "ChatHistory",

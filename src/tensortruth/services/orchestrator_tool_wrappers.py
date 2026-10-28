@@ -385,6 +385,7 @@ def create_rag_tool(
     full_output_callback: Optional[FullOutputCallback] = None,
     context_window: int = 16384,
     catalog_names: Optional[List[str]] = None,
+    session_id: Optional[str] = None,
 ) -> FunctionTool:
     """Create a rag_query FunctionTool for the orchestrator.
 
@@ -406,6 +407,7 @@ def create_rag_tool(
             RAGRetrievalResult for source extraction by the stream translator.
         context_window: Model context window in tokens, used to cap the size
             of the excerpts returned to the agent.
+        session_id: Session whose retrieval set this tool queries.
 
     Returns:
         A FunctionTool wrapping RAGService.retrieve().
@@ -413,6 +415,9 @@ def create_rag_tool(
     # Capture mutable references so the tool always sees current state
     captured_params = session_params
     captured_messages = session_messages
+    # Owner-scoped calls only pass the keyword when the session is known, so
+    # legacy single-engine callers keep working unchanged.
+    owner_kwargs: Dict[str, Any] = {"owner": session_id} if session_id else {}
 
     async def rag_query(query: str) -> str:
         """Search the indexed knowledge base for information relevant to the query.
@@ -423,7 +428,7 @@ def create_rag_tool(
         """
         # The tool is registered even with no engine loaded so the agent always
         # sees it; without modules there is nothing to search, only guidance.
-        if not rag_service.is_loaded():
+        if not rag_service.is_loaded(**owner_kwargs):
             if catalog_names:
                 available = ", ".join(catalog_names)
             else:
@@ -454,6 +459,7 @@ def create_rag_tool(
                 params=captured_params,
                 session_messages=captured_messages,
                 progress_callback=lambda tp: None,  # Suppress nested progress
+                **owner_kwargs,
             ),
         )
 
@@ -602,12 +608,14 @@ def create_load_modules_tool(
                 )
 
             try:
+                # Reloads only this session's set; other sessions keep theirs.
                 # Never block the one event loop the whole app shares.
                 await asyncio.to_thread(
                     rag_service.load_engine,
                     merged,
                     captured_params,
                     captured_paths,
+                    **({"owner": session_id} if session_id else {}),
                 )
             except Exception as exc:
                 logger.exception("load_modules failed for %s", to_load)
@@ -2773,6 +2781,7 @@ def create_all_tool_wrappers(
                 full_output_callback=full_output_callback,
                 context_window=context_window,
                 catalog_names=catalog_names,
+                session_id=session_id,
             )
         )
         tools.append(

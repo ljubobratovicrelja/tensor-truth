@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 import chromadb
 from llama_index.core import (
     QueryBundle,
-    Settings,
     StorageContext,
     load_index_from_storage,
 )
@@ -526,42 +525,26 @@ class MultiIndexRetriever(BaseRetriever):
             self._retrieve_cached.cache_clear()
 
 
-def load_engine_for_modules(
-    selected_modules: List[str],
+def resolve_engine_settings(
     engine_params: Optional[Dict[str, Any]] = None,
-    additional_index_paths: Optional[List[str]] = None,
-) -> CondensePlusContextChatEngine:
-    """Load RAG chat engine with selected module indexes.
-
-    Note: Chat history is now passed to query() methods at query time,
-    not restored here. The ChatMemoryBuffer is still created for LlamaIndex
-    internal state but not pre-populated.
+) -> tuple[str, str]:
+    """Resolve the embedding model id and RAG device for an engine build.
 
     Args:
-        selected_modules: List of module names to load
-        engine_params: Engine configuration parameters
-        additional_index_paths: Optional list of additional index paths
-            (session PDFs, project indexes)
+        engine_params: Engine configuration parameters.
 
     Returns:
-        Configured CondensePlusContextChatEngine instance
-
-    Raises:
-        ValueError: If no modules or session index selected
-        FileNotFoundError: If no valid indices loaded
+        (embedding_model, rag_device) with the embedding model name healed to
+        its canonical HuggingFace id.
     """
-    if engine_params is None:
-        engine_params = {}
-
-    # Determine devices - use session param, fallback to config default, then auto-detect
+    params = engine_params or {}
     config = None
-    if "rag_device" not in engine_params:
+
+    if "rag_device" not in params:
         try:
-            # Try to get default from config
             config = load_config()
             rag_device = config.rag.default_device
         except (ImportError, Exception):
-            # Fallback to auto-detection if config unavailable
             try:
                 from tensortruth.app_utils.helpers import get_system_devices
 
@@ -570,10 +553,9 @@ def load_engine_for_modules(
             except (ImportError, Exception):
                 rag_device = "cpu"
     else:
-        rag_device = engine_params["rag_device"]
+        rag_device = params["rag_device"]
 
-    # Determine embedding model - use session param, fallback to config default
-    embedding_model = engine_params.get("embedding_model")
+    embedding_model = params.get("embedding_model")
     if embedding_model is None:
         try:
             if config is None:
@@ -582,69 +564,217 @@ def load_engine_for_modules(
         except (ImportError, Exception):
             embedding_model = "BAAI/bge-m3"
 
-    # Heal any corrupted/sanitized embedding model name (e.g., "bge-m3" → "BAAI/bge-m3")
     from tensortruth.indexing.metadata import resolve_embedding_model_name
 
-    embedding_model = resolve_embedding_model_name(embedding_model)
+    return resolve_embedding_model_name(embedding_model), rag_device
 
-    # Calculate adaptive similarity_top_k based on reranker_top_n
-    # Retrieve 2-3x more candidates than final target to ensure quality
-    reranker_top_n = engine_params.get("reranker_top_n", 3)
-    similarity_top_k = max(5, reranker_top_n * 2)
 
-    # Set Global Settings for this session (Embedder via ModelManager)
-    embed_model = get_embed_model(rag_device, model_name=embedding_model)
-    Settings.embed_model = embed_model
+def get_similarity_top_k(engine_params: Optional[Dict[str, Any]] = None) -> int:
+    """Adaptive candidate pool size: 2x the reranker target, at least 5."""
+    params = engine_params or {}
+    reranker_top_n = params.get("reranker_top_n", 3)
+    return max(5, reranker_top_n * 2)
 
-    # Get embedding-aware index directory
+
+def _open_index(
+    persist_dir: str, embed_model: Any, similarity_top_k: int
+) -> tuple[BaseRetriever, Any]:
+    """Open one persisted Chroma index and build its auto-merging retriever.
+
+    The embedder is passed explicitly so retrieval never depends on the
+    process-global ``Settings.embed_model`` (which concurrent sessions with
+    different embedding models would otherwise clobber).
+    """
+    db = chromadb.PersistentClient(path=persist_dir)
+    collection = db.get_or_create_collection("data")
+    vector_store = ChromaVectorStore(chroma_collection=collection)
+
+    storage_context = StorageContext.from_defaults(
+        persist_dir=persist_dir, vector_store=vector_store
+    )
+    index = load_index_from_storage(storage_context, embed_model=embed_model)
+
+    base = index.as_retriever(similarity_top_k=similarity_top_k)
+    retriever = AutoMergingRetriever(
+        base, index.storage_context, verbose=False  # type: ignore[arg-type]
+    )
+    return retriever, index
+
+
+def resolve_module_index_path(module_name: str, embedding_model: str) -> Optional[str]:
+    """Resolve the on-disk index directory for a module, or None if missing.
+
+    Prefers the embedding-aware path (indexes/{model_id}/{module}) and falls
+    back to the legacy path (indexes/{module}) for older installs.
+    """
     from tensortruth.app_utils.paths import get_indexes_dir_for_model
 
     embedding_indexes_dir = str(get_indexes_dir_for_model(embedding_model))
+    path = os.path.join(embedding_indexes_dir, module_name)
+    if os.path.exists(path):
+        return path
+
+    legacy_path = os.path.join(get_base_index_dir(), module_name)
+    if os.path.exists(legacy_path):
+        logger.info(f"Using legacy index path for module '{module_name}'")
+        print(f"  Using legacy index path for {module_name}")
+        return legacy_path
+
+    logger.warning(
+        f"Module '{module_name}' not found at '{path}' or legacy path "
+        f"'{legacy_path}' - skipping. Check if indexed with "
+        f"embedding model '{embedding_model}'."
+    )
+    return None
+
+
+def load_module_index(
+    module_name: str,
+    embedding_model: str,
+    embed_model: Any,
+    similarity_top_k: int,
+) -> Optional[tuple[BaseRetriever, Any]]:
+    """Load a single module index.
+
+    Args:
+        module_name: Indexed module name.
+        embedding_model: Canonical embedding model id (used for the path).
+        embed_model: Embedder instance shared through ModelManager.
+        similarity_top_k: Candidate pool size for the inner retriever.
+
+    Returns:
+        (retriever, index) or None when the module has no index on disk.
+    """
+    path = resolve_module_index_path(module_name, embedding_model)
+    if path is None:
+        return None
+    return _open_index(path, embed_model, similarity_top_k)
+
+
+def load_index_from_path(
+    index_path: str,
+    embed_model: Any,
+    similarity_top_k: int,
+) -> Optional[tuple[BaseRetriever, Any]]:
+    """Load an explicit index path (session PDFs, project indexes)."""
+    if not os.path.exists(index_path):
+        logger.warning(f"Additional index path not found, skipping: {index_path}")
+        return None
+    try:
+        return _open_index(index_path, embed_model, similarity_top_k)
+    except Exception as e:
+        logger.warning(f"Failed to load additional index {index_path}: {e}")
+        return None
+
+
+def compose_chat_engine(
+    retrievers: List[BaseRetriever],
+    engine_params: Optional[Dict[str, Any]] = None,
+    rag_device: Optional[str] = None,
+) -> CondensePlusContextChatEngine:
+    """Wire retrievers, memory, LLM and postprocessors into a chat engine.
+
+    Args:
+        retrievers: Per-index retrievers already loaded.
+        engine_params: Engine configuration parameters.
+        rag_device: Device used for the reranker (resolved if omitted).
+
+    Returns:
+        Configured CondensePlusContextChatEngine.
+
+    Raises:
+        FileNotFoundError: If no retrievers were supplied.
+    """
+    params = engine_params or {}
+    if not retrievers:
+        raise FileNotFoundError("No valid indices loaded.")
+    if rag_device is None:
+        _, rag_device = resolve_engine_settings(params)
+
+    balance_strategy = params.get("balance_strategy", "top_k_per_index")
+    composite_retriever = MultiIndexRetriever(
+        retrievers, balance_strategy=balance_strategy
+    )
+
+    memory_token_limit = params.get("memory_token_limit")
+    if memory_token_limit is None:
+        try:
+            memory_token_limit = load_config().conversation.memory_token_limit
+        except (ImportError, Exception):
+            memory_token_limit = 4000
+    memory = ChatMemoryBuffer.from_defaults(token_limit=memory_token_limit)
+
+    # Chat history is passed to query methods from session storage; the buffer
+    # exists for LlamaIndex internal state only and is not pre-populated.
+
+    llm = get_llm(params)
+
+    # Reranker first, then the hard cutoff filter on reranked scores.
+    node_postprocessors: list[Any] = [get_reranker(params, device=rag_device)]
+
+    confidence_cutoff_hard = params.get("confidence_cutoff_hard", 0.0)
+    if confidence_cutoff_hard > 0.0:
+        print(
+            f"--- HARD CUTOFF: Filtering reranked nodes below "
+            f"{confidence_cutoff_hard} ---"
+        )
+        node_postprocessors.append(
+            SimilarityPostprocessor(similarity_cutoff=confidence_cutoff_hard)
+        )
+
+    return CondensePlusContextChatEngine.from_defaults(
+        retriever=composite_retriever,
+        node_postprocessors=node_postprocessors,
+        llm=llm,
+        memory=memory,
+        context_prompt=CUSTOM_CONTEXT_PROMPT_TEMPLATE,
+        condense_prompt=CUSTOM_CONDENSE_PROMPT_TEMPLATE,
+        verbose=False,
+    )
+
+
+def load_engine_for_modules(
+    selected_modules: List[str],
+    engine_params: Optional[Dict[str, Any]] = None,
+    additional_index_paths: Optional[List[str]] = None,
+) -> CondensePlusContextChatEngine:
+    """Load a RAG chat engine directly (compatibility wrapper).
+
+    Prefer the ModuleIndexRegistry + RAGService per-owner sets in the app: this
+    function loads every index itself and is kept for tests and standalone use.
+
+    Args:
+        selected_modules: Module names to load.
+        engine_params: Engine configuration parameters.
+        additional_index_paths: Optional extra index paths (session PDFs,
+            project indexes).
+
+    Returns:
+        Configured CondensePlusContextChatEngine instance.
+
+    Raises:
+        FileNotFoundError: If no valid indices loaded.
+    """
+    params = engine_params or {}
+    embedding_model, rag_device = resolve_engine_settings(params)
+    similarity_top_k = get_similarity_top_k(params)
+    embed_model = get_embed_model(rag_device, model_name=embedding_model)
 
     active_retrievers: list[BaseRetriever] = []
     loaded_modules: list[str] = []
     skipped_modules: list[str] = []
 
     for module in selected_modules:
-        # First try embedding-aware path: indexes/{model_id}/{module}
-        path = os.path.join(embedding_indexes_dir, module)
-
-        # Fall back to legacy path: indexes/{module} (for backward compatibility)
-        if not os.path.exists(path):
-            legacy_path = os.path.join(get_base_index_dir(), module)
-            if os.path.exists(legacy_path):
-                logger.info(f"Using legacy index path for module '{module}'")
-                print(f"  Using legacy index path for {module}")
-                path = legacy_path
-            else:
-                logger.warning(
-                    f"Module '{module}' not found at '{path}' or legacy path "
-                    f"'{legacy_path}' - skipping. Check if indexed with "
-                    f"embedding model '{embedding_model}'."
-                )
-                skipped_modules.append(module)
-                continue
-
-        db = chromadb.PersistentClient(path=path)
-        collection = db.get_or_create_collection("data")
-        vector_store = ChromaVectorStore(chroma_collection=collection)
-
-        storage_context = StorageContext.from_defaults(
-            persist_dir=path, vector_store=vector_store
+        loaded = load_module_index(
+            module, embedding_model, embed_model, similarity_top_k
         )
-
-        # Explicitly pass the embed_model to ensure consistency
-        index = load_index_from_storage(storage_context, embed_model=embed_model)
-
-        base = index.as_retriever(similarity_top_k=similarity_top_k)
-        # storage_context type matches, may be stubs issue
-        am_retriever = AutoMergingRetriever(
-            base, index.storage_context, verbose=False  # type: ignore[arg-type]
-        )
-        active_retrievers.append(am_retriever)
+        if loaded is None:
+            skipped_modules.append(module)
+            continue
+        retriever, _ = loaded
+        active_retrievers.append(retriever)
         loaded_modules.append(module)
 
-    # Log summary of module loading
     if skipped_modules:
         logger.warning(
             f"Skipped {len(skipped_modules)}/{len(selected_modules)} modules "
@@ -655,84 +785,12 @@ def load_engine_for_modules(
         f"{loaded_modules}"
     )
 
-    # Load additional indexes (session PDFs, project indexes) if provided
     for idx_path in additional_index_paths or []:
-        if not os.path.exists(idx_path):
-            logger.warning(f"Additional index path not found, skipping: {idx_path}")
+        loaded = load_index_from_path(idx_path, embed_model, similarity_top_k)
+        if loaded is None:
             continue
-        try:
-            db = chromadb.PersistentClient(path=idx_path)
-            collection = db.get_or_create_collection("data")
-            vector_store = ChromaVectorStore(chroma_collection=collection)
+        retriever, _ = loaded
+        active_retrievers.append(retriever)
+        logger.info(f"Additional index loaded: {idx_path}")
 
-            storage_context = StorageContext.from_defaults(
-                persist_dir=idx_path, vector_store=vector_store
-            )
-
-            index = load_index_from_storage(storage_context, embed_model=embed_model)
-
-            base = index.as_retriever(similarity_top_k=similarity_top_k)
-            # storage_context type matches, may be stubs issue
-            am_retriever = AutoMergingRetriever(
-                base, index.storage_context, verbose=False  # type: ignore[arg-type]
-            )
-            active_retrievers.append(am_retriever)
-            logger.info(f"Additional index loaded: {idx_path}")
-        except Exception as e:
-            logger.warning(f"Failed to load additional index {idx_path}: {e}")
-
-    if not active_retrievers:
-        raise FileNotFoundError("No valid indices loaded.")
-
-    # Get balance strategy from params (default to "top_k_per_index")
-    balance_strategy = engine_params.get("balance_strategy", "top_k_per_index")
-
-    composite_retriever = MultiIndexRetriever(
-        active_retrievers, balance_strategy=balance_strategy
-    )
-
-    # Use config value for token limit - actual limiting done by message count at prompt assembly
-    memory_token_limit = engine_params.get("memory_token_limit")
-    if memory_token_limit is None:
-        try:
-            if config is None:
-                config = load_config()
-            memory_token_limit = config.conversation.memory_token_limit
-        except (ImportError, Exception):
-            memory_token_limit = 4000
-    memory = ChatMemoryBuffer.from_defaults(token_limit=memory_token_limit)
-
-    # Note: Chat history is no longer pre-populated here.
-    # History is passed directly to query methods from session storage.
-
-    llm = get_llm(engine_params)
-
-    # Build node postprocessors chain
-    # Order: Reranker first, then hard cutoff filter on reranked scores
-    node_postprocessors: list[Any] = []
-
-    # Add reranker first
-    node_postprocessors.append(get_reranker(engine_params, device=rag_device))
-
-    # Add hard cutoff filter AFTER reranking (filters on final cross-encoder scores)
-    confidence_cutoff_hard = engine_params.get("confidence_cutoff_hard", 0.0)
-    if confidence_cutoff_hard > 0.0:
-        print(
-            f"--- HARD CUTOFF: Filtering reranked nodes below "
-            f"{confidence_cutoff_hard} ---"
-        )
-        node_postprocessors.append(
-            SimilarityPostprocessor(similarity_cutoff=confidence_cutoff_hard)
-        )
-
-    chat_engine = CondensePlusContextChatEngine.from_defaults(
-        retriever=composite_retriever,
-        node_postprocessors=node_postprocessors,
-        llm=llm,
-        memory=memory,
-        context_prompt=CUSTOM_CONTEXT_PROMPT_TEMPLATE,
-        condense_prompt=CUSTOM_CONDENSE_PROMPT_TEMPLATE,
-        verbose=False,
-    )
-
-    return chat_engine
+    return compose_chat_engine(active_retrievers, params, rag_device=rag_device)

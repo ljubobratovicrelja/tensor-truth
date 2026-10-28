@@ -7,6 +7,9 @@ and a cleaner interface for the UI layer.
 import base64
 import json
 import logging
+import threading
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -40,9 +43,13 @@ from tensortruth.rag_engine import (
     CUSTOM_CONTEXT_PROMPT_TEMPLATE,
     LLM_ONLY_SYSTEM_PROMPT,
     MultiIndexRetriever,
+    compose_chat_engine,
     get_base_index_dir,
+    get_embed_model,
     get_llm,
-    load_engine_for_modules,
+    get_similarity_top_k,
+    load_index_from_path,
+    resolve_engine_settings,
 )
 from tensortruth.utils.history_condenser import (
     condense_query,
@@ -50,10 +57,38 @@ from tensortruth.utils.history_condenser import (
 )
 
 from .chat_history import ChatHistoryService
+from .index_registry import ModuleIndexRegistry
+from .index_registry import get_instance as get_index_registry
 from .models import RAGChunk, RAGResponse, RAGRetrievalResult, ToolProgress
 from .retrieval_metrics import compute_retrieval_metrics
 
 logger = logging.getLogger(__name__)
+
+# Owner key used when a caller does not identify a session (legacy call sites,
+# tests, direct library use). Real sessions always pass their session id.
+DEFAULT_OWNER = "__default__"
+
+
+@dataclass
+class SessionRagSet:
+    """Per-owner retrieval set on top of the shared module indexes.
+
+    Holds only cheap per-session objects: the module names and params it was
+    built from, the composite retriever and chat engine, and the set of
+    registry handles (module names) it refcounts.
+    """
+
+    owner: str
+    modules: List[str]
+    params: Dict[str, Any]
+    config_hash: Optional[Tuple[Any, ...]]
+    embedding_model: str
+    chat_engine: CondensePlusContextChatEngine
+    llm: Optional[LLM]
+    retriever: Optional["BaseRetriever"]
+    acquired_modules: List[str] = field(default_factory=list)
+    additional_index_paths: List[str] = field(default_factory=list)
+    last_used: float = field(default_factory=time.time)
 
 
 class RAGService:
@@ -71,6 +106,7 @@ class RAGService:
         config: Optional[TensorTruthConfig] = None,
         indexes_dir: Optional[Union[str, Path]] = None,
         chat_history_service: Optional[ChatHistoryService] = None,
+        index_registry: Optional[ModuleIndexRegistry] = None,
     ):
         """Initialize RAG service.
 
@@ -79,6 +115,8 @@ class RAGService:
             indexes_dir: Base directory for vector indexes.
             chat_history_service: Optional ChatHistoryService instance.
                 If None, one is created lazily when needed.
+            index_registry: Module index registry. Defaults to the process
+                singleton, which is what makes module handles shared.
         """
         if config is None:
             from tensortruth.app_utils.config import load_config
@@ -90,15 +128,93 @@ class RAGService:
             Path(indexes_dir) if indexes_dir else Path(get_base_index_dir())
         )
 
-        self._engine: Optional[CondensePlusContextChatEngine] = None
-        self._current_config_hash: Optional[Tuple[Any, ...]] = None
-        self._current_modules: Optional[List[str]] = None
-        self._current_params: Optional[Dict[str, Any]] = None
+        # One thin retrieval set per owner (session id). Index handles are
+        # shared through the registry and refcounted, never duplicated here.
+        self._sets: Dict[str, SessionRagSet] = {}
+        self._sets_lock = threading.RLock()
+        self._registry = index_registry or get_index_registry()
         self._chat_history_service = chat_history_service
 
-        # Cache frequently accessed components to avoid repeated private access
-        self._llm: Optional[LLM] = None
-        self._retriever: Optional[BaseRetriever] = None
+    # --- Backwards-compatible single-engine views ---------------------------
+    # Older call sites (and tests) read/write the engine attributes directly.
+    # They map onto the default owner's set; real sessions use their own.
+
+    def _default_set(self) -> Optional[SessionRagSet]:
+        return self._sets.get(DEFAULT_OWNER)
+
+    def _ensure_default_set(self) -> SessionRagSet:
+        rag_set = self._sets.get(DEFAULT_OWNER)
+        if rag_set is None:
+            rag_set = SessionRagSet(
+                owner=DEFAULT_OWNER,
+                modules=[],
+                params={},
+                config_hash=None,
+                embedding_model="",
+                chat_engine=cast(CondensePlusContextChatEngine, None),
+                llm=None,
+                retriever=None,
+            )
+            self._sets[DEFAULT_OWNER] = rag_set
+        return rag_set
+
+    @property
+    def _engine(self) -> Optional[CondensePlusContextChatEngine]:
+        rag_set = self._default_set()
+        return rag_set.chat_engine if rag_set else None
+
+    @_engine.setter
+    def _engine(self, engine: Optional[CondensePlusContextChatEngine]) -> None:
+        if engine is None:
+            self._sets.pop(DEFAULT_OWNER, None)
+            return
+        rag_set = self._ensure_default_set()
+        rag_set.chat_engine = engine
+
+    @property
+    def _llm(self) -> Optional[LLM]:
+        rag_set = self._default_set()
+        return rag_set.llm if rag_set else None
+
+    @_llm.setter
+    def _llm(self, llm: Optional[LLM]) -> None:
+        self._ensure_default_set().llm = llm
+
+    @property
+    def _retriever(self) -> Optional["BaseRetriever"]:
+        rag_set = self._default_set()
+        return rag_set.retriever if rag_set else None
+
+    @_retriever.setter
+    def _retriever(self, retriever: Optional["BaseRetriever"]) -> None:
+        self._ensure_default_set().retriever = retriever
+
+    @property
+    def _current_params(self) -> Optional[Dict[str, Any]]:
+        rag_set = self._default_set()
+        return rag_set.params if rag_set else None
+
+    @_current_params.setter
+    def _current_params(self, params: Optional[Dict[str, Any]]) -> None:
+        self._ensure_default_set().params = params or {}
+
+    @property
+    def _current_modules(self) -> Optional[List[str]]:
+        rag_set = self._default_set()
+        return rag_set.modules if rag_set else None
+
+    @_current_modules.setter
+    def _current_modules(self, modules: Optional[List[str]]) -> None:
+        self._ensure_default_set().modules = modules or []
+
+    @property
+    def _current_config_hash(self) -> Optional[Tuple[Any, ...]]:
+        rag_set = self._default_set()
+        return rag_set.config_hash if rag_set else None
+
+    @_current_config_hash.setter
+    def _current_config_hash(self, value: Optional[Tuple[Any, ...]]) -> None:
+        self._ensure_default_set().config_hash = value
 
     @property
     def chat_history_service(self) -> ChatHistoryService:
@@ -141,75 +257,178 @@ class RAGService:
         modules: List[str],
         params: Dict[str, Any],
         additional_index_paths: Optional[List[str]] = None,
+        owner: str = DEFAULT_OWNER,
     ) -> None:
-        """Load or reload the RAG engine with specified configuration.
+        """Load or reload the retrieval set for one owner.
 
-        Note: Chat history is now passed to query() methods at query time,
-        not here. This simplifies engine lifecycle management.
+        Only this owner's set is replaced: other sessions keep their modules,
+        retrievers and chat engine. Module index handles come from the shared
+        registry (refcounted), so a module used by several owners is loaded
+        once. Additional index paths are per-session and always loaded here.
+
+        Chat history is passed to query()/retrieve() at call time, not here.
 
         Args:
             modules: List of module names to load.
             params: Engine parameters (model, temperature, etc).
             additional_index_paths: Optional list of additional index paths
                 (session PDFs, project indexes).
+            owner: Session id owning this set (default for legacy callers).
         """
-        # Clear existing engine first to free GPU memory
-        self.clear()
+        logger.info(f"Loading RAG set for owner={owner} modules: {modules}")
+        new_set = self._build_set(owner, modules, params, additional_index_paths)
 
-        logger.info(f"Loading RAG engine for modules: {modules}")
+        with self._sets_lock:
+            previous = self._sets.get(owner)
+            self._sets[owner] = new_set
+        if previous is not None:
+            self._release_set(previous)
 
-        self._engine = load_engine_for_modules(
-            selected_modules=modules,
-            engine_params=params,
-            additional_index_paths=additional_index_paths,
+        logger.info(
+            f"RAG set loaded for owner={owner}: "
+            f"{len(new_set.acquired_modules)} module(s) "
+            f"+ {len(new_set.additional_index_paths)} extra index(es)"
         )
 
-        # Cache components - single point of private access (acceptable during init)
-        # LlamaIndex CondensePlusContextChatEngine uses private attrs
-        # Cast to expected types since we know the engine configuration
-        self._llm = cast(LLM, self._engine._llm)
-        self._retriever = self._engine._retriever
+    def _build_set(
+        self,
+        owner: str,
+        modules: List[str],
+        params: Dict[str, Any],
+        additional_index_paths: Optional[List[str]],
+    ) -> SessionRagSet:
+        """Acquire indexes and compose the owner's chat engine."""
+        embedding_model, rag_device = resolve_engine_settings(params)
+        similarity_top_k = get_similarity_top_k(params)
+        embed_model = get_embed_model(rag_device, model_name=embedding_model)
 
-        self._current_modules = modules
-        self._current_params = params
-        self._current_config_hash = self._compute_config_hash(
-            modules, params, additional_index_paths
+        skipped: List[str] = []
+        retrievers = self._registry.acquire(
+            list(modules or []),
+            embedding_model,
+            embed_model,
+            similarity_top_k,
+            skipped=skipped,
+        )
+        acquired_modules = [
+            name for name in dict.fromkeys(modules or []) if name not in skipped
+        ]
+
+        additional_loaded: List[str] = []
+        try:
+            for idx_path in additional_index_paths or []:
+                loaded = load_index_from_path(idx_path, embed_model, similarity_top_k)
+                if loaded is None:
+                    continue
+                retriever, _ = loaded
+                retrievers.append(retriever)
+                additional_loaded.append(idx_path)
+
+            chat_engine = compose_chat_engine(retrievers, params, rag_device=rag_device)
+        except Exception:
+            # Do not leak refcounts when the set cannot be composed.
+            self._registry.release(acquired_modules, embedding_model)
+            raise
+
+        return SessionRagSet(
+            owner=owner,
+            modules=list(modules or []),
+            params=dict(params or {}),
+            config_hash=self._compute_config_hash(
+                modules, params, additional_index_paths
+            ),
+            embedding_model=embedding_model,
+            chat_engine=chat_engine,
+            llm=cast(LLM, chat_engine._llm),
+            retriever=chat_engine._retriever,
+            acquired_modules=acquired_modules,
+            additional_index_paths=additional_loaded,
         )
 
-        logger.info(f"RAG engine loaded successfully for {len(modules)} modules")
+    def _release_set(self, rag_set: SessionRagSet) -> None:
+        """Drop one owner's retrievers/engine and give back registry refs."""
+        retriever = rag_set.retriever
+        if isinstance(retriever, MultiIndexRetriever):
+            retriever.clear_cache()
+        memory = getattr(rag_set.chat_engine, "memory", None)
+        if memory is not None:
+            try:
+                memory.reset()
+            except Exception:
+                logger.debug("Failed to reset chat memory", exc_info=True)
+        if rag_set.acquired_modules and rag_set.embedding_model:
+            self._registry.release(rag_set.acquired_modules, rag_set.embedding_model)
 
     def needs_reload(
         self,
         modules: List[str],
         params: Dict[str, Any],
         additional_index_paths: Optional[List[str]] = None,
+        owner: str = DEFAULT_OWNER,
     ) -> bool:
-        """Check if engine needs to be reloaded due to config changes.
+        """Check if this owner's set needs rebuilding due to config changes.
 
         Args:
             modules: List of module names.
             params: Engine parameters.
             additional_index_paths: Optional list of additional index paths.
+            owner: Session id owning the set.
 
         Returns:
-            True if engine should be reloaded.
+            True if the set should be reloaded.
         """
-        if self._engine is None:
-            new_hash = self._compute_config_hash(
-                modules, params, additional_index_paths
-            )
-            return new_hash is not None  # Only reload if there's something to load
-
+        rag_set = self._sets.get(owner)
         new_hash = self._compute_config_hash(modules, params, additional_index_paths)
-        return new_hash != self._current_config_hash
+        if rag_set is None or rag_set.chat_engine is None:
+            return new_hash is not None  # Only reload if there is something to load
+        return new_hash != rag_set.config_hash
 
-    def is_loaded(self) -> bool:
-        """Check if an engine is currently loaded.
+    def is_loaded(self, owner: Optional[str] = None) -> bool:
+        """Check if a retrieval set is loaded.
+
+        Args:
+            owner: Session id to check. When None, reports whether *any* owner
+                has a set (used by tool registration).
 
         Returns:
-            True if engine is loaded.
+            True if a set exists for the owner (or for any owner when None).
         """
-        return self._engine is not None
+        if owner is None:
+            return any(s.chat_engine is not None for s in self._sets.values())
+        rag_set = self._sets.get(owner)
+        return rag_set is not None and rag_set.chat_engine is not None
+
+    def get_loaded_modules(self, owner: str = DEFAULT_OWNER) -> List[str]:
+        """Modules loaded for one owner (empty if no set)."""
+        rag_set = self._sets.get(owner)
+        return list(rag_set.modules) if rag_set else []
+
+    def release(self, owner: str) -> None:
+        """Release one owner's set and decrement its registry refcounts."""
+        with self._sets_lock:
+            rag_set = self._sets.pop(owner, None)
+        if rag_set is None:
+            return
+        self._release_set(rag_set)
+        logger.info(f"Released RAG set for owner={owner}")
+
+    def sweep_idle(self, max_idle_seconds: float) -> List[str]:
+        """Release sets untouched for longer than ``max_idle_seconds``.
+
+        Called from the lifespan background task; returns released owners.
+        """
+        cutoff = time.time() - max_idle_seconds
+        with self._sets_lock:
+            idle = [
+                owner
+                for owner, rag_set in self._sets.items()
+                if rag_set.last_used < cutoff
+            ]
+        for owner in idle:
+            self.release(owner)
+        if idle:
+            logger.info(f"Swept {len(idle)} idle RAG set(s): {idle}")
+        return idle
 
     def query(
         self,
@@ -217,6 +436,7 @@ class RAGService:
         params: Optional[Dict[str, Any]] = None,
         session_messages: Optional[List[Dict[str, Any]]] = None,
         images: Optional[List[Dict[str, str]]] = None,
+        owner: str = DEFAULT_OWNER,
     ) -> Generator[RAGChunk, None, RAGResponse]:
         """Execute a streaming query through the unified pipeline.
 
@@ -232,6 +452,7 @@ class RAGService:
             session_messages: Chat history from session storage.
                 Pass session["messages"] or session_service.get_messages().
                 If None, query runs without history context.
+            owner: Session id whose retrieval set to use.
 
         Yields:
             RAGChunk with status, thinking, or text content.
@@ -239,11 +460,14 @@ class RAGService:
         Returns:
             Final RAGResponse with complete text and sources.
         """
-        # Determine LLM and retriever based on engine state
-        if self._engine is not None:
-            llm = self._llm
-            retriever = self._retriever
-            effective_params = self._current_params or params or {}
+        # Resolve this owner's set; never fall back to another session's engine.
+        rag_set = self._sets.get(owner)
+        engine = rag_set.chat_engine if rag_set is not None else None
+        if rag_set is not None and engine is not None:
+            rag_set.last_used = time.time()
+            llm = rag_set.llm
+            retriever = rag_set.retriever
+            effective_params = rag_set.params or params or {}
         else:
             llm = get_llm(params or {})
             retriever = None
@@ -283,12 +507,10 @@ class RAGService:
                 ),
             )
 
-            condenser = getattr(self._engine, "_condense_prompt_template", None)
+            condenser = getattr(engine, "_condense_prompt_template", None)
             logger.info(f"Condenser value: {condenser}")
             logger.info(f"Condenser type: {type(condenser)}")
-            logger.info(
-                f"_skip_condense: {getattr(self._engine, '_skip_condense', None)}"
-            )
+            logger.info(f"_skip_condense: {getattr(engine, '_skip_condense', None)}")
 
             # Condense the question with chat history if we have a condenser
             condensed_question = prompt
@@ -321,11 +543,8 @@ class RAGService:
             logger.info(f"Retrieved {len(source_nodes)} nodes before reranking")
 
             # Phase 2: Reranking (if postprocessors exist)
-            assert self._engine is not None  # guaranteed when retriever exists
-            if (
-                hasattr(self._engine, "_node_postprocessors")
-                and self._engine._node_postprocessors
-            ):
+            assert engine is not None  # guaranteed when retriever exists
+            if hasattr(engine, "_node_postprocessors") and engine._node_postprocessors:
                 yield RAGChunk(
                     status="reranking",
                     progress=ToolProgress(
@@ -340,7 +559,7 @@ class RAGService:
                 query_bundle = QueryBundle(query_str=condensed_question)
 
                 try:
-                    for postprocessor in self._engine._node_postprocessors:
+                    for postprocessor in engine._node_postprocessors:
                         source_nodes = postprocessor.postprocess_nodes(
                             source_nodes, query_bundle=query_bundle
                         )
@@ -521,6 +740,7 @@ class RAGService:
         params: Optional[Dict[str, Any]] = None,
         session_messages: Optional[List[Dict[str, Any]]] = None,
         progress_callback: Optional[Any] = None,
+        owner: str = DEFAULT_OWNER,
     ) -> RAGRetrievalResult:
         """Perform retrieval, reranking, and confidence scoring without LLM generation.
 
@@ -535,21 +755,27 @@ class RAGService:
             session_messages: Chat history from session storage for query condensation.
             progress_callback: Optional callable that accepts ToolProgress objects
                 for reporting phase progress.
+            owner: Session id whose retrieval set to use.
 
         Returns:
             RAGRetrievalResult with source nodes, confidence level, and metrics.
         """
-        if self._engine is None:
-            logger.warning("retrieve() called with no engine loaded")
+        rag_set = self._sets.get(owner)
+        engine = rag_set.chat_engine if rag_set is not None else None
+        if rag_set is None or engine is None:
+            logger.warning(
+                "retrieve() called with no engine loaded for owner=%s", owner
+            )
             return RAGRetrievalResult(confidence_level="none")
 
-        retriever = self._retriever
+        retriever = rag_set.retriever
         if retriever is None:
             logger.warning("retrieve() called but no retriever available")
             return RAGRetrievalResult(confidence_level="none")
 
-        llm = self._llm
-        effective_params = self._current_params or params or {}
+        rag_set.last_used = time.time()
+        llm = rag_set.llm
+        effective_params = rag_set.params or params or {}
 
         logger.info(f"=== RAG Retrieve Start: '{query}' ===")
 
@@ -574,7 +800,7 @@ class RAGService:
 
         # Condense query with chat history if condenser is available
         condensed_question = query
-        condenser = getattr(self._engine, "_condense_prompt_template", None)
+        condenser = getattr(engine, "_condense_prompt_template", None)
         if condenser and not history.is_empty and llm is not None:
             template_str = getattr(condenser, "template", str(condenser))
             condenser_llm = create_condenser_llm(
@@ -595,11 +821,7 @@ class RAGService:
         logger.info(f"Retrieved {len(source_nodes)} nodes before reranking")
 
         # Phase 2: Reranking
-        assert self._engine is not None
-        if (
-            hasattr(self._engine, "_node_postprocessors")
-            and self._engine._node_postprocessors
-        ):
+        if hasattr(engine, "_node_postprocessors") and engine._node_postprocessors:
             if progress_callback:
                 progress_callback(
                     ToolProgress(
@@ -614,7 +836,7 @@ class RAGService:
             query_bundle = QueryBundle(query_str=condensed_question)
 
             try:
-                for postprocessor in self._engine._node_postprocessors:
+                for postprocessor in engine._node_postprocessors:
                     source_nodes = postprocessor.postprocess_nodes(
                         source_nodes, query_bundle=query_bundle
                     )
@@ -664,6 +886,7 @@ class RAGService:
         self,
         prompt: str,
         chat_history: Optional[List[Any]] = None,
+        owner: str = DEFAULT_OWNER,
     ) -> Generator[str, None, str]:
         """Execute a streaming query without source tracking.
 
@@ -672,6 +895,7 @@ class RAGService:
         Args:
             prompt: User's query prompt.
             chat_history: Optional chat history context (LlamaIndex ChatMessage list).
+            owner: Session id whose retrieval set to use.
 
         Yields:
             Response tokens.
@@ -682,10 +906,11 @@ class RAGService:
         Raises:
             RuntimeError: If engine is not loaded.
         """
-        if self._engine is None:
+        rag_set = self._sets.get(owner)
+        if rag_set is None or rag_set.chat_engine is None:
             raise RuntimeError("RAG engine not loaded. Call load_engine() first.")
 
-        response_stream = self._engine.stream_chat(prompt)
+        response_stream = rag_set.chat_engine.stream_chat(prompt)
 
         full_response = ""
         for token in response_stream.response_gen:
@@ -694,15 +919,19 @@ class RAGService:
 
         return full_response
 
-    def get_llm(self) -> Optional[LLM]:
-        """Get the underlying LLM instance from the engine.
+    def get_llm(self, owner: str = DEFAULT_OWNER) -> Optional[LLM]:
+        """Get the underlying LLM instance for an owner's set.
 
         Useful for direct LLM access without the full RAG pipeline.
 
+        Args:
+            owner: Session id whose set to read.
+
         Returns:
-            LLM instance or None if engine not loaded.
+            LLM instance or None if no set is loaded for the owner.
         """
-        return self._llm
+        rag_set = self._sets.get(owner)
+        return rag_set.llm if rag_set else None
 
     def get_llm_from_params(self, params: Dict[str, Any]) -> LLM:
         """Create an LLM instance from parameters without loading full engine.
@@ -718,26 +947,17 @@ class RAGService:
         return get_llm(params)
 
     def clear(self) -> None:
-        """Clear the engine and free GPU memory.
+        """Release every owner's set and drop all cached module indexes.
 
-        Should be called before loading a new engine or when done.
+        Used on shutdown and by tests; normal per-session churn goes through
+        release(owner) or the idle sweeper.
         """
-        if self._engine is not None:
-            # Clear retriever cache to release GPU tensor references
-            if self._retriever is not None:
-                if isinstance(self._retriever, MultiIndexRetriever):
-                    self._retriever.clear_cache()
-
-            # Clear chat memory
-            if hasattr(self._engine, "memory"):
-                self._engine.memory.reset()
-
-            self._engine = None
-            self._llm = None
-            self._retriever = None
-            self._current_config_hash = None
-            self._current_modules = None
-            self._current_params = None
+        with self._sets_lock:
+            sets = list(self._sets.values())
+            self._sets.clear()
+        for rag_set in sets:
+            self._release_set(rag_set)
+        self._registry.clear()
 
     def __enter__(self) -> "RAGService":
         """Context manager entry."""

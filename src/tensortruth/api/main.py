@@ -41,6 +41,27 @@ from tensortruth.api.schemas import HealthResponse
 logger = logging.getLogger(__name__)
 
 
+RAG_SET_IDLE_TIMEOUT_SECONDS = 30 * 60
+RAG_SET_SWEEP_INTERVAL_SECONDS = 5 * 60
+
+
+async def _sweep_idle_rag_sets() -> None:
+    """Periodically release retrieval sets idle longer than the timeout."""
+    from tensortruth.api.deps import get_rag_service
+
+    loop = asyncio.get_running_loop()
+    while True:
+        await asyncio.sleep(RAG_SET_SWEEP_INTERVAL_SECONDS)
+        try:
+            await loop.run_in_executor(
+                None, get_rag_service().sweep_idle, RAG_SET_IDLE_TIMEOUT_SECONDS
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("RAG set sweep failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
@@ -110,6 +131,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.warning(f"Failed to start RAG model preload: {e}")
 
+    # Release RAG sets for sessions nobody touched for a while. This is a
+    # plain asyncio task (not a daemon thread): it only needs to run on the
+    # event loop and the sweep itself is cheap, session-dict bookkeeping.
+    rag_sweeper = asyncio.create_task(_sweep_idle_rag_sets())
+
     logger.info("✓ TensorTruth API startup complete")
 
     yield
@@ -122,6 +148,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         stop_loop_watchdog()
     except Exception as e:  # pragma: no cover - defensive
         logger.debug("Failed to stop loop watchdog: %s", e)
+
+    # Stop the RAG idle sweeper
+    rag_sweeper.cancel()
+    try:
+        await rag_sweeper
+    except (asyncio.CancelledError, Exception):  # pragma: no cover - shutdown
+        pass
 
     # Stop task runner
     task_runner = get_task_runner()

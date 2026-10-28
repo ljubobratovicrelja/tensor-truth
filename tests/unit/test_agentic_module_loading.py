@@ -107,6 +107,7 @@ async def test_load_modules_reloads_with_merged_set_and_preserves_context():
         ["library_pytorch_2.9", "papers_dl"],
         {"model": "qwen", "temperature": 0.2},
         ["/tmp/session-index"],
+        owner="sess-1",
     )
     # Live set shared with the orchestrator.
     assert loaded == ["library_pytorch_2.9", "papers_dl"]

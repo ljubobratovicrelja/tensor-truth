@@ -98,6 +98,9 @@ class RAGConfig:
     default_top_n: int = 5
     default_confidence_threshold: float = 0.35
     default_confidence_cutoff_hard: float = 0.05
+    # Module indexes kept loaded across sessions (idle ones are evicted LRU).
+    # Active sessions are never evicted; this only bounds idle cache memory.
+    max_cached_indexes: int = 8
 
     # Per-model configurations (model_name -> config dict)
     # On first run, this is populated from DEFAULT_EMBEDDING_MODEL_CONFIGS
@@ -106,6 +109,14 @@ class RAGConfig:
     # Available reranker models (user can add custom HuggingFace rerankers)
     # On first run, this is populated from DEFAULT_RERANKER_MODELS
     reranker_models: list = field(default_factory=list)
+
+    def __post_init__(self):
+        """Validate configuration values."""
+        if self.max_cached_indexes < 0:
+            raise ValueError(
+                f"max_cached_indexes must be non-negative, got "
+                f"{self.max_cached_indexes}"
+            )
 
     def get_embedding_model_config(self, model_name: str) -> EmbeddingModelConfig:
         """Get configuration for a specific embedding model.

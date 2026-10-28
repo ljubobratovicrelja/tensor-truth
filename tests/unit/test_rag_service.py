@@ -1038,22 +1038,38 @@ def test_retrieve_does_not_call_llm():
 
 @pytest.mark.unit
 def test_load_engine_caches_llm_and_retriever():
-    """Verify load_engine caches LLM and retriever."""
+    """Verify load_engine stores the composed engine's LLM and retriever."""
     from unittest.mock import patch
 
-    from tensortruth.services.rag_service import RAGService
+    from tensortruth.services.rag_service import DEFAULT_OWNER, RAGService
 
-    with patch("tensortruth.services.rag_service.load_engine_for_modules") as mock_load:
-        mock_engine = Mock()
-        mock_engine._llm = Mock()
-        mock_engine._retriever = Mock()
-        mock_load.return_value = mock_engine
+    mock_engine = Mock()
+    mock_engine._llm = Mock()
+    mock_engine._retriever = Mock()
+    registry = Mock()
+    registry.acquire.return_value = [Mock()]
 
-        service = RAGService(_create_mock_config())
+    service = RAGService(_create_mock_config(), index_registry=registry)
+
+    with (
+        patch(
+            "tensortruth.services.rag_service.resolve_engine_settings",
+            return_value=("BAAI/bge-m3", "cpu"),
+        ),
+        patch("tensortruth.services.rag_service.get_similarity_top_k", return_value=5),
+        patch("tensortruth.services.rag_service.get_embed_model", return_value=Mock()),
+        patch(
+            "tensortruth.services.rag_service.compose_chat_engine",
+            return_value=mock_engine,
+        ),
+    ):
         service.load_engine(["test"], {})
 
-        assert service._llm is mock_engine._llm
-        assert service._retriever is mock_engine._retriever
+    assert service._llm is mock_engine._llm
+    assert service._retriever is mock_engine._retriever
+    assert service.is_loaded(DEFAULT_OWNER)
+    registry.acquire.assert_called_once()
+    assert registry.acquire.call_args.args[0] == ["test"]
 
 
 @pytest.mark.unit

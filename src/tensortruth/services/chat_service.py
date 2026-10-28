@@ -42,6 +42,7 @@ class ChatService:
         params: Dict[str, Any],
         session_messages: Optional[List[Dict[str, Any]]] = None,
         additional_index_paths: Optional[List[str]] = None,
+        owner: Optional[str] = None,
     ) -> ChatResult:
         """Execute chat query and return complete result.
 
@@ -55,6 +56,7 @@ class ChatService:
             session_messages: Chat history from session storage.
             additional_index_paths: Optional list of additional index paths
                 (session PDFs, project indexes).
+            owner: Session id, so the engine used is this session's set.
 
         Returns:
             ChatResult with response text, sources (as API dicts), and metrics.
@@ -69,6 +71,7 @@ class ChatService:
             params=params,
             session_messages=session_messages,
             additional_index_paths=additional_index_paths,
+            owner=owner,
         ):
             if chunk.is_complete:
                 sources = self._extract_sources(chunk.source_nodes)
@@ -90,6 +93,7 @@ class ChatService:
         session_messages: Optional[List[Dict[str, Any]]] = None,
         additional_index_paths: Optional[List[str]] = None,
         images: Optional[List[Dict[str, str]]] = None,
+        owner: Optional[str] = None,
     ) -> Generator[RAGChunk, None, RAGResponse]:
         """Execute chat query through the unified pipeline (streaming).
 
@@ -108,6 +112,7 @@ class ChatService:
             session_messages: Chat history from session storage.
             additional_index_paths: Optional list of additional index paths
                 (session PDFs, project indexes).
+            owner: Session id owning the retrieval set to use.
 
         Yields:
             RAGChunk with status, thinking, or text content.
@@ -115,7 +120,13 @@ class ChatService:
         Returns:
             Final RAGResponse with complete text and sources.
         """
-        if self._rag_service.needs_reload(modules, params, additional_index_paths):
+        # Owner-scoped kwargs are only passed when known, which keeps legacy
+        # callers (and their mocks) on the default-owner path.
+        owner_kwargs = {"owner": owner} if owner else {}
+
+        if self._rag_service.needs_reload(
+            modules, params, additional_index_paths, **owner_kwargs
+        ):
             yield RAGChunk(
                 status="loading_models",
                 progress=ToolProgress(
@@ -128,6 +139,7 @@ class ChatService:
                 modules=modules,
                 params=params,
                 additional_index_paths=additional_index_paths,
+                **owner_kwargs,
             )
 
         return (
@@ -136,6 +148,7 @@ class ChatService:
                 params,
                 session_messages=session_messages,
                 images=images,
+                **owner_kwargs,
             )
         )
 

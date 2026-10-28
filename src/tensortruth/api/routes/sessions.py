@@ -198,6 +198,12 @@ async def delete_session(
 
     clear_snapshot(session_id)
 
+    # Drop this session's in-memory retrieval set so its module refcounts are
+    # returned and the engine can be collected.
+    from tensortruth.api.deps import get_rag_service
+
+    get_rag_service().release(session_id)
+
 
 @router.delete("/{session_id}/messages/{message_index}", status_code=204)
 async def delete_message(
