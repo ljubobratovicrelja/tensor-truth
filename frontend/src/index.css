@@ -485,3 +485,19 @@
     animation: shimmer 2s infinite;
   }
 }
+
+/* Selection-driven elaboration markers (CSS Custom Highlight API).
+   Stored elaborations get a theme-tinted underline; the passage currently open
+   in the elaboration panel additionally gets a tinted background. */
+::highlight(tt-elaboration) {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--color-primary) 45%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
+}
+
+::highlight(tt-elaboration-active) {
+  background-color: color-mix(in oklch, var(--color-primary) 18%, transparent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--color-primary) 55%, transparent);
+}

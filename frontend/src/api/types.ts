@@ -54,9 +54,24 @@ export interface ImageRef {
   filename: string;
 }
 
+/**
+ * A persisted explanation of one passage of an assistant answer. `selected_text`
+ * is the passage exactly as rendered when the reader selected it;
+ * `occurrence_index` is its 0-based occurrence inside that message's plain text.
+ */
+export interface Elaboration {
+  id: string;
+  selected_text: string;
+  occurrence_index: number;
+  content: string;
+  created_at: string;
+}
+
 export interface MessageResponse {
   role: string;
   content: string;
+  /** Explanations the reader asked for on this (assistant) message. */
+  elaborations?: Elaboration[] | null;
   sources?: SourceNode[] | null;
   thinking?: string | null;
   /** Intermediate narration blocks emitted while the agent was using tools. */
@@ -141,6 +156,8 @@ export interface StreamDone {
   input_tokens?: number;
   output_tokens?: number;
   narration_segments?: string[];
+  /** Set on elaboration runs once the explanation was persisted. */
+  elaboration_id?: string;
 }
 
 export interface StreamError {
@@ -290,6 +307,9 @@ export type StreamMessage =
 
 export type RunStatus = "running" | "completed" | "failed" | "cancelled";
 
+/** `chat` is a normal turn; `elaboration` explains one selected passage. */
+export type RunKind = "chat" | "elaboration";
+
 /**
  * Summary of a server-owned chat run. A run outlives the socket that created
  * it, so the client can re-attach and replay its event log after a reload.
@@ -300,6 +320,10 @@ export interface RunSummary {
   /** The user prompt that started the run (used to rehydrate the chat store). */
   prompt: string;
   status: RunStatus;
+  /** Defaults to `chat` on payloads from older servers. */
+  kind?: RunKind;
+  /** Run kind metadata (e.g. `message_index`, `selected_text`). */
+  metadata?: Record<string, unknown>;
   error?: string | null;
   created_at?: string;
   finished_at?: string | null;

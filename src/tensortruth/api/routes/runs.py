@@ -15,6 +15,7 @@ from tensortruth.services.chat_run_service import (
     RunConflictError,
     get_chat_run_service,
 )
+from tensortruth.services.elaboration import MAX_SELECTED_TEXT_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +23,69 @@ router = APIRouter()
 
 
 class StartRunRequest(BaseModel):
-    """Body for creating a run."""
+    """Body for creating a run.
+
+    ``kind="elaboration"`` starts a passage-explanation run: ``prompt`` is
+    unused and the target is ``message_index`` plus ``selected_text``.
+    """
 
     prompt: str = ""
     images: List[Dict[str, Any]] = []
+    kind: str = "chat"
+    message_index: Optional[int] = None
+    selected_text: Optional[str] = None
+    occurrence_index: int = 0
+
+
+def _elaboration_metadata(
+    body: StartRunRequest, session: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Validate an elaboration request and return its run metadata.
+
+    Raises HTTPException(400) when the target message or selection is invalid.
+    ``occurrence_index`` is opaque display metadata but must be non-negative.
+    """
+    if body.kind not in ("chat", "elaboration"):
+        raise HTTPException(status_code=400, detail=f"Unknown run kind: {body.kind}")
+
+    if body.kind == "chat":
+        return {}
+
+    if body.images:
+        raise HTTPException(
+            status_code=400, detail="Images are not supported in elaboration mode"
+        )
+
+    selected_text = (body.selected_text or "").strip()
+    if not selected_text:
+        raise HTTPException(status_code=400, detail="Empty selected_text")
+    if len(selected_text) > MAX_SELECTED_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"selected_text exceeds {MAX_SELECTED_TEXT_LENGTH} characters",
+        )
+
+    if body.message_index is None:
+        raise HTTPException(status_code=400, detail="message_index is required")
+
+    messages = session.get("messages") or []
+    if not 0 <= body.message_index < len(messages):
+        raise HTTPException(status_code=400, detail="message_index out of range")
+    if messages[body.message_index].get("role") != "assistant":
+        raise HTTPException(
+            status_code=400, detail="message_index must reference an assistant message"
+        )
+
+    if body.occurrence_index < 0:
+        raise HTTPException(
+            status_code=400, detail="occurrence_index must be non-negative"
+        )
+
+    return {
+        "message_index": body.message_index,
+        "selected_text": selected_text,
+        "occurrence_index": body.occurrence_index,
+    }
 
 
 def _run_payload(run: Any, after: int = 0) -> Dict[str, Any]:
@@ -33,6 +93,8 @@ def _run_payload(run: Any, after: int = 0) -> Dict[str, Any]:
         "run_id": run.run_id,
         "session_id": run.session_id,
         "prompt": run.prompt,
+        "kind": run.kind,
+        "metadata": run.metadata,
         "status": run.status,
         "error": run.error,
         "events": run.snapshot(after),
@@ -51,15 +113,24 @@ async def create_run(
     active run.
     """
     data = session_service.load()
-    if session_service.get_session(session_id, data) is None:
+    session = session_service.get_session(session_id, data)
+    if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    if not body.prompt and not body.images:
+    metadata = _elaboration_metadata(body, session)
+
+    if body.kind == "chat" and not body.prompt and not body.images:
         raise HTTPException(status_code=400, detail="Empty prompt")
 
     service = get_chat_run_service()
     try:
-        run = await service.create(session_id, body.prompt, body.images)
+        run = await service.create(
+            session_id,
+            body.prompt,
+            body.images,
+            kind=body.kind,
+            metadata=metadata,
+        )
     except RunConflictError as exc:
         raise HTTPException(
             status_code=409,

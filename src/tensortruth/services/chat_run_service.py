@@ -56,11 +56,15 @@ class ChatRun:
         images: Optional[List[Dict[str, Any]]] = None,
         run_id: Optional[str] = None,
         max_events: int = DEFAULT_MAX_EVENTS,
+        kind: str = "chat",
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.run_id: str = run_id or uuid.uuid4().hex
         self.session_id: str = session_id
         self.prompt: str = prompt
         self.images: List[Dict[str, Any]] = list(images or [])
+        self.kind: str = kind
+        self.metadata: Dict[str, Any] = dict(metadata or {})
         self.status: str = "running"
         self.error: Optional[str] = None
         self.events: List[Dict[str, Any]] = []
@@ -150,6 +154,8 @@ class ChatRun:
             "run_id": self.run_id,
             "session_id": self.session_id,
             "prompt": self.prompt,
+            "kind": self.kind,
+            "metadata": dict(self.metadata),
             "status": self.status,
             "error": self.error,
             "events": self.snapshot(after),
@@ -160,7 +166,11 @@ RunnerFn = Callable[[Any], Awaitable[None]]
 
 
 def make_default_runner(
-    session_id: str, prompt: str, images: Optional[List[Dict[str, Any]]] = None
+    session_id: str,
+    prompt: str,
+    images: Optional[List[Dict[str, Any]]] = None,
+    kind: str = "chat",
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> RunnerFn:
     """Build the production runner that executes a real chat turn.
 
@@ -174,6 +184,8 @@ def make_default_runner(
             session_id=session_id,
             prompt=prompt,
             images=images or [],
+            kind=kind,
+            metadata=metadata,
         )
 
     return _runner
@@ -224,6 +236,8 @@ class ChatRunService:
         prompt: str,
         images: Optional[List[Dict[str, Any]]] = None,
         *,
+        kind: str = "chat",
+        metadata: Optional[Dict[str, Any]] = None,
         runner: Optional[RunnerFn] = None,
     ) -> ChatRun:
         """Create a run and schedule its generation task on the server loop.
@@ -243,11 +257,15 @@ class ChatRunService:
                 prompt=prompt,
                 images=images,
                 max_events=self.max_events,
+                kind=kind,
+                metadata=metadata,
             )
             self._runs[run.run_id] = run
 
             if runner is None:
-                runner = make_default_runner(session_id, prompt, images)
+                runner = make_default_runner(
+                    session_id, prompt, images, kind=kind, metadata=metadata
+                )
 
             task = asyncio.create_task(
                 self._execute(run, runner), name=f"chat-run-{run.run_id}"

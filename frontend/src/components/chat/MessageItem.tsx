@@ -157,7 +157,11 @@ function MessageItemComponent({
     !!messageMetrics;
 
   return (
-    <div className={cn("flex gap-3 py-4", isUser ? "flex-row-reverse" : "flex-row")}>
+    <div
+      className={cn("flex gap-3 py-4", isUser ? "flex-row-reverse" : "flex-row")}
+      data-chat-message={messageIndex}
+      data-role={message.role}
+    >
       {isUser && <div className="hidden md:block md:w-[5%] md:shrink-0" />}
       {/* Side icon - hidden on mobile, visible on md+ */}
       <div
@@ -241,7 +245,7 @@ function MessageItemComponent({
 
             {/* Always use StreamingText for assistant messages to isolate parsing errors per-block */}
             {!isUser ? (
-              <div ref={contentRef}>
+              <div ref={contentRef} data-message-content>
                 <StreamingText content={message.content} isStreaming={isStreaming} />
               </div>
             ) : (

@@ -684,6 +684,50 @@ class SessionService:
 
         return SessionData(current_id=data.current_id, sessions=new_sessions)
 
+    def add_elaboration(
+        self,
+        session_id: str,
+        message_index: int,
+        elaboration: Dict[str, Any],
+        data: SessionData,
+    ) -> SessionData:
+        """Append an elaboration to one assistant message.
+
+        Args:
+            session_id: Session ID.
+            message_index: 0-based index of the parent assistant message.
+            elaboration: Elaboration dict (id, selected_text, occurrence_index,
+                content, created_at).
+            data: Current session data.
+
+        Returns:
+            Updated SessionData, or ``data`` unchanged when the session is
+            unknown or the index does not point at an assistant message.
+            Other messages and the input dicts are left untouched.
+        """
+        session = data.sessions.get(session_id)
+        if session is None:
+            return data
+
+        messages = session.get("messages") or []
+        if message_index < 0 or message_index >= len(messages):
+            return data
+        if messages[message_index].get("role") != "assistant":
+            return data
+
+        new_sessions = dict(data.sessions)
+        new_session = dict(session)
+        new_messages = list(messages)
+        parent = dict(messages[message_index])
+        parent["elaborations"] = list(parent.get("elaborations") or []) + [
+            dict(elaboration)
+        ]
+        new_messages[message_index] = parent
+        new_session["messages"] = new_messages
+        new_sessions[session_id] = new_session
+
+        return SessionData(current_id=data.current_id, sessions=new_sessions)
+
     def get_messages(self, session_id: str, data: SessionData) -> List[Dict[str, Any]]:
         """Get messages for a session.
 

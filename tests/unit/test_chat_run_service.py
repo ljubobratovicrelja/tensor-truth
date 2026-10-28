@@ -277,3 +277,54 @@ class TestLifecycle:
 
         await asyncio.sleep(0.1)
         assert service.get(run_id) is None
+
+
+class TestRunKindAndMetadata:
+    """ChatRun kind/metadata survive creation and serialisation."""
+
+    @pytest.mark.asyncio
+    async def test_elaboration_kind_and_metadata_round_trip(self):
+        service = ChatRunService()
+        metadata = {
+            "message_index": 3,
+            "selected_text": "a passage",
+            "occurrence_index": 1,
+        }
+
+        async def runner(sink):
+            await sink.send_json({"type": "done", "content": "ok"})
+
+        run = await service.create(
+            "sess", "", kind="elaboration", metadata=metadata, runner=runner
+        )
+        await _wait_task(run)
+
+        payload = run._to_dict()
+        assert run.kind == "elaboration"
+        assert payload["kind"] == "elaboration"
+        assert payload["metadata"] == metadata
+
+    def test_chat_run_defaults(self):
+        run = ChatRun(session_id="s", prompt="p")
+        payload = run._to_dict()
+
+        assert run.kind == "chat"
+        assert run.metadata == {}
+        assert payload["kind"] == "chat"
+        assert payload["metadata"] == {}
+
+    @pytest.mark.asyncio
+    async def test_metadata_is_copied(self):
+        service = ChatRunService()
+        metadata = {"selected_text": "x"}
+
+        async def runner(sink):
+            await sink.send_json({"type": "done", "content": "ok"})
+
+        run = await service.create(
+            "sess", "", kind="elaboration", metadata=metadata, runner=runner
+        )
+        metadata["selected_text"] = "mutated"
+        await _wait_task(run)
+
+        assert run.metadata["selected_text"] == "x"

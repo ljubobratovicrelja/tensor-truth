@@ -185,6 +185,26 @@ describe("useWebSocketChat resumable runs", () => {
     expect(useChatStore.getState().streamingContent).toBe("Hello!?");
   });
 
+  it("does not hydrate an elaboration run as a chat answer", async () => {
+    vi.mocked(runsApi.getActiveRun).mockResolvedValue({
+      ...activeRun,
+      kind: "elaboration",
+      events: replayedEvents,
+    });
+
+    renderHook(() => useWebSocketChat({ sessionId: "test-session", onError: vi.fn() }), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(runsApi.getActiveRun).toHaveBeenCalledWith("test-session");
+    });
+    // The passage explanation belongs to the elaboration panel, never here.
+    expect(MockWebSocket.instances.length).toBe(0);
+    expect(useChatStore.getState().isStreaming).toBe(false);
+    expect(useChatStore.getState().streamingContent).toBe("");
+  });
+
   it("does not hydrate when the session has no active run", async () => {
     vi.mocked(runsApi.getActiveRun).mockResolvedValue(null);
 
