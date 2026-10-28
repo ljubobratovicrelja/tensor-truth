@@ -73,6 +73,35 @@ def session_service(tmp_path):
     return service
 
 
+ELABORATION = {
+    "id": "e1",
+    "selected_text": SELECTED,
+    "occurrence_index": 0,
+    "content": "Regularization constrains the norm.",
+    "created_at": "2026-10-28T20:00:00+00:00",
+    "messages": [
+        {
+            "role": "user",
+            "content": "Which norm?",
+            "created_at": "2026-10-28T20:01:00Z",
+        },
+        {
+            "role": "assistant",
+            "content": "Usually L2.",
+            "created_at": "2026-10-28T20:01:05Z",
+        },
+    ],
+}
+
+
+@pytest.fixture
+def session_with_elaboration(session_service):
+    data = session_service.load()
+    data = session_service.add_elaboration(SESSION_ID, 1, ELABORATION, data)
+    session_service.save(data)
+    return session_service
+
+
 @pytest.fixture
 def fake_pdf(monkeypatch):
     monkeypatch.setattr(
@@ -124,6 +153,82 @@ async def test_elaboration_run_persists_and_reports_id(session_service, fake_pdf
     assert elaborations[0]["content"] == "Small weights."
     assert elaborations[0]["selected_text"] == SELECTED
     assert elaborations[0]["created_at"]
+
+
+@pytest.mark.asyncio
+async def test_followup_run_persists_both_turns(session_with_elaboration, fake_pdf):
+    sink = _FakeSink()
+    chat = _FakeChatService()
+    service = session_with_elaboration
+
+    await run_turn(
+        sink,
+        session_id=SESSION_ID,
+        prompt="  Why does that help?  ",
+        kind="elaboration_followup",
+        metadata={"message_index": 1, "elaboration_id": "e1"},
+        session_service=service,
+        chat_service=chat,
+        project_service=object(),
+    )
+
+    done = [e for e in sink.events if e["type"] == "done"][-1]
+    assert done["content"] == "Small weights."
+    assert done["elaboration_id"] == "e1"
+
+    # Same context rules as the initial elaboration.
+    call = chat.calls[0]
+    assert call["session_messages"] == [
+        {"role": "user", "content": "How does regularization work?"}
+    ]
+    prompt = call["prompt"]
+    assert PARENT in prompt
+    assert f'"{SELECTED}"' in prompt
+    assert "You: Regularization constrains the norm." in prompt
+    assert "Reader: Which norm?" in prompt
+    assert "You: Usually L2." in prompt
+    assert '"Why does that help?"' in prompt
+    assert "Elaboration mode" in call["params"]["system_prompt"]
+
+    # No new top-level chat messages; the elaboration itself is unchanged.
+    stored = service.load().sessions[SESSION_ID]
+    assert len(stored["messages"]) == 2
+    elaborations = stored["messages"][1]["elaborations"]
+    assert len(elaborations) == 1
+    assert elaborations[0]["content"] == ELABORATION["content"]
+    assert elaborations[0]["selected_text"] == SELECTED
+    assert len(elaborations[0]["messages"]) == 4
+    assert elaborations[0]["messages"][2]["role"] == "user"
+    assert elaborations[0]["messages"][2]["content"] == "Why does that help?"
+    assert elaborations[0]["messages"][2]["created_at"]
+    assert elaborations[0]["messages"][3]["role"] == "assistant"
+    assert elaborations[0]["messages"][3]["content"] == "Small weights."
+    assert elaborations[0]["messages"][3]["created_at"]
+
+
+@pytest.mark.asyncio
+async def test_followup_run_rejects_unknown_elaboration(
+    session_with_elaboration, fake_pdf
+):
+    sink = _FakeSink()
+    chat = _FakeChatService()
+    service = session_with_elaboration
+
+    await run_turn(
+        sink,
+        session_id=SESSION_ID,
+        prompt="Why?",
+        kind="elaboration_followup",
+        metadata={"message_index": 1, "elaboration_id": "missing"},
+        session_service=service,
+        chat_service=chat,
+        project_service=object(),
+    )
+
+    assert sink.events[-1]["type"] == "error"
+    assert chat.calls == []
+    stored = service.load().sessions[SESSION_ID]
+    assert len(stored["messages"][1]["elaborations"][0]["messages"]) == 2
 
 
 @pytest.mark.asyncio

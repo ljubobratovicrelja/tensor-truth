@@ -79,6 +79,7 @@ describe("collectElaborationSpecs", () => {
         selectedText: "passage",
         occurrenceIndex: 2,
         content: "explanation",
+        messages: [],
       },
       {
         id: "e1",
@@ -86,6 +87,7 @@ describe("collectElaborationSpecs", () => {
         selectedText: "other",
         occurrenceIndex: 0,
         content: "explanation",
+        messages: [],
       },
     ]);
   });

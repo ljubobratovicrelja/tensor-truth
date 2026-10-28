@@ -223,6 +223,18 @@ class TestSessionsAPI:
                 "occurrence_index": 0,
                 "content": "The answer explained.",
                 "created_at": "2026-10-28T20:00:00+00:00",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Why?",
+                        "created_at": "2026-10-28T20:01:00+00:00",
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "Because.",
+                        "created_at": "2026-10-28T20:01:05+00:00",
+                    },
+                ],
             }
         ]
         session_file.write_text(json.dumps(data))
@@ -238,6 +250,19 @@ class TestSessionsAPI:
         message = response.json()["messages"][1]
         assert message["elaborations"][0]["id"] == "elab-1"
         assert message["elaborations"][0]["selected_text"] == "answer"
+        # The nested follow-up thread round-trips through the schema.
+        assert message["elaborations"][0]["messages"] == [
+            {
+                "role": "user",
+                "content": "Why?",
+                "created_at": "2026-10-28T20:01:00+00:00",
+            },
+            {
+                "role": "assistant",
+                "content": "Because.",
+                "created_at": "2026-10-28T20:01:05+00:00",
+            },
+        ]
 
 
 class TestSessionStatsEndpoint:

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { MessageResponse } from "@/api/types";
+import type { MessageResponse, ThreadMessage } from "@/api/types";
 import { useElaborationStore } from "@/stores/elaborationStore";
 import type { ElaborationAnchor } from "@/stores/elaborationStore";
 import {
@@ -18,7 +18,12 @@ export function elaborationAtPoint(
   container: Node,
   node: Node,
   offset: number
-): { anchor: ElaborationAnchor; id: string; content: string } | null {
+): {
+  anchor: ElaborationAnchor;
+  id: string;
+  content: string;
+  messages: ThreadMessage[];
+} | null {
   for (const spec of specs) {
     const range = rangeForOccurrence(container, spec.selectedText, spec.occurrenceIndex);
     if (!range) continue;
@@ -31,6 +36,7 @@ export function elaborationAtPoint(
       },
       id: spec.id,
       content: spec.content,
+      messages: spec.messages,
     };
   }
   return null;
@@ -104,7 +110,9 @@ export function useElaborationClick(messages: MessageResponse[] | undefined | nu
 
       event.preventDefault();
       event.stopPropagation();
-      useElaborationStore.getState().openStored(hit.anchor, hit.id, hit.content);
+      useElaborationStore
+        .getState()
+        .openStored(hit.anchor, hit.id, hit.content, hit.messages);
     };
 
     document.addEventListener("click", handleClick);

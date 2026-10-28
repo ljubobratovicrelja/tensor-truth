@@ -44,6 +44,7 @@ from tensortruth.core.providers import ProviderRegistry, resolve_model_from_para
 from tensortruth.services.chat_history import expand_elaborations
 from tensortruth.services.chat_run_service import ChatRun
 from tensortruth.services.elaboration import (
+    build_elaboration_followup_prompt,
     build_elaboration_prompt,
     with_elaboration_directive,
 )
@@ -681,11 +682,13 @@ async def run_turn(
         session_service: Optional injected service (resolved from deps if None).
         chat_service: Optional injected ChatService.
         project_service: Optional injected ProjectService.
-        kind: ``"chat"`` (default) or ``"elaboration"``. An elaboration run
-            explains one passage of an earlier assistant message and persists
-            the result onto that message instead of adding a chat turn.
+        kind: ``"chat"`` (default), ``"elaboration"`` or
+            ``"elaboration_followup"``. An elaboration run explains one
+            passage of an earlier assistant message; a follow-up continues
+            that explanation thread. Neither adds a chat turn.
         metadata: Elaboration target (``message_index``, ``selected_text``,
-            ``occurrence_index``); ignored for chat runs.
+            ``occurrence_index``) or follow-up target (``message_index``,
+            ``elaboration_id``); ignored for chat runs.
     """
     session_service = session_service or get_session_service()
     chat_service = chat_service or get_chat_service()
@@ -699,12 +702,14 @@ async def run_turn(
         await sink.send_json({"type": "error", "detail": "Session not found"})
         return
 
-    if kind == "elaboration":
+    if kind in ("elaboration", "elaboration_followup"):
         await _run_elaboration(
             sink,
             session_id=session_id,
             session=session,
+            prompt=prompt,
             metadata=metadata or {},
+            kind=kind,
             chat_service=chat_service,
             session_service=session_service,
             project_service=project_service,
@@ -900,39 +905,20 @@ async def run_turn(
         )
 
 
-async def _run_elaboration(
-    sink: EventSink,
-    *,
+def _build_elaboration_context(
     session_id: str,
     session: Dict[str, Any],
-    metadata: Dict[str, Any],
-    chat_service: Any,
-    session_service: SessionService,
-    project_service: Optional[ProjectService] = None,
-) -> None:
-    """Explain one selected passage of an earlier assistant answer.
+    prompt: str,
+    message_index: int,
+    project_service: Optional[ProjectService],
+) -> ChatContext:
+    """Build the shared context for an elaboration or follow-up run.
 
-    Never saves a user/assistant chat message and never renames the session:
-    the result is appended to the parent message's ``elaborations`` list. The
-    history sent to the model is everything *before* the parent message, since
-    the parent answer is embedded verbatim in the prompt.
+    The model sees only the messages *before* the parent assistant message:
+    the parent answer is embedded verbatim in ``prompt`` instead. The same
+    elaboration system directive is appended to whatever system prompt the
+    session (or its project) already composed.
     """
-    messages = session.get("messages") or []
-    message_index = metadata.get("message_index")
-    selected_text = str(metadata.get("selected_text") or "").strip()
-    occurrence_index = metadata.get("occurrence_index") or 0
-
-    if not isinstance(message_index, int) or not 0 <= message_index < len(messages):
-        await sink.send_json({"type": "error", "detail": "message_index out of range"})
-        return
-    parent = messages[message_index]
-    if parent.get("role") != "assistant" or not selected_text:
-        await sink.send_json({"type": "error", "detail": "Invalid elaboration target"})
-        return
-
-    parent_content = str(parent.get("content") or "")
-    prompt = build_elaboration_prompt(parent_content, selected_text)
-
     with get_document_service(session_id, "session") as pdf_service:
         context = ChatContext.from_session(
             session_id,
@@ -941,11 +927,120 @@ async def _run_elaboration(
             pdf_service,
             project_service=project_service,
         )
-    # Only the messages before the parent: its answer is already in the prompt.
+    messages = session.get("messages") or []
     context.session_messages = expand_elaborations(messages[:message_index])
     context.images = []
     context.params["system_prompt"] = with_elaboration_directive(
         context.params.get("system_prompt")
+    )
+    return context
+
+
+async def _execute_elaboration(
+    sink: EventSink,
+    *,
+    context: ChatContext,
+    session: Dict[str, Any],
+    chat_service: Any,
+    session_service: SessionService,
+    persist_assistant: AssistantPersistFn,
+    extra_done: Dict[str, Any],
+) -> None:
+    """Route an elaboration-shaped context through orchestrator or direct."""
+    model_name = context.params.get("model")
+
+    if _is_orchestrator_enabled(session, model_name):
+        try:
+            await _run_orchestrator_path(
+                websocket=sink,
+                context=context,
+                session=session,
+                chat_service=chat_service,
+                session_service=session_service,
+                needs_title=False,
+                persist_assistant=persist_assistant,
+                extra_done=extra_done,
+            )
+            return
+        except Exception as orch_err:
+            logger.error(
+                "Orchestrator path failed for elaboration, falling back to "
+                "direct ChatService: %s",
+                orch_err,
+                exc_info=True,
+            )
+
+    await _run_direct_path(
+        sink,
+        context,
+        chat_service,
+        session_service,
+        context.session_id,
+        context.prompt,
+        False,
+        persist_assistant=persist_assistant,
+        extra_done=extra_done,
+    )
+
+
+async def _run_elaboration(
+    sink: EventSink,
+    *,
+    session_id: str,
+    session: Dict[str, Any],
+    prompt: str,
+    metadata: Dict[str, Any],
+    kind: str,
+    chat_service: Any,
+    session_service: SessionService,
+    project_service: Optional[ProjectService] = None,
+) -> None:
+    """Run an initial elaboration or a follow-up turn on one.
+
+    Never saves a user/assistant chat message and never renames the session:
+    the result is appended to the parent message's ``elaborations`` (initial)
+    or to that elaboration's ``messages`` (follow-up). The history sent to the
+    model is everything *before* the parent message, since the parent answer
+    is embedded verbatim in the prompt.
+    """
+    messages = session.get("messages") or []
+    message_index = metadata.get("message_index")
+
+    if not isinstance(message_index, int) or not 0 <= message_index < len(messages):
+        await sink.send_json({"type": "error", "detail": "message_index out of range"})
+        return
+    parent = messages[message_index]
+    if parent.get("role") != "assistant":
+        await sink.send_json({"type": "error", "detail": "Invalid elaboration target"})
+        return
+
+    parent_content = str(parent.get("content") or "")
+
+    if kind == "elaboration_followup":
+        await _run_elaboration_followup(
+            sink,
+            session_id=session_id,
+            session=session,
+            parent=parent,
+            parent_content=parent_content,
+            message_index=message_index,
+            question=(prompt or "").strip(),
+            metadata=metadata,
+            chat_service=chat_service,
+            session_service=session_service,
+            project_service=project_service,
+        )
+        return
+
+    selected_text = str(metadata.get("selected_text") or "").strip()
+    occurrence_index = metadata.get("occurrence_index") or 0
+    if not selected_text:
+        await sink.send_json({"type": "error", "detail": "Invalid elaboration target"})
+        return
+
+    prompt = build_elaboration_prompt(parent_content, selected_text)
+    context = _build_elaboration_context(
+        session_id, session, prompt, message_index, project_service
     )
 
     elaboration_id = uuid.uuid4().hex
@@ -968,40 +1063,107 @@ async def _run_elaboration(
         )
         session_service.save(data)
 
-    extra_done = {"elaboration_id": elaboration_id}
-    model_name = context.params.get("model")
-
-    if _is_orchestrator_enabled(session, model_name):
-        try:
-            await _run_orchestrator_path(
-                websocket=sink,
-                context=context,
-                session=session,
-                chat_service=chat_service,
-                session_service=session_service,
-                needs_title=False,
-                persist_assistant=_persist_assistant,
-                extra_done=extra_done,
-            )
-            return
-        except Exception as orch_err:
-            logger.error(
-                "Orchestrator path failed for elaboration, falling back to "
-                "direct ChatService: %s",
-                orch_err,
-                exc_info=True,
-            )
-
-    await _run_direct_path(
+    await _execute_elaboration(
         sink,
-        context,
-        chat_service,
-        session_service,
-        session_id,
-        prompt,
-        False,
+        context=context,
+        session=session,
+        chat_service=chat_service,
+        session_service=session_service,
         persist_assistant=_persist_assistant,
-        extra_done=extra_done,
+        extra_done={"elaboration_id": elaboration_id},
+    )
+
+
+async def _run_elaboration_followup(
+    sink: EventSink,
+    *,
+    session_id: str,
+    session: Dict[str, Any],
+    parent: Dict[str, Any],
+    parent_content: str,
+    message_index: int,
+    question: str,
+    metadata: Dict[str, Any],
+    chat_service: Any,
+    session_service: SessionService,
+    project_service: Optional[ProjectService],
+) -> None:
+    """Continue an existing elaboration thread with one follow-up question.
+
+    ``selected_text`` and the prior thread are read from the stored
+    elaboration; client-supplied values are never trusted. On success both the
+    user turn and the assistant turn are appended to that elaboration.
+    """
+    elaboration_id = str(metadata.get("elaboration_id") or "").strip()
+    elaborations = parent.get("elaborations") or []
+    elaboration = next(
+        (
+            item
+            for item in elaborations
+            if isinstance(item, dict) and item.get("id") == elaboration_id
+        ),
+        None,
+    )
+    if not question or elaboration is None:
+        await sink.send_json(
+            {"type": "error", "detail": "Invalid elaboration follow-up target"}
+        )
+        return
+
+    selected_text = str(elaboration.get("selected_text") or "")
+    thread = [
+        {
+            "role": "assistant",
+            "content": str(elaboration.get("content") or ""),
+        },
+        *[
+            turn
+            for turn in (elaboration.get("messages") or [])
+            if isinstance(turn, dict)
+        ],
+    ]
+    followup_prompt = build_elaboration_followup_prompt(
+        parent_content, selected_text, thread, question
+    )
+    context = _build_elaboration_context(
+        session_id, session, followup_prompt, message_index, project_service
+    )
+
+    user_created_at = datetime.now(timezone.utc).isoformat()
+
+    def _persist_assistant(message: Dict[str, Any]) -> None:
+        content = str(message.get("content") or "")
+        if not content.strip():
+            return
+        data = session_service.load()
+        data = session_service.add_elaboration_message(
+            session_id,
+            message_index,
+            elaboration_id,
+            {"role": "user", "content": question, "created_at": user_created_at},
+            data,
+        )
+        data = session_service.add_elaboration_message(
+            session_id,
+            message_index,
+            elaboration_id,
+            {
+                "role": "assistant",
+                "content": content,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
+            data,
+        )
+        session_service.save(data)
+
+    await _execute_elaboration(
+        sink,
+        context=context,
+        session=session,
+        chat_service=chat_service,
+        session_service=session_service,
+        persist_assistant=_persist_assistant,
+        extra_done={"elaboration_id": elaboration_id},
     )
 
 
