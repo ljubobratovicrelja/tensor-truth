@@ -24,4 +24,5 @@ export * from "./useIndexManagement";
 export * from "./useSessionContext";
 export * from "./useTextSelection";
 export * from "./useElaboration";
+export * from "./useElaborationClick";
 export * from "./useElaborationHighlights";

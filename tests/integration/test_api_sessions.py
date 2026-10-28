@@ -1,5 +1,7 @@
 """Integration tests for sessions API endpoints."""
 
+import json
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -196,6 +198,46 @@ class TestSessionsAPI:
         assert len(messages) == 2
         assert messages[0]["content"] == "Hello"
         assert messages[1]["content"] == "Hi there!"
+
+    @pytest.mark.asyncio
+    async def test_get_messages_returns_elaborations(self, client, mock_session_paths):
+        """Persisted elaborations must survive the messages response schema."""
+        create_response = await client.post("/api/sessions", json={})
+        session_id = create_response.json()["session_id"]
+        await client.post(
+            f"/api/sessions/{session_id}/messages",
+            json={"role": "user", "content": "q"},
+        )
+        await client.post(
+            f"/api/sessions/{session_id}/messages",
+            json={"role": "assistant", "content": "answer"},
+        )
+
+        sessions_dir = mock_session_paths[1]
+        session_file = sessions_dir / session_id / "session.json"
+        data = json.loads(session_file.read_text())
+        data["messages"][1]["elaborations"] = [
+            {
+                "id": "elab-1",
+                "selected_text": "answer",
+                "occurrence_index": 0,
+                "content": "The answer explained.",
+                "created_at": "2026-10-28T20:00:00+00:00",
+            }
+        ]
+        session_file.write_text(json.dumps(data))
+
+        # Drop the service's in-memory copy so the response reads the edited file.
+        from tensortruth.api.deps import get_session_service
+
+        get_session_service()._cache.clear()
+
+        response = await client.get(f"/api/sessions/{session_id}/messages")
+
+        assert response.status_code == 200
+        message = response.json()["messages"][1]
+        assert message["elaborations"][0]["id"] == "elab-1"
+        assert message["elaborations"][0]["selected_text"] == "answer"
 
 
 class TestSessionStatsEndpoint:
