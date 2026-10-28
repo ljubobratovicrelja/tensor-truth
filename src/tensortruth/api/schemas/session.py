@@ -103,6 +103,7 @@ class MessageResponse(BaseModel):
     tool_steps: Optional[List[Dict[str, Any]]] = None
     confidence_level: Optional[str] = None
     images: Optional[List[Dict[str, Any]]] = None
+    elaborations: Optional[List[Dict[str, Any]]] = None
 
 
 class MessagesResponse(BaseModel):

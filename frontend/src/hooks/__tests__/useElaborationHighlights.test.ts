@@ -73,8 +73,20 @@ describe("collectElaborationSpecs", () => {
     ];
 
     expect(collectElaborationSpecs(messages)).toEqual([
-      { messageIndex: 1, selectedText: "passage", occurrenceIndex: 2 },
-      { messageIndex: 2, selectedText: "other", occurrenceIndex: 0 },
+      {
+        id: "e1",
+        messageIndex: 1,
+        selectedText: "passage",
+        occurrenceIndex: 2,
+        content: "explanation",
+      },
+      {
+        id: "e1",
+        messageIndex: 2,
+        selectedText: "other",
+        occurrenceIndex: 0,
+        content: "explanation",
+      },
     ]);
   });
 

@@ -7,9 +7,11 @@ export const ELABORATION_HIGHLIGHT = "tt-elaboration";
 export const ACTIVE_ELABORATION_HIGHLIGHT = "tt-elaboration-active";
 
 export interface ElaborationHighlightSpec {
+  id: string;
   messageIndex: number;
   selectedText: string;
   occurrenceIndex: number;
+  content: string;
 }
 
 /**
@@ -27,9 +29,11 @@ export function collectElaborationSpecs(
     for (const elaboration of message.elaborations ?? []) {
       if (!elaboration?.selected_text) continue;
       specs.push({
+        id: elaboration.id,
         messageIndex,
         selectedText: elaboration.selected_text,
         occurrenceIndex: elaboration.occurrence_index ?? 0,
+        content: elaboration.content,
       });
     }
   });

@@ -13,6 +13,7 @@ import {
   useDocuments,
   useCompactSession,
   useElaboration,
+  useElaborationClick,
   useElaborationHighlights,
   useTextSelection,
   paramToThinking,
@@ -109,6 +110,7 @@ export function ChatContainer() {
     messagesData?.messages,
     elaborationOpen ? elaborationAnchor : null
   );
+  useElaborationClick(messagesData?.messages);
 
   // Show loading state during initial load OR when switching sessions (refetching)
   // This prevents showing stale cached messages from a different session

@@ -244,6 +244,7 @@ async def get_messages(
                 tool_steps=msg.get("tool_steps"),
                 confidence_level=msg.get("confidence_level"),
                 images=msg.get("images"),
+                elaborations=msg.get("elaborations"),
             )
             for msg in messages
         ]

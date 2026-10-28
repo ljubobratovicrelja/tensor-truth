@@ -20,6 +20,8 @@ interface ElaborationStore {
   runId: string | null;
 
   openFor: (anchor: ElaborationAnchor) => void;
+  /** Re-open an already persisted elaboration without starting a new run. */
+  openStored: (anchor: ElaborationAnchor, elaborationId: string, content: string) => void;
   setRunId: (runId: string | null) => void;
   appendToken: (token: string) => void;
   appendThinking: (thinking: string) => void;
@@ -51,6 +53,15 @@ export const useElaborationStore = create<ElaborationStore>((set) => ({
       open: true,
       anchor,
       isStreaming: true,
+    }),
+
+  openStored: (anchor, elaborationId, content) =>
+    set({
+      ...INITIAL,
+      open: true,
+      anchor,
+      activeElaborationId: elaborationId,
+      content,
     }),
 
   setRunId: (runId) => set({ runId }),
