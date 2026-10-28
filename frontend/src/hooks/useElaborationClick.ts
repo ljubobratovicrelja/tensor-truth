@@ -67,55 +67,116 @@ function caretFromPoint(x: number, y: number): CaretPoint | null {
   return null;
 }
 
+interface HitTestResult {
+  content: HTMLElement;
+  hit: NonNullable<ReturnType<typeof elaborationAtPoint>>;
+}
+
+/** Resolve a pointer position to the stored elaboration under it, if any. */
+function hitTestEvent(
+  target: EventTarget | null,
+  x: number,
+  y: number,
+  messages: MessageResponse[]
+): HitTestResult | null {
+  if (!(target instanceof Element)) return null;
+  if (target.closest("[data-elaboration-panel]")) return null;
+  // Links and controls inside a passage keep their own behaviour.
+  if (target.closest("a, button, summary, [role='button']")) return null;
+
+  const content = target.closest<HTMLElement>("[data-message-content]");
+  const bubble = content?.closest<HTMLElement>(
+    `[data-chat-message][data-role="assistant"]`
+  );
+  if (!content || !bubble) return null;
+
+  const messageIndex = Number.parseInt(
+    bubble.getAttribute("data-chat-message") ?? "",
+    10
+  );
+  if (!Number.isInteger(messageIndex) || messageIndex < 0) return null;
+
+  const caret = caretFromPoint(x, y);
+  if (!caret || !content.contains(caret.node)) return null;
+
+  const specs = collectElaborationSpecs(messages).filter(
+    (spec) => spec.messageIndex === messageIndex
+  );
+  const hit = elaborationAtPoint(specs, content, caret.node, caret.offset);
+  return hit ? { content, hit } : null;
+}
+
 /**
  * Clicking a passage that was already explained re-opens its panel with the
- * stored answer instead of starting a new run. Distinct from selection: a
- * click produces a collapsed selection, so the trigger logic ignores it.
+ * stored answer instead of starting a new run. Also gives those passages a
+ * hand cursor: `::highlight()` cannot set `cursor`, so the pointer style is
+ * applied to the content container while it hovers an elaboration.
  */
 export function useElaborationClick(messages: MessageResponse[] | undefined | null) {
   useEffect(() => {
     if (!messages || messages.length === 0) return;
 
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (target.closest("[data-elaboration-panel]")) return;
-      // Links and controls inside a passage keep their own behaviour.
-      if (target.closest("a, button, summary, [role='button']")) return;
+    let hovered: HTMLElement | null = null;
+    const setCursor = (element: HTMLElement | null, pointer: boolean) => {
+      if (hovered && hovered !== element) hovered.style.cursor = "";
+      hovered = element;
+      if (element) element.style.cursor = pointer ? "pointer" : "";
+    };
 
+    const handleClick = (event: MouseEvent) => {
       // A real text selection is the trigger's job, not a stored elaboration's.
       const selection = window.getSelection();
       if (selection && !selection.isCollapsed) return;
 
-      const content = target.closest<HTMLElement>("[data-message-content]");
-      const bubble = content?.closest<HTMLElement>(
-        `[data-chat-message][data-role="assistant"]`
-      );
-      if (!content || !bubble) return;
-
-      const messageIndex = Number.parseInt(
-        bubble.getAttribute("data-chat-message") ?? "",
-        10
-      );
-      if (!Number.isInteger(messageIndex) || messageIndex < 0) return;
-
-      const caret = caretFromPoint(event.clientX, event.clientY);
-      if (!caret || !content.contains(caret.node)) return;
-
-      const specs = collectElaborationSpecs(messages).filter(
-        (spec) => spec.messageIndex === messageIndex
-      );
-      const hit = elaborationAtPoint(specs, content, caret.node, caret.offset);
-      if (!hit) return;
+      const result = hitTestEvent(event.target, event.clientX, event.clientY, messages);
+      if (!result) return;
 
       event.preventDefault();
       event.stopPropagation();
       useElaborationStore
         .getState()
-        .openStored(hit.anchor, hit.id, hit.content, hit.messages);
+        .openStored(
+          result.hit.anchor,
+          result.hit.id,
+          result.hit.content,
+          result.hit.messages
+        );
+    };
+
+    let frame = 0;
+    let latest: MouseEvent | null = null;
+    const applyCursor = () => {
+      frame = 0;
+      const event = latest;
+      if (!event) return;
+      const result = hitTestEvent(event.target, event.clientX, event.clientY, messages);
+      if (result) {
+        setCursor(result.content, true);
+      } else {
+        setCursor(null, false);
+      }
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      latest = event;
+      if (frame) return; // one caret lookup per animation frame
+      frame = requestAnimationFrame(applyCursor);
+    };
+
+    const clearCursor = () => {
+      latest = null;
+      setCursor(null, false);
     };
 
     document.addEventListener("click", handleClick);
-    return () => document.removeEventListener("click", handleClick);
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseleave", clearCursor);
+    return () => {
+      document.removeEventListener("click", handleClick);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseleave", clearCursor);
+      if (frame) cancelAnimationFrame(frame);
+      if (hovered) hovered.style.cursor = "";
+    };
   }, [messages]);
 }
