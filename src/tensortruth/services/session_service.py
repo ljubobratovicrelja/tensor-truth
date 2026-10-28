@@ -414,6 +414,7 @@ class SessionService:
         data: SessionData,
         config_service: Optional["ConfigService"] = None,
         title: Optional[str] = None,
+        module_mode: str = "manual",
     ) -> Tuple[str, SessionData]:
         """Create a new chat session.
 
@@ -424,6 +425,8 @@ class SessionService:
             config_service: Optional ConfigService for applying defaults.
             title: Optional client-chosen title (e.g. previewed while typing).
                 When given, the first turn does not regenerate it.
+            module_mode: "manual" (user-selected modules) or "auto"
+                (agent-selected, loaded with load_modules).
 
         Returns:
             Tuple of (new_session_id, updated_SessionData).
@@ -438,6 +441,7 @@ class SessionService:
             "created_at": str(datetime.now()),
             "messages": [],
             "modules": modules,
+            "module_mode": module_mode or "manual",
             "params": params,  # Now contains complete defaults
             "title_needs_update": not title,
         }
@@ -447,6 +451,22 @@ class SessionService:
         new_sessions[new_id] = new_session
 
         return new_id, SessionData(current_id=new_id, sessions=new_sessions)
+
+    def update_modules(
+        self, session_id: str, modules: List[str], data: SessionData
+    ) -> SessionData:
+        """Replace a session's module list (used by the load_modules tool).
+
+        Returns the original data unchanged when the session is unknown, so a
+        stale agent closure cannot create a ghost session.
+        """
+        if session_id not in data.sessions:
+            return data
+
+        new_sessions = dict(data.sessions)
+        new_sessions[session_id] = dict(new_sessions[session_id])
+        new_sessions[session_id]["modules"] = list(modules)
+        return SessionData(current_id=data.current_id, sessions=new_sessions)
 
     def update_title(
         self, session_id: str, title: str, data: SessionData

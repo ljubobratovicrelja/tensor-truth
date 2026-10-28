@@ -134,6 +134,17 @@ class BuildIndexInput(BaseModel):
     )
 
 
+class LoadModulesInput(BaseModel):
+    """Input schema for load_modules orchestrator tool."""
+
+    modules: List[str] = Field(
+        description=(
+            "Module names to load into the knowledge base, exactly as listed in "
+            "your system prompt (1 to 6 per call)."
+        )
+    )
+
+
 class RAGQueryInput(BaseModel):
     """Input schema for rag_query orchestrator tool."""
 
@@ -373,6 +384,7 @@ def create_rag_tool(
     rag_result_callback: Optional[RAGResultCallback] = None,
     full_output_callback: Optional[FullOutputCallback] = None,
     context_window: int = 16384,
+    catalog_names: Optional[List[str]] = None,
 ) -> FunctionTool:
     """Create a rag_query FunctionTool for the orchestrator.
 
@@ -409,6 +421,18 @@ def create_rag_tool(
         for topics covered by the loaded document modules (papers, documentation,
         books, uploaded PDFs).
         """
+        # The tool is registered even with no engine loaded so the agent always
+        # sees it; without modules there is nothing to search, only guidance.
+        if not rag_service.is_loaded():
+            if catalog_names:
+                available = ", ".join(catalog_names)
+            else:
+                available = "the modules listed in your system prompt"
+            return (
+                "No knowledge modules are loaded. Call load_modules with one of: "
+                f"{available}."
+            )
+
         # Progress is emitted via RAGService.retrieve()'s progress_callback,
         # but we also emit a top-level phase for the orchestrator
         await _emit(
@@ -461,6 +485,166 @@ def create_rag_tool(
             "current events or live information."
         ),
         fn_schema=RAGQueryInput,
+    )
+
+
+MAX_MODULES_PER_LOAD = 6
+
+
+def create_load_modules_tool(
+    rag_service: "RAGService",
+    progress_emitter: ProgressEmitter,
+    module_catalog: Optional[List[Any]] = None,
+    loaded_modules: Optional[List[str]] = None,
+    session_params: Optional[Dict[str, object]] = None,
+    additional_index_paths: Optional[List[str]] = None,
+    session_id: Optional[str] = None,
+    session_service: Optional[Any] = None,
+) -> FunctionTool:
+    """Create a load_modules FunctionTool for the orchestrator.
+
+    The agent decides which index modules a question needs and loads them; the
+    engine is rebuilt with the merged module set (existing modules + the new
+    ones) while preserving the session params and index paths captured here.
+
+    ``loaded_modules`` is a shared mutable list owned by the orchestrator: the
+    tool appends to it so two loads in the same turn see each other, and the
+    merged set is persisted to the session so the next turn's reload check and
+    the UI agree with the engine.
+
+    Args:
+        rag_service: RAGService instance (engine may not be loaded yet).
+        progress_emitter: Callable that receives ToolProgress updates.
+        module_catalog: Every indexed module (ModuleDescription) available to load.
+        loaded_modules: Live list of currently loaded module names.
+        session_params: Engine params to preserve across the reload.
+        additional_index_paths: Session/project index paths to preserve.
+        session_id: Session whose ``modules`` list is updated after a load.
+        session_service: Optional SessionService override (tests).
+    """
+    catalog = list(module_catalog or [])
+    catalog_by_name = {entry.name: entry for entry in catalog}
+    catalog_names = [entry.name for entry in catalog]
+    loaded = loaded_modules if loaded_modules is not None else []
+    captured_params = session_params or {}
+    captured_paths = list(additional_index_paths or [])
+
+    def _catalog_suffix() -> str:
+        if not catalog_names:
+            return ""
+        return " Valid modules: " + ", ".join(catalog_names) + "."
+
+    def _persist() -> None:
+        if not session_id:
+            return
+        try:
+            service = session_service
+            if service is None:
+                from tensortruth.api.deps import get_session_service
+
+                service = get_session_service()
+            data = service.load()
+            data = service.update_modules(session_id, list(loaded), data)
+            service.save(data)
+        except Exception:
+            logger.exception(
+                "Failed to persist loaded modules for session %s", session_id
+            )
+
+    async def load_modules(modules: List[str]) -> str:
+        """Load knowledge modules into the searchable index set.
+
+        Call this before rag_query when the question needs a module that is not
+        yet loaded. Returns the modules that are now loaded.
+        """
+        names: List[str] = []
+        for raw in modules:
+            name = str(raw).strip()
+            if name and name not in names:
+                names.append(name)
+
+        if not names:
+            return "Error: provide at least one module name." + _catalog_suffix()
+        if len(names) > MAX_MODULES_PER_LOAD:
+            return (
+                f"Error: at most {MAX_MODULES_PER_LOAD} modules can be loaded per "
+                f"call ({len(names)} requested). Call load_modules again for the rest."
+            )
+
+        unknown = [name for name in names if name not in catalog_by_name]
+        if unknown:
+            return (
+                "Error: unknown module(s): "
+                + ", ".join(unknown)
+                + "."
+                + _catalog_suffix()
+            )
+
+        to_load = [name for name in names if name not in loaded]
+        already_loaded = [name for name in names if name in loaded]
+
+        if to_load:
+            merged = list(loaded) + to_load
+            total = len(to_load)
+            for index, name in enumerate(to_load, start=1):
+                entry = catalog_by_name[name]
+                await _emit(
+                    progress_emitter,
+                    ToolProgress(
+                        tool_id="modules",
+                        phase="loading_module",
+                        message=f"Loading {entry.display_name}...",
+                        metadata={
+                            "module": name,
+                            "percent": int(100 * index / total),
+                        },
+                    ),
+                )
+
+            try:
+                # Never block the one event loop the whole app shares.
+                await asyncio.to_thread(
+                    rag_service.load_engine,
+                    merged,
+                    captured_params,
+                    captured_paths,
+                )
+            except Exception as exc:
+                logger.exception("load_modules failed for %s", to_load)
+                return (
+                    f"Error: failed to load {', '.join(to_load)}: {exc}. "
+                    f"Currently loaded: {', '.join(loaded) or 'none'}."
+                )
+
+            loaded[:] = merged
+            _persist()
+
+        lines: List[str] = []
+        if to_load:
+            lines.append(
+                "Loaded: "
+                + ", ".join(
+                    f"{name} ({catalog_by_name[name].doc_count} docs)"
+                    for name in to_load
+                )
+            )
+        if already_loaded:
+            lines.append("Already loaded: " + ", ".join(already_loaded))
+        lines.append("Currently loaded: " + (", ".join(loaded) or "none"))
+        lines.append("Use rag_query to search these modules.")
+        return "\n".join(lines)
+
+    return FunctionTool.from_defaults(
+        async_fn=load_modules,
+        name="load_modules",
+        description=(
+            "Load knowledge modules into the searchable set so rag_query can "
+            "search them. Call this when the question relates to a module that "
+            "is listed in your system prompt but not marked [loaded]. Accepts 1 "
+            f"to {MAX_MODULES_PER_LOAD} module names per call; unknown names are "
+            "rejected with the list of valid modules."
+        ),
+        fn_schema=LoadModulesInput,
     )
 
 
@@ -2556,6 +2740,9 @@ def create_all_tool_wrappers(
     mcp_server_service: Optional["MCPServerService"] = None,
     session_id: Optional[str] = None,
     project_id: Optional[str] = None,
+    module_catalog: Optional[List[Any]] = None,
+    loaded_modules: Optional[List[str]] = None,
+    additional_index_paths: Optional[List[str]] = None,
 ) -> List[FunctionTool]:
     """Create all orchestrator tool wrappers at once.
 
@@ -2566,13 +2753,16 @@ def create_all_tool_wrappers(
 
     Returns:
         List of FunctionTool wrappers. Always includes web_search, fetch_page,
-        fetch_pages_batch. Includes rag_query when rag_service is loaded.
+        fetch_pages_batch. Includes rag_query and load_modules whenever a
+        rag_service is provided (loaded or not).
         Includes MCP management tools when services are provided.
     """
     tools: List[FunctionTool] = []
 
-    # RAG tool (only when engine is loaded with indexed modules)
-    if rag_service is not None and rag_service.is_loaded():
+    # RAG tools. Both are registered whenever a service exists — including
+    # before anything is loaded, which is exactly when load_modules is needed.
+    if rag_service is not None:
+        catalog_names = [entry.name for entry in (module_catalog or [])]
         tools.append(
             create_rag_tool(
                 rag_service,
@@ -2582,6 +2772,18 @@ def create_all_tool_wrappers(
                 rag_result_callback=rag_result_callback,
                 full_output_callback=full_output_callback,
                 context_window=context_window,
+                catalog_names=catalog_names,
+            )
+        )
+        tools.append(
+            create_load_modules_tool(
+                rag_service,
+                progress_emitter,
+                module_catalog=module_catalog,
+                loaded_modules=loaded_modules,
+                session_params=session_params,
+                additional_index_paths=additional_index_paths,
+                session_id=session_id,
             )
         )
 

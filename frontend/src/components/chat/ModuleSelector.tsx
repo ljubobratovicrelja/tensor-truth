@@ -29,6 +29,9 @@ interface ModuleSelectorProps {
   projectDocuments?: DocumentInfo[];
   /** Indexed documents in the current session (non-project). Shown as a flat read-only list. */
   sessionDocuments?: DocumentInfo[];
+  /** Module selection mode. "auto" lets the agent load modules itself. */
+  moduleMode?: "manual" | "auto";
+  onModuleModeChange?: (mode: "manual" | "auto") => void;
 }
 
 export function ModuleSelector({
@@ -39,7 +42,10 @@ export function ModuleSelector({
   lockedModules,
   projectDocuments,
   sessionDocuments,
+  moduleMode = "manual",
+  onModuleModeChange,
 }: ModuleSelectorProps) {
+  const isAutoMode = moduleMode === "auto";
   const [open, setOpen] = useState(false);
   const [localSelection, setLocalSelection] = useState<string[]>(selectedModules);
   const { data: modulesData, isLoading } = useModules();
@@ -68,7 +74,8 @@ export function ModuleSelector({
   };
 
   const handleApply = () => {
-    onModulesChange(localSelection);
+    // In auto mode the agent owns the module set; the panel is informational.
+    onModulesChange(isAutoMode ? selectedModules : localSelection);
     setOpen(false);
   };
 
@@ -242,11 +249,13 @@ export function ModuleSelector({
               : "text-muted-foreground hover:text-foreground"
           )}
           title={
-            hasNoModules
-              ? "No modules available. Create your own or download indexes in Settings (gear icon)."
-              : totalSelectedCount > 0
-                ? `${totalSelectedCount} module${totalSelectedCount !== 1 ? "s" : ""} selected`
-                : "Select knowledge modules"
+            isAutoMode
+              ? "Agent picks knowledge modules automatically"
+              : hasNoModules
+                ? "No modules available. Create your own or download indexes in Settings (gear icon)."
+                : totalSelectedCount > 0
+                  ? `${totalSelectedCount} module${totalSelectedCount !== 1 ? "s" : ""} selected`
+                  : "Select knowledge modules"
           }
         >
           <Database className="h-4 w-4" />
@@ -288,6 +297,26 @@ export function ModuleSelector({
             </Button>
           )}
         </div>
+
+        {/* Auto mode: the agent loads whichever modules a question needs */}
+        {onModuleModeChange && (
+          <button
+            type="button"
+            onClick={() => onModuleModeChange(isAutoMode ? "manual" : "auto")}
+            className={cn(
+              "hover:bg-muted/50 flex w-full flex-shrink-0 items-start gap-3 border-b px-3 py-2 text-left transition-colors",
+              isAutoMode && "bg-primary/5"
+            )}
+          >
+            <Checkbox checked={isAutoMode} className="pointer-events-none mt-0.5" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm">Auto — let the agent pick</span>
+              <span className="text-muted-foreground block text-xs">
+                The assistant loads the modules each question needs.
+              </span>
+            </span>
+          </button>
+        )}
 
         {/* Module list - scrollable */}
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -456,9 +485,11 @@ export function ModuleSelector({
                             <button
                               key={module.name}
                               onClick={() => handleToggle(module.name)}
+                              disabled={isAutoMode}
+                              title={isAutoMode ? "Loaded by the agent" : undefined}
                               className={cn(
                                 "flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors",
-                                "hover:bg-muted/50",
+                                !isAutoMode && "hover:bg-muted/50",
                                 isSelected && "bg-primary/10"
                               )}
                             >
@@ -466,8 +497,15 @@ export function ModuleSelector({
                                 checked={isSelected}
                                 className="pointer-events-none"
                               />
-                              <span className="min-w-0 flex-1 truncate text-sm">
-                                {module.display_name || module.name}
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm">
+                                  {module.display_name || module.name}
+                                </span>
+                                {module.description && (
+                                  <span className="text-muted-foreground block truncate text-xs">
+                                    {module.description}
+                                  </span>
+                                )}
                               </span>
                             </button>
                           );
@@ -484,11 +522,13 @@ export function ModuleSelector({
         {/* Footer */}
         <div className="flex flex-shrink-0 items-center justify-between border-t px-3 py-2">
           <span className="text-muted-foreground text-xs">
-            {totalSelectedCount === 0
-              ? "No modules selected (LLM only)"
-              : isProjectContext
-                ? `${lockedModules?.length ?? 0} locked + ${selectedCount} additional`
-                : `${selectedCount} module${selectedCount !== 1 ? "s" : ""} selected`}
+            {isAutoMode
+              ? `${selectedCount} loaded · agent-managed`
+              : totalSelectedCount === 0
+                ? "No modules selected (LLM only)"
+                : isProjectContext
+                  ? `${lockedModules?.length ?? 0} locked + ${selectedCount} additional`
+                  : `${selectedCount} module${selectedCount !== 1 ? "s" : ""} selected`}
           </span>
           <div className="flex items-center gap-2">
             <Button

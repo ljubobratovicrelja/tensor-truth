@@ -1,6 +1,6 @@
 """Session-related schemas."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -10,6 +10,13 @@ class SessionCreate(BaseModel):
 
     modules: Optional[List[str]] = Field(
         default=None, description="List of knowledge modules to enable"
+    )
+    module_mode: Literal["manual", "auto"] = Field(
+        default="manual",
+        description=(
+            'How knowledge modules are chosen: "manual" (the user picks them, '
+            'default) or "auto" (the agent loads them with load_modules).'
+        ),
     )
     params: Dict[str, Any] = Field(
         default_factory=dict,
@@ -46,6 +53,7 @@ class SessionResponse(BaseModel):
     title: str
     created_at: str
     modules: Optional[List[str]] = None
+    module_mode: Literal["manual", "auto"] = "manual"
     params: Dict[str, Any] = Field(default_factory=dict)
     message_count: int = 0
     project_id: Optional[str] = None
@@ -63,6 +71,7 @@ class SessionUpdate(BaseModel):
 
     title: Optional[str] = None
     modules: Optional[List[str]] = None
+    module_mode: Optional[Literal["manual", "auto"]] = None
     params: Optional[Dict[str, Any]] = None
 
 

@@ -17,12 +17,19 @@ router = APIRouter()
 
 
 class ModuleInfo(BaseModel):
-    """Information about a knowledge module."""
+    """Information about a knowledge module.
+
+    ``description``/``doc_count`` come from the cached module catalog.
+    ``loaded`` is only set when the request names a session.
+    """
 
     name: str
     display_name: str = ""
     doc_type: str = "unknown"
     sort_order: int = 4
+    description: str = ""
+    doc_count: int = 0
+    loaded: bool | None = None
 
 
 class ModulesResponse(BaseModel):
@@ -54,39 +61,52 @@ class ModelsResponse(BaseModel):
 
 
 @router.get("/modules", response_model=ModulesResponse)
-async def list_modules(config_service: ConfigServiceDep) -> ModulesResponse:
+async def list_modules(
+    config_service: ConfigServiceDep,
+    session_id: str | None = None,
+) -> ModulesResponse:
     """List available knowledge modules for the configured embedding model.
 
     Modules are vector indexes stored in ~/.tensortruth/indexes/{model_id}/.
-    Returns modules sorted by type (Books, Papers, Libraries, Other).
+    Returns modules sorted by type (Books, Papers, Libraries, Other), with
+    their catalog description, document count and — when ``session_id`` is
+    given — whether the session currently has that module loaded.
     """
-    from tensortruth.app_utils.helpers import get_module_display_name
-    from tensortruth.indexing.metadata import sanitize_model_id
+    from tensortruth.services.module_catalog import (
+        DOC_TYPE_SORT_ORDER,
+        load_module_catalog,
+    )
 
-    indexes_dir = get_indexes_dir()
-    modules = []
+    config = config_service.load()
+    # indexes_dir is passed explicitly so the route keeps honouring an
+    # overridden indexes location (and its existing tests' patch point).
+    catalog = load_module_catalog(config, indexes_dir=get_indexes_dir())
 
-    if indexes_dir.exists():
-        # Get the configured embedding model
-        config = config_service.load()
-        model_id = sanitize_model_id(config.rag.default_embedding_model)
-        model_indexes_dir = indexes_dir / model_id
+    loaded_names: set[str] = set()
+    if session_id:
+        from tensortruth.api.deps import get_session_service
 
-        # Only check versioned structure: indexes/{model_id}/{module}/
-        if model_indexes_dir.exists():
-            for path in model_indexes_dir.iterdir():
-                if path.is_dir() and (path / "chroma.sqlite3").exists():
-                    display_name, doc_type, _, sort_order = get_module_display_name(
-                        model_indexes_dir, path.name
-                    )
-                    modules.append(
-                        ModuleInfo(
-                            name=path.name,
-                            display_name=display_name,
-                            doc_type=doc_type,
-                            sort_order=sort_order,
-                        )
-                    )
+        try:
+            session = get_session_service().get_session(
+                session_id, get_session_service().load()
+            )
+            if session:
+                loaded_names = set(session.get("modules") or [])
+        except Exception:
+            logger.debug("Could not load session %s for loaded flags", session_id)
+
+    modules = [
+        ModuleInfo(
+            name=entry.name,
+            display_name=entry.display_name,
+            doc_type=entry.doc_type,
+            sort_order=DOC_TYPE_SORT_ORDER.get(entry.doc_type, 4),
+            description=entry.description,
+            doc_count=entry.doc_count,
+            loaded=(entry.name in loaded_names) if session_id else None,
+        )
+        for entry in catalog
+    ]
 
     # Sort by type (sort_order) then by display_name
     modules.sort(key=lambda m: (m.sort_order, m.display_name.lower()))

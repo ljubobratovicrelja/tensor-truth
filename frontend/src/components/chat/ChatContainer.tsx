@@ -222,6 +222,24 @@ export function ChatContainer() {
     );
   };
 
+  const handleModuleModeChange = (mode: "manual" | "auto") => {
+    if (!urlSessionId) return;
+    // Switching to auto keeps whatever the agent has loaded so far; switching
+    // back to manual leaves that set in place, now user-editable.
+    updateSession.mutate(
+      {
+        sessionId: urlSessionId,
+        data: {
+          module_mode: mode,
+          modules: mode === "auto" ? (sessionData?.modules ?? []) : currentModules,
+        },
+      },
+      {
+        onError: () => toast.error("Failed to update module mode"),
+      }
+    );
+  };
+
   const handleModelChange = (encodedValue: string | null) => {
     if (!urlSessionId) return;
     const currentParams = sessionData?.params ?? {};
@@ -282,6 +300,7 @@ export function ChatContainer() {
   };
 
   const currentModules = sessionData?.modules ?? [];
+  const currentModuleMode = sessionData?.module_mode ?? "manual";
   const currentModelName = (sessionData?.params?.model as string) || undefined;
   const currentProviderId = (() => {
     const stored = sessionData?.params?.provider_id as string | undefined;
@@ -350,6 +369,8 @@ export function ChatContainer() {
             placeholder={isStreaming ? "Generating response..." : undefined}
             selectedModules={currentModules}
             onModulesChange={handleModulesChange}
+            moduleMode={currentModuleMode}
+            onModuleModeChange={handleModuleModeChange}
             selectedModel={currentModel}
             onModelChange={handleModelChange}
             thinking={currentThinking}

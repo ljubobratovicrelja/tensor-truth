@@ -81,28 +81,36 @@ def _create_service(tool_service, rag_service, **kwargs):
 
 
 class TestToolDiscoveryWebOnly:
-    """When RAG is unavailable, only web tools should be registered."""
+    """RAG tools are registered whenever a service exists, loaded or not."""
 
-    def test_web_tools_only_when_rag_not_loaded(
+    def test_rag_tools_present_when_engine_not_loaded(
         self, tool_service, rag_service_not_loaded
     ):
-        """Should include only web tools when RAG is not loaded."""
+        """rag_query and load_modules must exist before anything is loaded.
+
+        load_modules is what turns an unloaded engine on, so hiding it until
+        the engine is loaded would deadlock the auto module mode.
+        """
         svc = _create_service(tool_service, rag_service_not_loaded)
         tools = svc._build_tools()
 
         names = {t.metadata.name for t in tools}
-        assert names == {"web_search", "fetch_page", "fetch_pages_batch"}
-        assert "rag_query" not in names
+        assert names == {
+            "rag_query",
+            "load_modules",
+            "web_search",
+            "fetch_page",
+            "fetch_pages_batch",
+        }
 
     def test_web_tools_only_when_rag_is_none(self, tool_service):
         """Should include only web tools when rag_service is None."""
-        svc = _create_service(
-            tool_service, rag_service=MagicMock(is_loaded=MagicMock(return_value=False))
-        )
+        svc = _create_service(tool_service, rag_service=None)
         tools = svc._build_tools()
 
         names = {t.metadata.name for t in tools}
         assert "rag_query" not in names
+        assert "load_modules" not in names
         assert len(tools) == 3
 
 
@@ -118,7 +126,13 @@ class TestToolDiscoveryWithRAG:
         tools = svc._build_tools()
 
         names = {t.metadata.name for t in tools}
-        assert names == {"rag_query", "web_search", "fetch_page", "fetch_pages_batch"}
+        assert names == {
+            "rag_query",
+            "load_modules",
+            "web_search",
+            "fetch_page",
+            "fetch_pages_batch",
+        }
 
     def test_rag_tool_is_first(self, tool_service, rag_service_loaded):
         """rag_query should appear first in the tool list (wrapped tools order)."""
@@ -144,8 +158,8 @@ class TestToolDiscoveryWithMCPTools:
 
         names = {t.metadata.name for t in tools}
         assert "custom_mcp_tool" in names
-        # 3 web tools + 1 MCP tool
-        assert len(tools) == 4
+        # rag_query + load_modules + 3 web tools + 1 MCP tool
+        assert len(tools) == 6
 
     def test_includes_multiple_mcp_tools(self, tool_service, rag_service_loaded):
         """Should include all non-conflicting MCP tools."""
@@ -159,8 +173,8 @@ class TestToolDiscoveryWithMCPTools:
         names = {t.metadata.name for t in tools}
         assert "mcp_analyzer" in names
         assert "mcp_summarizer" in names
-        # 4 wrapped (rag + 3 web) + 2 MCP
-        assert len(tools) == 6
+        # 5 wrapped (rag_query + load_modules + 3 web) + 2 MCP
+        assert len(tools) == 7
 
     def test_no_mcp_tools_is_fine(self, tool_service, rag_service_not_loaded):
         """Should work gracefully when no MCP tools are available."""
@@ -169,8 +183,8 @@ class TestToolDiscoveryWithMCPTools:
         svc = _create_service(tool_service, rag_service_not_loaded)
         tools = svc._build_tools()
 
-        # Should still have the 3 web tools
-        assert len(tools) == 3
+        # 2 RAG tools + 3 web tools
+        assert len(tools) == 5
 
 
 # --- Tests: Built-in tool name filtering ---
@@ -241,6 +255,7 @@ class TestBuiltinToolNameFiltering:
             "add_arxiv_paper",
             "build_index",
             "inspect",
+            "load_modules",
         }
         assert _WRAPPED_BUILTIN_TOOL_NAMES == expected
 
@@ -343,6 +358,7 @@ class TestGetToolNames:
         assert set(names) == {
             "fetch_page",
             "fetch_pages_batch",
+            "load_modules",
             "rag_query",
             "web_search",
         }
@@ -391,8 +407,8 @@ class TestToolBuildLogging:
         # Find the info-level log message
         info_msgs = [r.message for r in caplog.records if r.levelno == logging.INFO]
         assert any(
-            "4 tools" in msg and "4 wrapped" in msg for msg in info_msgs
-        ), f"Expected INFO log about 4 tools, got: {info_msgs}"
+            "5 tools" in msg and "5 wrapped" in msg for msg in info_msgs
+        ), f"Expected INFO log about 5 tools, got: {info_msgs}"
 
     def test_logs_tool_descriptions_at_debug_level(
         self, tool_service, rag_service_not_loaded, caplog
@@ -407,6 +423,6 @@ class TestToolBuildLogging:
             svc._build_tools()
 
         debug_msgs = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
-        # Each of the 3 tools should have a debug log for its description
+        # Each of the 5 wrapped tools has a debug log for its description
         tool_desc_msgs = [m for m in debug_msgs if "Tool '" in m]
-        assert len(tool_desc_msgs) == 3
+        assert len(tool_desc_msgs) == 5

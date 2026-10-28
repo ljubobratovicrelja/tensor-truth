@@ -64,6 +64,7 @@ export function WelcomePage() {
   const subtitle = initialSubtitle;
   const [message, setMessage] = useState("");
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
+  const [moduleMode, setModuleMode] = useState<"manual" | "auto">("manual");
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [sessionParams, setSessionParams] = useState<Record<string, unknown>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -199,7 +200,14 @@ export function WelcomePage() {
       const previewedTitle = titlePreview?.text === text ? titlePreview.title : null;
 
       const result = await createSession.mutateAsync({
-        modules: selectedModules.length > 0 ? selectedModules : undefined,
+        // In auto mode the session starts empty; the agent loads what it needs.
+        modules:
+          moduleMode === "auto"
+            ? []
+            : selectedModules.length > 0
+              ? selectedModules
+              : undefined,
+        module_mode: moduleMode,
         params,
         ...(previewedTitle && { title: previewedTitle }),
       });
@@ -328,6 +336,8 @@ export function WelcomePage() {
                 <ModuleSelector
                   selectedModules={selectedModules}
                   onModulesChange={setSelectedModules}
+                  moduleMode={moduleMode}
+                  onModuleModeChange={setModuleMode}
                   disabled={isSubmitting}
                   embeddingModel={sessionParams.embedding_model as string | undefined}
                 />

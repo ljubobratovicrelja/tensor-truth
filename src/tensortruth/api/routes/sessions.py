@@ -41,6 +41,7 @@ def _session_to_response(session_id: str, session: dict) -> SessionResponse:
         title=session.get("title", "New Session"),
         created_at=session.get("created_at", ""),
         modules=session.get("modules"),
+        module_mode=session.get("module_mode", "manual"),
         params=session.get("params", {}),
         message_count=len(session.get("messages", [])),
         project_id=session.get("project_id"),
@@ -67,6 +68,7 @@ async def create_session(
     data = session_service.load()
     new_id, new_data = session_service.create(
         modules=body.modules,
+        module_mode=body.module_mode,
         params=body.params,
         data=data,
         config_service=config_service,
@@ -141,7 +143,11 @@ async def update_session(
         data = session_service.update_title(session_id, body.title, data)
 
     # Update modules or params if provided
-    if body.modules is not None or body.params is not None:
+    if (
+        body.modules is not None
+        or body.params is not None
+        or body.module_mode is not None
+    ):
         from tensortruth.services import SessionData
 
         new_sessions = dict(data.sessions)
@@ -149,6 +155,9 @@ async def update_session(
 
         if body.modules is not None:
             new_sessions[session_id]["modules"] = body.modules
+
+        if body.module_mode is not None:
+            new_sessions[session_id]["module_mode"] = body.module_mode
 
         if body.params is not None:
             new_sessions[session_id]["params"] = body.params

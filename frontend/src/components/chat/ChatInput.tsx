@@ -29,6 +29,9 @@ interface ChatInputProps {
   placeholder?: string;
   selectedModules?: string[];
   onModulesChange?: (modules: string[]) => void;
+  /** "manual" (user picks modules) or "auto" (the agent loads them). */
+  moduleMode?: "manual" | "auto";
+  onModuleModeChange?: (mode: "manual" | "auto") => void;
   selectedModel?: string;
   onModelChange?: (model: string | null) => void;
   thinking?: string;
@@ -56,6 +59,8 @@ export function ChatInput({
   placeholder = "Type your message...",
   selectedModules = [],
   onModulesChange,
+  moduleMode,
+  onModuleModeChange,
   selectedModel,
   onModelChange,
   thinking = "auto",
@@ -257,6 +262,8 @@ export function ChatInput({
                 lockedModules={lockedModules}
                 projectDocuments={projectDocuments}
                 sessionDocuments={sessionDocuments}
+                moduleMode={moduleMode}
+                onModuleModeChange={onModuleModeChange}
               />
             )}
             {sessionId && (

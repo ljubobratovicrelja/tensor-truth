@@ -482,8 +482,8 @@ class TestCreateAllToolWrappers:
         names = {t.metadata.name for t in tools}
         assert names == {"web_search", "fetch_page", "fetch_pages_batch"}
 
-    def test_returns_four_tools_with_loaded_rag(self, tool_service, progress_emitter):
-        """Should include rag_query when RAG service is loaded."""
+    def test_returns_five_tools_with_loaded_rag(self, tool_service, progress_emitter):
+        """Should include rag_query and load_modules when RAG is loaded."""
         rag_service = MagicMock()
         rag_service.is_loaded.return_value = True
 
@@ -491,12 +491,18 @@ class TestCreateAllToolWrappers:
             tool_service, progress_emitter, rag_service=rag_service
         )
 
-        assert len(tools) == 4
+        assert len(tools) == 5
         names = {t.metadata.name for t in tools}
-        assert names == {"rag_query", "web_search", "fetch_page", "fetch_pages_batch"}
+        assert names == {
+            "rag_query",
+            "load_modules",
+            "web_search",
+            "fetch_page",
+            "fetch_pages_batch",
+        }
 
-    def test_excludes_rag_when_not_loaded(self, tool_service, progress_emitter):
-        """Should NOT include rag_query when RAG service is not loaded."""
+    def test_keeps_rag_tools_when_not_loaded(self, tool_service, progress_emitter):
+        """RAG tools stay registered when the engine is not loaded yet."""
         rag_service = MagicMock()
         rag_service.is_loaded.return_value = False
 
@@ -504,9 +510,9 @@ class TestCreateAllToolWrappers:
             tool_service, progress_emitter, rag_service=rag_service
         )
 
-        assert len(tools) == 3
+        assert len(tools) == 5
         names = {t.metadata.name for t in tools}
-        assert "rag_query" not in names
+        assert {"rag_query", "load_modules"} <= names
 
     def test_all_tools_have_descriptions(self, tool_service, progress_emitter):
         """All tools should have non-empty descriptions for the LLM."""

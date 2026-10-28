@@ -42,6 +42,7 @@ from tensortruth.core.providers import ProviderRegistry, resolve_model_from_para
 from tensortruth.services.chat_run_service import ChatRun
 from tensortruth.services.image_service import ImageService
 from tensortruth.services.models import ToolProgress
+from tensortruth.services.module_catalog import load_module_catalog
 from tensortruth.services.orchestrator_service import (
     CHARS_PER_TOKEN,
     OrchestratorService,
@@ -167,6 +168,7 @@ class ChatContext:
     session_messages: List[Dict[str, Any]]
     additional_index_paths: List[str] = field(default_factory=list)
     images: List[Dict[str, Any]] = field(default_factory=list)
+    module_mode: str = "manual"
 
     @classmethod
     def from_session(
@@ -264,6 +266,7 @@ class ChatContext:
             params=params,
             session_messages=session.get("messages", []),
             additional_index_paths=additional_index_paths,
+            module_mode=session.get("module_mode") or "manual",
         )
 
 
@@ -382,7 +385,9 @@ async def _run_orchestrator_path(
     config_service = get_config_service()
     config = config_service.load()
 
-    # Load module descriptions for the orchestrator system prompt
+    # Full module catalog (cached, cheap) for the prompt + load_modules, plus
+    # descriptions of the session's currently loaded modules.
+    module_catalog = load_module_catalog(config)
     module_descriptions = load_module_descriptions(context.modules, config)
 
     # Extract custom instructions and project metadata from params
@@ -442,6 +447,9 @@ async def _run_orchestrator_path(
         session_params=params,
         session_messages=context.session_messages,
         module_descriptions=module_descriptions,
+        module_catalog=module_catalog,
+        module_mode=context.module_mode,
+        additional_index_paths=context.additional_index_paths,
         custom_instructions=custom_instructions,
         project_metadata=project_metadata,
         confirmation_service=confirmation_service,

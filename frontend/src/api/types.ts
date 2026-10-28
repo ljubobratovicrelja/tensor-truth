@@ -1,6 +1,8 @@
 // Session types
 export interface SessionCreate {
   modules?: string[] | null;
+  /** "manual" (user picks modules) or "auto" (the agent loads them). */
+  module_mode?: "manual" | "auto";
   params?: Record<string, unknown>;
   /** Title previewed from the drafted prompt; skips title generation later. */
   title?: string | null;
@@ -22,6 +24,7 @@ export interface SessionResponse {
   title: string;
   created_at: string;
   modules?: string[] | null;
+  module_mode?: "manual" | "auto";
   params: Record<string, unknown>;
   message_count: number;
   project_id?: string | null;
@@ -35,6 +38,7 @@ export interface SessionListResponse {
 export interface SessionUpdate {
   title?: string | null;
   modules?: string[] | null;
+  module_mode?: "manual" | "auto" | null;
   params?: Record<string, unknown> | null;
 }
 
@@ -408,6 +412,11 @@ export interface ModuleInfo {
   display_name: string;
   doc_type: string;
   sort_order: number;
+  /** One-line catalog description (from sources.json or derived). */
+  description?: string;
+  doc_count?: number;
+  /** Only set when the modules request named a session. */
+  loaded?: boolean | null;
 }
 
 export interface ModulesResponse {

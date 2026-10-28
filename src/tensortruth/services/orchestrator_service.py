@@ -55,6 +55,11 @@ from tensortruth.services.context_documents import (
     build_context_block,
 )
 from tensortruth.services.models import RAGRetrievalResult, ToolProgress
+from tensortruth.services.module_catalog import (
+    DOC_TYPE_SORT_ORDER,
+    ModuleDescription,
+    describe_modules,
+)
 from tensortruth.services.orchestrator_tool_wrappers import (
     ProgressEmitter,
     create_all_tool_wrappers,
@@ -88,6 +93,7 @@ _WRAPPED_BUILTIN_TOOL_NAMES = frozenset(
         "add_arxiv_paper",
         "build_index",
         "inspect",
+        "load_modules",
     }
 )
 
@@ -165,10 +171,12 @@ def _compute_cache_identity(
     LLM config, and system prompt.  When any of these changes a cache miss
     occurs and a new instance is created.
     """
-    # Wrapped built-in tool names depend on RAG availability
+    # Wrapped built-in tool names depend on RAG availability. Both the RAG
+    # query tool and module loading are registered whenever a RAG service
+    # exists — load_modules is exactly what turns an unloaded engine on.
     wrapped_names = {"web_search", "fetch_page", "fetch_pages_batch"}
-    if rag_service and rag_service.is_loaded():
-        wrapped_names.add("rag_query")
+    if rag_service is not None:
+        wrapped_names.update({"rag_query", "load_modules"})
     # MCP management tools
     if mcp_server_service is not None:
         wrapped_names.update(
@@ -188,9 +196,13 @@ def _compute_cache_identity(
             (m.name, m.display_name, m.doc_type) for m in (module_descriptions or [])
         )
     )
+    # Active (loaded) module names drive the [loaded] markers in the prompt.
+    # They come from the session, not from re-reading the index catalog.
+    loaded = tuple(sorted(m.name for m in (module_descriptions or [])))
     sp_hash = hash(
         (
             descs,
+            loaded,
             custom_instructions,
             project_metadata,
             (session_params or {}).get("provider_id"),
@@ -272,15 +284,6 @@ class OrchestratorEvent:
     tool_phase: Optional[ToolProgress] = None
 
 
-@dataclass
-class ModuleDescription:
-    """Lightweight description of an indexed knowledge module."""
-
-    name: str
-    display_name: str
-    doc_type: str
-
-
 class OrchestratorService:
     """Agentic orchestrator built on LlamaIndex FunctionAgent.
 
@@ -299,6 +302,9 @@ class OrchestratorService:
         session_params: Optional[Dict[str, Any]] = None,
         session_messages: Optional[List[Dict[str, Any]]] = None,
         module_descriptions: Optional[List[ModuleDescription]] = None,
+        module_catalog: Optional[List[ModuleDescription]] = None,
+        module_mode: str = "manual",
+        additional_index_paths: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
         project_metadata: Optional[str] = None,
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
@@ -317,7 +323,14 @@ class OrchestratorService:
             context_window: Context window size in tokens for the model.
             session_params: Session engine parameters forwarded to RAG tool.
             session_messages: Chat history forwarded to RAG tool for query condensation.
-            module_descriptions: Descriptions of active indexed modules for the system prompt.
+            module_descriptions: Descriptions of the session's active (loaded)
+                indexed modules. Also defines the prompt's ``[loaded]`` set.
+            module_catalog: Every indexed module available to load. When omitted
+                the catalog falls back to ``module_descriptions``.
+            module_mode: ``"manual"`` (user picks modules) or ``"auto"`` (the
+                agent picks them with load_modules). Informational only here.
+            additional_index_paths: Session/project index paths (session PDFs,
+                project index) that must survive a load_modules reload.
             custom_instructions: Session-level custom instructions to include in system prompt.
             project_metadata: Project-level metadata string (name, description, instructions).
             max_iterations: Maximum agentic iterations before stopping.
@@ -337,6 +350,11 @@ class OrchestratorService:
         self._model_ref = resolve_model_from_params(self._session_params, model)
         self._session_messages: List[Dict[str, Any]] = session_messages or []
         self._module_descriptions = module_descriptions or []
+        self._module_catalog = module_catalog or self._module_descriptions
+        self._module_mode = module_mode or "manual"
+        self._additional_index_paths: List[str] = list(additional_index_paths or [])
+        # Live loaded set shared with the load_modules tool closure.
+        self._loaded_modules: List[str] = [m.name for m in self._module_descriptions]
         self._custom_instructions = custom_instructions
         self._project_metadata = project_metadata
         self._max_iterations = max_iterations
@@ -604,6 +622,9 @@ class OrchestratorService:
             mcp_server_service=self._mcp_server_service,
             session_id=self._session_id,
             project_id=self._project_id,
+            module_catalog=self._module_catalog,
+            loaded_modules=self._loaded_modules,
+            additional_index_paths=self._additional_index_paths,
         )
 
         # 2. Collect MCP tools from ToolService, filtering out already-wrapped built-ins
@@ -665,6 +686,71 @@ class OrchestratorService:
     # System prompt composition
     # ------------------------------------------------------------------
 
+    # Prompt rendering limits for the module catalog.
+    _MODULE_DESCRIPTION_MAX_CHARS = 90
+    _MODULE_LIST_MAX_ENTRIES = 80
+    _DOC_TYPE_LABELS = {
+        "book": "Books",
+        "paper": "Papers",
+        "library_doc": "Libraries",
+        "unknown": "Other",
+    }
+
+    def _render_modules_section(self) -> str:
+        """Render every indexed module, marking the loaded ones.
+
+        Lists the whole catalog so the agent can decide what a question needs;
+        only ``[loaded]`` modules are searchable with rag_query, which is what
+        load_modules changes.
+        """
+        catalog = getattr(self, "_module_catalog", None) or getattr(
+            self, "_module_descriptions", []
+        )
+        if not catalog:
+            return ""
+
+        loaded = set(self._loaded_modules) | {
+            mod.name for mod in self._module_descriptions
+        }
+        grouped: Dict[str, List[ModuleDescription]] = {}
+        for mod in catalog:
+            grouped.setdefault(mod.doc_type or "unknown", []).append(mod)
+
+        # Above the size cap, keep the prompt cheap: names + doc type only.
+        compact = len(catalog) > self._MODULE_LIST_MAX_ENTRIES
+
+        lines: List[str] = []
+        for doc_type in sorted(grouped, key=lambda t: DOC_TYPE_SORT_ORDER.get(t, 4)):
+            label = self._DOC_TYPE_LABELS.get(doc_type, doc_type)
+            lines.append(f"{label}:")
+            for mod in grouped[doc_type]:
+                marker = " [loaded]" if mod.name in loaded else ""
+                if compact or not mod.description:
+                    lines.append(
+                        f"- {mod.name}: {mod.display_name} ({mod.doc_type}){marker}"
+                    )
+                    continue
+                description = mod.description
+                limit = self._MODULE_DESCRIPTION_MAX_CHARS
+                if len(description) > limit:
+                    description = description[: limit - 3].rstrip() + "..."
+                doc_count = mod.doc_count if mod.doc_count else "count unknown"
+                lines.append(
+                    f"- {mod.name}: {mod.display_name} - {description} "
+                    f"({doc_count} docs){marker}"
+                )
+
+        modules_block = "\n".join(lines)
+        return (
+            "You have access to a knowledge base with the following indexed modules "
+            "(a module is a document collection; only [loaded] modules can be "
+            "searched right now):\n"
+            f"{modules_block}\n\n"
+            "If the question plausibly relates to a module not yet loaded, call "
+            "load_modules before answering; call rag_query afterwards. Never claim "
+            "to have read content from an unloaded module."
+        )
+
     def _build_system_prompt(
         self,
         tools: List[FunctionTool],
@@ -703,20 +789,11 @@ class OrchestratorService:
             "Decide which tools to use based on the user's question."
         )
 
-        # --- Indexed modules ---
-        if include_modules and self._module_descriptions:
-            module_lines = []
-            for mod in self._module_descriptions:
-                module_lines.append(
-                    f"- {mod.name}: {mod.display_name} ({mod.doc_type})"
-                )
-            modules_block = "\n".join(module_lines)
-            sections.append(
-                "You have access to a knowledge base with the following indexed modules:\n"
-                f"{modules_block}\n\n"
-                "Use rag_query when the user's question likely relates to topics "
-                "covered by these modules."
-            )
+        # --- Indexed modules (full catalog, with the loaded set marked) ---
+        if include_modules:
+            modules_section = self._render_modules_section()
+            if modules_section:
+                sections.append(modules_section)
 
         # --- Cloned repositories (session-scoped, rebuilt from disk each turn) ---
         # Rendered from the workspace directory rather than stored in the
@@ -1926,71 +2003,29 @@ def load_module_descriptions(
     modules: List[str],
     config: Any,
 ) -> List[ModuleDescription]:
-    """Load module descriptions from the index catalog.
+    """Return catalog descriptions for the given module names.
 
-    Reads ChromaDB metadata for each active module to extract display_name
-    and doc_type. Used to populate the orchestrator's system prompt with
-    information about what knowledge is available.
+    Thin, cached wrapper over :func:`module_catalog.describe_modules`. Unknown
+    or unreadable modules keep their bare name so the prompt never loses a
+    module the session asked for.
 
     Args:
         modules: List of active module names (from session config).
         config: TensorTruthConfig instance.
 
     Returns:
-        List of ModuleDescription for each module that could be resolved.
+        List of ModuleDescription in the order of ``modules``.
     """
     if not modules:
         return []
-
-    descriptions: List[ModuleDescription] = []
-
     try:
-        from tensortruth.app_utils.helpers import get_module_display_name
-        from tensortruth.app_utils.paths import get_indexes_dir
-        from tensortruth.indexing.metadata import sanitize_model_id
-
-        indexes_dir = get_indexes_dir()
-        model_id = sanitize_model_id(config.rag.default_embedding_model)
-        model_indexes_dir = indexes_dir / model_id
-
-        for module_name in modules:
-            try:
-                display_name, doc_type, _, _ = get_module_display_name(
-                    model_indexes_dir, module_name
-                )
-                descriptions.append(
-                    ModuleDescription(
-                        name=module_name,
-                        display_name=display_name,
-                        doc_type=doc_type,
-                    )
-                )
-            except Exception:
-                # Module metadata unavailable -- include with bare name
-                descriptions.append(
-                    ModuleDescription(
-                        name=module_name,
-                        display_name=module_name,
-                        doc_type="unknown",
-                    )
-                )
-                logger.debug(
-                    "Could not load metadata for module '%s', using bare name",
-                    module_name,
-                )
+        return describe_modules(modules, config)
     except Exception:
         logger.warning(
             "Failed to load module descriptions, proceeding without them",
             exc_info=True,
         )
-        # Fall back to bare names
-        for module_name in modules:
-            descriptions.append(
-                ModuleDescription(
-                    name=module_name,
-                    display_name=module_name,
-                    doc_type="unknown",
-                )
-            )
-
-    return descriptions
+        return [
+            ModuleDescription(name=name, display_name=name, doc_type="unknown")
+            for name in modules
+        ]
