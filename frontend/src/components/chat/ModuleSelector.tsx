@@ -42,7 +42,7 @@ export function ModuleSelector({
   lockedModules,
   projectDocuments,
   sessionDocuments,
-  moduleMode = "manual",
+  moduleMode = "auto",
   onModuleModeChange,
 }: ModuleSelectorProps) {
   const isAutoMode = moduleMode === "auto";
@@ -66,16 +66,22 @@ export function ModuleSelector({
     localSelection.some((m) => !selectedModules.includes(m));
 
   const handleToggle = (moduleName: string) => {
-    setLocalSelection((prev) =>
-      prev.includes(moduleName)
-        ? prev.filter((m) => m !== moduleName)
-        : [...prev, moduleName]
-    );
+    if (isAutoMode) return;
+    const next = localSelection.includes(moduleName)
+      ? localSelection.filter((m) => m !== moduleName)
+      : [...localSelection, moduleName];
+    setLocalSelection(next);
+    // An explicit selection wins: picking any module pins the session to
+    // manual, and emptying the list hands control back to the agent.
+    onModuleModeChange?.(next.length > 0 ? "manual" : "auto");
   };
 
   const handleApply = () => {
-    // In auto mode the agent owns the module set; the panel is informational.
-    onModulesChange(isAutoMode ? selectedModules : localSelection);
+    // A non-empty local selection is the user's explicit choice. With nothing
+    // selected in auto mode the panel is informational, so keep the agent's set.
+    const next =
+      localSelection.length > 0 || !isAutoMode ? localSelection : selectedModules;
+    onModulesChange(next);
     setOpen(false);
   };
 
@@ -86,6 +92,9 @@ export function ModuleSelector({
 
   const handleClearAll = () => {
     setLocalSelection([]);
+    if (!isAutoMode) {
+      onModuleModeChange?.("auto");
+    }
   };
 
   // Find the embedding model info matching the effective embedding model
@@ -286,7 +295,7 @@ export function ModuleSelector({
               )}
             </span>
           </div>
-          {selectedCount > 0 && (
+          {selectedCount > 0 && !isAutoMode && (
             <Button
               variant="ghost"
               size="sm"

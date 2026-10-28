@@ -386,6 +386,7 @@ def create_rag_tool(
     context_window: int = 16384,
     catalog_names: Optional[List[str]] = None,
     session_id: Optional[str] = None,
+    module_mode: str = "auto",
 ) -> FunctionTool:
     """Create a rag_query FunctionTool for the orchestrator.
 
@@ -408,6 +409,8 @@ def create_rag_tool(
         context_window: Model context window in tokens, used to cap the size
             of the excerpts returned to the agent.
         session_id: Session whose retrieval set this tool queries.
+        module_mode: ``"auto"`` or ``"manual"``. In manual mode there is no
+            load_modules tool, so the no-engine guidance must not suggest it.
 
     Returns:
         A FunctionTool wrapping RAGService.retrieve().
@@ -429,6 +432,13 @@ def create_rag_tool(
         # The tool is registered even with no engine loaded so the agent always
         # sees it; without modules there is nothing to search, only guidance.
         if not rag_service.is_loaded(**owner_kwargs):
+            if module_mode == "manual":
+                return (
+                    "No knowledge modules are selected for this session. The "
+                    "user has not selected any knowledge modules, and the "
+                    "selection is fixed for this session; answer without "
+                    "searching the knowledge base."
+                )
             if catalog_names:
                 available = ", ".join(catalog_names)
             else:
@@ -2751,6 +2761,7 @@ def create_all_tool_wrappers(
     module_catalog: Optional[List[Any]] = None,
     loaded_modules: Optional[List[str]] = None,
     additional_index_paths: Optional[List[str]] = None,
+    module_mode: str = "auto",
 ) -> List[FunctionTool]:
     """Create all orchestrator tool wrappers at once.
 
@@ -2761,14 +2772,17 @@ def create_all_tool_wrappers(
 
     Returns:
         List of FunctionTool wrappers. Always includes web_search, fetch_page,
-        fetch_pages_batch. Includes rag_query and load_modules whenever a
-        rag_service is provided (loaded or not).
+        fetch_pages_batch. Includes rag_query whenever a rag_service is
+        provided (loaded or not). Includes load_modules only in auto mode:
+        manual mode pins the session to the user's selection.
         Includes MCP management tools when services are provided.
     """
     tools: List[FunctionTool] = []
+    normalized_mode = module_mode or "auto"
 
-    # RAG tools. Both are registered whenever a service exists — including
-    # before anything is loaded, which is exactly when load_modules is needed.
+    # RAG tools. rag_query is registered whenever a service exists, including
+    # before anything is loaded. load_modules only exists in auto mode, where
+    # it is exactly what turns an unloaded engine on.
     if rag_service is not None:
         catalog_names = [entry.name for entry in (module_catalog or [])]
         tools.append(
@@ -2782,19 +2796,21 @@ def create_all_tool_wrappers(
                 context_window=context_window,
                 catalog_names=catalog_names,
                 session_id=session_id,
+                module_mode=normalized_mode,
             )
         )
-        tools.append(
-            create_load_modules_tool(
-                rag_service,
-                progress_emitter,
-                module_catalog=module_catalog,
-                loaded_modules=loaded_modules,
-                session_params=session_params,
-                additional_index_paths=additional_index_paths,
-                session_id=session_id,
+        if normalized_mode == "auto":
+            tools.append(
+                create_load_modules_tool(
+                    rag_service,
+                    progress_emitter,
+                    module_catalog=module_catalog,
+                    loaded_modules=loaded_modules,
+                    session_params=session_params,
+                    additional_index_paths=additional_index_paths,
+                    session_id=session_id,
+                )
             )
-        )
 
     # Web tools (with reranking pipeline integration)
     tools.extend(

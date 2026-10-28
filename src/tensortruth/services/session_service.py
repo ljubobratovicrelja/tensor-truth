@@ -414,7 +414,7 @@ class SessionService:
         data: SessionData,
         config_service: Optional["ConfigService"] = None,
         title: Optional[str] = None,
-        module_mode: str = "manual",
+        module_mode: str = "auto",
     ) -> Tuple[str, SessionData]:
         """Create a new chat session.
 
@@ -425,8 +425,8 @@ class SessionService:
             config_service: Optional ConfigService for applying defaults.
             title: Optional client-chosen title (e.g. previewed while typing).
                 When given, the first turn does not regenerate it.
-            module_mode: "manual" (user-selected modules) or "auto"
-                (agent-selected, loaded with load_modules).
+            module_mode: "auto" (agent-selected, loaded with load_modules)
+                or "manual" (user-selected modules, fixed for the session).
 
         Returns:
             Tuple of (new_session_id, updated_SessionData).
@@ -441,7 +441,7 @@ class SessionService:
             "created_at": str(datetime.now()),
             "messages": [],
             "modules": modules,
-            "module_mode": module_mode or "manual",
+            "module_mode": module_mode or "auto",
             "params": params,  # Now contains complete defaults
             "title_needs_update": not title,
         }

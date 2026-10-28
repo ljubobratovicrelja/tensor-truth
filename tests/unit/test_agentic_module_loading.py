@@ -173,6 +173,44 @@ def test_registration_includes_rag_tools_when_engine_not_loaded():
     assert {"rag_query", "load_modules"} <= names
 
 
+def test_manual_mode_omits_load_modules_but_keeps_rag_query():
+    tool_service = MagicMock()
+    tool_service.tools = []
+
+    tools = create_all_tool_wrappers(
+        tool_service,
+        lambda _p: None,
+        rag_service=_rag_service(loaded=False),
+        module_mode="manual",
+    )
+
+    names = {tool.metadata.name for tool in tools}
+    assert "rag_query" in names
+    assert "load_modules" not in names
+
+
+@pytest.mark.asyncio
+async def test_rag_query_guidance_differs_by_mode_without_engine():
+    catalog_names = [entry.name for entry in CATALOG]
+
+    auto_tool = create_rag_tool(
+        _rag_service(loaded=False), lambda _p: None, catalog_names=catalog_names
+    )
+    manual_tool = create_rag_tool(
+        _rag_service(loaded=False),
+        lambda _p: None,
+        catalog_names=catalog_names,
+        module_mode="manual",
+    )
+
+    auto_result = str(await auto_tool.acall(query="what is a transformer?"))
+    manual_result = str(await manual_tool.acall(query="what is a transformer?"))
+
+    assert "load_modules" in auto_result
+    assert "load_modules" not in manual_result
+    assert "user has not selected any knowledge modules" in manual_result
+
+
 # --- system prompt --------------------------------------------------------
 
 
@@ -202,6 +240,49 @@ def test_prompt_lists_whole_catalog_with_loaded_markers():
     assert "[loaded]" not in library_line
     assert "call load_modules before answering" in prompt
     assert "Never claim to have read content from an unloaded module" in prompt
+
+
+def test_manual_prompt_lists_only_selected_modules_without_catalog():
+    tool_service = MagicMock()
+    tool_service.tools = []
+    service = _service(
+        tool_service,
+        _rag_service(loaded=True),
+        module_descriptions=[CATALOG[0]],
+        module_catalog=CATALOG,
+        module_mode="manual",
+    )
+
+    tools = service._build_tools()
+    prompt = service._build_system_prompt(tools)
+
+    assert "papers_dl" in prompt
+    # No catalog entry the user did not select, no [loaded] markers.
+    assert "library_pytorch_2.9" not in prompt
+    assert "[loaded]" not in prompt
+    # The selection is fixed and load_modules is not even registered.
+    assert "fixed for this session" in prompt
+    assert "load_modules" not in prompt
+    assert "load_modules" not in {tool.metadata.name for tool in tools}
+
+
+def test_auto_prompt_is_the_default_and_lists_catalog():
+    tool_service = MagicMock()
+    tool_service.tools = []
+    service = _service(
+        tool_service,
+        _rag_service(loaded=True),
+        module_descriptions=[CATALOG[0]],
+        module_catalog=CATALOG,
+    )
+
+    tools = service._build_tools()
+    prompt = service._build_system_prompt(tools)
+
+    assert service._module_mode == "auto"
+    assert "library_pytorch_2.9" in prompt
+    assert "call load_modules before answering" in prompt
+    assert "load_modules" in {tool.metadata.name for tool in tools}
 
 
 def test_prompt_truncates_long_descriptions_and_compacts_huge_catalogs():
@@ -236,7 +317,7 @@ def test_prompt_truncates_long_descriptions_and_compacts_huge_catalogs():
 # --- cache identity -------------------------------------------------------
 
 
-def _identity(rag_service, module_descriptions):
+def _identity(rag_service, module_descriptions, module_mode="auto"):
     tool_service = MagicMock()
     tool_service.tools = []
     return _compute_cache_identity(
@@ -252,6 +333,7 @@ def _identity(rag_service, module_descriptions):
         project_metadata=None,
         max_iterations=10,
         mcp_server_service=None,
+        module_mode=module_mode,
     )
 
 
@@ -268,3 +350,13 @@ def test_cache_identity_includes_rag_tools_even_when_not_loaded():
     wrapped = identity[4]
     assert "rag_query" in wrapped
     assert "load_modules" in wrapped
+
+
+def test_cache_identity_changes_when_module_mode_flips():
+    rag = _rag_service(loaded=True)
+    auto = _identity(rag, [CATALOG[0]], module_mode="auto")
+    manual = _identity(rag, [CATALOG[0]], module_mode="manual")
+    assert auto != manual
+    # Manual mode also drops load_modules from the tool-name set.
+    assert "load_modules" in auto[4]
+    assert "load_modules" not in manual[4]

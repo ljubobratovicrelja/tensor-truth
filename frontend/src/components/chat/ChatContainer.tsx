@@ -300,7 +300,7 @@ export function ChatContainer() {
   };
 
   const currentModules = sessionData?.modules ?? [];
-  const currentModuleMode = sessionData?.module_mode ?? "manual";
+  const currentModuleMode = sessionData?.module_mode ?? "auto";
   const currentModelName = (sessionData?.params?.model as string) || undefined;
   const currentProviderId = (() => {
     const stored = sessionData?.params?.provider_id as string | undefined;

@@ -394,6 +394,22 @@ class TestSessionServiceCreate:
         assert session["params"]["model"] == "llama2"
         assert session["title_needs_update"] is True
         assert session["messages"] == []
+        # Agent-driven module selection is the default.
+        assert session["module_mode"] == "auto"
+
+    def test_create_keeps_explicit_manual_mode(self, session_service: SessionService):
+        """An explicit user selection stays manual."""
+        data = SessionData(current_id=None, sessions={})
+
+        new_id, new_data = session_service.create(
+            modules=["module1"],
+            params={},
+            data=data,
+            module_mode="manual",
+        )
+
+        assert new_data.sessions[new_id]["module_mode"] == "manual"
+        assert new_data.sessions[new_id]["modules"] == ["module1"]
 
     def test_create_with_client_title_skips_generation(
         self, session_service: SessionService

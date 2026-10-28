@@ -164,6 +164,7 @@ def _compute_cache_identity(
     project_metadata: Optional[str],
     max_iterations: int,
     mcp_server_service: Optional[Any],
+    module_mode: str = "auto",
 ) -> tuple:
     """Compute a hashable identity tuple for the agent cache.
 
@@ -171,12 +172,15 @@ def _compute_cache_identity(
     LLM config, and system prompt.  When any of these changes a cache miss
     occurs and a new instance is created.
     """
-    # Wrapped built-in tool names depend on RAG availability. Both the RAG
-    # query tool and module loading are registered whenever a RAG service
-    # exists — load_modules is exactly what turns an unloaded engine on.
+    # Wrapped built-in tool names depend on RAG availability and module mode.
+    # In auto mode load_modules is what turns an unloaded engine on; in manual
+    # mode it is not registered at all, so the tool set differs by mode.
+    normalized_mode = module_mode or "auto"
     wrapped_names = {"web_search", "fetch_page", "fetch_pages_batch"}
     if rag_service is not None:
-        wrapped_names.update({"rag_query", "load_modules"})
+        wrapped_names.add("rag_query")
+        if normalized_mode == "auto":
+            wrapped_names.add("load_modules")
     # MCP management tools
     if mcp_server_service is not None:
         wrapped_names.update(
@@ -210,6 +214,8 @@ def _compute_cache_identity(
             # invalidate the cached agent instance.
             (session_params or {}).get("thinking"),
             max_iterations,
+            # Module mode changes both the rendered catalog and the tool set.
+            normalized_mode,
         )
     )
 
@@ -303,7 +309,7 @@ class OrchestratorService:
         session_messages: Optional[List[Dict[str, Any]]] = None,
         module_descriptions: Optional[List[ModuleDescription]] = None,
         module_catalog: Optional[List[ModuleDescription]] = None,
-        module_mode: str = "manual",
+        module_mode: str = "auto",
         additional_index_paths: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
         project_metadata: Optional[str] = None,
@@ -327,8 +333,9 @@ class OrchestratorService:
                 indexed modules. Also defines the prompt's ``[loaded]`` set.
             module_catalog: Every indexed module available to load. When omitted
                 the catalog falls back to ``module_descriptions``.
-            module_mode: ``"manual"`` (user picks modules) or ``"auto"`` (the
-                agent picks them with load_modules). Informational only here.
+            module_mode: ``"auto"`` (the agent picks modules with
+                load_modules) or ``"manual"`` (the user's selection is fixed:
+                only those modules are listed and load_modules is absent).
             additional_index_paths: Session/project index paths (session PDFs,
                 project index) that must survive a load_modules reload.
             custom_instructions: Session-level custom instructions to include in system prompt.
@@ -351,7 +358,7 @@ class OrchestratorService:
         self._session_messages: List[Dict[str, Any]] = session_messages or []
         self._module_descriptions = module_descriptions or []
         self._module_catalog = module_catalog or self._module_descriptions
-        self._module_mode = module_mode or "manual"
+        self._module_mode = module_mode or "auto"
         self._additional_index_paths: List[str] = list(additional_index_paths or [])
         # Live loaded set shared with the load_modules tool closure.
         self._loaded_modules: List[str] = [m.name for m in self._module_descriptions]
@@ -435,6 +442,7 @@ class OrchestratorService:
             project_metadata=kwargs.get("project_metadata"),
             max_iterations=kwargs.get("max_iterations", DEFAULT_MAX_ITERATIONS),
             mcp_server_service=kwargs.get("mcp_server_service"),
+            module_mode=kwargs.get("module_mode") or "auto",
         )
 
         if identity in _agent_cache:
@@ -625,6 +633,7 @@ class OrchestratorService:
             module_catalog=self._module_catalog,
             loaded_modules=self._loaded_modules,
             additional_index_paths=self._additional_index_paths,
+            module_mode=self._module_mode,
         )
 
         # 2. Collect MCP tools from ToolService, filtering out already-wrapped built-ins
@@ -697,16 +706,21 @@ class OrchestratorService:
     }
 
     def _render_modules_section(self) -> str:
-        """Render every indexed module, marking the loaded ones.
+        """Render the modules the prompt exposes for this session.
 
-        Lists the whole catalog so the agent can decide what a question needs;
-        only ``[loaded]`` modules are searchable with rag_query, which is what
-        load_modules changes.
+        Auto mode lists the whole catalog with ``[loaded]`` markers so the
+        agent can decide what a question needs and load more. Manual mode
+        lists only the user's selection, with no catalog, no markers and no
+        load_modules guidance — the selection is fixed for the session.
         """
-        catalog = getattr(self, "_module_catalog", None) or getattr(
-            self, "_module_descriptions", []
-        )
-        if not catalog:
+        auto_mode = getattr(self, "_module_mode", "auto") != "manual"
+        if auto_mode:
+            catalog = getattr(self, "_module_catalog", None) or getattr(
+                self, "_module_descriptions", []
+            )
+        else:
+            catalog = getattr(self, "_module_descriptions", []) or []
+        if not catalog and auto_mode:
             return ""
 
         loaded = set(self._loaded_modules) | {
@@ -724,7 +738,7 @@ class OrchestratorService:
             label = self._DOC_TYPE_LABELS.get(doc_type, doc_type)
             lines.append(f"{label}:")
             for mod in grouped[doc_type]:
-                marker = " [loaded]" if mod.name in loaded else ""
+                marker = " [loaded]" if auto_mode and mod.name in loaded else ""
                 if compact or not mod.description:
                     lines.append(
                         f"- {mod.name}: {mod.display_name} ({mod.doc_type}){marker}"
@@ -741,6 +755,22 @@ class OrchestratorService:
                 )
 
         modules_block = "\n".join(lines)
+        if not auto_mode:
+            if not modules_block:
+                return (
+                    "No knowledge modules are available in this session: the "
+                    "user has not selected any. The selection is fixed for this "
+                    "session and other collections are unavailable."
+                )
+            return (
+                "The user selected the following knowledge modules for this "
+                "session (a module is a document collection; these are the only "
+                "collections available):\n"
+                f"{modules_block}\n\n"
+                "This selection is fixed for this session: other collections "
+                "are unavailable and cannot be loaded. Use rag_query to search "
+                "the selected modules."
+            )
         return (
             "You have access to a knowledge base with the following indexed modules "
             "(a module is a document collection; only [loaded] modules can be "

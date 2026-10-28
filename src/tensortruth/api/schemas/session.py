@@ -12,10 +12,11 @@ class SessionCreate(BaseModel):
         default=None, description="List of knowledge modules to enable"
     )
     module_mode: Literal["manual", "auto"] = Field(
-        default="manual",
+        default="auto",
         description=(
-            'How knowledge modules are chosen: "manual" (the user picks them, '
-            'default) or "auto" (the agent loads them with load_modules).'
+            'How knowledge modules are chosen: "auto" (the agent decides, '
+            'default) or "manual" (the user picks them, which strictly limits '
+            "the session to that selection)."
         ),
     )
     params: Dict[str, Any] = Field(
@@ -53,7 +54,7 @@ class SessionResponse(BaseModel):
     title: str
     created_at: str
     modules: Optional[List[str]] = None
-    module_mode: Literal["manual", "auto"] = "manual"
+    module_mode: Literal["manual", "auto"] = "auto"
     params: Dict[str, Any] = Field(default_factory=dict)
     message_count: int = 0
     project_id: Optional[str] = None

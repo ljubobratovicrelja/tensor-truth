@@ -41,7 +41,7 @@ def _session_to_response(session_id: str, session: dict) -> SessionResponse:
         title=session.get("title", "New Session"),
         created_at=session.get("created_at", ""),
         modules=session.get("modules"),
-        module_mode=session.get("module_mode", "manual"),
+        module_mode=session.get("module_mode", "auto"),
         params=session.get("params", {}),
         message_count=len(session.get("messages", [])),
         project_id=session.get("project_id"),

@@ -64,7 +64,7 @@ export function WelcomePage() {
   const subtitle = initialSubtitle;
   const [message, setMessage] = useState("");
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
-  const [moduleMode, setModuleMode] = useState<"manual" | "auto">("manual");
+  const [moduleMode, setModuleMode] = useState<"manual" | "auto">("auto");
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [sessionParams, setSessionParams] = useState<Record<string, unknown>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -199,15 +199,12 @@ export function WelcomePage() {
 
       const previewedTitle = titlePreview?.text === text ? titlePreview.title : null;
 
+      // Nothing selected means the agent decides; an explicit selection pins
+      // the session to manual mode.
+      const effectiveModuleMode = selectedModules.length > 0 ? "manual" : "auto";
       const result = await createSession.mutateAsync({
-        // In auto mode the session starts empty; the agent loads what it needs.
-        modules:
-          moduleMode === "auto"
-            ? []
-            : selectedModules.length > 0
-              ? selectedModules
-              : undefined,
-        module_mode: moduleMode,
+        modules: selectedModules.length > 0 ? selectedModules : [],
+        module_mode: effectiveModuleMode,
         params,
         ...(previewedTitle && { title: previewedTitle }),
       });

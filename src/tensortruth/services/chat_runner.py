@@ -168,7 +168,7 @@ class ChatContext:
     session_messages: List[Dict[str, Any]]
     additional_index_paths: List[str] = field(default_factory=list)
     images: List[Dict[str, Any]] = field(default_factory=list)
-    module_mode: str = "manual"
+    module_mode: str = "auto"
 
     @classmethod
     def from_session(
@@ -266,7 +266,7 @@ class ChatContext:
             params=params,
             session_messages=session.get("messages", []),
             additional_index_paths=additional_index_paths,
-            module_mode=session.get("module_mode") or "manual",
+            module_mode=session.get("module_mode") or "auto",
         )
 
 
