@@ -13,7 +13,15 @@ const RECONNECT_BASE_DELAY_MS = 300;
 const RECONNECT_MAX_DELAY_MS = 1500;
 
 /**
- * Streams one elaboration into the dedicated elaboration store.
+ * Which buffer the live run writes into. The initial explanation owns
+ * `content`; a follow-up answer owns `reply`. Keeping the mode explicit stops
+ * a late event from one run landing in the other's buffer.
+ */
+type StreamMode = "initial" | "follow-up";
+
+/**
+ * Streams one elaboration (and its follow-up thread) into the dedicated
+ * elaboration store.
  *
  * Deliberately independent of `useChatStore`: an explanation must never touch
  * the main chat's streaming state.
@@ -23,7 +31,9 @@ export function useElaboration(sessionId: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
   const runIdRef = useRef<string | null>(null);
   const lastSeqRef = useRef(0);
+  const modeRef = useRef<StreamMode>("initial");
   const contentRef = useRef("");
+  const replyRef = useRef("");
   const terminalRef = useRef(false);
   const manualCloseRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
@@ -54,11 +64,17 @@ export function useElaboration(sessionId: string | null) {
         lastSeqRef.current = event.seq;
       }
       const store = useElaborationStore.getState();
+      const followUp = modeRef.current === "follow-up";
 
       switch (event.type) {
         case "token":
-          contentRef.current += event.content;
-          store.appendToken(event.content);
+          if (followUp) {
+            replyRef.current += event.content;
+            store.appendReplyToken(event.content);
+          } else {
+            contentRef.current += event.content;
+            store.appendToken(event.content);
+          }
           return true;
         case "thinking":
         case "reasoning":
@@ -66,25 +82,33 @@ export function useElaboration(sessionId: string | null) {
           return true;
         case "done": {
           terminalRef.current = true;
-          const content = event.content || contentRef.current;
-          contentRef.current = content;
-          store.finish(content, event.elaboration_id ?? null);
+          if (followUp) {
+            const content = event.content || replyRef.current;
+            replyRef.current = content;
+            store.finishFollowUp(content);
+          } else {
+            const content = event.content || contentRef.current;
+            contentRef.current = content;
+            store.finish(content, event.elaboration_id ?? null);
+          }
           if (sessionId) {
             const key = QUERY_KEYS.messages(sessionId);
             const invalidate = () => {
               void queryClient.invalidateQueries({ queryKey: key });
             };
             invalidate();
-            // `done` is emitted before the runner persists the elaboration, so
-            // one immediate refetch can race the write. A second, later pass
-            // makes the underline appear without a manual reload.
+            // `done` is emitted before the runner persists the explanation (or
+            // the follow-up turns), so one immediate refetch can race the
+            // write. A second, later pass makes the underline/thread appear
+            // without a manual reload.
             window.setTimeout(invalidate, 800);
           }
           return true;
         }
         case "error":
           terminalRef.current = true;
-          store.setError(event.detail);
+          if (followUp) store.failFollowUp(event.detail);
+          else store.setError(event.detail);
           return true;
         default:
           // sources/tool/status events carry nothing the panel renders.
@@ -97,18 +121,22 @@ export function useElaboration(sessionId: string | null) {
   /** Bounded REST replay once socket re-attach attempts are exhausted. */
   const drainRest = useCallback(
     async (runId: string) => {
+      const followUp = modeRef.current === "follow-up";
       try {
         const result = await getRunEvents(runId, lastSeqRef.current);
         for (const event of result.events ?? []) applyEvent(event);
         if (result.status !== "running" && !terminalRef.current) {
           terminalRef.current = true;
-          useElaborationStore.getState().finish(contentRef.current, null);
+          const store = useElaborationStore.getState();
+          if (followUp) store.finishFollowUp(replyRef.current);
+          else store.finish(contentRef.current, null);
         }
       } catch (err) {
         console.warn("[elaboration] REST catch-up failed:", err);
-        useElaborationStore
-          .getState()
-          .setError("Lost connection while explaining this passage.");
+        const detail = "Lost connection while explaining this passage.";
+        const store = useElaborationStore.getState();
+        if (followUp) store.failFollowUp(detail);
+        else store.setError(detail);
       }
     },
     [applyEvent]
@@ -180,17 +208,27 @@ export function useElaboration(sessionId: string | null) {
     [sessionId, clearReconnectTimer, closeSocket, applyEvent, drainRest]
   );
 
-  const start = useCallback(
-    async (anchor: ElaborationAnchor) => {
-      if (!sessionId) return;
-
+  /** Reset per-run transport state before the POST returns a run id. */
+  const beginRun = useCallback(
+    (mode: StreamMode) => {
       clearReconnectTimer();
       closeSocket();
       runIdRef.current = null;
       lastSeqRef.current = 0;
-      contentRef.current = "";
       terminalRef.current = false;
       reconnectAttemptsRef.current = 0;
+      modeRef.current = mode;
+      contentRef.current = "";
+      replyRef.current = "";
+    },
+    [clearReconnectTimer, closeSocket]
+  );
+
+  const start = useCallback(
+    async (anchor: ElaborationAnchor) => {
+      if (!sessionId) return;
+
+      beginRun("initial");
 
       // Open first so the panel appears (and streams) immediately.
       useElaborationStore.getState().openFor(anchor);
@@ -218,11 +256,53 @@ export function useElaboration(sessionId: string | null) {
         useElaborationStore.getState().setError(detail);
       }
     },
-    [sessionId, clearReconnectTimer, closeSocket, openSocket]
+    [sessionId, beginRun, openSocket]
+  );
+
+  /**
+   * Continue the open explanation's thread. The question is persisted only
+   * when the run finishes; until then the optimistic user turn keeps the panel
+   * readable.
+   */
+  const followUp = useCallback(
+    async (text: string) => {
+      if (!sessionId) return;
+      const prompt = text.trim();
+      if (!prompt) return;
+
+      const { anchor, activeElaborationId, isReplying, isStreaming } =
+        useElaborationStore.getState();
+      if (!anchor || !activeElaborationId) return;
+      // One run per session: never race the initial explanation or another reply.
+      if (isReplying || isStreaming) return;
+
+      beginRun("follow-up");
+      useElaborationStore.getState().startFollowUp(prompt);
+
+      try {
+        const { run_id: runId } = await startRun(sessionId, prompt, undefined, {
+          kind: "elaboration_followup",
+          message_index: anchor.messageIndex,
+          elaboration_id: activeElaborationId,
+        });
+        if (!runId) throw new Error("Server did not return a run id");
+
+        runIdRef.current = runId;
+        useElaborationStore.getState().setRunId(runId);
+        openSocket(runId, 0);
+      } catch (err) {
+        const detail =
+          err instanceof Error ? err.message : "Failed to send the follow-up";
+        useElaborationStore.getState().failFollowUp(detail);
+      }
+    },
+    [sessionId, beginRun, openSocket]
   );
 
   const cancel = useCallback(() => {
     const runId = runIdRef.current ?? useElaborationStore.getState().runId;
+    const followUp = modeRef.current === "follow-up";
+
     terminalRef.current = true;
     manualCloseRef.current = true;
     clearReconnectTimer();
@@ -236,7 +316,10 @@ export function useElaboration(sessionId: string | null) {
     }
 
     const store = useElaborationStore.getState();
-    if (store.isStreaming) {
+    if (followUp) {
+      // Nothing was persisted; drop the partial answer but keep the question.
+      if (store.isReplying) store.failFollowUp(null);
+    } else if (store.isStreaming) {
       // Keep whatever was streamed so far; nothing was persisted.
       store.finish(contentRef.current, store.activeElaborationId);
     }
@@ -252,10 +335,11 @@ export function useElaboration(sessionId: string | null) {
       runIdRef.current = null;
       lastSeqRef.current = 0;
       contentRef.current = "";
+      replyRef.current = "";
       reconnectAttemptsRef.current = 0;
       useElaborationStore.getState().reset();
     };
   }, [sessionId, clearReconnectTimer, closeSocket]);
 
-  return { start, cancel };
+  return { start, followUp, cancel };
 }

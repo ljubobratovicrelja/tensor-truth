@@ -268,6 +268,27 @@ def _seed_messages(session_id: str, messages: List[Dict[str, Any]]) -> None:
     service.save(data)
 
 
+def _seed_elaboration(
+    session_id: str, message_index: int, elaboration: Dict[str, Any]
+) -> None:
+    """Attach an elaboration to a real message through the API's service."""
+    from tensortruth.api.deps import get_session_service
+
+    service = get_session_service()
+    data = service.load()
+    data = service.add_elaboration(session_id, message_index, elaboration, data)
+    service.save(data)
+
+
+ELABORATION = {
+    "id": "elab-1",
+    "selected_text": "mass times velocity",
+    "occurrence_index": 0,
+    "content": "It is the product of the two quantities.",
+    "created_at": "2026-10-28T20:00:00+00:00",
+}
+
+
 class TestElaborationRuns:
     """Elaboration run creation and request validation."""
 
@@ -331,6 +352,103 @@ class TestElaborationRuns:
         self, client, session_id, monkeypatch, payload
     ):
         _seed_messages(session_id, self.MESSAGES)
+        install_stub(monkeypatch, stub_runner([{"type": "done", "content": "ok"}]))
+
+        response = await client.post(f"/api/sessions/{session_id}/runs", json=payload)
+        assert response.status_code == 400, response.text
+
+
+class TestElaborationFollowupRuns:
+    """Follow-up run creation: validation and server-derived metadata."""
+
+    MESSAGES = TestElaborationRuns.MESSAGES
+
+    @pytest.mark.asyncio
+    async def test_create_exposes_kind_and_metadata_only(
+        self, client, session_id, monkeypatch
+    ):
+        _seed_messages(session_id, self.MESSAGES)
+        _seed_elaboration(session_id, 1, ELABORATION)
+        install_stub(monkeypatch, stub_runner([{"type": "done", "content": "ok"}]))
+
+        response = await client.post(
+            f"/api/sessions/{session_id}/runs",
+            json={
+                "kind": "elaboration_followup",
+                "prompt": "  Why mass times velocity?  ",
+                "message_index": 1,
+                "elaboration_id": "elab-1",
+                # Client-supplied selected_text is ignored for follow-ups.
+                "selected_text": "spoofed",
+            },
+        )
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["kind"] == "elaboration_followup"
+        assert body["prompt"] == "  Why mass times velocity?  "
+        assert body["metadata"] == {"message_index": 1, "elaboration_id": "elab-1"}
+        assert "selected_text" not in body["metadata"]
+        await _poll_until_terminal(client, body["run_id"])
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {
+                "kind": "elaboration_followup",
+                "prompt": "   ",
+                "message_index": 1,
+                "elaboration_id": "elab-1",
+            },
+            {
+                "kind": "elaboration_followup",
+                "message_index": 1,
+                "elaboration_id": "elab-1",
+            },
+            {
+                "kind": "elaboration_followup",
+                "prompt": "x" * 4001,
+                "message_index": 1,
+                "elaboration_id": "elab-1",
+            },
+            {
+                "kind": "elaboration_followup",
+                "prompt": "Why?",
+                "message_index": 1,
+                "elaboration_id": "missing",
+            },
+            {
+                "kind": "elaboration_followup",
+                "prompt": "Why?",
+                "message_index": 1,
+            },
+            {
+                "kind": "elaboration_followup",
+                "prompt": "Why?",
+                "message_index": 9,
+                "elaboration_id": "elab-1",
+            },
+            {
+                "kind": "elaboration_followup",
+                "prompt": "Why?",
+                "message_index": 0,
+                "elaboration_id": "elab-1",
+            },
+            {
+                "kind": "elaboration_followup",
+                "prompt": "Why?",
+                "message_index": 1,
+                "elaboration_id": "elab-1",
+                "images": [{"data": "abc", "mimetype": "image/png"}],
+            },
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_invalid_followup_requests_are_400(
+        self, client, session_id, monkeypatch, payload
+    ):
+        _seed_messages(session_id, self.MESSAGES)
+        _seed_elaboration(session_id, 1, ELABORATION)
         install_stub(monkeypatch, stub_runner([{"type": "done", "content": "ok"}]))
 
         response = await client.post(f"/api/sessions/{session_id}/runs", json=payload)

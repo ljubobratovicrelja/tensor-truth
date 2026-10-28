@@ -728,6 +728,70 @@ class SessionService:
 
         return SessionData(current_id=data.current_id, sessions=new_sessions)
 
+    def add_elaboration_message(
+        self,
+        session_id: str,
+        message_index: int,
+        elaboration_id: str,
+        message: Dict[str, Any],
+        data: SessionData,
+    ) -> SessionData:
+        """Append one follow-up turn to an existing elaboration.
+
+        Args:
+            session_id: Session ID.
+            message_index: 0-based index of the parent assistant message.
+            elaboration_id: Id of the elaboration the turn belongs to.
+            message: Turn dict with ``role`` (user/assistant), ``content`` and
+                ``created_at``.
+            data: Current session data.
+
+        Returns:
+            Updated SessionData, or ``data`` unchanged when the session,
+            message or elaboration is unknown. Input dicts are left untouched;
+            only the target elaboration's ``messages`` list is copied.
+        """
+        session = data.sessions.get(session_id)
+        if session is None:
+            return data
+
+        messages = session.get("messages") or []
+        if message_index < 0 or message_index >= len(messages):
+            return data
+        parent = messages[message_index]
+        if parent.get("role") != "assistant":
+            return data
+
+        elaborations = parent.get("elaborations") or []
+        target = next(
+            (
+                index
+                for index, elaboration in enumerate(elaborations)
+                if isinstance(elaboration, dict)
+                and elaboration.get("id") == elaboration_id
+            ),
+            None,
+        )
+        if target is None:
+            return data
+
+        new_sessions = dict(data.sessions)
+        new_session = dict(session)
+        new_messages = list(messages)
+        new_parent = dict(parent)
+        new_elaborations = list(elaborations)
+        new_elaboration = dict(elaborations[target])
+        new_elaboration["messages"] = list(new_elaboration.get("messages") or []) + [
+            dict(message)
+        ]
+        new_elaborations[target] = new_elaboration
+        new_parent["elaborations"] = new_elaborations
+        new_messages[message_index] = new_parent
+        new_session["messages"] = new_messages
+        new_sessions[session_id] = new_session
+
+        return SessionData(current_id=data.current_id, sessions=new_sessions)
+
     def get_messages(self, session_id: str, data: SessionData) -> List[Dict[str, Any]]:
         """Get messages for a session.
 

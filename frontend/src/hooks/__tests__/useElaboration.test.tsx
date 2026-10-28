@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useElaboration } from "../useElaboration";
 import { useElaborationStore } from "@/stores/elaborationStore";
 import { cancelRun, startRun } from "@/api/runs";
+import { QUERY_KEYS } from "@/lib/constants";
 
 const { FakeWebSocket } = vi.hoisted(() => {
   class FakeWebSocket {
@@ -202,5 +203,131 @@ describe("useElaboration", () => {
 
     expect(cancelRun).toHaveBeenCalledWith("run-1");
     expect(useElaborationStore.getState().isStreaming).toBe(false);
+  });
+
+  it("posts a follow-up for the active elaboration and streams into reply", async () => {
+    useElaborationStore.getState().openStored(anchor, "elab-1", "Explained.");
+    vi.mocked(startRun).mockResolvedValue({ run_id: "run-2" });
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    const { result } = mountHook();
+
+    await act(async () => {
+      await result.current.followUp("  why?  ");
+    });
+
+    expect(startRun).toHaveBeenCalledWith("session-1", "why?", undefined, {
+      kind: "elaboration_followup",
+      message_index: 1,
+      elaboration_id: "elab-1",
+    });
+
+    let state = useElaborationStore.getState();
+    expect(state.isReplying).toBe(true);
+    expect(state.thread).toEqual([{ role: "user", content: "why?" }]);
+
+    const ws = FakeWebSocket.instances[0];
+    act(() => ws.onopen?.());
+    expect(JSON.parse(ws.sent[0])).toEqual({
+      type: "attach",
+      run_id: "run-2",
+      after: 0,
+    });
+
+    act(() =>
+      ws.onmessage?.({ data: JSON.stringify({ type: "token", content: "Bec", seq: 1 }) })
+    );
+    act(() =>
+      ws.onmessage?.({
+        data: JSON.stringify({ type: "token", content: "ause.", seq: 2 }),
+      })
+    );
+
+    state = useElaborationStore.getState();
+    expect(state.reply).toBe("Because.");
+    // The original explanation is never overwritten by a follow-up.
+    expect(state.content).toBe("Explained.");
+
+    act(() =>
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "done",
+          content: "Because.",
+          confidence_level: "normal",
+          elaboration_id: "elab-1",
+          seq: 3,
+        }),
+      })
+    );
+
+    state = useElaborationStore.getState();
+    expect(state.isReplying).toBe(false);
+    expect(state.reply).toBe("");
+    expect(state.thread).toEqual([
+      { role: "user", content: "why?" },
+      { role: "assistant", content: "Because." },
+    ]);
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: QUERY_KEYS.messages("session-1"),
+    });
+    invalidateSpy.mockRestore();
+  });
+
+  it("surfaces a follow-up error in the thread", async () => {
+    useElaborationStore.getState().openStored(anchor, "elab-1", "Explained.");
+    vi.mocked(startRun).mockResolvedValue({ run_id: "run-2" });
+    const { result } = mountHook();
+
+    await act(async () => {
+      await result.current.followUp("why?");
+    });
+    const ws = FakeWebSocket.instances[0];
+    act(() => ws.onopen?.());
+    act(() =>
+      ws.onmessage?.({
+        data: JSON.stringify({ type: "error", detail: "model unavailable", seq: 2 }),
+      })
+    );
+
+    const state = useElaborationStore.getState();
+    expect(state.followUpError).toBe("model unavailable");
+    expect(state.isReplying).toBe(false);
+    expect(state.error).toBeNull();
+  });
+
+  it("does not send a follow-up without a persisted elaboration", async () => {
+    useElaborationStore.getState().openFor(anchor);
+    const { result } = mountHook();
+
+    await act(async () => {
+      await result.current.followUp("why?");
+    });
+
+    expect(startRun).not.toHaveBeenCalled();
+    expect(useElaborationStore.getState().thread).toEqual([]);
+  });
+
+  it("cancels the live follow-up run", async () => {
+    useElaborationStore.getState().openStored(anchor, "elab-1", "Explained.");
+    vi.mocked(startRun).mockResolvedValue({ run_id: "run-2" });
+    vi.mocked(cancelRun).mockResolvedValue({
+      run_id: "run-2",
+      session_id: "session-1",
+      prompt: "why?",
+      status: "cancelled",
+    });
+    const { result } = mountHook();
+
+    await act(async () => {
+      await result.current.followUp("why?");
+    });
+    act(() => FakeWebSocket.instances[0].onopen?.());
+
+    result.current.cancel();
+
+    expect(cancelRun).toHaveBeenCalledWith("run-2");
+    const state = useElaborationStore.getState();
+    expect(state.isReplying).toBe(false);
+    expect(state.reply).toBe("");
+    expect(state.thread).toEqual([{ role: "user", content: "why?" }]);
   });
 });

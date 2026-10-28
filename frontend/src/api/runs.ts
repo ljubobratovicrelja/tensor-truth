@@ -24,6 +24,8 @@ export interface StartRunOptions {
   /** Passage the reader selected (elaboration runs only). */
   selected_text?: string | null;
   occurrence_index?: number;
+  /** Persisted elaboration to continue (follow-up runs only). */
+  elaboration_id?: string;
 }
 
 export interface StartRunRequest extends StartRunOptions {

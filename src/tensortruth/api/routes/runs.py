@@ -15,11 +15,16 @@ from tensortruth.services.chat_run_service import (
     RunConflictError,
     get_chat_run_service,
 )
-from tensortruth.services.elaboration import MAX_SELECTED_TEXT_LENGTH
+from tensortruth.services.elaboration import (
+    MAX_FOLLOWUP_PROMPT_LENGTH,
+    MAX_SELECTED_TEXT_LENGTH,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+KNOWN_RUN_KINDS = ("chat", "elaboration", "elaboration_followup")
 
 
 class StartRunRequest(BaseModel):
@@ -27,6 +32,9 @@ class StartRunRequest(BaseModel):
 
     ``kind="elaboration"`` starts a passage-explanation run: ``prompt`` is
     unused and the target is ``message_index`` plus ``selected_text``.
+    ``kind="elaboration_followup"`` continues an existing elaboration thread:
+    ``prompt`` is the follow-up question and the target is ``message_index``
+    plus ``elaboration_id``.
     """
 
     prompt: str = ""
@@ -35,17 +43,39 @@ class StartRunRequest(BaseModel):
     message_index: Optional[int] = None
     selected_text: Optional[str] = None
     occurrence_index: int = 0
+    elaboration_id: Optional[str] = None
+
+
+def _resolve_assistant_message(
+    body: StartRunRequest, session: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Validate ``message_index`` and return the parent assistant message."""
+    if body.message_index is None:
+        raise HTTPException(status_code=400, detail="message_index is required")
+
+    messages = session.get("messages") or []
+    if not 0 <= body.message_index < len(messages):
+        raise HTTPException(status_code=400, detail="message_index out of range")
+    parent = messages[body.message_index]
+    if parent.get("role") != "assistant":
+        raise HTTPException(
+            status_code=400, detail="message_index must reference an assistant message"
+        )
+    return parent
 
 
 def _elaboration_metadata(
     body: StartRunRequest, session: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Validate an elaboration request and return its run metadata.
+    """Validate a run request and return its metadata.
 
-    Raises HTTPException(400) when the target message or selection is invalid.
-    ``occurrence_index`` is opaque display metadata but must be non-negative.
+    Raises HTTPException(400) when the kind is unknown or the elaboration /
+    follow-up target is invalid. ``occurrence_index`` is opaque display
+    metadata but must be non-negative. The server never trusts client-supplied
+    ``selected_text`` or thread content for follow-ups: those come from the
+    stored elaboration.
     """
-    if body.kind not in ("chat", "elaboration"):
+    if body.kind not in KNOWN_RUN_KINDS:
         raise HTTPException(status_code=400, detail=f"Unknown run kind: {body.kind}")
 
     if body.kind == "chat":
@@ -56,6 +86,35 @@ def _elaboration_metadata(
             status_code=400, detail="Images are not supported in elaboration mode"
         )
 
+    if body.kind == "elaboration_followup":
+        prompt = (body.prompt or "").strip()
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Empty prompt")
+        if len(prompt) > MAX_FOLLOWUP_PROMPT_LENGTH:
+            raise HTTPException(
+                status_code=400,
+                detail=f"prompt exceeds {MAX_FOLLOWUP_PROMPT_LENGTH} characters",
+            )
+
+        parent = _resolve_assistant_message(body, session)
+        elaboration_id = (body.elaboration_id or "").strip()
+        if not elaboration_id:
+            raise HTTPException(status_code=400, detail="elaboration_id is required")
+        elaborations = parent.get("elaborations") or []
+        if not any(
+            isinstance(elaboration, dict) and elaboration.get("id") == elaboration_id
+            for elaboration in elaborations
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="No elaboration with that id on the message",
+            )
+
+        return {
+            "message_index": body.message_index,
+            "elaboration_id": elaboration_id,
+        }
+
     selected_text = (body.selected_text or "").strip()
     if not selected_text:
         raise HTTPException(status_code=400, detail="Empty selected_text")
@@ -65,16 +124,7 @@ def _elaboration_metadata(
             detail=f"selected_text exceeds {MAX_SELECTED_TEXT_LENGTH} characters",
         )
 
-    if body.message_index is None:
-        raise HTTPException(status_code=400, detail="message_index is required")
-
-    messages = session.get("messages") or []
-    if not 0 <= body.message_index < len(messages):
-        raise HTTPException(status_code=400, detail="message_index out of range")
-    if messages[body.message_index].get("role") != "assistant":
-        raise HTTPException(
-            status_code=400, detail="message_index must reference an assistant message"
-        )
+    _resolve_assistant_message(body, session)
 
     if body.occurrence_index < 0:
         raise HTTPException(

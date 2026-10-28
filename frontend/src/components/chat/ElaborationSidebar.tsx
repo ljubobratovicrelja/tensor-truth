@@ -9,6 +9,8 @@ const PANEL_WIDTH = 380;
 interface ElaborationSidebarProps {
   /** Cancels the in-flight explanation run. */
   onCancel?: () => void;
+  /** Sends a follow-up turn in the open elaboration's thread. */
+  onFollowUp?: (text: string) => void;
 }
 
 /**
@@ -16,7 +18,7 @@ interface ElaborationSidebarProps {
  * `useElaborationStore`, deliberately separate from `uiStore.rightSidebarOpen`
  * (which belongs to the project sidebar).
  */
-export function ElaborationSidebar({ onCancel }: ElaborationSidebarProps) {
+export function ElaborationSidebar({ onCancel, onFollowUp }: ElaborationSidebarProps) {
   const open = useElaborationStore((state) => state.open);
   const close = useElaborationStore((state) => state.close);
   const isMobile = useIsMobile();
@@ -76,7 +78,7 @@ export function ElaborationSidebar({ onCancel }: ElaborationSidebarProps) {
           )}
         >
           <div className="flex h-full flex-col overflow-hidden">
-            <ElaborationPanel onCancel={onCancel} />
+            <ElaborationPanel onCancel={onCancel} onFollowUp={onFollowUp} />
           </div>
         </aside>
       </>
@@ -97,7 +99,7 @@ export function ElaborationSidebar({ onCancel }: ElaborationSidebarProps) {
         className="flex h-full flex-col overflow-hidden"
         style={{ width: PANEL_WIDTH }}
       >
-        <ElaborationPanel onCancel={onCancel} />
+        <ElaborationPanel onCancel={onCancel} onFollowUp={onFollowUp} />
       </div>
     </aside>
   );

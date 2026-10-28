@@ -65,6 +65,15 @@ export interface Elaboration {
   occurrence_index: number;
   content: string;
   created_at: string;
+  /** Follow-up turns asked inside this elaboration's thread, oldest first. */
+  messages?: ThreadMessage[] | null;
+}
+
+/** One turn of an elaboration thread (`user` question or `assistant` answer). */
+export interface ThreadMessage {
+  role: "user" | "assistant";
+  content: string;
+  created_at?: string | null;
 }
 
 export interface MessageResponse {
@@ -307,8 +316,11 @@ export type StreamMessage =
 
 export type RunStatus = "running" | "completed" | "failed" | "cancelled";
 
-/** `chat` is a normal turn; `elaboration` explains one selected passage. */
-export type RunKind = "chat" | "elaboration";
+/**
+ * `chat` is a normal turn; `elaboration` explains one selected passage;
+ * `elaboration_followup` continues that explanation's thread.
+ */
+export type RunKind = "chat" | "elaboration" | "elaboration_followup";
 
 /**
  * Summary of a server-owned chat run. A run outlives the socket that created

@@ -23,13 +23,26 @@ from tensortruth.app_utils.history_cleaner import (
 ELABORATION_SEPARATOR = "\n\n"
 
 
-def _format_elaboration(selected_text: str, content: str) -> str:
-    """Format one persisted elaboration as an assistant-side note."""
-    return (
+def _format_elaboration(
+    selected_text: str, content: str, thread: Optional[List[Dict[str, Any]]] = None
+) -> str:
+    """Format one persisted elaboration (and its follow-up thread) as a note."""
+    lines = [
         f'[Reader follow-up: they asked you to explain "{selected_text}" '
-        "from the passage above.\n"
-        f"You answered: {content}]"
-    )
+        "from the passage above.",
+        f"You answered: {content}",
+    ]
+    for turn in thread or []:
+        if not isinstance(turn, dict):
+            continue
+        reply = str(turn.get("content") or "").strip()
+        if not reply:
+            continue
+        if turn.get("role") == "user":
+            lines.append(f"Then they asked: {reply}")
+        elif turn.get("role") == "assistant":
+            lines.append(f"You replied: {reply}")
+    return "\n".join(lines) + "]"
 
 
 def expand_elaborations(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -58,6 +71,7 @@ def expand_elaborations(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             _format_elaboration(
                 str(elaboration.get("selected_text") or ""),
                 str(elaboration.get("content") or ""),
+                elaboration.get("messages"),
             )
             for elaboration in elaborations
             if isinstance(elaboration, dict)

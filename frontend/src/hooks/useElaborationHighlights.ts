@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { MessageResponse } from "@/api/types";
+import type { MessageResponse, ThreadMessage } from "@/api/types";
 import type { ElaborationAnchor } from "@/stores/elaborationStore";
 import { rangeForOccurrence } from "@/lib/elaborationText";
 
@@ -12,6 +12,8 @@ export interface ElaborationHighlightSpec {
   selectedText: string;
   occurrenceIndex: number;
   content: string;
+  /** Follow-up thread, so clicking the underline restores the conversation. */
+  messages: ThreadMessage[];
 }
 
 /**
@@ -34,6 +36,7 @@ export function collectElaborationSpecs(
         selectedText: elaboration.selected_text,
         occurrenceIndex: elaboration.occurrence_index ?? 0,
         content: elaboration.content,
+        messages: elaboration.messages ?? [],
       });
     }
   });

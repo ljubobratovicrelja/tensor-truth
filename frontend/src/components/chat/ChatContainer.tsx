@@ -103,9 +103,11 @@ export function ChatContainer() {
   const elaborationOpen = useElaborationStore((state) => state.open);
   const elaborationAnchor = useElaborationStore((state) => state.anchor);
   const { selection, clear: clearSelection } = useTextSelection();
-  const { start: startElaboration, cancel: cancelElaboration } = useElaboration(
-    urlSessionId ?? null
-  );
+  const {
+    start: startElaboration,
+    followUp: followUpElaboration,
+    cancel: cancelElaboration,
+  } = useElaboration(urlSessionId ?? null);
   useElaborationHighlights(
     messagesData?.messages,
     elaborationOpen ? elaborationAnchor : null
@@ -416,7 +418,7 @@ export function ChatContainer() {
           </div>
         </div>
       </div>
-      <ElaborationSidebar onCancel={cancelElaboration} />
+      <ElaborationSidebar onCancel={cancelElaboration} onFollowUp={followUpElaboration} />
       <ElaborationTrigger
         rect={selection?.rect ?? null}
         onOpen={handleStartElaboration}

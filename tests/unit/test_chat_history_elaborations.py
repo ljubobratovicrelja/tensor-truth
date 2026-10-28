@@ -84,6 +84,48 @@ class TestExpandElaborations:
         assert content.index("first") < content.index("second")
         assert content.index("explains first") < content.index("explains second")
 
+    def test_thread_is_appended_in_order(self):
+        elaboration = _elaboration("loss surface", "The function space.")
+        elaboration["messages"] = [
+            {"role": "user", "content": "Why does it matter?"},
+            {"role": "assistant", "content": "It sets the step size."},
+            {"role": "user", "content": "And the learning rate?"},
+            {"role": "assistant", "content": "It scales the same step."},
+        ]
+        messages = [
+            {"role": "assistant", "content": "Answer.", "elaborations": [elaboration]}
+        ]
+
+        content = expand_elaborations(messages)[0]["content"]
+
+        expected = [
+            "You answered: The function space.",
+            "Then they asked: Why does it matter?",
+            "You replied: It sets the step size.",
+            "Then they asked: And the learning rate?",
+            "You replied: It scales the same step.",
+        ]
+        positions = [content.index(part) for part in expected]
+        assert positions == sorted(positions)
+        assert content.rstrip().endswith("]")
+
+    def test_thread_expansion_does_not_mutate_input(self):
+        elaboration = _elaboration("loss surface", "The function space.")
+        elaboration["messages"] = [
+            {"role": "user", "content": "Why?"},
+            {"role": "assistant", "content": "Because."},
+        ]
+        messages = [
+            {"role": "assistant", "content": "Answer.", "elaborations": [elaboration]}
+        ]
+        snapshot = copy.deepcopy(messages)
+
+        expanded = expand_elaborations(messages)
+
+        assert messages == snapshot
+        assert expanded[0] is not messages[0]
+        assert "Then they asked: Why?" in expanded[0]["content"]
+
     def test_only_annotated_messages_change(self):
         messages = [
             {"role": "user", "content": "q"},
