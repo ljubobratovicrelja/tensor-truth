@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { useSessionStore, useChatStore, useUIStore } from "@/stores";
+import { useSessionStore, useChatStore, useUIStore, useElaborationStore } from "@/stores";
 import {
   useSessionMessages,
   useSession,
@@ -12,6 +12,9 @@ import {
   useModels,
   useDocuments,
   useCompactSession,
+  useElaboration,
+  useElaborationHighlights,
+  useTextSelection,
   paramToThinking,
   thinkingToParam,
 } from "@/hooks";
@@ -19,6 +22,8 @@ import { cn } from "@/lib/utils";
 import { DocumentDialog } from "@/components/documents";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
+import { ElaborationSidebar } from "./ElaborationSidebar";
+import { ElaborationTrigger } from "./ElaborationTrigger";
 import { decodeModelValue, encodeModelValue } from "./ModelSelectContent";
 
 export function ChatContainer() {
@@ -92,6 +97,18 @@ export function ChatContainer() {
     isLoading: messagesLoading,
     isFetching: messagesFetching,
   } = useSessionMessages(urlSessionId ?? null);
+
+  // --- Selection-driven elaboration (independent of the chat stream) ---
+  const elaborationOpen = useElaborationStore((state) => state.open);
+  const elaborationAnchor = useElaborationStore((state) => state.anchor);
+  const { selection, clear: clearSelection } = useTextSelection();
+  const { start: startElaboration, cancel: cancelElaboration } = useElaboration(
+    urlSessionId ?? null
+  );
+  useElaborationHighlights(
+    messagesData?.messages,
+    elaborationOpen ? elaborationAnchor : null
+  );
 
   // Show loading state during initial load OR when switching sessions (refetching)
   // This prevents showing stale cached messages from a different session
@@ -212,6 +229,13 @@ export function ChatContainer() {
     sendMessage(message, images);
   };
 
+  const handleStartElaboration = () => {
+    if (!selection) return;
+    void startElaboration(selection.anchor);
+    // The trigger must not linger over the freshly opened panel.
+    clearSelection();
+  };
+
   const handleModulesChange = (modules: string[]) => {
     if (!urlSessionId) return;
     updateSession.mutate(
@@ -318,76 +342,83 @@ export function ChatContainer() {
   const currentThinking = paramToThinking(sessionData?.params?.thinking);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b px-4 py-2">
-        <h2 className="text-muted-foreground text-sm font-medium">
-          {sessionData?.title ?? "Chat"}
-        </h2>
-        <DocumentDialog scopeId={urlSessionId} scopeType="session" />
-      </div>
-      <MessageList
-        sessionId={urlSessionId}
-        messages={messagesData?.messages ?? []}
-        isLoading={showMessagesLoading}
-        pendingUserMessage={pendingUserMessage}
-        streamingContent={streamingContent || undefined}
-        streamingThinking={streamingThinking || undefined}
-        narrationSegments={narrationSegments}
-        streamingSources={streamingSources.length > 0 ? streamingSources : undefined}
-        streamingMetrics={streamingMetrics}
-        isStreaming={isStreaming}
-        streamingToolSteps={
-          streamingToolSteps.length > 0 ? streamingToolSteps : undefined
-        }
-        pipelineStatus={pipelineStatus}
-        agentProgress={agentProgress}
-        confidenceLevel={confidenceLevel}
-        streamingReasoning={streamingReasoning || undefined}
-        pendingUserImages={pendingUserImages}
-        lastResponseStats={lastResponseStats}
-        confirmationRequests={
-          confirmationRequests.length > 0 ? confirmationRequests : undefined
-        }
-      />
-      {error && (
-        <div className="border-destructive bg-destructive/10 text-destructive border-t py-2 text-sm">
-          <div className="chat-content-width">{error}</div>
+    <div className="flex h-full overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex items-center justify-between border-b px-4 py-2">
+          <h2 className="text-muted-foreground text-sm font-medium">
+            {sessionData?.title ?? "Chat"}
+          </h2>
+          <DocumentDialog scopeId={urlSessionId} scopeType="session" />
         </div>
-      )}
-      <div
-        className={cn(
-          "bg-background border-t pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]",
-          "max-h-[320px] overflow-visible transition-all duration-300 ease-in-out",
-          isMobile && inputHidden && "max-h-0 overflow-hidden border-t-0 !p-0 opacity-0"
+        <MessageList
+          sessionId={urlSessionId}
+          messages={messagesData?.messages ?? []}
+          isLoading={showMessagesLoading}
+          pendingUserMessage={pendingUserMessage}
+          streamingContent={streamingContent || undefined}
+          streamingThinking={streamingThinking || undefined}
+          narrationSegments={narrationSegments}
+          streamingSources={streamingSources.length > 0 ? streamingSources : undefined}
+          streamingMetrics={streamingMetrics}
+          isStreaming={isStreaming}
+          streamingToolSteps={
+            streamingToolSteps.length > 0 ? streamingToolSteps : undefined
+          }
+          pipelineStatus={pipelineStatus}
+          agentProgress={agentProgress}
+          confidenceLevel={confidenceLevel}
+          streamingReasoning={streamingReasoning || undefined}
+          pendingUserImages={pendingUserImages}
+          lastResponseStats={lastResponseStats}
+          confirmationRequests={
+            confirmationRequests.length > 0 ? confirmationRequests : undefined
+          }
+        />
+        {error && (
+          <div className="border-destructive bg-destructive/10 text-destructive border-t py-2 text-sm">
+            <div className="chat-content-width">{error}</div>
+          </div>
         )}
-      >
-        <div className="chat-content-width md:pr-[5%]">
-          <ChatInput
-            onSend={handleSend}
-            onStop={cancelStreaming}
-            isStreaming={isStreaming}
-            placeholder={isStreaming ? "Generating response..." : undefined}
-            selectedModules={currentModules}
-            onModulesChange={handleModulesChange}
-            moduleMode={currentModuleMode}
-            onModuleModeChange={handleModuleModeChange}
-            selectedModel={currentModel}
-            onModelChange={handleModelChange}
-            thinking={currentThinking}
-            onThinkingChange={handleThinkingChange}
-            sessionId={urlSessionId}
-            sessionParams={sessionData?.params ?? {}}
-            lockedModules={
-              projectData ? Object.keys(projectData.catalog_modules) : undefined
-            }
-            projectDocuments={projectData?.documents}
-            sessionDocuments={sessionDocuments}
-            isProjectSession={!!sessionProjectId}
-            onCompact={handleCompact}
-            compactPending={compact.isPending}
-          />
+        <div
+          className={cn(
+            "bg-background border-t pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]",
+            "max-h-[320px] overflow-visible transition-all duration-300 ease-in-out",
+            isMobile && inputHidden && "max-h-0 overflow-hidden border-t-0 !p-0 opacity-0"
+          )}
+        >
+          <div className="chat-content-width md:pr-[5%]">
+            <ChatInput
+              onSend={handleSend}
+              onStop={cancelStreaming}
+              isStreaming={isStreaming}
+              placeholder={isStreaming ? "Generating response..." : undefined}
+              selectedModules={currentModules}
+              onModulesChange={handleModulesChange}
+              moduleMode={currentModuleMode}
+              onModuleModeChange={handleModuleModeChange}
+              selectedModel={currentModel}
+              onModelChange={handleModelChange}
+              thinking={currentThinking}
+              onThinkingChange={handleThinkingChange}
+              sessionId={urlSessionId}
+              sessionParams={sessionData?.params ?? {}}
+              lockedModules={
+                projectData ? Object.keys(projectData.catalog_modules) : undefined
+              }
+              projectDocuments={projectData?.documents}
+              sessionDocuments={sessionDocuments}
+              isProjectSession={!!sessionProjectId}
+              onCompact={handleCompact}
+              compactPending={compact.isPending}
+            />
+          </div>
         </div>
       </div>
+      <ElaborationSidebar onCancel={cancelElaboration} />
+      <ElaborationTrigger
+        rect={selection?.rect ?? null}
+        onOpen={handleStartElaboration}
+      />
     </div>
   );
 }

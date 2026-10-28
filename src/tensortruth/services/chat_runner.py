@@ -17,8 +17,10 @@ disconnect cannot propagate into the turn.
 import asyncio
 import logging
 import re
+import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Protocol
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional, Protocol
 
 from tensortruth.api.deps import (
     get_chat_service,
@@ -39,7 +41,12 @@ from tensortruth.app_utils.title_generation import (
 )
 from tensortruth.core.ollama import get_ollama_url
 from tensortruth.core.providers import ProviderRegistry, resolve_model_from_params
+from tensortruth.services.chat_history import expand_elaborations
 from tensortruth.services.chat_run_service import ChatRun
+from tensortruth.services.elaboration import (
+    build_elaboration_prompt,
+    with_elaboration_directive,
+)
 from tensortruth.services.image_service import ImageService
 from tensortruth.services.models import ToolProgress
 from tensortruth.services.module_catalog import load_module_catalog
@@ -56,6 +63,9 @@ logger = logging.getLogger(__name__)
 
 # Regex for markdown images: ![alt](url) with optional trailing footnote like " [1]"
 _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)(\s*\[\d+\])?")
+
+
+AssistantPersistFn = Callable[[Dict[str, Any]], None]
 
 
 class EventSink(Protocol):
@@ -264,7 +274,7 @@ class ChatContext:
             prompt=prompt,
             modules=merged_modules,
             params=params,
-            session_messages=session.get("messages", []),
+            session_messages=expand_elaborations(session.get("messages") or []),
             additional_index_paths=additional_index_paths,
             module_mode=session.get("module_mode") or "auto",
         )
@@ -352,6 +362,8 @@ async def _run_orchestrator_path(
     chat_service: Any,
     session_service: SessionService,
     needs_title: bool,
+    persist_assistant: Optional[AssistantPersistFn] = None,
+    extra_done: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Execute the orchestrator path for a user prompt.
 
@@ -368,6 +380,9 @@ async def _run_orchestrator_path(
         chat_service: ChatService instance (for source extraction fallback).
         session_service: SessionService for persisting messages.
         needs_title: Whether a title generation is pending.
+        persist_assistant: Optional strategy that stores the final assistant
+            output somewhere other than a new message (elaboration runs).
+        extra_done: Optional fields merged into ``done`` events.
     """
     params = context.params
     model_name = params.get("model")
@@ -546,6 +561,8 @@ async def _run_orchestrator_path(
     done_msg = translator.build_done_message(
         title_pending=needs_title, input_chars=input_chars
     )
+    if extra_done:
+        done_msg.update(extra_done)
     await websocket.send_json(done_msg)
 
     # Finalize to get accumulated result data for saving
@@ -560,6 +577,8 @@ async def _run_orchestrator_path(
             title_pending=needs_title, input_chars=input_chars
         )
         done_update["content"] = localized_content
+        if extra_done:
+            done_update.update(extra_done)
         await websocket.send_json(done_update)
 
     # Save assistant message with tool steps
@@ -580,9 +599,12 @@ async def _run_orchestrator_path(
     if result.tool_steps:
         assistant_message["tool_steps"] = result.tool_steps
 
-    data = session_service.load()
-    data = session_service.add_message(context.session_id, assistant_message, data)
-    session_service.save(data)
+    if persist_assistant is not None:
+        persist_assistant(assistant_message)
+    else:
+        data = session_service.load()
+        data = session_service.add_message(context.session_id, assistant_message, data)
+        session_service.save(data)
 
     # Generate title if needed
     if needs_title and result.full_response:
@@ -641,6 +663,8 @@ async def run_turn(
     session_service: Optional[SessionService] = None,
     chat_service: Any = None,
     project_service: Optional[ProjectService] = None,
+    kind: str = "chat",
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Execute one chat turn, streaming every event into ``sink``.
 
@@ -657,6 +681,11 @@ async def run_turn(
         session_service: Optional injected service (resolved from deps if None).
         chat_service: Optional injected ChatService.
         project_service: Optional injected ProjectService.
+        kind: ``"chat"`` (default) or ``"elaboration"``. An elaboration run
+            explains one passage of an earlier assistant message and persists
+            the result onto that message instead of adding a chat turn.
+        metadata: Elaboration target (``message_index``, ``selected_text``,
+            ``occurrence_index``); ignored for chat runs.
     """
     session_service = session_service or get_session_service()
     chat_service = chat_service or get_chat_service()
@@ -668,6 +697,18 @@ async def run_turn(
     session = session_service.get_session(session_id, data)
     if session is None:
         await sink.send_json({"type": "error", "detail": "Session not found"})
+        return
+
+    if kind == "elaboration":
+        await _run_elaboration(
+            sink,
+            session_id=session_id,
+            session=session,
+            metadata=metadata or {},
+            chat_service=chat_service,
+            session_service=session_service,
+            project_service=project_service,
+        )
         return
 
     if not prompt and not raw_images:
@@ -848,147 +889,275 @@ async def run_turn(
             use_orchestrator = False
 
     if not use_orchestrator:
-        # --- Direct ChatService path (fallback) ---
-        # Stream response with status and thinking support
-        full_response = ""
-        full_thinking = ""
-        sources: List[Dict[str, Any]] = []
-        metrics_dict = None
-        confidence_level = "normal"
-
-        # Use ChatService for query routing (handles engine loading internally)
-        query_generator = chat_service.query(
-            prompt=context.prompt,
-            modules=context.modules,
-            params=context.params,
-            session_messages=context.session_messages,
-            additional_index_paths=context.additional_index_paths,
-            images=context.images or None,
-            owner=context.session_id,
+        await _run_direct_path(
+            sink,
+            context,
+            chat_service,
+            session_service,
+            session_id,
+            prompt,
+            needs_title,
         )
 
-        # Iterate generator in thread pool to prevent blocking event loop
-        loop = asyncio.get_event_loop()
 
-        while True:
-            try:
-                # Get next chunk from generator in executor (non-blocking)
-                chunk = await loop.run_in_executor(None, next, query_generator)
+async def _run_elaboration(
+    sink: EventSink,
+    *,
+    session_id: str,
+    session: Dict[str, Any],
+    metadata: Dict[str, Any],
+    chat_service: Any,
+    session_service: SessionService,
+    project_service: Optional[ProjectService] = None,
+) -> None:
+    """Explain one selected passage of an earlier assistant answer.
 
-                if chunk.is_complete:
-                    # Use ChatService to extract sources
-                    sources = chat_service.extract_sources(chunk.source_nodes)
-                    metrics_dict = chunk.metrics
-                    confidence_level = chunk.confidence_level
-                    break
-                elif chunk.status:
-                    # Send legacy pipeline status update
-                    await sink.send_json(
-                        {
-                            "type": "status",
-                            "status": chunk.status,
-                        }
-                    )
-                    # Send tool_phase alongside if available
-                    if chunk.progress:
-                        await sink.send_json(
-                            {
-                                "type": "tool_phase",
-                                "tool_id": chunk.progress.tool_id,
-                                "phase": chunk.progress.phase,
-                                "message": chunk.progress.message,
-                                "metadata": chunk.progress.metadata,
-                            }
-                        )
-                elif chunk.thinking:
-                    full_thinking += chunk.thinking
-                    await sink.send_json(
-                        {
-                            "type": "thinking",
-                            "content": chunk.thinking,
-                        }
-                    )
-                elif chunk.text:
-                    full_response += chunk.text
-                    await sink.send_json(
-                        {
-                            "type": "token",
-                            "content": chunk.text,
-                        }
-                    )
-            except StopIteration:
-                break
+    Never saves a user/assistant chat message and never renames the session:
+    the result is appended to the parent message's ``elaborations`` list. The
+    history sent to the model is everything *before* the parent message, since
+    the parent answer is embedded verbatim in the prompt.
+    """
+    messages = session.get("messages") or []
+    message_index = metadata.get("message_index")
+    selected_text = str(metadata.get("selected_text") or "").strip()
+    occurrence_index = metadata.get("occurrence_index") or 0
 
-        # Send sources with metrics (only in RAG mode)
-        if sources:
-            await sink.send_json(
-                {
-                    "type": "sources",
-                    "data": sources,
-                    "metrics": metrics_dict,
-                }
+    if not isinstance(message_index, int) or not 0 <= message_index < len(messages):
+        await sink.send_json({"type": "error", "detail": "message_index out of range"})
+        return
+    parent = messages[message_index]
+    if parent.get("role") != "assistant" or not selected_text:
+        await sink.send_json({"type": "error", "detail": "Invalid elaboration target"})
+        return
+
+    parent_content = str(parent.get("content") or "")
+    prompt = build_elaboration_prompt(parent_content, selected_text)
+
+    with get_document_service(session_id, "session") as pdf_service:
+        context = ChatContext.from_session(
+            session_id,
+            prompt,
+            session,
+            pdf_service,
+            project_service=project_service,
+        )
+    # Only the messages before the parent: its answer is already in the prompt.
+    context.session_messages = expand_elaborations(messages[:message_index])
+    context.images = []
+    context.params["system_prompt"] = with_elaboration_directive(
+        context.params.get("system_prompt")
+    )
+
+    elaboration_id = uuid.uuid4().hex
+    created_at = datetime.now(timezone.utc).isoformat()
+
+    def _persist_assistant(message: Dict[str, Any]) -> None:
+        content = str(message.get("content") or "")
+        if not content.strip():
+            return
+        elaboration = {
+            "id": elaboration_id,
+            "selected_text": selected_text,
+            "occurrence_index": occurrence_index,
+            "content": content,
+            "created_at": created_at,
+        }
+        data = session_service.load()
+        data = session_service.add_elaboration(
+            session_id, message_index, elaboration, data
+        )
+        session_service.save(data)
+
+    extra_done = {"elaboration_id": elaboration_id}
+    model_name = context.params.get("model")
+
+    if _is_orchestrator_enabled(session, model_name):
+        try:
+            await _run_orchestrator_path(
+                websocket=sink,
+                context=context,
+                session=session,
+                chat_service=chat_service,
+                session_service=session_service,
+                needs_title=False,
+                persist_assistant=_persist_assistant,
+                extra_done=extra_done,
+            )
+            return
+        except Exception as orch_err:
+            logger.error(
+                "Orchestrator path failed for elaboration, falling back to "
+                "direct ChatService: %s",
+                orch_err,
+                exc_info=True,
             )
 
-        # Send completion
-        direct_input_chars = len(context.prompt) + sum(
-            len(str(m.get("content") or "")) for m in context.session_messages
-        )
-        await sink.send_json(
+    await _run_direct_path(
+        sink,
+        context,
+        chat_service,
+        session_service,
+        session_id,
+        prompt,
+        False,
+        persist_assistant=_persist_assistant,
+        extra_done=extra_done,
+    )
+
+
+async def _run_direct_path(
+    websocket: EventSink,
+    context: "ChatContext",
+    chat_service: Any,
+    session_service: SessionService,
+    session_id: str,
+    prompt: str,
+    needs_title: bool,
+    persist_assistant: Optional[AssistantPersistFn] = None,
+    extra_done: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Execute the direct (non-orchestrator) ChatService path.
+
+    Streams tokens/thinking through ``websocket`` and stores the completed
+    answer either as a new assistant message or via ``persist_assistant``.
+    """
+    # Stream response with status and thinking support
+    full_response = ""
+    full_thinking = ""
+    sources: List[Dict[str, Any]] = []
+    metrics_dict = None
+    confidence_level = "normal"
+
+    # Use ChatService for query routing (handles engine loading internally)
+    query_generator = chat_service.query(
+        prompt=context.prompt,
+        modules=context.modules,
+        params=context.params,
+        session_messages=context.session_messages,
+        additional_index_paths=context.additional_index_paths,
+        images=context.images or None,
+        owner=context.session_id,
+    )
+
+    # Iterate generator in thread pool to prevent blocking event loop
+    loop = asyncio.get_event_loop()
+
+    while True:
+        try:
+            # Get next chunk from generator in executor (non-blocking)
+            chunk = await loop.run_in_executor(None, next, query_generator)
+
+            if chunk.is_complete:
+                # Use ChatService to extract sources
+                sources = chat_service.extract_sources(chunk.source_nodes)
+                metrics_dict = chunk.metrics
+                confidence_level = chunk.confidence_level
+                break
+            elif chunk.status:
+                # Send legacy pipeline status update
+                await websocket.send_json(
+                    {
+                        "type": "status",
+                        "status": chunk.status,
+                    }
+                )
+                # Send tool_phase alongside if available
+                if chunk.progress:
+                    await websocket.send_json(
+                        {
+                            "type": "tool_phase",
+                            "tool_id": chunk.progress.tool_id,
+                            "phase": chunk.progress.phase,
+                            "message": chunk.progress.message,
+                            "metadata": chunk.progress.metadata,
+                        }
+                    )
+            elif chunk.thinking:
+                full_thinking += chunk.thinking
+                await websocket.send_json(
+                    {
+                        "type": "thinking",
+                        "content": chunk.thinking,
+                    }
+                )
+            elif chunk.text:
+                full_response += chunk.text
+                await websocket.send_json(
+                    {
+                        "type": "token",
+                        "content": chunk.text,
+                    }
+                )
+        except StopIteration:
+            break
+
+    # Send sources with metrics (only in RAG mode)
+    if sources:
+        await websocket.send_json(
             {
-                "type": "done",
-                "content": full_response,
-                "confidence_level": confidence_level,
-                "title_pending": needs_title,
-                "input_tokens": direct_input_chars // CHARS_PER_TOKEN,
-                "output_tokens": len(full_response) // CHARS_PER_TOKEN,
+                "type": "sources",
+                "data": sources,
+                "metrics": metrics_dict,
             }
         )
 
-        # Download and cache external images locally
-        localized = await _localize_images(full_response, session_id)
-        if localized != full_response:
-            full_response = localized
-            # Re-send done with localized URLs
-            await sink.send_json(
-                {
-                    "type": "done",
-                    "content": full_response,
-                    "confidence_level": confidence_level,
-                    "title_pending": needs_title,
-                    "input_tokens": direct_input_chars // CHARS_PER_TOKEN,
-                    "output_tokens": len(full_response) // CHARS_PER_TOKEN,
-                }
-            )
+    # Send completion
+    direct_input_chars = len(context.prompt) + sum(
+        len(str(m.get("content") or "")) for m in context.session_messages
+    )
+    done_payload: Dict[str, Any] = {
+        "type": "done",
+        "content": full_response,
+        "confidence_level": confidence_level,
+        "title_pending": needs_title,
+        "input_tokens": direct_input_chars // CHARS_PER_TOKEN,
+        "output_tokens": len(full_response) // CHARS_PER_TOKEN,
+    }
+    if extra_done:
+        done_payload.update(extra_done)
+    await websocket.send_json(done_payload)
 
-        # Save assistant response
-        assistant_message: dict = {
-            "role": "assistant",
-            "content": full_response,
-        }
-        if full_thinking:
-            assistant_message["thinking"] = full_thinking
-        if sources:
-            assistant_message["sources"] = sources
-        if metrics_dict:
-            assistant_message["metrics"] = metrics_dict
-        if confidence_level != "normal":
-            assistant_message["confidence_level"] = confidence_level
+    # Download and cache external images locally
+    localized = await _localize_images(full_response, session_id)
+    if localized != full_response:
+        full_response = localized
+        # Re-send done with localized URLs
+        done_payload["content"] = full_response
+        done_payload["output_tokens"] = len(full_response) // CHARS_PER_TOKEN
+        await websocket.send_json(done_payload)
+
+    # Save assistant response
+    assistant_message: dict = {
+        "role": "assistant",
+        "content": full_response,
+    }
+    if full_thinking:
+        assistant_message["thinking"] = full_thinking
+    if sources:
+        assistant_message["sources"] = sources
+    if metrics_dict:
+        assistant_message["metrics"] = metrics_dict
+    if confidence_level != "normal":
+        assistant_message["confidence_level"] = confidence_level
+    if persist_assistant is not None:
+        persist_assistant(assistant_message)
+    else:
         data = session_service.load()
         data = session_service.add_message(session_id, assistant_message, data)
         session_service.save(data)
 
-        # Generate title from the response
-        if needs_title:
-            try:
-                title = await generate_smart_title_async(
-                    build_title_source(prompt, full_response),
-                    model_name,
-                    context.params.get("context_window", 16384),
-                    provider_id=context.params.get("provider_id"),
-                )
-                fresh_data = session_service.load()
-                fresh_data = session_service.update_title(session_id, title, fresh_data)
-                session_service.save(fresh_data)
-                await sink.send_json({"type": "title", "title": title})
-            except Exception:
-                pass
+    # Generate title from the response
+    if needs_title:
+        try:
+            title = await generate_smart_title_async(
+                build_title_source(prompt, full_response),
+                context.params.get("model"),
+                context.params.get("context_window", 16384),
+                provider_id=context.params.get("provider_id"),
+            )
+            fresh_data = session_service.load()
+            fresh_data = session_service.update_title(session_id, title, fresh_data)
+            session_service.save(fresh_data)
+            await websocket.send_json({"type": "title", "title": title})
+        except Exception:
+            pass

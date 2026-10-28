@@ -1,8 +1,9 @@
 import { apiGet, apiPost } from "./client";
 import type {
   ActiveRunResponse,
-  RunEventsResponse,
   RunImagePayload,
+  RunEventsResponse,
+  RunKind,
   RunSummary,
   StartRunResponse,
 } from "./types";
@@ -15,7 +16,17 @@ import type {
  * reload or a dropped socket replays from `seq` instead of losing the turn.
  */
 
-export interface StartRunRequest {
+export interface StartRunOptions {
+  /** Defaults to `chat` server-side. */
+  kind?: RunKind;
+  /** Assistant message the selection came from (elaboration runs only). */
+  message_index?: number | null;
+  /** Passage the reader selected (elaboration runs only). */
+  selected_text?: string | null;
+  occurrence_index?: number;
+}
+
+export interface StartRunRequest extends StartRunOptions {
   prompt: string;
   images?: RunImagePayload[];
 }
@@ -23,9 +34,10 @@ export interface StartRunRequest {
 export async function startRun(
   sessionId: string,
   prompt: string,
-  images?: RunImagePayload[]
+  images?: RunImagePayload[],
+  opts?: StartRunOptions
 ): Promise<StartRunResponse> {
-  const body: StartRunRequest = { prompt };
+  const body: StartRunRequest = { prompt, ...opts };
   if (images && images.length > 0) {
     body.images = images;
   }

@@ -364,7 +364,9 @@ export function useWebSocketChat({ sessionId, onError }: UseWebSocketChatOptions
       if (cancelled) return;
 
       const run = active;
-      if (!run || run.status !== "running") return;
+      // An elaboration run explains a passage; it must never hydrate the main
+      // chat stream as an answer.
+      if (!run || run.status !== "running" || run.kind === "elaboration") return;
       if (runIdRef.current === run.run_id) return;
 
       runIdRef.current = run.run_id;

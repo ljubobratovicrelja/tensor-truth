@@ -86,7 +86,7 @@ def install_stub(monkeypatch, runner):
     monkeypatch.setattr(
         crs,
         "make_default_runner",
-        lambda session_id, prompt, images=None: runner,
+        lambda session_id, prompt, images=None, **kwargs: runner,
     )
 
 
@@ -224,6 +224,21 @@ class TestRunsAPI:
         assert response.status_code == 400
 
     @pytest.mark.asyncio
+    async def test_chat_run_exposes_kind_and_empty_metadata(
+        self, client, session_id, monkeypatch
+    ):
+        install_stub(monkeypatch, stub_runner([{"type": "done", "content": "ok"}]))
+
+        response = await client.post(
+            f"/api/sessions/{session_id}/runs", json={"prompt": "hi"}
+        )
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["kind"] == "chat"
+        assert body["metadata"] == {}
+        await _poll_until_terminal(client, body["run_id"])
+
+    @pytest.mark.asyncio
     async def test_failed_run_reports_error(self, client, session_id, monkeypatch):
         async def failing_runner(sink):
             await sink.send_json({"type": "token", "content": "partial"})
@@ -240,3 +255,83 @@ class TestRunsAPI:
         assert final["status"] == "failed"
         assert final["error"] == "model exploded"
         assert final["events"][-1]["type"] == "error"
+
+
+def _seed_messages(session_id: str, messages: List[Dict[str, Any]]) -> None:
+    """Write messages into the real session through the API's service."""
+    from tensortruth.api.deps import get_session_service
+
+    service = get_session_service()
+    data = service.load()
+    for message in messages:
+        data = service.add_message(session_id, message, data)
+    service.save(data)
+
+
+class TestElaborationRuns:
+    """Elaboration run creation and request validation."""
+
+    MESSAGES = [
+        {"role": "user", "content": "What is momentum?"},
+        {"role": "assistant", "content": "Momentum is mass times velocity."},
+    ]
+
+    @pytest.mark.asyncio
+    async def test_create_exposes_kind_and_metadata(
+        self, client, session_id, monkeypatch
+    ):
+        _seed_messages(session_id, self.MESSAGES)
+        install_stub(monkeypatch, stub_runner([{"type": "done", "content": "ok"}]))
+
+        response = await client.post(
+            f"/api/sessions/{session_id}/runs",
+            json={
+                "kind": "elaboration",
+                "message_index": 1,
+                "selected_text": "mass times velocity",
+                "occurrence_index": 0,
+            },
+        )
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["kind"] == "elaboration"
+        assert body["metadata"] == {
+            "message_index": 1,
+            "selected_text": "mass times velocity",
+            "occurrence_index": 0,
+        }
+        await _poll_until_terminal(client, body["run_id"])
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"kind": "elaboration", "message_index": 1, "selected_text": "   "},
+            {"kind": "elaboration", "message_index": 1},
+            {"kind": "elaboration", "message_index": 9, "selected_text": "x"},
+            {"kind": "elaboration", "message_index": -1, "selected_text": "x"},
+            {"kind": "elaboration", "message_index": 0, "selected_text": "x"},
+            {"kind": "elaboration", "message_index": 1, "selected_text": "x" * 4001},
+            {
+                "kind": "elaboration",
+                "message_index": 1,
+                "selected_text": "x",
+                "images": [{"data": "abc", "mimetype": "image/png"}],
+            },
+            {
+                "kind": "elaboration",
+                "message_index": 1,
+                "selected_text": "x",
+                "occurrence_index": -1,
+            },
+            {"kind": "bogus", "prompt": "hi"},
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_invalid_elaboration_requests_are_400(
+        self, client, session_id, monkeypatch, payload
+    ):
+        _seed_messages(session_id, self.MESSAGES)
+        install_stub(monkeypatch, stub_runner([{"type": "done", "content": "ok"}]))
+
+        response = await client.post(f"/api/sessions/{session_id}/runs", json=payload)
+        assert response.status_code == 400, response.text

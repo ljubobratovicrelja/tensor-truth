@@ -20,6 +20,55 @@ from tensortruth.app_utils.history_cleaner import (
     clean_history_content,
 )
 
+ELABORATION_SEPARATOR = "\n\n"
+
+
+def _format_elaboration(selected_text: str, content: str) -> str:
+    """Format one persisted elaboration as an assistant-side note."""
+    return (
+        f'[Reader follow-up: they asked you to explain "{selected_text}" '
+        "from the passage above.\n"
+        f"You answered: {content}]"
+    )
+
+
+def expand_elaborations(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Return messages with each assistant message's elaborations appended.
+
+    Notes are appended in creation order so later turns know which passages
+    the reader asked about and what was answered. Input dicts are never
+    mutated; messages that carry elaborations are shallow-copied. When no
+    message has elaborations the input list is returned unchanged.
+    """
+    if not messages:
+        return messages
+
+    expanded: List[Dict[str, Any]] = []
+    changed = False
+    for message in messages:
+        elaborations = (
+            message.get("elaborations") if isinstance(message, dict) else None
+        )
+        if not elaborations:
+            expanded.append(message)
+            continue
+
+        changed = True
+        notes = ELABORATION_SEPARATOR.join(
+            _format_elaboration(
+                str(elaboration.get("selected_text") or ""),
+                str(elaboration.get("content") or ""),
+            )
+            for elaboration in elaborations
+            if isinstance(elaboration, dict)
+        )
+        copy = dict(message)
+        base = str(message.get("content") or "")
+        copy["content"] = f"{base}{ELABORATION_SEPARATOR}{notes}" if notes else base
+        expanded.append(copy)
+
+    return expanded if changed else messages
+
 
 @dataclass(frozen=True)
 class ChatHistoryMessage:

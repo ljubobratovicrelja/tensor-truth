@@ -11,3 +11,6 @@ export { ThinkingBox } from "./ThinkingBox";
 export { ToolSteps } from "./ToolSteps";
 export { CommandAutocomplete } from "./CommandAutocomplete";
 export { ThinkingSelect } from "./ThinkingSelect";
+export { ElaborationTrigger } from "./ElaborationTrigger";
+export { ElaborationSidebar } from "./ElaborationSidebar";
+export { ElaborationPanel } from "./ElaborationPanel";

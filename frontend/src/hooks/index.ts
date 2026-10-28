@@ -22,3 +22,6 @@ export * from "./useMcpServers";
 export * from "./useExtensions";
 export * from "./useIndexManagement";
 export * from "./useSessionContext";
+export * from "./useTextSelection";
+export * from "./useElaboration";
+export * from "./useElaborationHighlights";
