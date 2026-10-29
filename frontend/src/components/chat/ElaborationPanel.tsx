@@ -47,7 +47,8 @@ export function ElaborationPanel({ onCancel, onFollowUp }: ElaborationPanelProps
   const canSend = Boolean(activeElaborationId) && !busy && draft.trim().length > 0;
 
   const handleClose = () => {
-    if (busy) onCancel?.();
+    // Closing is not cancelling: the run keeps going and the underline stays.
+    // Stop is the explicit way to end it.
     close();
   };
 

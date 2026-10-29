@@ -89,15 +89,38 @@ function contentFor(messageIndex: number): HTMLElement | null {
  */
 export function useElaborationHighlights(
   messages: MessageResponse[] | undefined | null,
-  activeAnchor: ElaborationAnchor | null
+  activeAnchor: ElaborationAnchor | null,
+  liveAnchor?: ElaborationAnchor | null
 ): void {
   useEffect(() => {
     const api = getHighlightApi();
     if (!api) return;
     const { registry, Highlight } = api;
 
+    const specs = collectElaborationSpecs(messages);
+    // An elaboration that is still running has no server record yet; keep its
+    // underline visible while the panel is closed.
+    if (
+      liveAnchor &&
+      !specs.some(
+        (spec) =>
+          spec.messageIndex === liveAnchor.messageIndex &&
+          spec.selectedText === liveAnchor.selectedText &&
+          spec.occurrenceIndex === liveAnchor.occurrenceIndex
+      )
+    ) {
+      specs.push({
+        id: "live",
+        messageIndex: liveAnchor.messageIndex,
+        selectedText: liveAnchor.selectedText,
+        occurrenceIndex: liveAnchor.occurrenceIndex,
+        content: "",
+        messages: [],
+      });
+    }
+
     const ranges: Range[] = [];
-    for (const spec of collectElaborationSpecs(messages)) {
+    for (const spec of specs) {
       const container = contentFor(spec.messageIndex);
       if (!container) continue;
       const range = resolveTextRange(container, spec.selectedText, spec.occurrenceIndex);
@@ -132,5 +155,5 @@ export function useElaborationHighlights(
       registry.delete(ELABORATION_HIGHLIGHT);
       registry.delete(ACTIVE_ELABORATION_HIGHLIGHT);
     };
-  }, [messages, activeAnchor]);
+  }, [messages, activeAnchor, liveAnchor]);
 }

@@ -41,6 +41,13 @@ function messages(): MessageResponse[] {
   ];
 }
 
+function messagesWithoutElaborations(): MessageResponse[] {
+  return [
+    { role: "user", content: "q" },
+    { role: "assistant", content: TEXT },
+  ];
+}
+
 /**
  * jsdom has no layout, so `caretRangeFromPoint` is stubbed to point at a fixed
  * offset inside the fixture text (the "beta" token).
@@ -107,6 +114,34 @@ describe("useElaborationClick", () => {
       selectedText: "beta",
       occurrenceIndex: 0,
     });
+  });
+
+  it("reopens the in-flight elaboration instead of starting a new one", async () => {
+    const { content, node } = mountMessage();
+    stubCaret(node, 8);
+    const anchor = { messageIndex: 1, selectedText: "beta", occurrenceIndex: 0 };
+    useElaborationStore.getState().openFor(anchor);
+    useElaborationStore.getState().appendToken("partial answer");
+    useElaborationStore.getState().close();
+
+    renderHook(() =>
+      useElaborationClick(messagesWithoutElaborations(), {
+        anchor,
+        content: "partial answer",
+        messages: [],
+      })
+    );
+
+    await act(async () => {
+      content.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, clientX: 10, clientY: 10 })
+      );
+    });
+
+    const state = useElaborationStore.getState();
+    expect(state.open).toBe(true);
+    expect(state.content).toBe("partial answer");
+    expect(state.isStreaming).toBe(true);
   });
 
   it("does not intercept clicks on links inside a passage", () => {
