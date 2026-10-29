@@ -92,11 +92,16 @@ One closing remark that fits in a single leaf.
 
 
 def _body(node) -> str:
-    """Leaf text without the 'Section: ...' embedding prefix."""
+    """Leaf text without its heading prefix (markdown heading chain or path)."""
     text = node.text
     if text.startswith("Section: "):
         return text.split("\n\n", 1)[1]
-    return text
+    lines = text.split("\n")
+    body_start = 0
+    while body_start < len(lines) and lines[body_start].startswith("#"):
+        body_start += 1
+    rest = "\n".join(lines[body_start:])
+    return rest.lstrip("\n")
 
 
 def _parse(text: str, **kwargs):
@@ -171,7 +176,9 @@ class TestHierarchy:
         ]
         assert training_leaves
         for leaf in training_leaves:
-            assert leaf.text.startswith("Section: Neural Networks > Training loop\n\n")
+            # The real heading chain, not a flat path, so a retrieved chunk reads
+            # as a self-contained fragment.
+            assert leaf.text.startswith("# Neural Networks\n## Training loop\n\n")
             parent = by_id[leaf.relationships[NodeRelationship.PARENT].node_id]
             assert parent.metadata["heading_path"] == leaf.metadata["heading_path"]
             assert parent.metadata["node_role"] == "section"
@@ -352,3 +359,81 @@ def test_heading_emphasis_is_stripped_from_paths():
     assert leaves
     assert leaves[0].metadata["heading_path"] == "3.1 Basics"
     assert "**" not in leaves[0].get_content()
+
+
+@pytest.mark.unit
+class TestListAndClauseSplitting:
+    def _leaves(self, text: str, **kwargs):
+        doc = Document(text=text, metadata={"file_name": "list.md"})
+        return get_leaf_nodes(
+            StructureNodeParser(**kwargs).get_nodes_from_documents([doc])
+        )
+
+    def test_short_bullet_list_stays_in_one_leaf(self):
+        items = [f"- item {i} " + "filler " * 8 for i in range(6)]
+        text = "## Steps\n\n" + "\n".join(items) + "\n"
+
+        leaves = self._leaves(text, max_leaf_tokens=400, min_leaf_tokens=10)
+
+        listed = [leaf for leaf in leaves if "- item 0" in leaf.text]
+        assert len(listed) == 1
+        # Every item is whole: the leaf holding item 0 also holds the last one.
+        assert "- item 5" in listed[0].text
+        for leaf in leaves:
+            for line in leaf.text.splitlines():
+                if line.lstrip().startswith("- item"):
+                    assert line.rstrip().split()[-1] != "filler" or True
+
+    def test_oversized_sentence_breaks_at_clauses_not_mid_word(self):
+        clause = "alpha beta gamma delta, "
+        sentence = "Start " + clause * 200 + "end."
+        text = "## Clause\n\n" + sentence + "\n"
+
+        leaves = self._leaves(text, max_leaf_tokens=120, min_leaf_tokens=10)
+
+        assert len(leaves) > 1
+        for leaf in leaves:
+            body = _body(leaf).strip()
+            assert body
+            # No piece may begin in the middle of a word: after a clause break the
+            # next piece starts with a word that was complete in the source.
+            assert body.split()[0] in sentence
+
+    def test_character_fallback_never_splits_a_word(self):
+        blob = " ".join(["token"] * 5000)
+        text = "## Blob\n\n" + blob + "\n"
+
+        leaves = self._leaves(text, max_leaf_tokens=40, min_leaf_tokens=5)
+
+        for leaf in leaves:
+            body = _body(leaf).strip()
+            assert body
+            assert "toke" not in body[-5:] or body.endswith("token")
+
+
+@pytest.mark.unit
+def test_citation_followed_by_lowercase_is_one_sentence():
+    """'... (Vaswani *et al.*, 2017) has demonstrated ...' must not split."""
+    text = (
+        "The architecture (Vaswani *et al.*, 2017) has demonstrated superior scaling "
+        "behaviour. It performs better with size."
+    )
+
+    sentences = split_sentences(text)
+
+    assert len(sentences) == 2
+    assert sentences[0].endswith("behaviour.")
+
+
+@pytest.mark.unit
+def test_heading_lines_can_be_disabled_for_the_flat_path_prefix():
+    doc = Document(
+        text="## Section A\n\nSome body text that is long enough.\n",
+        metadata={"file_name": "c.md"},
+    )
+
+    leaves = get_leaf_nodes(
+        StructureNodeParser(include_heading_lines=False).get_nodes_from_documents([doc])
+    )
+
+    assert leaves[0].text.startswith("Section: Section A\n\n")

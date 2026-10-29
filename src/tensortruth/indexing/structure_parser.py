@@ -146,6 +146,12 @@ def split_sentences(text: str) -> List[str]:
         # No whitespace after the punctuation: "3.2", "0.5x", "e.g.x" - not a boundary.
         if next_pos == end:
             continue
+        # A sentence cannot start with a lowercase letter or a closing mark.
+        # Without this, a citation such as "(Vaswani *et al.*, 2017) has
+        # demonstrated..." was cut after the bracket, mid-sentence.
+        following = text[next_pos]
+        if following.islower() or following in ",;:)":
+            continue
         word_match = _WORD_BEFORE_RE.search(text, 0, match.start())
         if word_match is not None:
             word = word_match.group(1)
@@ -188,6 +194,9 @@ class _Section:
     level: int
     heading_path: str
     blocks: List[_Block] = field(default_factory=list)
+    # Ancestor heading chain, outermost first, as (level, title) pairs. Kept so a
+    # leaf can carry the real markdown headings instead of only a path string.
+    heading_lines: List[tuple[int, str]] = field(default_factory=list)
 
     @property
     def heading_line(self) -> str:
@@ -221,7 +230,15 @@ class StructureNodeParser(NodeParser):
     )
     prepend_heading_path: bool = Field(
         default=True,
-        description="Prefix leaf text with 'Section: <heading_path>'.",
+        description="Prefix leaf text with its section context (see include_heading_lines).",
+    )
+    include_heading_lines: bool = Field(
+        default=True,
+        description=(
+            "Prefix each leaf with the section's markdown heading chain "
+            "('# A', '## B', ...) instead of a flat 'Section: A > B' line, so a "
+            "retrieved chunk reads as a self-contained document fragment."
+        ),
     )
     max_section_tokens: Optional[int] = Field(
         default=None,
@@ -242,6 +259,7 @@ class StructureNodeParser(NodeParser):
         include_metadata: bool = True,
         include_prev_next_rel: bool = True,
         prepend_heading_path: bool = True,
+        include_heading_lines: bool = True,
         max_section_tokens: Optional[int] = None,
         callback_manager=None,
     ) -> None:
@@ -259,6 +277,7 @@ class StructureNodeParser(NodeParser):
             max_leaf_tokens=max_leaf_tokens,
             min_leaf_tokens=min_leaf_tokens,
             prepend_heading_path=prepend_heading_path,
+            include_heading_lines=include_heading_lines,
             max_section_tokens=max_section_tokens,
             include_metadata=include_metadata,
             include_prev_next_rel=include_prev_next_rel,
@@ -398,6 +417,7 @@ class StructureNodeParser(NodeParser):
                     level=1,
                     heading_path=doc_title,
                     blocks=body,
+                    heading_lines=[(1, doc_title)],
                 )
             ]
 
@@ -412,7 +432,10 @@ class StructureNodeParser(NodeParser):
                 stack.append((block.level, block.text))
                 path = " > ".join(title for _, title in stack)
                 current = _Section(
-                    title=block.text, level=block.level, heading_path=path
+                    title=block.text,
+                    level=block.level,
+                    heading_path=path,
+                    heading_lines=list(stack),
                 )
                 sections.append(current)
                 continue
@@ -421,7 +444,12 @@ class StructureNodeParser(NodeParser):
                 continue
             if current is None:
                 # Content before the first heading still belongs to the document.
-                current = _Section(title=doc_title, level=1, heading_path=doc_title)
+                current = _Section(
+                    title=doc_title,
+                    level=1,
+                    heading_path=doc_title,
+                    heading_lines=[(1, doc_title)],
+                )
                 sections.append(current)
             current.blocks.append(block)
 
@@ -599,7 +627,35 @@ class StructureNodeParser(NodeParser):
                 continue
 
             units.extend(self._split_paragraph(block.text, budget))
-        return units
+        return self._group_list_items(units, budget)
+
+    def _group_list_items(self, units: List[str], budget: int) -> List[str]:
+        """Keep a contiguous list inside one unit when it fits the leaf.
+
+        Packing used to break a leaf in the middle of a bullet list, so a chunk
+        started with an orphaned item and lost the list it belonged to. Grouping
+        whole lists first means a short list is never split; a list longer than a
+        leaf still breaks, but only between items.
+        """
+        grouped: List[str] = []
+        run: List[str] = []
+
+        def flush() -> None:
+            nonlocal run
+            if run:
+                grouped.append("\n\n".join(run))
+                run = []
+
+        for unit in units:
+            if not _LIST_MARKER_RE.match(unit.lstrip()):
+                flush()
+                grouped.append(unit)
+                continue
+            if run and self._count("\n\n".join([*run, unit])) > budget:
+                flush()
+            run.append(unit)
+        flush()
+        return grouped
 
     def _split_paragraph(self, text: str, budget: int) -> List[str]:
         """Split an oversized paragraph at sentence ends, words only as last resort."""
@@ -610,12 +666,40 @@ class StructureNodeParser(NodeParser):
                 if current:
                     pieces.append(" ".join(current))
                     current = []
-                pieces.extend(self._hard_split_words(sentence, budget))
+                pieces.extend(self._split_oversized_sentence(sentence, budget))
                 continue
             if current and self._count(" ".join([*current, sentence])) > budget:
                 pieces.append(" ".join(current))
                 current = []
             current.append(sentence)
+        if current:
+            pieces.append(" ".join(current))
+        return self._fitted(pieces, budget)
+
+    def _split_oversized_sentence(self, sentence: str, budget: int) -> List[str]:
+        """Break a sentence too long for one leaf, keeping clauses together.
+
+        Cutting such a sentence at arbitrary word boundaries produced fragments
+        that began mid-clause; splitting after , ; : keeps each piece readable and
+        leaves word- and character-level cuts as the last resort only.
+        """
+        clauses = re.split(r"(?<=[,;:])\s+", sentence)
+        if len(clauses) < 2:
+            return self._hard_split_words(sentence, budget)
+
+        pieces: List[str] = []
+        current: List[str] = []
+        for clause in clauses:
+            if self._count(clause) > budget:
+                if current:
+                    pieces.append(" ".join(current))
+                    current = []
+                pieces.extend(self._hard_split_words(clause, budget))
+                continue
+            if current and self._count(" ".join([*current, clause])) > budget:
+                pieces.append(" ".join(current))
+                current = []
+            current.append(clause)
         if current:
             pieces.append(" ".join(current))
         return self._fitted(pieces, budget)
@@ -689,6 +773,12 @@ class StructureNodeParser(NodeParser):
             while end > start + 1 and self._count(chunk) > budget:
                 end = start + max(1, (end - start) // 2)
                 chunk = text[start:end]
+            # Snap back to a space so a cut never lands inside a word.
+            if end < len(text):
+                space = chunk.rfind(" ")
+                if space > len(chunk) // 2:
+                    end = start + space + 1
+                    chunk = text[start:end]
             pieces.append(chunk)
             start = end
         return [piece for piece in pieces if piece.strip()]
@@ -796,6 +886,14 @@ class StructureNodeParser(NodeParser):
     def _heading_prefix(self, section: _Section) -> str:
         if not self.prepend_heading_path:
             return ""
+        if self.include_heading_lines and section.heading_lines:
+            lines = [
+                f"{'#' * max(1, level)} {title}"
+                for level, title in section.heading_lines
+                if title
+            ]
+            if lines:
+                return "\n".join(lines) + "\n\n"
         path = section.heading_path or section.title
         if not path:
             return ""
@@ -804,14 +902,16 @@ class StructureNodeParser(NodeParser):
     def _leaf_text(self, section: _Section, body: str) -> str:
         return self._heading_prefix(section) + body
 
-    @staticmethod
-    def _section_text(section: _Section, leaves: List[BaseNode]) -> str:
+    def _section_text(self, section: _Section, leaves: List[BaseNode]) -> str:
+        prefix = self._heading_prefix(section)
         bodies = []
         for leaf in leaves:
             text = leaf.text
-            # Section text is what a human reads after expanding a hit, so strip the
-            # repeated "Section: ..." prefix and let the heading line carry it.
-            if text.startswith("Section: "):
+            # The section is what a human reads after expanding a hit, so strip the
+            # per-leaf heading context and let the section's own heading carry it.
+            if prefix and text.startswith(prefix):
+                text = text[len(prefix) :]
+            elif text.startswith("Section: "):
                 _, _, text = text.partition("\n\n")
             bodies.append(text)
         body = "\n\n".join(bodies)

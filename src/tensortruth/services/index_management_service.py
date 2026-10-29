@@ -590,11 +590,22 @@ class IndexManagementService:
 
 
 def _chunk_body(text: str) -> str:
-    """Strip the ``Section: <heading path>`` prefix the structure parser adds."""
+    """Strip the embedding-time heading context a structure leaf carries.
+
+    Leaves are prefixed either with the section's markdown heading chain
+    (``# A`` / ``## B``) or, on older indexes, with ``Section: A > B``. The body
+    underneath is what the viewer needs to locate.
+    """
     if text.startswith("Section: "):
         head, _, rest = text.partition("\n\n")
         if head.startswith("Section: "):
             return rest
+    lines = text.split("\n")
+    start = 0
+    while start < len(lines) and lines[start].startswith("#"):
+        start += 1
+    if start:
+        return "\n".join(lines[start:]).lstrip("\n")
     return text
 
 
