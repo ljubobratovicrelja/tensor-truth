@@ -377,8 +377,14 @@ class IndexManagementService:
             raise ValueError(f"Document not found: {doc_id}")
 
         doc_info = ref_doc_info[doc_id]
-        node_ids = doc_info.get("node_ids", [])
+        node_ids = list(doc_info.get("node_ids", []))
         metadata = doc_info.get("metadata", {})
+
+        # A structure-parsed index keeps the whole document text in a root node
+        # keyed by the doc_id; only its sections and leaves are listed in
+        # node_ids, so reading node_ids alone would render an empty document.
+        root_node = data.get(doc_id) or {}
+        root_text = (root_node.get("__data__") or {}).get("text") or ""
 
         # Build set of all IDs referenced as children by other nodes
         child_ids: set[str] = set()
@@ -392,79 +398,25 @@ class IndexManagementService:
                     child_ids.add(cid)
 
         # Top-level chunks: those NOT referenced as a child of any other node
-        top_chunks: List[Dict[str, Any]] = []
-        for nid in node_ids:
-            if nid in child_ids:
-                continue
-            node = data.get(nid)
-            if node is None:
-                continue
-            nd = node.get("__data__", {})
-            top_chunks.append(
-                {
-                    "chunk_id": nid,
-                    "start": nd.get("start_char_idx", 0),
-                    "end": nd.get("end_char_idx", 0),
-                    "text": nd.get("text", ""),
-                }
-            )
+        top_ids = [nid for nid in node_ids if nid not in child_ids and nid in data]
 
-        # Sort by start position
-        top_chunks.sort(key=lambda c: c["start"])
+        # Older indexes record char offsets, newer structure-parsed ones do not;
+        # when they are missing, insertion order is document order.
+        if all(
+            data[nid]["__data__"].get("start_char_idx") is not None for nid in top_ids
+        ):
+            top_ids.sort(key=lambda nid: data[nid]["__data__"]["start_char_idx"])
 
-        # Reconstruct text with overlap deduplication, collecting all levels
-        text_parts: List[str] = []
-        all_chunks: List[Dict[str, Any]] = []
-        current_pos = 0
-        output_len = 0
-
-        for chunk in top_chunks:
-            chunk_text = chunk["text"]
-            skip = 0
-            if current_pos > 0 and chunk["start"] < current_pos:
-                skip = current_pos - chunk["start"]
-                if skip >= len(chunk_text):
-                    continue
-                chunk_text = chunk_text[skip:]
-
-            recon_start = output_len
-            text_parts.append(chunk_text)
-            output_len += len(chunk_text)
-            recon_end = output_len
-
-            # Mapping: recon_pos = orig_pos + recon_offset
-            effective_orig_start = chunk["start"] + skip
-            recon_offset = recon_start - effective_orig_start
-
-            all_chunks.append(
-                {
-                    "chunk_id": chunk["chunk_id"],
-                    "start": recon_start,
-                    "end": recon_end,
-                    "level": 0,
-                }
-            )
-
-            # Recursively collect child chunks at deeper levels.
-            # Children store positions relative to their parent's full
-            # text, so parent_doc_start is the parent's original start.
-            _collect_children(
-                data,
-                chunk["chunk_id"],
-                parent_doc_start=chunk["start"],
-                recon_offset=recon_offset,
-                effective_orig_start=effective_orig_start,
-                level=1,
-                out=all_chunks,
-            )
-
-            current_pos = max(current_pos, chunk["end"])
+        if root_text:
+            text = root_text
+        else:
+            text = _merge_top_chunks(top_ids, data)
 
         return {
             "doc_id": doc_id,
             "metadata": metadata,
-            "text": "".join(text_parts),
-            "chunks": all_chunks,
+            "text": text,
+            "chunks": _map_chunk_spans(text, top_ids, data),
         }
 
     # ── Fetch callable ────────────────────────────────────────────────
@@ -635,6 +587,72 @@ class IndexManagementService:
                     issues.append(f"{source_type}/{name}: docs directory is empty")
 
         return {"valid": len(issues) == 0, "issues": issues}
+
+
+def _chunk_body(text: str) -> str:
+    """Strip the ``Section: <heading path>`` prefix the structure parser adds."""
+    if text.startswith("Section: "):
+        head, _, rest = text.partition("\n\n")
+        if head.startswith("Section: "):
+            return rest
+    return text
+
+
+def _merge_top_chunks(top_ids: List[str], data: dict) -> str:
+    """Concatenate top-level chunks, trimming overlaps when offsets exist."""
+    parts: List[str] = []
+    cursor = 0
+    for nid in top_ids:
+        nd = data[nid].get("__data__", {})
+        body = nd.get("text") or ""
+        start = nd.get("start_char_idx")
+        if start is not None and start < cursor:
+            skip = cursor - start
+            if skip >= len(body):
+                continue
+            body = body[skip:]
+        parts.append(body)
+        if start is None:
+            cursor += len(body)
+        else:
+            cursor = max(cursor, start + len(body))
+    return "".join(parts)
+
+
+def _map_chunk_spans(text: str, top_ids: List[str], data: dict) -> List[Dict[str, Any]]:
+    """Locate every chunk inside the reconstructed text, then recurse.
+
+    Structure-parsed nodes carry no char offsets, so positions are recovered by
+    searching forward from the previous chunk. The search is monotonic, which
+    keeps spans ordered and non-overlapping even when whitespace normalisation
+    shifts them by a few characters.
+    """
+    out: List[Dict[str, Any]] = []
+    cursor = 0
+
+    def walk(node_id: str, level: int, lower: int) -> None:
+        nonlocal cursor
+        nd = data[node_id].get("__data__", {})
+        body = _chunk_body(nd.get("text") or "")
+        probe = body[:80].strip()
+        position = text.find(probe, lower) if probe else -1
+        if position < 0:
+            position = lower
+        end = position + len(body)
+        out.append({"chunk_id": node_id, "start": position, "end": end, "level": level})
+        cursor = max(cursor, end)
+        if level >= 10:
+            return
+        # Children live inside their parent, so their search restarts at the
+        # parent's start rather than after the parent's end.
+        for ref in (nd.get("relationships") or {}).get("5") or []:
+            child = ref.get("node_id")
+            if child in data:
+                walk(child, level + 1, position)
+
+    for nid in top_ids:
+        walk(nid, 0, cursor)
+    return out
 
 
 def _collect_children(
