@@ -94,7 +94,7 @@ describe("elaborationStore", () => {
     expect(state.open).toBe(true);
   });
 
-  it("close clears transient state but keeps the anchor", () => {
+  it("close only hides the panel, keeping the live run and text", () => {
     const store = useElaborationStore.getState();
     store.openFor(anchor);
     store.appendToken("streamed");
@@ -102,8 +102,23 @@ describe("elaborationStore", () => {
 
     const state = useElaborationStore.getState();
     expect(state.open).toBe(false);
-    expect(state.isStreaming).toBe(false);
+    // A background run must survive a click away.
+    expect(state.isStreaming).toBe(true);
+    expect(state.content).toBe("streamed");
     expect(state.anchor).toEqual(anchor);
+  });
+
+  it("reopen shows the same in-flight elaboration", () => {
+    const store = useElaborationStore.getState();
+    store.openFor(anchor);
+    store.appendToken("partial");
+    store.close();
+    useElaborationStore.getState().reopen();
+
+    const state = useElaborationStore.getState();
+    expect(state.open).toBe(true);
+    expect(state.content).toBe("partial");
+    expect(state.isStreaming).toBe(true);
   });
 
   it("reset returns to the initial state", () => {

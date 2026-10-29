@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { MessageResponse, ThreadMessage } from "@/api/types";
 import { useElaborationStore } from "@/stores/elaborationStore";
 import type { ElaborationAnchor } from "@/stores/elaborationStore";
@@ -72,12 +72,27 @@ interface HitTestResult {
   hit: NonNullable<ReturnType<typeof elaborationAtPoint>>;
 }
 
+interface LiveElaboration {
+  anchor: ElaborationAnchor;
+  content: string;
+  messages: ThreadMessage[];
+}
+
+function sameAnchor(a: ElaborationAnchor, b: ElaborationAnchor): boolean {
+  return (
+    a.messageIndex === b.messageIndex &&
+    a.selectedText === b.selectedText &&
+    a.occurrenceIndex === b.occurrenceIndex
+  );
+}
+
 /** Resolve a pointer position to the stored elaboration under it, if any. */
 function hitTestEvent(
   target: EventTarget | null,
   x: number,
   y: number,
-  messages: MessageResponse[]
+  messages: MessageResponse[],
+  live: LiveElaboration | null
 ): HitTestResult | null {
   if (!(target instanceof Element)) return null;
   if (target.closest("[data-elaboration-panel]")) return null;
@@ -102,6 +117,22 @@ function hitTestEvent(
   const specs = collectElaborationSpecs(messages).filter(
     (spec) => spec.messageIndex === messageIndex
   );
+  // A run that has not been persisted yet still needs hover/click support.
+  if (
+    live &&
+    live.anchor.messageIndex === messageIndex &&
+    !specs.some((spec) => sameAnchor(spec, live.anchor))
+  ) {
+    specs.push({
+      id: "live",
+      messageIndex,
+      selectedText: live.anchor.selectedText,
+      occurrenceIndex: live.anchor.occurrenceIndex,
+      content: live.content,
+      messages: live.messages,
+    });
+  }
+
   const hit = elaborationAtPoint(specs, content, caret.node, caret.offset);
   return hit ? { content, hit } : null;
 }
@@ -112,7 +143,17 @@ function hitTestEvent(
  * hand cursor: `::highlight()` cannot set `cursor`, so the pointer style is
  * applied to the content container while it hovers an elaboration.
  */
-export function useElaborationClick(messages: MessageResponse[] | undefined | null) {
+export function useElaborationClick(
+  messages: MessageResponse[] | undefined | null,
+  live?: LiveElaboration | null
+) {
+  // The live elaboration changes on every streamed token; keep it in a ref so
+  // the DOM listeners are not torn down and re-added per token.
+  const liveRef = useRef<LiveElaboration | null>(live ?? null);
+  useEffect(() => {
+    liveRef.current = live ?? null;
+  }, [live]);
+
   useEffect(() => {
     if (!messages || messages.length === 0) return;
 
@@ -128,19 +169,33 @@ export function useElaborationClick(messages: MessageResponse[] | undefined | nu
       const selection = window.getSelection();
       if (selection && !selection.isCollapsed) return;
 
-      const result = hitTestEvent(event.target, event.clientX, event.clientY, messages);
+      const result = hitTestEvent(
+        event.target,
+        event.clientX,
+        event.clientY,
+        messages,
+        liveRef.current
+      );
       if (!result) return;
 
       event.preventDefault();
       event.stopPropagation();
-      useElaborationStore
-        .getState()
-        .openStored(
+      const store = useElaborationStore.getState();
+      const currentLive = liveRef.current;
+      const isLiveHit =
+        currentLive !== null && sameAnchor(currentLive.anchor, result.hit.anchor);
+      if (isLiveHit) {
+        // In-flight or fetched elaboration: reopen what the store holds so the
+        // panel resumes exactly where the run is.
+        store.reopen();
+      } else {
+        store.openStored(
           result.hit.anchor,
           result.hit.id,
           result.hit.content,
           result.hit.messages
         );
+      }
     };
 
     let frame = 0;
@@ -149,7 +204,13 @@ export function useElaborationClick(messages: MessageResponse[] | undefined | nu
       frame = 0;
       const event = latest;
       if (!event) return;
-      const result = hitTestEvent(event.target, event.clientX, event.clientY, messages);
+      const result = hitTestEvent(
+        event.target,
+        event.clientX,
+        event.clientY,
+        messages,
+        liveRef.current
+      );
       if (result) {
         setCursor(result.content, true);
       } else {

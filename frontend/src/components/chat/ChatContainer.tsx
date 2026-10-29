@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useSessionStore, useChatStore, useUIStore, useElaborationStore } from "@/stores";
@@ -102,6 +102,22 @@ export function ChatContainer() {
   // --- Selection-driven elaboration (independent of the chat stream) ---
   const elaborationOpen = useElaborationStore((state) => state.open);
   const elaborationAnchor = useElaborationStore((state) => state.anchor);
+  const elaborationContent = useElaborationStore((state) => state.content);
+  const elaborationThread = useElaborationStore((state) => state.thread);
+  const elaborationBusy = useElaborationStore(
+    (state) => state.isStreaming || state.isReplying
+  );
+  const liveElaboration = useMemo(
+    () =>
+      elaborationAnchor
+        ? {
+            anchor: elaborationAnchor,
+            content: elaborationContent,
+            messages: elaborationThread,
+          }
+        : null,
+    [elaborationAnchor, elaborationContent, elaborationThread]
+  );
   const { selection, clear: clearSelection } = useTextSelection();
   const {
     start: startElaboration,
@@ -110,9 +126,10 @@ export function ChatContainer() {
   } = useElaboration(urlSessionId ?? null);
   useElaborationHighlights(
     messagesData?.messages,
-    elaborationOpen ? elaborationAnchor : null
+    elaborationOpen ? elaborationAnchor : null,
+    liveElaboration?.anchor
   );
-  useElaborationClick(messagesData?.messages);
+  useElaborationClick(messagesData?.messages, liveElaboration);
 
   // Show loading state during initial load OR when switching sessions (refetching)
   // This prevents showing stale cached messages from a different session
@@ -420,7 +437,7 @@ export function ChatContainer() {
       </div>
       <ElaborationSidebar onCancel={cancelElaboration} onFollowUp={followUpElaboration} />
       <ElaborationTrigger
-        rect={isStreaming ? null : (selection?.rect ?? null)}
+        rect={isStreaming || elaborationBusy ? null : (selection?.rect ?? null)}
         onOpen={handleStartElaboration}
       />
     </div>

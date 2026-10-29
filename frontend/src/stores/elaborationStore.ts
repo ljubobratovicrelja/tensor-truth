@@ -52,6 +52,8 @@ interface ElaborationStore {
 
   /** Close the panel; the anchor is kept so the highlight can settle back. */
   close: () => void;
+  /** Re-show the panel for the elaboration already held in the store. */
+  reopen: () => void;
   reset: () => void;
 }
 
@@ -142,16 +144,11 @@ export const useElaborationStore = create<ElaborationStore>((set) => ({
       runId: null,
     }),
 
-  close: () =>
-    set({
-      open: false,
-      isStreaming: false,
-      isReplying: false,
-      reply: "",
-      error: null,
-      followUpError: null,
-      runId: null,
-    }),
+  // Closing is purely visual: the run, partial text and thread keep going so
+  // reopening the passage shows the process exactly where it is.
+  close: () => set({ open: false }),
+
+  reopen: () => set({ open: true }),
 
   reset: () => set({ ...INITIAL, thread: [] }),
 }));
