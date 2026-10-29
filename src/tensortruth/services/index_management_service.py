@@ -619,40 +619,92 @@ def _merge_top_chunks(top_ids: List[str], data: dict) -> str:
     return "".join(parts)
 
 
+def _lf_with_index_map(text: str) -> tuple[str, List[int]]:
+    """Normalise CRLF to LF and keep a map from normalised to original offsets."""
+    if "\r\n" not in text:
+        return text, list(range(len(text) + 1))
+    chars: List[str] = []
+    index_map: List[int] = []
+    position = 0
+    while position < len(text):
+        if text.startswith("\r\n", position):
+            chars.append("\n")
+            index_map.append(position)
+            position += 2
+        else:
+            chars.append(text[position])
+            index_map.append(position)
+            position += 1
+    index_map.append(len(text))
+    return "".join(chars), index_map
+
+
 def _map_chunk_spans(text: str, top_ids: List[str], data: dict) -> List[Dict[str, Any]]:
     """Locate every chunk inside the reconstructed text, then recurse.
 
     Structure-parsed nodes carry no char offsets, so positions are recovered by
-    searching forward from the previous chunk. The search is monotonic, which
-    keeps spans ordered and non-overlapping even when whitespace normalisation
-    shifts them by a few characters.
+    searching forward from the previous chunk. Matching happens on an LF copy of
+    the text (nodes are LF, the stored root keeps CRLF) and offsets are mapped
+    back, so a span starts and ends exactly on the chunk's own words instead of
+    drifting into the middle of the next one.
     """
+    haystack, index_map = _lf_with_index_map(text)
     out: List[Dict[str, Any]] = []
     cursor = 0
 
-    def walk(node_id: str, level: int, lower: int) -> None:
+    def to_raw(normalised_position: int) -> int:
+        if normalised_position >= len(index_map):
+            return len(text)
+        return index_map[normalised_position]
+
+    def span_for(body: str, lower: int) -> tuple[int, int]:
+        probe = body[:80].strip()
+        position = haystack.find(probe, lower) if probe else -1
+        if position < 0:
+            position = lower
+        tail = body[-60:]
+        if tail.strip():
+            tail_position = haystack.find(tail, position)
+            if tail_position >= 0:
+                return to_raw(position), to_raw(tail_position + len(tail))
+        return to_raw(position), to_raw(position + len(body))
+
+    def walk(node_id: str, level: int, lower_norm: int) -> int:
         nonlocal cursor
         nd = data[node_id].get("__data__", {})
         body = _chunk_body(nd.get("text") or "")
-        probe = body[:80].strip()
-        position = text.find(probe, lower) if probe else -1
-        if position < 0:
-            position = lower
-        end = position + len(body)
-        out.append({"chunk_id": node_id, "start": position, "end": end, "level": level})
+        start, end = span_for(body, lower_norm)
+        out.append({"chunk_id": node_id, "start": start, "end": end, "level": level})
         cursor = max(cursor, end)
-        if level >= 10:
-            return
-        # Children live inside their parent, so their search restarts at the
-        # parent's start rather than after the parent's end.
-        for ref in (nd.get("relationships") or {}).get("5") or []:
-            child = ref.get("node_id")
-            if child in data:
-                walk(child, level + 1, position)
+        child_lower = lower_norm
+        probe = body[:80].strip()
+        found = haystack.find(probe, lower_norm) if probe else -1
+        if found >= 0:
+            child_lower = found
+        if level < 10:
+            # Children live inside their parent, so their search restarts at the
+            # parent's start rather than after the parent's end.
+            for ref in (nd.get("relationships") or {}).get("5") or []:
+                child = ref.get("node_id")
+                if child in data:
+                    walk(child, level + 1, child_lower)
+        return cursor
 
     for nid in top_ids:
-        walk(nid, 0, cursor)
+        walk(nid, 0, _lf_offset(index_map, cursor))
     return out
+
+
+def _lf_offset(index_map: List[int], raw_offset: int) -> int:
+    """Map an original offset back into the normalised text."""
+    low, high = 0, len(index_map) - 1
+    while low < high:
+        mid = (low + high) // 2
+        if index_map[mid] < raw_offset:
+            low = mid + 1
+        else:
+            high = mid
+    return low
 
 
 def _collect_children(
