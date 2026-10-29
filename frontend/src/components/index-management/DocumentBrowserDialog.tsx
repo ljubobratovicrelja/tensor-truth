@@ -329,6 +329,7 @@ interface ChunkWithLevel {
   start: number;
   end: number;
   level: number;
+  heading_path?: string | null;
 }
 
 function ChunkedText({ text, chunks }: { text: string; chunks: ChunkWithLevel[] }) {
@@ -406,7 +407,10 @@ function ChunkedText({ text, chunks }: { text: string; chunks: ChunkWithLevel[] 
 function chunkTooltip(chunk: ChunkWithLevel): string {
   const truncId =
     chunk.chunk_id.length > 12 ? chunk.chunk_id.slice(0, 8) + "..." : chunk.chunk_id;
-  return `L${chunk.level} chunk ${truncId} [${chunk.start}–${chunk.end}]`;
+  const head = `L${chunk.level} chunk ${truncId} [${chunk.start}–${chunk.end}]`;
+  // A leaf nested mid-section has no heading text physically above it, so the
+  // section path is the only way to see which heading it belongs to.
+  return chunk.heading_path ? `${head}\nSection: ${chunk.heading_path}` : head;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

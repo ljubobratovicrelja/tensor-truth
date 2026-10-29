@@ -120,6 +120,9 @@ class ChunkBoundary(BaseModel):
     start: int
     end: int
     level: int = 0
+    # Section path of the node, so the viewer can name a chunk instead of
+    # showing a bare id; also the only heading context a nested leaf can show.
+    heading_path: Optional[str] = None
 
 
 class DocumentContentResponse(BaseModel):

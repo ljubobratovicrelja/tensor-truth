@@ -1013,6 +1013,7 @@ export interface ChunkBoundary {
   start: number;
   end: number;
   level: number;
+  heading_path?: string | null;
 }
 
 export interface DocumentContentResponse {

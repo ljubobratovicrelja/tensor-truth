@@ -589,6 +589,34 @@ class IndexManagementService:
         return {"valid": len(issues) == 0, "issues": issues}
 
 
+def _heading_prefix_lines(text: str) -> List[str]:
+    """Leading markdown heading lines that a structure leaf carries."""
+    lines = text.split("\n")
+    count = 0
+    while count < len(lines) and lines[count].startswith("#"):
+        count += 1
+    return lines[:count]
+
+
+def _prefix_start(
+    haystack: str, prefix_lines: List[str], body_start: int
+) -> Optional[int]:
+    """Where the heading chain starts in the document, just before its body.
+
+    The prefix only counts when nothing but whitespace sits between it and the
+    body, otherwise an identical heading elsewhere would swallow the span.
+    """
+    prefix = "\n".join(prefix_lines)
+    if not prefix:
+        return None
+    candidate = haystack.rfind(prefix, 0, body_start)
+    if candidate < 0:
+        return None
+    if haystack[candidate + len(prefix) : body_start].strip():
+        return None
+    return candidate
+
+
 def _chunk_body(text: str) -> str:
     """Strip the embedding-time heading context a structure leaf carries.
 
@@ -668,11 +696,16 @@ def _map_chunk_spans(text: str, top_ids: List[str], data: dict) -> List[Dict[str
             return len(text)
         return index_map[normalised_position]
 
-    def span_for(body: str, lower: int) -> tuple[int, int]:
+    def span_for(body: str, lower: int, heading_prefix: List[str]) -> tuple[int, int]:
+        """Return raw (start, end) covering the chunk, heading prefix included."""
         probe = body[:80].strip()
         position = haystack.find(probe, lower) if probe else -1
         if position < 0:
             position = lower
+        if heading_prefix:
+            prefix_start = _prefix_start(haystack, heading_prefix, position)
+            if prefix_start is not None:
+                position = prefix_start
         tail = body[-60:]
         if tail.strip():
             tail_position = haystack.find(tail, position)
@@ -683,9 +716,20 @@ def _map_chunk_spans(text: str, top_ids: List[str], data: dict) -> List[Dict[str
     def walk(node_id: str, level: int, lower_norm: int) -> int:
         nonlocal cursor
         nd = data[node_id].get("__data__", {})
-        body = _chunk_body(nd.get("text") or "")
-        start, end = span_for(body, lower_norm)
-        out.append({"chunk_id": node_id, "start": start, "end": end, "level": level})
+        raw_text = nd.get("text") or ""
+        heading_prefix = _heading_prefix_lines(raw_text)
+        body = _chunk_body(raw_text)
+        start, end = span_for(body, lower_norm, heading_prefix)
+        metadata = nd.get("metadata") or {}
+        out.append(
+            {
+                "chunk_id": node_id,
+                "start": start,
+                "end": end,
+                "level": level,
+                "heading_path": metadata.get("heading_path"),
+            }
+        )
         cursor = max(cursor, end)
         child_lower = lower_norm
         probe = body[:80].strip()
