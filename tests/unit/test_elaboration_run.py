@@ -252,3 +252,44 @@ async def test_elaboration_run_rejects_bad_target(session_service, fake_pdf):
     assert (
         "elaborations" not in session_service.load().sessions[SESSION_ID]["messages"][0]
     )
+
+
+@pytest.mark.asyncio
+async def test_elaboration_prompt_carries_original_sources(session_service, fake_pdf):
+    """The explanation starts from the excerpts that backed the parent answer."""
+    data = session_service.load()
+    parent = dict(data.sessions[SESSION_ID]["messages"][1])
+    parent["sources"] = [
+        {
+            "text": "Regularization adds a penalty on parameter magnitude.",
+            "metadata": {"filename": "regularization.pdf"},
+        }
+    ]
+    messages = list(data.sessions[SESSION_ID]["messages"])
+    messages[1] = parent
+    data.sessions[SESSION_ID]["messages"] = messages
+    session_service.save(data)
+
+    sink = _FakeSink()
+    chat = _FakeChatService()
+
+    await run_turn(
+        sink,
+        session_id=SESSION_ID,
+        prompt="",
+        kind="elaboration",
+        metadata={
+            "message_index": 1,
+            "selected_text": SELECTED,
+            "occurrence_index": 0,
+        },
+        session_service=session_service,
+        chat_service=chat,
+        project_service=object(),
+    )
+
+    call = chat.calls[0]
+    assert "(regularization.pdf)" in call["prompt"]
+    assert "parameter magnitude" in call["prompt"]
+    # The directive insists on grounding the deeper answer in sources/tools.
+    assert "Ground every claim" in call["params"]["system_prompt"]

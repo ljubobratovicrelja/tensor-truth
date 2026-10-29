@@ -1038,7 +1038,9 @@ async def _run_elaboration(
         await sink.send_json({"type": "error", "detail": "Invalid elaboration target"})
         return
 
-    prompt = build_elaboration_prompt(parent_content, selected_text)
+    prompt = build_elaboration_prompt(
+        parent_content, selected_text, sources=parent.get("sources") or None
+    )
     context = _build_elaboration_context(
         session_id, session, prompt, message_index, project_service
     )
@@ -1123,7 +1125,11 @@ async def _run_elaboration_followup(
         ],
     ]
     followup_prompt = build_elaboration_followup_prompt(
-        parent_content, selected_text, thread, question
+        parent_content,
+        selected_text,
+        thread,
+        question,
+        sources=parent.get("sources") or None,
     )
     context = _build_elaboration_context(
         session_id, session, followup_prompt, message_index, project_service

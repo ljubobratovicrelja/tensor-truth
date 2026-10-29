@@ -96,3 +96,57 @@ class TestElaborationDirective:
     def test_directive_without_system_prompt(self):
         assert with_elaboration_directive(None) == ELABORATION_SYSTEM_DIRECTIVE
         assert with_elaboration_directive("") == ELABORATION_SYSTEM_DIRECTIVE
+
+
+SOURCES = [
+    {
+        "text": "A loss surface maps parameter vectors to loss values; curvature is "
+        "the second derivative along a direction.",
+        "metadata": {"filename": "optimization.pdf"},
+    },
+    {
+        "text": "Step size is bounded by 1/L where L is the Lipschitz constant.",
+        "metadata": {"url": "https://example.com/gd"},
+    },
+]
+
+
+@pytest.mark.unit
+class TestElaborationSources:
+    def test_prompt_carries_source_excerpts_and_labels(self):
+        prompt = build_elaboration_prompt(PARENT, SELECTED, sources=SOURCES)
+
+        assert "(optimization.pdf)" in prompt
+        assert "(https://example.com/gd)" in prompt
+        assert "loss surface maps parameter vectors" in prompt
+        # Excerpts are presented as leads to verify, not as complete proof.
+        assert "not necessarily complete" in prompt
+
+    def test_followup_prompt_carries_source_excerpts(self):
+        prompt = build_elaboration_followup_prompt(
+            PARENT, SELECTED, THREAD, QUESTION, sources=SOURCES
+        )
+
+        assert "(optimization.pdf)" in prompt
+        assert "verify it against the excerpts" in prompt
+
+    def test_source_block_is_bounded(self):
+        huge = [{"text": "x" * 5000, "metadata": {"filename": "a"}} for _ in range(5)]
+        prompt = build_elaboration_prompt(PARENT, SELECTED, sources=huge)
+
+        # 6000-char cap plus the labels/markers; nothing near 25k.
+        assert len(prompt) < 9000
+
+    def test_no_sources_leaves_prompt_unchanged(self):
+        assert build_elaboration_prompt(PARENT, SELECTED, sources=[]) == (
+            build_elaboration_prompt(PARENT, SELECTED)
+        )
+
+    def test_directive_forces_source_grounding(self):
+        assert "Ground every claim" in ELABORATION_SYSTEM_DIRECTIVE
+        assert "retrieve the material" in ELABORATION_SYSTEM_DIRECTIVE
+        assert "web search" in ELABORATION_SYSTEM_DIRECTIVE
+        # Trivial cases may still be answered from context.
+        assert "only when the passage is trivial" in ELABORATION_SYSTEM_DIRECTIVE
+        # And it must admit when the sources fall short.
+        assert "say so instead of inventing one" in ELABORATION_SYSTEM_DIRECTIVE
