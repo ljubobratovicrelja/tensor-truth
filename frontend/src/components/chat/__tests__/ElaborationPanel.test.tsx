@@ -39,6 +39,18 @@ describe("ElaborationPanel composer", () => {
     expect(screen.getByLabelText("Send follow-up")).toBeDisabled();
   });
 
+  it("shows the research status instead of a generic spinner", () => {
+    useElaborationStore.getState().openFor(anchor);
+    useElaborationStore
+      .getState()
+      .setStatus('Searching knowledge base for "VICReg moments"...');
+    renderPanel();
+
+    expect(
+      screen.getByText('Searching knowledge base for "VICReg moments"...')
+    ).toBeInTheDocument();
+  });
+
   it("sends on Enter and clears the draft", async () => {
     useElaborationStore.getState().openStored(anchor, "elab-1", "Explained.");
     const { onFollowUp } = renderPanel();
