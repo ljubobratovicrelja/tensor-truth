@@ -20,6 +20,8 @@ interface ElaborationStore {
   isStreaming: boolean;
   error: string | null;
   runId: string | null;
+  /** Human-readable progress while tools run and no text has arrived yet. */
+  status: string | null;
 
   /** Persisted follow-up turns, oldest first. */
   thread: ThreadMessage[];
@@ -37,6 +39,7 @@ interface ElaborationStore {
     messages?: ThreadMessage[] | null
   ) => void;
   setRunId: (runId: string | null) => void;
+  setStatus: (status: string | null) => void;
   appendToken: (token: string) => void;
   appendThinking: (thinking: string) => void;
   finish: (content: string, elaborationId: string | null) => void;
@@ -66,6 +69,7 @@ const INITIAL = {
   isStreaming: false,
   error: null,
   runId: null,
+  status: null,
   thread: [] as ThreadMessage[],
   reply: "",
   isReplying: false,
@@ -99,7 +103,10 @@ export const useElaborationStore = create<ElaborationStore>((set) => ({
 
   setRunId: (runId) => set({ runId }),
 
-  appendToken: (token) => set((state) => ({ content: state.content + token })),
+  setStatus: (status) => set({ status }),
+
+  appendToken: (token) =>
+    set((state) => ({ content: state.content + token, status: null })),
 
   appendThinking: (thinking) => set((state) => ({ thinking: state.thinking + thinking })),
 
@@ -111,10 +118,11 @@ export const useElaborationStore = create<ElaborationStore>((set) => ({
       thinking: "",
       error: null,
       runId: null,
+      status: null,
     }),
 
   // Streaming failures are terminal for this panel but do not close it.
-  setError: (error) => set({ error, isStreaming: false, runId: null }),
+  setError: (error) => set({ error, isStreaming: false, runId: null, status: null }),
 
   startFollowUp: (userText) =>
     set((state) => ({
@@ -123,9 +131,11 @@ export const useElaborationStore = create<ElaborationStore>((set) => ({
       isReplying: true,
       followUpError: null,
       runId: null,
+      status: null,
     })),
 
-  appendReplyToken: (token) => set((state) => ({ reply: state.reply + token })),
+  appendReplyToken: (token) =>
+    set((state) => ({ reply: state.reply + token, status: null })),
 
   finishFollowUp: (content) =>
     set((state) => ({
@@ -134,6 +144,7 @@ export const useElaborationStore = create<ElaborationStore>((set) => ({
       isReplying: false,
       followUpError: null,
       runId: null,
+      status: null,
     })),
 
   failFollowUp: (error) =>
@@ -142,6 +153,7 @@ export const useElaborationStore = create<ElaborationStore>((set) => ({
       isReplying: false,
       followUpError: error,
       runId: null,
+      status: null,
     }),
 
   // Closing is purely visual: the run, partial text and thread keep going so

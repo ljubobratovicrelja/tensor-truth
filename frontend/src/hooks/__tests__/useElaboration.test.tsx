@@ -92,6 +92,39 @@ describe("useElaboration", () => {
     expect(useElaborationStore.getState().runId).toBe("run-1");
   });
 
+  it("surfaces tool progress while the research phase runs", async () => {
+    vi.mocked(startRun).mockResolvedValue({ run_id: "run-1" });
+    const { result } = mountHook();
+
+    await act(async () => {
+      await result.current.start(anchor);
+    });
+    const ws = FakeWebSocket.instances[0];
+    act(() => ws.onopen?.());
+
+    act(() =>
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "tool_phase",
+          tool_id: "rag",
+          phase: "retrieving",
+          message: 'Searching knowledge base for "VICReg moments"...',
+          seq: 1,
+        }),
+      })
+    );
+    expect(useElaborationStore.getState().status).toContain("Searching knowledge base");
+
+    // The first token replaces the progress line with the answer.
+    act(() =>
+      ws.onmessage?.({
+        data: JSON.stringify({ type: "token", content: "Because", seq: 2 }),
+      })
+    );
+    expect(useElaborationStore.getState().status).toBeNull();
+    expect(useElaborationStore.getState().content).toBe("Because");
+  });
+
   it("streams tokens and finishes with the persisted id", async () => {
     vi.mocked(startRun).mockResolvedValue({ run_id: "run-1" });
     const { result } = mountHook();

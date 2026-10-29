@@ -89,6 +89,17 @@ export function useElaboration(sessionId: string | null) {
         case "reasoning":
           store.appendThinking(event.content);
           return true;
+        case "tool_phase": {
+          const message = typeof event.message === "string" ? event.message : "";
+          if (message) store.setStatus(message);
+          return true;
+        }
+        case "tool_progress": {
+          if (event.action === "calling" && event.tool) {
+            store.setStatus(`Using ${event.tool}…`);
+          }
+          return true;
+        }
         case "done": {
           terminalRef.current = true;
           if (followUp) {

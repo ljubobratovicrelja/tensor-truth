@@ -20,7 +20,6 @@ interface ElaborationPanelProps {
 export function ElaborationPanel({ onCancel, onFollowUp }: ElaborationPanelProps) {
   const anchor = useElaborationStore((state) => state.anchor);
   const content = useElaborationStore((state) => state.content);
-  const thinking = useElaborationStore((state) => state.thinking);
   const isStreaming = useElaborationStore((state) => state.isStreaming);
   const error = useElaborationStore((state) => state.error);
   const activeElaborationId = useElaborationStore((state) => state.activeElaborationId);
@@ -28,6 +27,7 @@ export function ElaborationPanel({ onCancel, onFollowUp }: ElaborationPanelProps
   const reply = useElaborationStore((state) => state.reply);
   const isReplying = useElaborationStore((state) => state.isReplying);
   const followUpError = useElaborationStore((state) => state.followUpError);
+  const status = useElaborationStore((state) => state.status);
   const close = useElaborationStore((state) => state.close);
 
   const [draft, setDraft] = useState("");
@@ -103,9 +103,7 @@ export function ElaborationPanel({ onCancel, onFollowUp }: ElaborationPanelProps
         ) : isStreaming ? (
           <div className="text-muted-foreground flex items-center gap-2 text-sm">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span>
-              {thinking ? "Thinking about this passage..." : "Reading the passage..."}
-            </span>
+            <span>{status || "Reading the passage..."}</span>
           </div>
         ) : (
           <p className="text-muted-foreground text-sm">No explanation was returned.</p>
@@ -140,7 +138,7 @@ export function ElaborationPanel({ onCancel, onFollowUp }: ElaborationPanelProps
             ) : (
               <span className="text-muted-foreground flex items-center gap-2">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Thinking...
+                {status || "Thinking..."}
               </span>
             )}
           </div>
