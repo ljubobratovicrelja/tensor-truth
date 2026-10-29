@@ -32,7 +32,9 @@ from ..utils.metadata import (
     get_book_metadata_from_config,
     get_document_type_from_config,
 )
+from .lexical import LexicalIndex
 from .metadata import sanitize_model_id, write_index_metadata
+from .structure_parser import StructureNodeParser
 
 # Default embedding model
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
@@ -48,7 +50,14 @@ logger = logging.getLogger(__name__)
 class ChunkingStrategy(Enum):
     """Chunking strategy for document parsing.
 
-    HIERARCHICAL: Traditional fixed-size hierarchical chunking (default).
+    STRUCTURE: Structure-aware chunking (default). Splits on headings,
+        paragraphs and sentence ends instead of fixed token windows, and
+        tags every leaf with its heading path. This is the default because
+        fixed-token windows cut sentences, equations, tables and code fences
+        mid-way, so retrieval returned fragments that started mid-clause and
+        could not be quoted or reasoned about.
+
+    HIERARCHICAL: Traditional fixed-size hierarchical chunking.
         Fast and deterministic. Best for uniform technical documentation.
 
     SEMANTIC: Semantic-aware chunking using embedding similarity.
@@ -60,9 +69,75 @@ class ChunkingStrategy(Enum):
         (narrative + code). Slowest but most intelligent.
     """
 
+    STRUCTURE = "structure"
     HIERARCHICAL = "hierarchical"
     SEMANTIC = "semantic"
     SEMANTIC_HIERARCHICAL = "semantic_hierarchical"
+
+
+# Leaf size the structure parser uses when the caller expresses no preference.
+# Mirrors StructureNodeParser's own default so the two cannot drift.
+DEFAULT_STRUCTURE_MAX_LEAF_TOKENS = 512
+
+
+def structure_parser_kwargs(chunk_sizes: Optional[List[int]]) -> Dict[str, int]:
+    """Translate hierarchical ``chunk_sizes`` into structure-parser leaf bounds.
+
+    Callers (CLI flags, per-scope indexing config) still speak in hierarchical
+    chunk sizes, so the smallest requested size becomes the structure parser's
+    leaf ceiling: an explicit config keeps the chunk granularity the operator
+    asked for instead of silently doubling it. Tokens are the same unit in both
+    parsers, so no conversion is needed.
+
+    Args:
+        chunk_sizes: Caller-provided hierarchical sizes, or None for default.
+
+    Returns:
+        Keyword arguments for StructureNodeParser.
+    """
+    if not chunk_sizes:
+        max_leaf_tokens = DEFAULT_STRUCTURE_MAX_LEAF_TOKENS
+    else:
+        max_leaf_tokens = int(chunk_sizes[-1])
+
+    # Keep leaves large enough to hold a paragraph, but never above the ceiling
+    # (a caller asking for 64-token chunks would otherwise make the parser
+    # reject the bounds).
+    min_leaf_tokens = max(64, max_leaf_tokens // 4)
+    min_leaf_tokens = min(min_leaf_tokens, max_leaf_tokens)
+
+    return {
+        "max_leaf_tokens": max_leaf_tokens,
+        "min_leaf_tokens": min_leaf_tokens,
+    }
+
+
+def build_lexical_index(
+    index_dir: str | Path,
+    nodes: List[Any],
+    embedding_model: Optional[str] = None,
+) -> Optional[LexicalIndex]:
+    """Best-effort FTS5 side index next to the vector index.
+
+    Lexical search is an auxiliary signal: a failure here must never fail an
+    index build that already cost minutes of embedding, so every exception is
+    logged and swallowed.
+
+    Args:
+        index_dir: Directory holding the persisted vector index.
+        nodes: Parsed nodes; only leaves are indexed.
+        embedding_model: Recorded in the lexical index metadata.
+
+    Returns:
+        The built LexicalIndex, or None if the build failed.
+    """
+    try:
+        return LexicalIndex.build_from_store(
+            index_dir, nodes, embedding_model=embedding_model
+        )
+    except Exception as exc:  # noqa: BLE001 - auxiliary index, never fatal
+        logger.warning(f"Could not build lexical index in {index_dir}: {exc}")
+        return None
 
 
 def _create_embed_model(
@@ -256,7 +331,7 @@ def build_module(
     extensions: List[str] | None = None,
     chunk_sizes: List[int] | None = None,
     chunk_overlap: int | None = None,
-    chunking_strategy: str = "hierarchical",
+    chunking_strategy: str = "structure",
     semantic_buffer_size: int = 1,
     semantic_breakpoint_threshold: int = 95,
     device: Optional[str] = None,
@@ -282,7 +357,9 @@ def build_module(
         chunk_overlap: Overlap tokens between chunks (default: DEFAULT_CHUNK_OVERLAP).
             Prevents information loss at chunk boundaries.
         chunking_strategy: Strategy for chunking documents. One of:
-            - "hierarchical": Fixed-size hierarchical chunking (default, fast)
+            - "structure": Structure-aware chunking (default). Splits on
+              headings/paragraphs/sentences and records heading_path per leaf
+            - "hierarchical": Fixed-size hierarchical chunking (fast)
             - "semantic": Semantic-aware chunking using embedding similarity
             - "semantic_hierarchical": Semantic split + hierarchical parsing
         semantic_buffer_size: Buffer size for semantic splitter (default: 1).
@@ -301,6 +378,10 @@ def build_module(
     """
     if extensions is None:
         extensions = [".md", ".html", ".pdf"]
+    # Remember whether the caller expressed a chunk-size preference: the
+    # structure parser derives its leaf ceiling from it, and the default list
+    # here exists only to keep the legacy parsers and metadata unchanged.
+    requested_chunk_sizes = chunk_sizes
     if chunk_sizes is None:
         chunk_sizes = [2048, 512, 256]
     if chunk_overlap is None:
@@ -380,7 +461,18 @@ def build_module(
     strategy = ChunkingStrategy(chunking_strategy)
     logger.info(f"Using chunking strategy: {strategy.value}")
 
-    if strategy == ChunkingStrategy.HIERARCHICAL:
+    if strategy == ChunkingStrategy.STRUCTURE:
+        # Structure-aware default: the document's own headings and sentence
+        # boundaries decide where leaves end, and each leaf records its
+        # heading_path so retrieval can name the section it came from.
+        leaf_bounds = structure_parser_kwargs(requested_chunk_sizes)
+        node_parser = StructureNodeParser(
+            max_leaf_tokens=leaf_bounds["max_leaf_tokens"],
+            min_leaf_tokens=leaf_bounds["min_leaf_tokens"],
+        )
+        nodes = node_parser.get_nodes_from_documents(documents)
+
+    elif strategy == ChunkingStrategy.HIERARCHICAL:
         # Traditional hierarchical chunking
         node_parser = HierarchicalNodeParser.from_defaults(
             chunk_sizes=chunk_sizes,
@@ -443,13 +535,17 @@ def build_module(
 
     storage_context.persist(persist_dir=persist_dir)
 
+    # Lexical side index beside chroma.sqlite3: exact-term queries (API names,
+    # formulas, identifiers) are where dense retrieval alone is weakest.
+    build_lexical_index(Path(persist_dir), leaf_nodes, embedding_model=embedding_model)
+
     # Write index metadata for future compatibility checks
     write_index_metadata(
         index_dir=Path(persist_dir),
         embedding_model=embedding_model,
         chunk_sizes=chunk_sizes,
         chunk_overlap=chunk_overlap,
-        chunking_strategy=chunking_strategy,
+        chunking_strategy=strategy.value,
     )
 
     logger.info(f"Module '{module_name}' built successfully with {embedding_model}!")

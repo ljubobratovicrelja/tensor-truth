@@ -558,7 +558,7 @@ class IndexManagementService:
         self,
         module_name: str,
         *,
-        chunking_strategy: str = "hierarchical",
+        chunking_strategy: str = "structure",
         chunk_sizes: Optional[List[int]] = None,
         chunk_overlap: int = 64,
         embedding_model: Optional[str] = None,

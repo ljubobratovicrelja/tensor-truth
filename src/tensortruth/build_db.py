@@ -131,10 +131,12 @@ Environment Variables:
 
     parser.add_argument(
         "--chunking-strategy",
-        choices=["hierarchical", "semantic", "semantic_hierarchical"],
-        default="hierarchical",
-        help="Chunking strategy: hierarchical (fast, default), "
-        "semantic (embedding-aware), or semantic_hierarchical (two-pass).",
+        choices=["structure", "hierarchical", "semantic", "semantic_hierarchical"],
+        default="structure",
+        help="Chunking strategy: structure (default; splits on headings, "
+        "paragraphs and sentence ends, and records each chunk's heading path), "
+        "hierarchical (fixed token windows), semantic (embedding-aware), or "
+        "semantic_hierarchical (two-pass).",
     )
 
     parser.add_argument(

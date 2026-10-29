@@ -113,6 +113,7 @@ class DocumentService:
         pdf_files: Optional[List[Path]] = None,
         chunk_sizes: Optional[List[int]] = None,
         progress_callback: Optional[Callable] = None,
+        chunking_strategy: str = "structure",
     ) -> None:
         """Build vector index from PDF files.
 
@@ -122,6 +123,7 @@ class DocumentService:
             pdf_files: List of PDF paths. If None, indexes all PDFs in scope.
             chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256]).
             progress_callback: Optional callback(stage, current, total) for progress.
+            chunking_strategy: Chunking strategy name (default: structure).
 
         Raises:
             ValueError: If no PDF files provided or found.
@@ -133,7 +135,12 @@ class DocumentService:
             raise ValueError("No PDF files to index")
 
         builder = self._get_index_builder()
-        builder.build_index_from_pdfs(pdf_files, chunk_sizes, progress_callback)
+        builder.build_index_from_pdfs(
+            pdf_files,
+            chunk_sizes,
+            progress_callback,
+            chunking_strategy=chunking_strategy,
+        )
 
         # Update our metadata cache from builder and persist
         self.metadata_cache = builder.get_metadata_cache()
@@ -144,6 +151,7 @@ class DocumentService:
         markdown_files: Optional[List[Path]] = None,
         chunk_sizes: Optional[List[int]] = None,
         progress_callback: Optional[Callable] = None,
+        chunking_strategy: str = "structure",
     ) -> None:
         """Build vector index from markdown files.
 
@@ -153,9 +161,15 @@ class DocumentService:
             markdown_files: List of markdown paths. If None, uses all in scope.
             chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256]).
             progress_callback: Optional callback(stage, current, total) for progress.
+            chunking_strategy: Chunking strategy name (default: structure).
         """
         builder = self._get_index_builder()
-        builder.build_index(markdown_files, chunk_sizes, progress_callback)
+        builder.build_index(
+            markdown_files,
+            chunk_sizes,
+            progress_callback,
+            chunking_strategy=chunking_strategy,
+        )
         self.metadata_cache = builder.get_metadata_cache()
         self._persist_metadata()
 
@@ -453,6 +467,7 @@ class DocumentService:
         chunk_sizes: Optional[List[int]] = None,
         progress_callback: Optional[Callable] = None,
         conversion_method: str = "marker",
+        chunking_strategy: str = "structure",
     ) -> None:
         """Incremental build: only index documents not yet in the index.
 
@@ -463,6 +478,7 @@ class DocumentService:
             chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256]).
             progress_callback: Optional callback(stage, current, total).
             conversion_method: "marker" or "direct".
+            chunking_strategy: Chunking strategy name (default: structure).
         """
         from tensortruth.api.routes.documents import extract_doc_id
 
@@ -474,14 +490,16 @@ class DocumentService:
 
         # If settings changed, delete index and do full rebuild
         if builder.index_exists() and not builder.is_settings_current(
-            chunk_sizes, conversion_method
+            chunk_sizes, conversion_method, chunking_strategy
         ):
             logger.info("Settings changed, deleting index for full rebuild")
             builder.delete_index()
 
         if not builder.index_exists():
             # No existing index — full rebuild
-            self.rebuild_index(chunk_sizes, progress_callback, conversion_method)
+            self.rebuild_index(
+                chunk_sizes, progress_callback, conversion_method, chunking_strategy
+            )
             return
 
         # Determine which doc_ids need indexing
@@ -585,7 +603,13 @@ class DocumentService:
             outer_pct = 60 + int(inner_pct * 0.35)
             cb(stage, outer_pct, 100)
 
-        builder.add_documents(documents, doc_ids, chunk_sizes, embed_cb)
+        builder.add_documents(
+            documents,
+            doc_ids,
+            chunk_sizes,
+            embed_cb,
+            chunking_strategy=chunking_strategy,
+        )
 
         # Update metadata cache from builder and persist
         self.metadata_cache = builder.get_metadata_cache()
@@ -596,13 +620,15 @@ class DocumentService:
         chunk_sizes: Optional[List[int]] = None,
         progress_callback: Optional[Callable] = None,
         conversion_method: str = "marker",
+        chunking_strategy: str = "structure",
     ) -> None:
         """Rebuild the index from all documents in the scope.
 
         Args:
             chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256]).
-            progress_callback: Optional callback(stage, current, total) for progress.
+            progress_callback: Optional callback(stage, current, total).
             conversion_method: "marker" (default) or "direct" for legacy PDF path.
+            chunking_strategy: Chunking strategy name (default: structure).
         """
         pdf_files = self.get_all_pdf_files()
         existing_md = self.get_all_markdown_files()
@@ -611,12 +637,20 @@ class DocumentService:
         if conversion_method == "direct" or not pdf_files:
             # Legacy path or no PDFs (only markdown docs)
             if pdf_files:
-                self.index_pdfs(pdf_files, chunk_sizes, progress_callback)
+                self.index_pdfs(
+                    pdf_files, chunk_sizes, progress_callback, chunking_strategy
+                )
             elif existing_md:
-                self.index_from_markdown(existing_md, chunk_sizes, progress_callback)
+                self.index_from_markdown(
+                    existing_md, chunk_sizes, progress_callback, chunking_strategy
+                )
             # Save settings hash
             b = self._get_index_builder()
-            b._save_settings_hash(chunk_sizes or [2048, 512, 256], conversion_method)
+            b._save_settings_hash(
+                chunk_sizes or [2048, 512, 256],
+                conversion_method,
+                chunking_strategy,
+            )
             return
 
         # Unified progress: conversion (0-60%), embedding (60-95%), done (100%)
@@ -661,14 +695,21 @@ class DocumentService:
             outer_pct = 60 + int(inner_pct * 0.35)
             cb(stage, outer_pct, 100)
 
-        self.index_from_markdown(all_md, chunk_sizes, progress_callback=index_cb)
+        self.index_from_markdown(
+            all_md,
+            chunk_sizes,
+            progress_callback=index_cb,
+            chunking_strategy=chunking_strategy,
+        )
 
         cb("Complete", 100, 100)
         self._persist_metadata()
 
         # Save settings hash for staleness detection
         builder = self._get_index_builder()
-        builder._save_settings_hash(chunk_sizes or [2048, 512, 256], conversion_method)
+        builder._save_settings_hash(
+            chunk_sizes or [2048, 512, 256], conversion_method, chunking_strategy
+        )
 
     def upload_text(self, content: bytes, filename: str) -> PDFMetadata:
         """Upload a text or markdown file.

@@ -577,13 +577,20 @@ def get_similarity_top_k(engine_params: Optional[Dict[str, Any]] = None) -> int:
 
 
 def _open_index(
-    persist_dir: str, embed_model: Any, similarity_top_k: int
+    persist_dir: str,
+    embed_model: Any,
+    similarity_top_k: int,
+    use_lexical: bool = True,
 ) -> tuple[BaseRetriever, Any]:
-    """Open one persisted Chroma index and build its auto-merging retriever.
+    """Open one persisted Chroma index and build its retriever.
 
     The embedder is passed explicitly so retrieval never depends on the
     process-global ``Settings.embed_model`` (which concurrent sessions with
     different embedding models would otherwise clobber).
+
+    When a lexical side index exists next to the vector store, the dense
+    auto-merging retriever is fused with a leaf-level lexical retriever so
+    exact-term queries are not lost to embedding similarity alone.
     """
     db = chromadb.PersistentClient(path=persist_dir)
     collection = db.get_or_create_collection("data")
@@ -595,9 +602,37 @@ def _open_index(
     index = load_index_from_storage(storage_context, embed_model=embed_model)
 
     base = index.as_retriever(similarity_top_k=similarity_top_k)
-    retriever = AutoMergingRetriever(
+    auto_merging = AutoMergingRetriever(
         base, index.storage_context, verbose=False  # type: ignore[arg-type]
     )
+    retriever: BaseRetriever = auto_merging
+
+    if use_lexical:
+        from tensortruth.indexing.lexical import LEXICAL_DB_FILENAME, LexicalIndex
+        from tensortruth.retrieval.fusion import LexicalRetriever, RRFusionRetriever
+
+        if os.path.exists(os.path.join(persist_dir, LEXICAL_DB_FILENAME)):
+            try:
+                lexical = LexicalIndex(persist_dir)
+                lexical_retriever = LexicalRetriever(
+                    lexical=lexical,
+                    top_k=similarity_top_k,
+                    node_lookup=index.storage_context.docstore.get_node,
+                )
+                retriever = RRFusionRetriever(
+                    [auto_merging, lexical_retriever], rrf_k=60
+                )
+                logger.info(
+                    f"Fused 2 retrieval backends (dense+auto-merge, lexical) for "
+                    f"index '{persist_dir}' with {lexical.count()} lexical chunks"
+                )
+            except Exception as e:
+                # A broken lexical side index must not cost the dense retriever.
+                logger.warning(
+                    f"Lexical index at '{persist_dir}' unusable, "
+                    f"falling back to dense retrieval: {e}"
+                )
+
     return retriever, index
 
 
@@ -633,6 +668,7 @@ def load_module_index(
     embedding_model: str,
     embed_model: Any,
     similarity_top_k: int,
+    use_lexical: bool = True,
 ) -> Optional[tuple[BaseRetriever, Any]]:
     """Load a single module index.
 
@@ -641,6 +677,7 @@ def load_module_index(
         embedding_model: Canonical embedding model id (used for the path).
         embed_model: Embedder instance shared through ModelManager.
         similarity_top_k: Candidate pool size for the inner retriever.
+        use_lexical: Fuse a lexical side index when one is present.
 
     Returns:
         (retriever, index) or None when the module has no index on disk.
@@ -648,20 +685,23 @@ def load_module_index(
     path = resolve_module_index_path(module_name, embedding_model)
     if path is None:
         return None
-    return _open_index(path, embed_model, similarity_top_k)
+    return _open_index(path, embed_model, similarity_top_k, use_lexical=use_lexical)
 
 
 def load_index_from_path(
     index_path: str,
     embed_model: Any,
     similarity_top_k: int,
+    use_lexical: bool = True,
 ) -> Optional[tuple[BaseRetriever, Any]]:
     """Load an explicit index path (session PDFs, project indexes)."""
     if not os.path.exists(index_path):
         logger.warning(f"Additional index path not found, skipping: {index_path}")
         return None
     try:
-        return _open_index(index_path, embed_model, similarity_top_k)
+        return _open_index(
+            index_path, embed_model, similarity_top_k, use_lexical=use_lexical
+        )
     except Exception as e:
         logger.warning(f"Failed to load additional index {index_path}: {e}")
         return None

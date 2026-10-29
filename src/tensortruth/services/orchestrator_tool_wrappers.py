@@ -153,6 +153,28 @@ class RAGQueryInput(BaseModel):
     )
 
 
+class ChunkRefInput(BaseModel):
+    """Input schema for tools that take a chunk reference from rag_query."""
+
+    node_id: str = Field(
+        description=(
+            "Chunk reference from a rag_query source header, e.g. "
+            "'chunk node_id=1f3a9c02'. The 8-character prefix is enough."
+        )
+    )
+
+
+class ReadNeighboursInput(ChunkRefInput):
+    """Input schema for read_neighbours."""
+
+    before: int = Field(
+        default=2, description="How many preceding chunks to include (0-10)."
+    )
+    after: int = Field(
+        default=2, description="How many following chunks to include (0-10)."
+    )
+
+
 class WebSearchInput(BaseModel):
     """Input schema for web_search orchestrator tool."""
 
@@ -376,6 +398,24 @@ def _format_build_stage(stage: str) -> tuple[str, str]:
 # --- Factory functions ---
 
 
+def _context_service_for(
+    rag_service: Optional["RAGService"], session_id: Optional[str]
+) -> Optional[Any]:
+    """Build a ChunkContextService for a session, or None when unusable.
+
+    Called per tool invocation rather than at construction: tools are created
+    before load_modules runs, and the session's retriever (hence its docstores)
+    can change or disappear between calls.
+    """
+    from tensortruth.services.chunk_context import build_for_session
+
+    try:
+        return build_for_session(rag_service, session_id)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Chunk context service unavailable: %s", exc)
+        return None
+
+
 def create_rag_tool(
     rag_service: RAGService,
     progress_emitter: ProgressEmitter,
@@ -480,9 +520,12 @@ def create_rag_tool(
         # Format source excerpts (+ scores, confidence, metrics) for the agent.
         # The orchestrator has no separate synthesizer: this text IS what the
         # model reads, so it must carry the chunk content, budget-capped.
+        # The context service is only for headers (node id prefix + section
+        # size); it never changes how the excerpt budget is spent.
         output = _format_retrieval_result(
             result,
             max_chars=_tool_content_budget(context_window, RAG_CONTENT_PCT),
+            context_service=_context_service_for(rag_service, session_id),
         )
         if full_output_callback is not None:
             full_output_callback("rag_query", output)
@@ -505,6 +548,225 @@ def create_rag_tool(
 
 
 MAX_MODULES_PER_LOAD = 6
+
+# Expansion output cap. A section larger than this is not worth pasting whole:
+# the agent already has the chunk it asked about, and a bigger blob would push
+# the rest of the retrieval out of the context window.
+MAX_CONTEXT_CHARS = 6000
+
+
+def _truncate_context(text: str, limit: int = MAX_CONTEXT_CHARS) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 40)].rstrip() + "\n... [truncated, section too long]"
+
+
+def create_chunk_context_tools(
+    rag_service: Optional["RAGService"] = None,
+    session_id: Optional[str] = None,
+    context_service: Optional[Any] = None,
+) -> List[FunctionTool]:
+    """Create the chunk-context expansion tools for the orchestrator.
+
+    rag_query prints a short node id per source; these tools spend one cheap
+    docstore walk (no embedding, no reindex) to hand back the enclosing section,
+    the neighbour chunks, or the document outline. They exist because the
+    retrieved ~500-char leaves routinely start mid-sentence.
+
+    Args:
+        rag_service: RAGService whose session retriever supplies the docstores.
+        session_id: Session whose retrieval set to inspect.
+        context_service: Pre-built ChunkContextService; when given, the tools
+            use it instead of resolving one per call (used by tests).
+
+    Returns:
+        expand_section, read_neighbours and document_outline FunctionTools.
+    """
+
+    def _service() -> Optional[Any]:
+        if context_service is not None:
+            return context_service
+        return _context_service_for(rag_service, session_id)
+
+    no_documents = (
+        "No documents are loaded for this session, so chunk ids cannot be "
+        "resolved. Call load_modules first, then rag_query."
+    )
+
+    def _not_found(node_id: str) -> str:
+        return (
+            f"Chunk id '{node_id}' not found (it may be mistyped, ambiguous, or "
+            "belong to documents that are no longer loaded). Chunk ids come "
+            "from the 'chunk node_id=' field in rag_query source headers; run "
+            "rag_query again if unsure."
+        )
+
+    def _document_label(service: Any, node: Any) -> str:
+        name = service.document_name(node) or "unknown document"
+        return f'"{name}"'
+
+    async def expand_section(node_id: str) -> str:
+        """Return the whole section that contains a retrieved chunk.
+
+        Use when a rag_query excerpt looks relevant but is cut off, starts
+        mid-sentence, or stops before the explanation finishes: this returns
+        the enclosing section (up to 6000 chars) without another search.
+        """
+        service = _service()
+        if service is None:
+            return no_documents
+        node = service.resolve(node_id)
+        if node is None:
+            return _not_found(node_id)
+
+        section, _ancestors = service.section(node.node_id, max_chars=MAX_CONTEXT_CHARS)
+        # Sections bigger than the cap are not an error: the chunk's own text
+        # is still the best bounded answer we have.
+        target = section if section is not None else node
+        text = _truncate_context(target.get_content() or "")
+        if not text.strip():
+            return f"Chunk id '{node_id}' resolved but its section has no text."
+
+        included = service.child_refs(target) or [target.node_id[:8]]
+        header = [
+            f"Section: {service.heading_path(target)}",
+            f"Document: {_document_label(service, target)}",
+            f"Chunks included: {', '.join(included)}",
+            (
+                "Scope: enclosing section"
+                if section is not None
+                else "Scope: the chunk itself (its section exceeds 6000 chars)"
+            ),
+        ]
+        return "\n".join(header) + "\n\n" + text
+
+    async def read_neighbours(node_id: str, before: int = 2, after: int = 2) -> str:
+        """Return the chunks immediately before and after a retrieved chunk.
+
+        Use when the discussion clearly continues on either side of an excerpt
+        (a definition split across chunks, a list whose items are missing) but
+        the section as a whole is too large to read.
+        """
+        service = _service()
+        if service is None:
+            return no_documents
+        node = service.resolve(node_id)
+        if node is None:
+            return _not_found(node_id)
+
+        before = max(0, min(int(before), 10))
+        after = max(0, min(int(after), 10))
+        pairs = service.neighbours(node.node_id, before=before, after=after)
+        if not pairs:
+            return (
+                f"No adjacent chunks found for node_id={node.node_id[:8]} "
+                "(it is the only chunk of its document, or the edges are not "
+                "linked in this index)."
+            )
+
+        previous = [n for label, n in pairs if label == "previous"]
+        following = [n for label, n in pairs if label == "next"]
+
+        body: List[str] = [
+            f"Neighbouring chunks of node_id={node.node_id[:8]} "
+            f"in {_document_label(service, node)} "
+            f"({len(previous)} before, {len(following)} after):",
+            "",
+        ]
+        for n in previous:
+            body.append(f"--- previous: node_id={n.node_id[:8]} ---")
+            body.append(n.get_content() or "")
+            body.append("")
+        body.append(f"--- current: node_id={node.node_id[:8]} ---")
+        body.append(node.get_content() or "")
+        body.append("")
+        for n in following:
+            body.append(f"--- next: node_id={n.node_id[:8]} ---")
+            body.append(n.get_content() or "")
+            body.append("")
+        return _truncate_context("\n".join(body).rstrip())
+
+    async def document_outline(node_id: str) -> str:
+        """List the sections of the document a retrieved chunk belongs to.
+
+        Use to find other sections of the same document (a later chapter, the
+        results after the methods) when the retrieved excerpt covers only part
+        of what the question needs. Then call expand_section on a listed id.
+        """
+        service = _service()
+        if service is None:
+            return no_documents
+        node = service.resolve(node_id)
+        if node is None:
+            return _not_found(node_id)
+
+        entries = service.outline_entries(node.node_id, max_entries=40)
+        if not entries:
+            return (
+                f"The document of node_id={node.node_id[:8]} has no section "
+                "structure (indexed before the structure parser); only "
+                "read_neighbours is available for it."
+            )
+
+        from tensortruth.services.chunk_context import format_char_size
+
+        lines = [
+            f"Outline of {_document_label(service, node)} "
+            f"({len(entries)} sections, in document order):"
+        ]
+        for index, title, section_id, size in entries:
+            lines.append(
+                f"{index}. {title} | node_id={section_id[:8]} | "
+                f"{format_char_size(size)}"
+            )
+        lines.append("")
+        lines.append(
+            "Call expand_section with a section's node_id to read it, or "
+            "rag_query for content-level search."
+        )
+        return _truncate_context("\n".join(lines))
+
+    return [
+        FunctionTool.from_defaults(
+            async_fn=expand_section,
+            name="expand_section",
+            description=(
+                "Expand a retrieved chunk to its enclosing section. Call this "
+                "when a rag_query excerpt looks relevant but is truncated, "
+                "starts mid-sentence, or stops before the explanation ends. "
+                "Takes the 'chunk node_id' prefix printed in the rag_query "
+                "source header and returns the section text (up to 6000 "
+                "chars) with its document and heading path. No new search is "
+                "performed, so it is cheap."
+            ),
+            fn_schema=ChunkRefInput,
+        ),
+        FunctionTool.from_defaults(
+            async_fn=read_neighbours,
+            name="read_neighbours",
+            description=(
+                "Read the chunks immediately before and after a retrieved "
+                "chunk. Call this when the surrounding discussion is what is "
+                "missing (a definition split across chunks, a list with items "
+                "cut off) but the whole section is too large. Takes the 'chunk "
+                "node_id' prefix from a rag_query source header; before/after "
+                "default to 2 chunks each, capped at 6000 chars total."
+            ),
+            fn_schema=ReadNeighboursInput,
+        ),
+        FunctionTool.from_defaults(
+            async_fn=document_outline,
+            name="document_outline",
+            description=(
+                "List the sections of the document a retrieved chunk belongs "
+                "to, with a node id per section. Call this to find other "
+                "sections of the same document (later chapters, results after "
+                "methods) when one excerpt does not cover the question, then "
+                "expand_section on a listed node id."
+            ),
+            fn_schema=ChunkRefInput,
+        ),
+    ]
 
 
 def create_load_modules_tool(
@@ -666,8 +928,54 @@ def create_load_modules_tool(
     )
 
 
+def _format_source_header(
+    index: int,
+    node: Any,
+    title: str,
+    score_str: str,
+    context_service: Optional[Any] = None,
+) -> str:
+    """Build one source header line, with chunk pointers when available.
+
+    ``[s2] Book > Chapter 1 > Methods | chunk node_id=1f3a9c02 | section
+    ~4.1k chars available | score: 0.7391``
+
+    The node id prefix is what expand_section/read_neighbours accept; the
+    section size tells the agent whether expanding is worth a tool call. Both
+    are omitted when no context service is wired (LLM-only or no engine), so
+    the header degrades to the old title + score.
+    """
+    header = f"[s{index}] {title}"
+    node_id = getattr(node, "node_id", None)
+
+    if context_service is not None and node_id:
+        try:
+            heading = context_service.heading_path(node)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("heading_path failed for %s: %s", node_id, exc)
+            heading = ""
+        if heading and heading != title:
+            header += f" > {heading}"
+        header += f" | chunk node_id={node_id[:8]}"
+        try:
+            section_node, _ancestors = context_service.section(node_id)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("section lookup failed for %s: %s", node_id, exc)
+            section_node = None
+        if section_node is not None:
+            from tensortruth.services.chunk_context import format_char_size
+
+            size = len(section_node.get_content() or "")
+            header += f" | section {format_char_size(size)} available"
+
+    header += f" | score: {score_str}"
+    return header
+
+
 def _format_retrieval_result(
-    result: "RAGRetrievalResult", max_chars: Optional[int] = None
+    result: "RAGRetrievalResult",
+    max_chars: Optional[int] = None,
+    context_service: Optional[Any] = None,
 ) -> str:
     """Format a RAGRetrievalResult as a structured string for LLM consumption.
 
@@ -680,6 +988,10 @@ def _format_retrieval_result(
         result: RAGRetrievalResult from RAGService.retrieve().
         max_chars: Total character budget for all excerpts. None keeps the
             legacy per-source cap only.
+        context_service: Optional ChunkContextService. When present each
+            source header carries the chunk's node id prefix and the size of
+            the enclosing section, which is how the agent decides to call
+            expand_section instead of re-running the query.
 
     Returns:
         Formatted string with source excerpts and metadata.
@@ -736,7 +1048,9 @@ def _format_retrieval_result(
             text = text[: max(0, per_source_cap - 16)] + "... [truncated]"
             any_truncated = True
 
-        lines.append(f"--- Source {i}: {title} (score: {score_str}) ---")
+        lines.append(
+            _format_source_header(i, inner_node, title, score_str, context_service)
+        )
         lines.append(text)
         lines.append("")
 
@@ -2799,6 +3113,18 @@ def create_all_tool_wrappers(
                 module_mode=normalized_mode,
             )
         )
+        # Context expansion tools read the docstore hierarchy that indexing
+        # already persisted, so they cost no retrieval. They are registered
+        # separately and guarded: a failure here must not cost the session its
+        # rag_query tool.
+        try:
+            tools.extend(
+                create_chunk_context_tools(
+                    rag_service=rag_service, session_id=session_id
+                )
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Chunk context tools unavailable: %s", exc)
         if normalized_mode == "auto":
             tools.append(
                 create_load_modules_tool(

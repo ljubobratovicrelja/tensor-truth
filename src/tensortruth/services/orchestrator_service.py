@@ -94,6 +94,11 @@ _WRAPPED_BUILTIN_TOOL_NAMES = frozenset(
         "build_index",
         "inspect",
         "load_modules",
+        # Chunk-context tools are built by orchestrator_tool_wrappers too; they
+        # must not be mistaken for MCP tools in the prompt or the tool filter.
+        "expand_section",
+        "read_neighbours",
+        "document_outline",
     }
 )
 

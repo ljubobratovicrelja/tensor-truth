@@ -7,6 +7,7 @@ import pytest
 
 from tensortruth.core.types import DocumentType
 from tensortruth.indexing.builder import build_module, extract_metadata
+from tensortruth.indexing.metadata import read_index_metadata
 
 
 @pytest.mark.unit
@@ -458,6 +459,7 @@ class TestChunkOverlap:
             indexes_dir,
             mock_sources_config,
             chunk_overlap=128,
+            chunking_strategy="hierarchical",
         )
 
         # Verify chunk_overlap was passed to the parser
@@ -495,6 +497,7 @@ class TestChunkOverlap:
             temp_docs_dir,
             indexes_dir,
             mock_sources_config,
+            chunking_strategy="hierarchical",
         )
 
         # Verify default chunk_overlap was used
@@ -531,6 +534,7 @@ class TestChunkOverlap:
             indexes_dir,
             mock_sources_config,
             chunk_overlap=512,
+            chunking_strategy="hierarchical",
         )
 
         call_kwargs = mock_parser_class.from_defaults.call_args.kwargs
@@ -845,3 +849,138 @@ class TestSemanticChunking:
 
         call_kwargs = mock_semantic_parser.call_args.kwargs
         assert call_kwargs.get("breakpoint_percentile_threshold") == 90
+
+
+@pytest.mark.unit
+class TestStructureChunkingDefault:
+    """Structure-aware chunking is the default for library builds.
+
+    Regression: the default used to be fixed-token HierarchicalNodeParser
+    windows, which cut sentences/equations/code and produced leaves with no
+    section identity, and no lexical side index was written at all.
+    """
+
+    @pytest.fixture
+    def mock_sources_config(self):
+        return {
+            "libraries": {
+                "test_lib": {
+                    "type": "sphinx",
+                    "version": "1.0",
+                    "doc_root": "https://example.com/docs/",
+                }
+            },
+        }
+
+    @pytest.fixture
+    def temp_docs_dir(self, tmp_path):
+        docs_dir = tmp_path / "library_docs"
+        lib_dir = docs_dir / "library_test_lib"
+        lib_dir.mkdir(parents=True)
+        (lib_dir / "intro.md").write_text(
+            "# Introduction\n\nFirst paragraph about tensors.\n\n"
+            "## Details\n\nSecond paragraph with more text.\n"
+        )
+        (lib_dir / "api.md").write_text(
+            "# API Reference\n\n`torch.matmul(input, other)` multiplies tensors.\n"
+        )
+        return str(docs_dir)
+
+    @patch("tensortruth.indexing.builder.HierarchicalNodeParser")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_default_strategy_uses_structure_parser_and_writes_lexical(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_hierarchical_parser,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """Default build parses with StructureNodeParser and emits lexical.sqlite3."""
+        from tensortruth.indexing.lexical import LEXICAL_DB_FILENAME, LexicalIndex
+
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+
+        indexes_dir = str(tmp_path / "indexes")
+        result = build_module(
+            "test_lib", temp_docs_dir, indexes_dir, mock_sources_config
+        )
+
+        assert result is True
+        # The legacy parser must not be consulted at all by default.
+        mock_hierarchical_parser.from_defaults.assert_not_called()
+
+        persist_dir = Path(indexes_dir, "bge-m3", "library_test_lib")
+        assert (persist_dir / LEXICAL_DB_FILENAME).is_file()
+        assert LexicalIndex(persist_dir).count() > 0
+
+        # Leaves really came from the structure parser: they carry heading_path.
+        embedded_leaves = mock_index.call_args.args[0]
+        assert embedded_leaves
+        assert all("heading_path" in leaf.metadata for leaf in embedded_leaves)
+
+        metadata = read_index_metadata(persist_dir)
+        assert metadata is not None
+        assert metadata["chunking_strategy"] == "structure"
+
+    @patch("tensortruth.indexing.builder.StructureNodeParser")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_structure_parser_leaf_bound_follows_chunk_sizes(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_structure_parser,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """An explicit chunk_sizes config keeps its smallest size as the ceiling."""
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+        mock_structure_parser.return_value.get_nodes_from_documents.return_value = []
+
+        build_module(
+            "test_lib",
+            temp_docs_dir,
+            str(tmp_path / "indexes"),
+            mock_sources_config,
+            chunk_sizes=[4096, 1024, 320],
+        )
+
+        call_kwargs = mock_structure_parser.call_args.kwargs
+        assert call_kwargs["max_leaf_tokens"] == 320
+        assert call_kwargs["min_leaf_tokens"] == 80
+
+    @patch("tensortruth.indexing.builder.LexicalIndex")
+    @patch("tensortruth.indexing.builder.VectorStoreIndex")
+    @patch("tensortruth.indexing.builder._create_embed_model")
+    @patch("tensortruth.indexing.builder.TensorTruthConfig._detect_default_device")
+    def test_lexical_failure_does_not_fail_build(
+        self,
+        mock_detect_device,
+        mock_embed,
+        mock_index,
+        mock_lexical,
+        tmp_path,
+        temp_docs_dir,
+        mock_sources_config,
+    ):
+        """A broken FTS5 build must not discard a finished vector index."""
+        mock_detect_device.return_value = "cpu"
+        mock_embed.return_value = MagicMock()
+        mock_lexical.build_from_store.side_effect = RuntimeError("fts5 unavailable")
+
+        result = build_module(
+            "test_lib", temp_docs_dir, str(tmp_path / "indexes"), mock_sources_config
+        )
+
+        assert result is True
+        mock_index.assert_called_once()

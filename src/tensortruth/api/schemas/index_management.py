@@ -66,7 +66,7 @@ class BuildRequest(BaseModel):
     """Request to build a vector index for a module."""
 
     module_name: str
-    chunking_strategy: str = "hierarchical"
+    chunking_strategy: str = "structure"
     chunk_sizes: List[int] = Field(default_factory=lambda: [2048, 512, 256])
     chunk_overlap: int = 64
     embedding_model: Optional[str] = None
@@ -78,7 +78,7 @@ class BatchBuildRequest(BaseModel):
     """Request to build indexes for multiple modules."""
 
     module_names: List[str]
-    chunking_strategy: str = "hierarchical"
+    chunking_strategy: str = "structure"
     chunk_sizes: List[int] = Field(default_factory=lambda: [2048, 512, 256])
     chunk_overlap: int = 64
     embedding_model: Optional[str] = None

@@ -18,12 +18,62 @@ from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from .core.ollama import get_ollama_url
+from .indexing.builder import (
+    ChunkingStrategy,
+    build_lexical_index,
+    structure_parser_kwargs,
+)
+from .indexing.lexical import LexicalIndex
+from .indexing.structure_parser import StructureNodeParser
 from .rag_engine import get_embed_model
 from .utils.metadata import extract_uploaded_pdf_metadata
 from .utils.progress import monotonic_callback, stage_heartbeat
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _parse_document_nodes(
+    documents: List,
+    chunk_sizes: List[int],
+    chunking_strategy: str,
+) -> List:
+    """Parse session documents with the requested chunking strategy.
+
+    Session/project uploads share the library build's default ('structure'):
+    uploaded PDFs and notes are just as likely to contain equations, code and
+    tables that a fixed-token window would cut in half.
+
+    Args:
+        documents: LlamaIndex Document objects.
+        chunk_sizes: Hierarchical chunk sizes from the caller; the last entry
+            becomes the structure parser's leaf ceiling.
+        chunking_strategy: One of ChunkingStrategy's values.
+
+    Returns:
+        Flat node list (document/section/leaf) for the whole batch.
+    """
+    strategy = ChunkingStrategy(chunking_strategy)
+
+    if strategy == ChunkingStrategy.STRUCTURE:
+        leaf_bounds = structure_parser_kwargs(chunk_sizes)
+        parser = StructureNodeParser(
+            max_leaf_tokens=leaf_bounds["max_leaf_tokens"],
+            min_leaf_tokens=leaf_bounds["min_leaf_tokens"],
+        )
+        return list(parser.get_nodes_from_documents(documents))
+
+    if strategy != ChunkingStrategy.HIERARCHICAL:
+        # Semantic splitting needs an embed model this path never builds; the
+        # previous behaviour for these names was hierarchical, so keep it and
+        # say so rather than pretending the request was honoured.
+        logger.warning(
+            f"Chunking strategy '{strategy.value}' is not supported for session "
+            "indexes; falling back to hierarchical chunking"
+        )
+
+    parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
+    return list(parser.get_nodes_from_documents(documents))
 
 
 class DocumentIndexBuilder:
@@ -144,6 +194,7 @@ class DocumentIndexBuilder:
         pdf_files: List[Path],
         chunk_sizes: List[int] | None = None,
         progress_callback: Optional[Callable] = None,
+        chunking_strategy: str = "structure",
     ) -> None:
         """
         Build ChromaDB vector index directly from PDF files (fast path).
@@ -152,6 +203,7 @@ class DocumentIndexBuilder:
             pdf_files: List of PDF file paths
             chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256])
             progress_callback: Optional callback(stage, current, total) for progress
+            chunking_strategy: Chunking strategy name (default: structure)
 
         Raises:
             ValueError: If no PDF files provided
@@ -216,7 +268,7 @@ class DocumentIndexBuilder:
             # single blocking call (minutes on CPU) with no per-batch callback, so
             # the heartbeat keeps the stage visibly progressing.
             with stage_heartbeat(cb, "Embedding documents", 70, 95):
-                self._build_vector_index(documents, chunk_sizes)
+                self._build_vector_index(documents, chunk_sizes, chunking_strategy)
 
             # Stage 4: Complete
             cb("Complete", 100, 100)
@@ -292,18 +344,25 @@ class DocumentIndexBuilder:
             logger.warning(f"Metadata extraction unavailable: {e}")
             logger.info("Continuing index build without metadata enrichment")
 
-    def _build_vector_index(self, documents: List, chunk_sizes: List[int]) -> None:
+    def _build_vector_index(
+        self,
+        documents: List,
+        chunk_sizes: List[int],
+        chunking_strategy: str = "structure",
+    ) -> None:
         """Build the vector index from documents.
 
         Args:
             documents: List of LlamaIndex Document objects
             chunk_sizes: Hierarchical chunk sizes
+            chunking_strategy: Chunking strategy name (default: structure)
         """
-        # Parse with hierarchical chunking
-        node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
-        nodes = node_parser.get_nodes_from_documents(documents)
+        nodes = _parse_document_nodes(documents, chunk_sizes, chunking_strategy)
         leaf_nodes = get_leaf_nodes(nodes)
-        logger.info(f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves)")
+        logger.info(
+            f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves) "
+            f"with '{chunking_strategy}' chunking"
+        )
 
         # Create ChromaDB vector store
         chroma_client = self._get_chroma_client()
@@ -327,6 +386,10 @@ class DocumentIndexBuilder:
 
         # Persist to disk
         storage_context.persist(persist_dir=str(self.index_dir))
+
+        # Lexical side index for exact-term queries; best effort so a lexical
+        # failure cannot discard an index that already cost an embed pass.
+        build_lexical_index(self.index_dir, leaf_nodes)
         logger.info(f"Document index built: {self.index_dir}")
 
     def build_index(
@@ -334,6 +397,7 @@ class DocumentIndexBuilder:
         markdown_files: Optional[List[Path]] = None,
         chunk_sizes: List[int] | None = None,
         progress_callback: Optional[Callable] = None,
+        chunking_strategy: str = "structure",
     ) -> None:
         """
         Build ChromaDB vector index from markdown files.
@@ -342,6 +406,7 @@ class DocumentIndexBuilder:
             markdown_files: List of markdown file paths (if None, uses all in markdown dir)
             chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256])
             progress_callback: Optional callback(stage, current, total) for progress
+            chunking_strategy: Chunking strategy name (default: structure)
 
         Raises:
             ValueError: If no markdown files found
@@ -401,7 +466,7 @@ class DocumentIndexBuilder:
             # single blocking call (minutes on CPU) with no per-batch callback, so
             # the heartbeat keeps the stage visibly progressing.
             with stage_heartbeat(cb, "Embedding documents", 70, 95):
-                self._build_vector_index(documents, chunk_sizes)
+                self._build_vector_index(documents, chunk_sizes, chunking_strategy)
 
             # Stage 4: Complete
             cb("Complete", 100, 100)
@@ -410,15 +475,24 @@ class DocumentIndexBuilder:
             logger.error(f"Failed to build document index: {e}")
             raise
 
-    def rebuild_index(self, chunk_sizes: List[int] | None = None) -> None:
+    def rebuild_index(
+        self,
+        chunk_sizes: List[int] | None = None,
+        chunking_strategy: str = "structure",
+    ) -> None:
         """
         Rebuild index from all markdown files in directory.
 
         Args:
             chunk_sizes: Hierarchical chunk sizes (default: [2048, 512, 256])
+            chunking_strategy: Chunking strategy name (default: structure)
         """
         logger.info(f"Rebuilding index in {self.index_dir}")
-        self.build_index(markdown_files=None, chunk_sizes=chunk_sizes)
+        self.build_index(
+            markdown_files=None,
+            chunk_sizes=chunk_sizes,
+            chunking_strategy=chunking_strategy,
+        )
 
     def delete_index(self) -> None:
         """Remove the index directory and all its contents."""
@@ -486,6 +560,7 @@ class DocumentIndexBuilder:
         doc_ids: List[str],
         chunk_sizes: List[int],
         progress_callback: Optional[Callable] = None,
+        chunking_strategy: str = "structure",
     ) -> None:
         """Incrementally add documents to an existing index.
 
@@ -494,6 +569,7 @@ class DocumentIndexBuilder:
             doc_ids: Corresponding doc_id for each document.
             chunk_sizes: Hierarchical chunk sizes.
             progress_callback: Optional callback(stage, current, total).
+            chunking_strategy: Chunking strategy name (default: structure).
         """
         cb = monotonic_callback(progress_callback or (lambda *a: None))
 
@@ -522,8 +598,7 @@ class DocumentIndexBuilder:
 
         # Parse nodes
         cb("Embedding documents", 70, 100)
-        node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
-        nodes = node_parser.get_nodes_from_documents(documents)
+        nodes = _parse_document_nodes(documents, chunk_sizes, chunking_strategy)
         leaf_nodes = get_leaf_nodes(nodes)
         logger.info(f"Parsed {len(nodes)} nodes ({len(leaf_nodes)} leaves)")
 
@@ -535,7 +610,17 @@ class DocumentIndexBuilder:
 
         # Persist
         storage_context.persist(persist_dir=str(self.index_dir))
-        self._save_settings_hash(chunk_sizes)
+
+        # Rebuild the lexical index from the whole docstore rather than merging
+        # rows by node_id: one O(n) FTS5 rebuild is cheap next to an embed pass,
+        # and it keeps deleted/rewritten chunks from lingering in the side index.
+        try:
+            docstore_nodes = list(storage_context.docstore.docs.values())
+            LexicalIndex.build_from_store(self.index_dir, docstore_nodes)
+        except Exception as exc:  # noqa: BLE001 - auxiliary index, never fatal
+            logger.warning(f"Could not refresh lexical index: {exc}")
+
+        self._save_settings_hash(chunk_sizes, chunking_strategy=chunking_strategy)
 
         cb("Complete", 100, 100)
         logger.info(f"Incremental add complete: {len(documents)} documents added")
@@ -591,12 +676,18 @@ class DocumentIndexBuilder:
         self,
         chunk_sizes: List[int],
         conversion_method: str = "marker",
+        chunking_strategy: str = "structure",
     ) -> bool:
         """Check if the index was built with the same settings.
+
+        The chunking strategy participates in the hash: an index built with
+        fixed-token windows has different chunks (and no heading_path) than a
+        structure-built one, so it must be reported as stale instead of reused.
 
         Args:
             chunk_sizes: Current chunk sizes to compare.
             conversion_method: Current conversion method to compare.
+            chunking_strategy: Current chunking strategy to compare.
 
         Returns:
             True if settings match, False if stale or no hash file exists.
@@ -605,27 +696,33 @@ class DocumentIndexBuilder:
         if not hash_file.exists():
             return False
         stored = hash_file.read_text().strip()
-        current = self._compute_settings_hash(chunk_sizes, conversion_method)
+        current = self._compute_settings_hash(
+            chunk_sizes, conversion_method, chunking_strategy
+        )
         return stored == current
 
     def _save_settings_hash(
         self,
         chunk_sizes: List[int],
         conversion_method: str = "marker",
+        chunking_strategy: str = "structure",
     ) -> None:
         """Write a settings hash to the index directory."""
         hash_file = self.index_dir / "settings_hash"
         hash_file.write_text(
-            self._compute_settings_hash(chunk_sizes, conversion_method)
+            self._compute_settings_hash(
+                chunk_sizes, conversion_method, chunking_strategy
+            )
         )
 
     @staticmethod
     def _compute_settings_hash(
         chunk_sizes: List[int],
         conversion_method: str = "marker",
+        chunking_strategy: str = "structure",
     ) -> str:
         """Compute a deterministic hash of indexing settings."""
-        content = f"{chunk_sizes}:{conversion_method}"
+        content = f"{chunk_sizes}:{conversion_method}:{chunking_strategy}"
         return hashlib.sha256(content.encode()).hexdigest()
 
     def close(self) -> None:

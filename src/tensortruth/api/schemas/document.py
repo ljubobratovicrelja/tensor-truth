@@ -130,6 +130,9 @@ class IndexingConfig(BaseModel):
 
     chunk_sizes: List[int] = [2048, 512, 256]
     conversion_method: str = "marker"  # "marker" | "direct"
+    # Structure-aware chunking is the default: fixed-token windows cut
+    # sentences, equations and code blocks, which broke retrieval.
+    chunking_strategy: str = "structure"
 
 
 class IndexingConfigUpdate(BaseModel):
@@ -137,3 +140,4 @@ class IndexingConfigUpdate(BaseModel):
 
     chunk_sizes: Optional[List[int]] = None
     conversion_method: Optional[str] = None
+    chunking_strategy: Optional[str] = None

@@ -140,7 +140,9 @@ class TestBuildIndex:
         mock_index.return_value = Mock()
         mock_storage.from_defaults.return_value = Mock()
 
-        document_builder.build_index(sample_markdown_files)
+        document_builder.build_index(
+            sample_markdown_files, chunking_strategy="hierarchical"
+        )
 
         # Should have created reader for each file
         assert mock_reader.call_count == len(sample_markdown_files)
@@ -175,7 +177,9 @@ class TestBuildIndex:
         mock_storage.from_defaults.return_value = Mock()
 
         document_builder.build_index(
-            sample_markdown_files, chunk_sizes=[2048, 512, 128]
+            sample_markdown_files,
+            chunk_sizes=[2048, 512, 128],
+            chunking_strategy="hierarchical",
         )
 
         mock_parser.from_defaults.assert_called_once_with(chunk_sizes=[2048, 512, 128])
@@ -214,7 +218,9 @@ class TestBuildIndex:
 
         mock_embed.return_value = Mock()
 
-        document_builder.build_index(sample_markdown_files)
+        document_builder.build_index(
+            sample_markdown_files, chunking_strategy="hierarchical"
+        )
 
         mock_chroma.assert_called_once_with(path=str(temp_session_dirs["index"]))
 
@@ -262,7 +268,9 @@ class TestBuildIndex:
         old_file.write_text("{}")
         assert old_file.exists()
 
-        document_builder.build_index(sample_markdown_files)
+        document_builder.build_index(
+            sample_markdown_files, chunking_strategy="hierarchical"
+        )
 
         # Old files should be gone
         assert not old_file.exists()
@@ -287,7 +295,9 @@ class TestBuildIndex:
             mock_get_leaf.return_value = [Mock()]
             mock_storage.from_defaults.return_value = Mock()
 
-            document_builder.build_index(sample_markdown_files)
+            document_builder.build_index(
+                sample_markdown_files, chunking_strategy="hierarchical"
+            )
 
             # Should use default [2048, 512, 256]
             mock_parser.from_defaults.assert_called_once_with(
@@ -303,7 +313,9 @@ class TestRebuildIndex:
         """Should call build_index with None for markdown_files."""
         document_builder.rebuild_index()
 
-        mock_build.assert_called_once_with(markdown_files=None, chunk_sizes=None)
+        mock_build.assert_called_once_with(
+            markdown_files=None, chunk_sizes=None, chunking_strategy="structure"
+        )
 
     @patch.object(DocumentIndexBuilder, "build_index")
     def test_passes_chunk_sizes(self, mock_build, document_builder):
@@ -312,7 +324,9 @@ class TestRebuildIndex:
         document_builder.rebuild_index(chunk_sizes=custom_sizes)
 
         mock_build.assert_called_once_with(
-            markdown_files=None, chunk_sizes=custom_sizes
+            markdown_files=None,
+            chunk_sizes=custom_sizes,
+            chunking_strategy="structure",
         )
 
 
@@ -410,7 +424,7 @@ class TestEmbeddingProgress:
         monkeypatch.setattr(
             document_builder,
             "_build_vector_index",
-            lambda documents, chunk_sizes: time.sleep(0.3),
+            lambda documents, chunk_sizes, chunking_strategy=None: time.sleep(0.3),
         )
 
         calls = []
@@ -427,3 +441,113 @@ class TestEmbeddingProgress:
         assert max(embedding_pcts) <= 95, "embedding claimed the next stage's band"
         assert pcts[-1] == 100
         assert pcts == sorted(pcts), f"progress went backwards: {pcts}"
+
+
+class TestStructureChunking:
+    """Structure-aware chunking is the default for session/project uploads."""
+
+    @patch("tensortruth.document_index.StorageContext")
+    @patch("tensortruth.document_index.VectorStoreIndex")
+    @patch("tensortruth.document_index.get_embed_model")
+    @patch("tensortruth.document_index.chromadb.PersistentClient")
+    @patch("tensortruth.document_index.HierarchicalNodeParser")
+    def test_default_build_uses_structure_parser(
+        self,
+        mock_hierarchical_parser,
+        mock_chroma,
+        mock_embed,
+        mock_index,
+        mock_storage,
+        document_builder,
+        temp_session_dirs,
+    ):
+        """Default build_index parses markdown with StructureNodeParser."""
+        from tensortruth.indexing.lexical import LEXICAL_DB_FILENAME, LexicalIndex
+
+        markdown_file = temp_session_dirs["markdown"] / "notes.md"
+        markdown_file.write_text(
+            "# Notes\n\nFirst paragraph on gradients.\n\n"
+            "## Subsection\n\nSecond paragraph on momentum.\n"
+        )
+
+        mock_embed.return_value = Mock()
+        mock_storage.from_defaults.return_value = Mock()
+
+        document_builder.build_index([markdown_file])
+
+        mock_hierarchical_parser.from_defaults.assert_not_called()
+
+        # Every embedded leaf knows which section it belongs to.
+        leaves = mock_index.call_args.args[0]
+        assert leaves
+        assert all("heading_path" in leaf.metadata for leaf in leaves)
+        assert any("Subsection" in leaf.metadata["heading_path"] for leaf in leaves)
+
+        # The lexical side index is written next to the vector index.
+        index_dir = temp_session_dirs["index"]
+        assert (index_dir / LEXICAL_DB_FILENAME).is_file()
+        assert LexicalIndex(index_dir).count() == len(leaves)
+
+    @patch("tensortruth.document_index.StorageContext")
+    @patch("tensortruth.document_index.VectorStoreIndex")
+    @patch("tensortruth.document_index.get_embed_model")
+    @patch("tensortruth.document_index.chromadb.PersistentClient")
+    @patch("tensortruth.document_index.get_leaf_nodes")
+    @patch("tensortruth.document_index.HierarchicalNodeParser")
+    @patch("tensortruth.document_index.SimpleDirectoryReader")
+    def test_hierarchical_strategy_still_available(
+        self,
+        mock_reader,
+        mock_hierarchical_parser,
+        mock_get_leaf,
+        mock_chroma,
+        mock_embed,
+        mock_index,
+        mock_storage,
+        document_builder,
+        sample_markdown_files,
+    ):
+        """Asking for 'hierarchical' keeps the old fixed-window parser."""
+        mock_reader.return_value.load_data.return_value = [
+            Mock(text="content", metadata={"file_path": "/tmp/doc.md"})
+        ]
+        parser_instance = Mock()
+        parser_instance.get_nodes_from_documents.return_value = [Mock()]
+        mock_hierarchical_parser.from_defaults.return_value = parser_instance
+        mock_get_leaf.return_value = [Mock()]
+        mock_storage.from_defaults.return_value = Mock()
+
+        document_builder.build_index(
+            sample_markdown_files,
+            chunk_sizes=[2048, 512, 256],
+            chunking_strategy="hierarchical",
+        )
+
+        mock_hierarchical_parser.from_defaults.assert_called_once_with(
+            chunk_sizes=[2048, 512, 256]
+        )
+
+
+class TestSettingsHashStrategy:
+    """A different chunking strategy must invalidate a recorded settings hash."""
+
+    def test_same_strategy_is_current(self, document_builder):
+        document_builder._save_settings_hash([2048, 512, 256], "marker", "structure")
+        assert (
+            document_builder.is_settings_current(
+                [2048, 512, 256], "marker", "structure"
+            )
+            is True
+        )
+
+    def test_different_strategy_is_stale(self, document_builder):
+        document_builder._save_settings_hash([2048, 512, 256], "marker", "hierarchical")
+        assert (
+            document_builder.is_settings_current(
+                [2048, 512, 256], "marker", "structure"
+            )
+            is False
+        )
+
+    def test_missing_hash_is_stale(self, document_builder):
+        assert document_builder.is_settings_current([2048, 512, 256]) is False

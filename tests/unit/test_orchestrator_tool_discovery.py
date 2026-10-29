@@ -101,6 +101,9 @@ class TestToolDiscoveryWebOnly:
             "web_search",
             "fetch_page",
             "fetch_pages_batch",
+            "expand_section",
+            "read_neighbours",
+            "document_outline",
         }
 
     def test_web_tools_only_when_rag_is_none(self, tool_service):
@@ -132,6 +135,9 @@ class TestToolDiscoveryWithRAG:
             "web_search",
             "fetch_page",
             "fetch_pages_batch",
+            "expand_section",
+            "read_neighbours",
+            "document_outline",
         }
 
     def test_rag_tool_is_first(self, tool_service, rag_service_loaded):
@@ -158,8 +164,8 @@ class TestToolDiscoveryWithMCPTools:
 
         names = {t.metadata.name for t in tools}
         assert "custom_mcp_tool" in names
-        # rag_query + load_modules + 3 web tools + 1 MCP tool
-        assert len(tools) == 6
+        # rag_query + load_modules + 3 context tools + 3 web tools + 1 MCP tool
+        assert len(tools) == 9
 
     def test_includes_multiple_mcp_tools(self, tool_service, rag_service_loaded):
         """Should include all non-conflicting MCP tools."""
@@ -173,8 +179,8 @@ class TestToolDiscoveryWithMCPTools:
         names = {t.metadata.name for t in tools}
         assert "mcp_analyzer" in names
         assert "mcp_summarizer" in names
-        # 5 wrapped (rag_query + load_modules + 3 web) + 2 MCP
-        assert len(tools) == 7
+        # 8 wrapped (rag_query + load_modules + 3 context + 3 web) + 2 MCP
+        assert len(tools) == 10
 
     def test_no_mcp_tools_is_fine(self, tool_service, rag_service_not_loaded):
         """Should work gracefully when no MCP tools are available."""
@@ -183,8 +189,8 @@ class TestToolDiscoveryWithMCPTools:
         svc = _create_service(tool_service, rag_service_not_loaded)
         tools = svc._build_tools()
 
-        # 2 RAG tools + 3 web tools
-        assert len(tools) == 5
+        # 2 RAG tools + 3 context tools + 3 web tools
+        assert len(tools) == 8
 
 
 # --- Tests: Built-in tool name filtering ---
@@ -256,6 +262,9 @@ class TestBuiltinToolNameFiltering:
             "build_index",
             "inspect",
             "load_modules",
+            "expand_section",
+            "read_neighbours",
+            "document_outline",
         }
         assert _WRAPPED_BUILTIN_TOOL_NAMES == expected
 
@@ -356,10 +365,13 @@ class TestGetToolNames:
         names = svc.get_tool_names()
         assert names == sorted(names)
         assert set(names) == {
+            "document_outline",
+            "expand_section",
             "fetch_page",
             "fetch_pages_batch",
             "load_modules",
             "rag_query",
+            "read_neighbours",
             "web_search",
         }
 
@@ -407,8 +419,8 @@ class TestToolBuildLogging:
         # Find the info-level log message
         info_msgs = [r.message for r in caplog.records if r.levelno == logging.INFO]
         assert any(
-            "5 tools" in msg and "5 wrapped" in msg for msg in info_msgs
-        ), f"Expected INFO log about 5 tools, got: {info_msgs}"
+            "8 tools" in msg and "8 wrapped" in msg for msg in info_msgs
+        ), f"Expected INFO log about 8 tools, got: {info_msgs}"
 
     def test_logs_tool_descriptions_at_debug_level(
         self, tool_service, rag_service_not_loaded, caplog
@@ -423,6 +435,6 @@ class TestToolBuildLogging:
             svc._build_tools()
 
         debug_msgs = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
-        # Each of the 5 wrapped tools has a debug log for its description
+        # Each of the 8 wrapped tools has a debug log for its description
         tool_desc_msgs = [m for m in debug_msgs if "Tool '" in m]
-        assert len(tool_desc_msgs) == 5
+        assert len(tool_desc_msgs) == 8

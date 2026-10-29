@@ -491,7 +491,7 @@ class TestCreateAllToolWrappers:
             tool_service, progress_emitter, rag_service=rag_service
         )
 
-        assert len(tools) == 5
+        assert len(tools) == 8
         names = {t.metadata.name for t in tools}
         assert names == {
             "rag_query",
@@ -499,6 +499,9 @@ class TestCreateAllToolWrappers:
             "web_search",
             "fetch_page",
             "fetch_pages_batch",
+            "expand_section",
+            "read_neighbours",
+            "document_outline",
         }
 
     def test_keeps_rag_tools_when_not_loaded(self, tool_service, progress_emitter):
@@ -510,7 +513,7 @@ class TestCreateAllToolWrappers:
             tool_service, progress_emitter, rag_service=rag_service
         )
 
-        assert len(tools) == 5
+        assert len(tools) == 8
         names = {t.metadata.name for t in tools}
         assert {"rag_query", "load_modules"} <= names
 

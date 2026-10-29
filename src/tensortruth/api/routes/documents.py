@@ -483,6 +483,7 @@ async def _build_index(
                 chunk_sizes=indexing_cfg.chunk_sizes,
                 progress_callback=progress_callback,
                 conversion_method=indexing_cfg.conversion_method,
+                chunking_strategy=indexing_cfg.chunking_strategy,
             )
             chunk_count = _count_index_chunks(doc_service)
         return {
@@ -920,6 +921,7 @@ async def update_project_indexing_config(
 
     old_chunk_sizes = indexing.get("chunk_sizes")
     old_conversion = indexing.get("conversion_method")
+    old_strategy = indexing.get("chunking_strategy")
 
     if body.chunk_sizes is not None:
         indexing["chunk_sizes"] = body.chunk_sizes
@@ -929,12 +931,23 @@ async def update_project_indexing_config(
                 status_code=400, detail="conversion_method must be 'marker' or 'direct'"
             )
         indexing["conversion_method"] = body.conversion_method
+    if body.chunking_strategy is not None:
+        from tensortruth.indexing.builder import ChunkingStrategy
+
+        valid_strategies = [s.value for s in ChunkingStrategy]
+        if body.chunking_strategy not in valid_strategies:
+            raise HTTPException(
+                status_code=400,
+                detail=f"chunking_strategy must be one of {valid_strategies}",
+            )
+        indexing["chunking_strategy"] = body.chunking_strategy
 
     # If settings actually changed and index exists, delete it so next build
     # does a full rebuild
     settings_changed = (
         indexing.get("chunk_sizes") != old_chunk_sizes
         or indexing.get("conversion_method") != old_conversion
+        or indexing.get("chunking_strategy") != old_strategy
     )
 
     def _persist_and_invalidate() -> None:
