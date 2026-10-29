@@ -184,6 +184,24 @@ describe("useElaboration", () => {
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
+  it("explains a 409 as another answer still streaming", async () => {
+    vi.mocked(startRun).mockRejectedValue(
+      Object.assign(new Error("Session already has an active run"), {
+        status: 409,
+      })
+    );
+    const { result } = mountHook();
+
+    await act(async () => {
+      await result.current.start(anchor);
+    });
+
+    expect(useElaborationStore.getState().error).toMatch(
+      /still generating another answer/
+    );
+    expect(useElaborationStore.getState().error).not.toContain("object Object");
+  });
+
   it("cancels the run and stops streaming", async () => {
     vi.mocked(startRun).mockResolvedValue({ run_id: "run-1" });
     vi.mocked(cancelRun).mockResolvedValue({

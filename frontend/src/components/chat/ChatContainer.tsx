@@ -420,7 +420,7 @@ export function ChatContainer() {
       </div>
       <ElaborationSidebar onCancel={cancelElaboration} onFollowUp={followUpElaboration} />
       <ElaborationTrigger
-        rect={selection?.rect ?? null}
+        rect={isStreaming ? null : (selection?.rect ?? null)}
         onOpen={handleStartElaboration}
       />
     </div>

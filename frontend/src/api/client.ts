@@ -14,12 +14,28 @@ export class ApiRequestError extends Error {
   }
 }
 
-function extractDetail(error: ApiError): string | undefined {
+/**
+ * Human-readable text from a FastAPI error body. `detail` is usually a string
+ * but conflict responses carry an object (`{"detail": ..., "run_id": ...}`);
+ * rendering that raw produced "[object Object]" in the UI.
+ */
+export function extractDetail(error: ApiError): string | undefined {
   const d = error.detail;
   if (!d) return undefined;
   if (typeof d === "string") return d;
   if (Array.isArray(d)) {
     return d.map((item: { msg?: string }) => item.msg || String(item)).join("; ");
+  }
+  if (typeof d === "object") {
+    const nested = d as { detail?: unknown; message?: unknown; msg?: unknown };
+    for (const value of [nested.detail, nested.message, nested.msg]) {
+      if (typeof value === "string" && value.trim()) return value;
+    }
+    try {
+      return JSON.stringify(d);
+    } catch {
+      return String(d);
+    }
   }
   return String(d);
 }

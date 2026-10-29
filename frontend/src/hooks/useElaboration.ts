@@ -19,6 +19,15 @@ const RECONNECT_MAX_DELAY_MS = 1500;
  */
 type StreamMode = "initial" | "follow-up";
 
+/** Human message for a failed start; a 409 means the session is mid-answer. */
+function startErrorMessage(err: unknown, fallback: string): string {
+  const status = (err as { status?: number } | null)?.status;
+  if (status === 409) {
+    return "This session is still generating another answer. Wait for it to finish, then try again.";
+  }
+  return err instanceof Error ? err.message : fallback;
+}
+
 /**
  * Streams one elaboration (and its follow-up thread) into the dedicated
  * elaboration store.
@@ -251,8 +260,7 @@ export function useElaboration(sessionId: string | null) {
         useElaborationStore.getState().setRunId(runId);
         openSocket(runId, 0);
       } catch (err) {
-        const detail =
-          err instanceof Error ? err.message : "Failed to start the explanation";
+        const detail = startErrorMessage(err, "Failed to start the explanation");
         useElaborationStore.getState().setError(detail);
       }
     },
@@ -291,8 +299,7 @@ export function useElaboration(sessionId: string | null) {
         useElaborationStore.getState().setRunId(runId);
         openSocket(runId, 0);
       } catch (err) {
-        const detail =
-          err instanceof Error ? err.message : "Failed to send the follow-up";
+        const detail = startErrorMessage(err, "Failed to send the follow-up");
         useElaborationStore.getState().failFollowUp(detail);
       }
     },
