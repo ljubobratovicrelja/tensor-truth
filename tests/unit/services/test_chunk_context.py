@@ -293,10 +293,11 @@ def test_format_retrieval_result_emits_chunk_pointers(hierarchy):
 
     output = _format_retrieval_result(result, max_chars=4000, context_service=service)
 
-    assert "[s1] Doc doc1 > Chapter 1 > Introduction" in output
+    assert "[s1] Doc doc1" in output
+    assert "§Chapter 1 > Introduction" in output
     assert f"chunk node_id={LEAF1[:8]}" in output
     assert "section ~684 chars available" in output
-    assert "score: 0.8123" in output
+    assert "score 0.812" in output
     # Without a service the excerpt budget behaviour is unchanged.
     lean = _format_retrieval_result(result, max_chars=4000)
     assert "chunk node_id=" not in lean

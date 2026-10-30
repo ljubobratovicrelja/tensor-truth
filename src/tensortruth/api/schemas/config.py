@@ -33,6 +33,7 @@ class RAGConfigSchema(BaseModel):
     default_top_n: int = 5
     default_confidence_threshold: float = 0.35
     default_confidence_cutoff_hard: float = 0.05
+    max_sources_per_module: int = 3
 
 
 class ConversationConfigSchema(BaseModel):

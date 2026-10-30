@@ -935,27 +935,46 @@ def _format_source_header(
     score_str: str,
     context_service: Optional[Any] = None,
 ) -> str:
-    """Build one source header line, with chunk pointers when available.
+    """Build one self-identifying source header line.
 
-    ``[s2] Book > Chapter 1 > Methods | chunk node_id=1f3a9c02 | section
-    ~4.1k chars available | score: 0.7391``
+    ``[s2] Dive into Deep Learning Ch.25 (book) · §The Bias-Variance Trade-off
+    · score 0.9130 | chunk node_id=1f3a9c02 | section ~4.1k chars available``
 
-    The node id prefix is what expand_section/read_neighbours accept; the
-    section size tells the agent whether expanding is worth a tool call. Both
-    are omitted when no context service is wired (LLM-only or no engine), so
-    the header degrades to the old title + score.
+    The document and section live in the same line as the index so the excerpt
+    cannot be attributed to a neighbouring source: the model reads a block
+    header, not a separate title list. The node id prefix is what
+    expand_section/read_neighbours accept; the section size tells the agent
+    whether expanding is worth a tool call. Both are omitted when no context
+    service is wired (LLM-only or no engine).
     """
-    header = f"[s{index}] {title}"
-    node_id = getattr(node, "node_id", None)
+    metadata = getattr(node, "metadata", None) or {}
+    doc_type = metadata.get("doc_type") if isinstance(metadata, dict) else None
 
+    header = f"[s{index}] {title}"
+    if doc_type:
+        header += f" ({doc_type})"
+
+    heading = ""
+    node_id = getattr(node, "node_id", None)
     if context_service is not None and node_id:
         try:
             heading = context_service.heading_path(node)
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug("heading_path failed for %s: %s", node_id, exc)
             heading = ""
-        if heading and heading != title:
-            header += f" > {heading}"
+    if not heading and isinstance(metadata, dict):
+        # Every path gets a section label, even without a docstore-backed
+        # service: an unattributed excerpt is what caused cross-document
+        # misattribution in the first place.
+        heading = str(
+            metadata.get("heading_path") or metadata.get("section_title") or ""
+        )
+    if heading and heading != title and not heading.startswith(f"{title} > "):
+        header += f" · §{heading}"
+
+    header += f" · score {score_str}"
+
+    if context_service is not None and node_id:
         header += f" | chunk node_id={node_id[:8]}"
         try:
             section_node, _ancestors = context_service.section(node_id)
@@ -968,7 +987,6 @@ def _format_source_header(
             size = len(section_node.get_content() or "")
             header += f" | section {format_char_size(size)} available"
 
-    header += f" | score: {score_str}"
     return header
 
 
@@ -1033,7 +1051,7 @@ def _format_retrieval_result(
             or "Untitled"
         )
         score = node.score if hasattr(node, "score") else None
-        score_str = f"{score:.4f}" if score is not None else "N/A"
+        score_str = f"{score:.3f}" if score is not None else "N/A"
 
         # Extract text content (truncated for LLM context efficiency)
         if hasattr(inner_node, "get_content"):

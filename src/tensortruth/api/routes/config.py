@@ -41,6 +41,7 @@ def _config_to_response(config) -> ConfigResponse:
             default_top_n=config.rag.default_top_n,
             default_confidence_threshold=config.rag.default_confidence_threshold,
             default_confidence_cutoff_hard=config.rag.default_confidence_cutoff_hard,
+            max_sources_per_module=config.rag.max_sources_per_module,
         ),
         conversation=ConversationConfigSchema(
             max_history_turns=config.conversation.max_history_turns,

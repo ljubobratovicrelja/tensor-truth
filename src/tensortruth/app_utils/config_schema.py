@@ -98,6 +98,10 @@ class RAGConfig:
     default_top_n: int = 5
     default_confidence_threshold: float = 0.35
     default_confidence_cutoff_hard: float = 0.05
+    # Post-rerank cap per source module (0 disables). Reranking scores chunks
+    # independently, so one book can take every slot; capping keeps a second
+    # module in the answer so citations cannot collapse onto one document.
+    max_sources_per_module: int = 3
     # Module indexes kept loaded across sessions (idle ones are evicted LRU).
     # Active sessions are never evicted; this only bounds idle cache memory.
     max_cached_indexes: int = 8
@@ -116,6 +120,11 @@ class RAGConfig:
             raise ValueError(
                 f"max_cached_indexes must be non-negative, got "
                 f"{self.max_cached_indexes}"
+            )
+        if self.max_sources_per_module < 0:
+            raise ValueError(
+                f"max_sources_per_module must be non-negative, got "
+                f"{self.max_sources_per_module}"
             )
 
     def get_embedding_model_config(self, model_name: str) -> EmbeddingModelConfig:
