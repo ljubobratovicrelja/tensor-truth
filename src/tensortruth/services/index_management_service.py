@@ -125,6 +125,10 @@ class IndexManagementService:
                 )
                 modules.append(overview)
                 seen.add(name)
+                # Index dirs are prefixed ("book_x"); sources.json and the
+                # library_docs scan use the bare name. Record both spellings so
+                # later passes cannot add a phantom "not indexed" duplicate.
+                seen.add(self._bare_module_name(name))
 
         # 2. Add sources.json entries that don't have a built index yet
         for source_type, entries in [
@@ -157,15 +161,24 @@ class IndexManagementService:
                 ]:
                     if dir_name.startswith(prefix):
                         mod_name = dir_name[len(prefix) :]
-                        if mod_name not in seen:
+                        if mod_name not in seen and dir_name not in seen:
                             overview = self._build_module_overview(
-                                mod_name, stype, {}, embedding_model_id
+                                dir_name, stype, {}, embedding_model_id
                             )
                             modules.append(overview)
+                            seen.add(dir_name)
                             seen.add(mod_name)
                         break
 
         return modules
+
+    @staticmethod
+    def _bare_module_name(name: str) -> str:
+        """Strip the library_/papers_/book_ prefix from an index directory name."""
+        for prefix in ("library_", "papers_", "book_"):
+            if name.startswith(prefix):
+                return name[len(prefix) :]
+        return name
 
     def _find_source_config(
         self,
@@ -177,10 +190,15 @@ class IndexManagementService:
 
         Returns (source_type, config) or infers type from index metadata.
         """
+        # Index directories are prefixed ("book_x") while sources.json keys are
+        # bare ("x"), so both spellings must be tried or every module looks like
+        # it is missing from the config.
+        bare = self._bare_module_name(name)
         for source_type in ("libraries", "papers", "books"):
             section = sources.get(source_type, {})
-            if name in section:
-                return source_type, section[name]
+            for key in (name, bare):
+                if key in section:
+                    return source_type, section[key]
 
         # Not in sources.json — try to infer type from index metadata
         if model_indexes_dir is not None:

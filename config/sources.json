@@ -1080,6 +1080,30 @@
       "split_method": "toc",
       "description": "Modern interactive book with code in PyTorch, TensorFlow, and JAX",
       "items": {}
+    },
+    "neural_networks_nielsen": {
+      "type": "pdf_book",
+      "category": "deep_learning",
+      "title": "Neural Networks and Deep Learning",
+      "authors": [
+        "Michael Nielsen"
+      ],
+      "source": "http://neuralnetworksanddeeplearning.com/",
+      "split_method": "sections",
+      "description": "From-scratch introduction to neural nets, backpropagation and deep learning",
+      "items": {}
+    },
+    "diff_equations_trench": {
+      "type": "pdf_book",
+      "category": "mathematics",
+      "title": "Elementary Differential Equations",
+      "authors": [
+        "William F. Trench"
+      ],
+      "source": "https://digitalcommons.trinity.edu/mono/9/",
+      "split_method": "sections",
+      "description": "Open textbook: first-order equations through Laplace transforms",
+      "items": {}
     }
   }
 }

@@ -437,3 +437,18 @@ def test_heading_lines_can_be_disabled_for_the_flat_path_prefix():
     )
 
     assert leaves[0].text.startswith("Section: Section A\n\n")
+
+
+@pytest.mark.unit
+def test_identical_text_in_two_documents_gets_distinct_ids():
+    """Nielsen repeats boilerplate across section files; Chroma rejects dup ids."""
+    body = "## Section\n\nThe same paragraph appears in both files.\n"
+    docs = [
+        Document(text=body, metadata={"file_name": "section_01.md"}),
+        Document(text=body, metadata={"file_name": "section_02.md"}),
+    ]
+
+    nodes = StructureNodeParser().get_nodes_from_documents(docs)
+    ids = [n.node_id for n in nodes]
+
+    assert len(ids) == len(set(ids))

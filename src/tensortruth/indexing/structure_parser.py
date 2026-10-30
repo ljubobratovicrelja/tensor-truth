@@ -284,6 +284,9 @@ class StructureNodeParser(NodeParser):
             **({"callback_manager": callback_manager} if callback_manager else {}),
         )
         self._tokenizer = tokenizer or get_tokenizer()
+        # Shared across every document parsed by this instance so ids stay unique
+        # within one index build.
+        self._used_ids: dict[str, int] = {}
 
     @classmethod
     def class_name(cls) -> str:
@@ -329,7 +332,11 @@ class StructureNodeParser(NodeParser):
 
         section_groups: List[tuple[BaseNode, List[BaseNode]]] = []
         leaf_nodes: List[BaseNode] = []
-        used_ids: dict[str, int] = {}
+        # Ids must be unique across the whole index, not just this document: two
+        # files can contain identical text (headers, boilerplate), which used to
+        # produce duplicate ids and abort the Chroma insert.
+        used_ids = self._used_ids
+        doc_key = str(doc.doc_id or (doc.metadata or {}).get("file_name") or "")
 
         for section in sections:
             leaves = self._pack_section(section)
@@ -340,7 +347,7 @@ class StructureNodeParser(NodeParser):
                 leaf_text = self._leaf_text(section, leaf_body)
                 meta = self._node_metadata(doc_meta, section, "leaf")
                 node = TextNode(
-                    id_=self._unique_id(leaf_text, used_ids),
+                    id_=self._unique_id(leaf_text, used_ids, doc_key),
                     text=leaf_text,
                     metadata=meta,
                     # heading_path is already inside the leaf text prefix, so
@@ -360,7 +367,7 @@ class StructureNodeParser(NodeParser):
                 section_text = self._section_text(section, group)
                 meta = self._node_metadata(doc_meta, section, "section")
                 section_node = TextNode(
-                    id_=self._unique_id(section_text, used_ids),
+                    id_=self._unique_id(section_text, used_ids, doc_key),
                     text=section_text,
                     metadata=meta,
                     excluded_embed_metadata_keys=["heading_path", "node_role"],
@@ -918,11 +925,12 @@ class StructureNodeParser(NodeParser):
         heading = section.heading_line
         return f"{heading}\n\n{body}" if heading else body
 
-    def _unique_id(self, text: str, used: dict) -> str:
+    def _unique_id(self, text: str, used: dict, doc_key: str = "") -> str:
         # Content-addressed ids (32 hex chars, same shape as the uuid4 ids the rest
         # of the pipeline produces): rebuilding an unchanged document reuses the same
-        # ids, so the docstore and the lexical side-table stay in sync.
-        base = hashlib.sha256(text.encode("utf-8")).hexdigest()[:32]
+        # ids, so the docstore and the lexical side-table stay in sync. doc_key keeps
+        # two files with identical text from colliding.
+        base = hashlib.sha256(f"{doc_key}\x00{text}".encode("utf-8")).hexdigest()[:32]
         if base not in used:
             used[base] = 0
             return base
