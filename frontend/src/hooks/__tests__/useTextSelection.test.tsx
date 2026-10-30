@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import {
   occurrenceIndexFor,
   resolveAnchorFromRange,
   textOffsetFromContainer,
+  useTextSelection,
 } from "../useTextSelection";
 import { resolveTextRange } from "../useElaborationHighlights";
 
@@ -221,5 +222,63 @@ describe("textOffsetFromContainer", () => {
     const container = document.createElement("div");
 
     expect(textOffsetFromContainer(container, outside.firstChild as Text, 0)).toBeNull();
+  });
+});
+
+describe("useTextSelection", () => {
+  function Harness() {
+    const { selecting } = useTextSelection();
+    return <div data-testid="flag">{selecting ? "selecting" : "idle"}</div>;
+  }
+
+  const flag = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-testid="flag"]')!.textContent;
+
+  /** Pointer events live outside React, so flush them through `act`. */
+  const fire = (target: EventTarget, event: Event) =>
+    act(() => {
+      target.dispatchEvent(event);
+    });
+
+  it("reports a drag only while the primary button is held", () => {
+    const { container } = render(<Harness />);
+    expect(flag(container)).toBe("idle");
+
+    fire(document, new MouseEvent("pointerdown", { button: 0, bubbles: true }));
+    expect(flag(container)).toBe("selecting");
+
+    fire(document, new MouseEvent("pointerup", { button: 0, bubbles: true }));
+    expect(flag(container)).toBe("idle");
+  });
+
+  it("ignores non-primary buttons", () => {
+    const { container } = render(<Harness />);
+
+    fire(document, new MouseEvent("pointerdown", { button: 2, bubbles: true }));
+    expect(flag(container)).toBe("idle");
+  });
+
+  it("stays idle when the press lands on the elaboration trigger", () => {
+    const { container } = render(<Harness />);
+    const trigger = document.createElement("button");
+    trigger.setAttribute("data-elaboration-trigger", "");
+    document.body.appendChild(trigger);
+
+    // A press on the trigger must not turn it inert before its click lands.
+    fire(trigger, new MouseEvent("pointerdown", { button: 0, bubbles: true }));
+    expect(flag(container)).toBe("idle");
+
+    trigger.remove();
+  });
+
+  it("clears the drag state when the pointer is cancelled or the window blurs", () => {
+    const { container } = render(<Harness />);
+    fire(document, new MouseEvent("pointerdown", { button: 0, bubbles: true }));
+    fire(document, new MouseEvent("pointercancel", { bubbles: true }));
+    expect(flag(container)).toBe("idle");
+
+    fire(document, new MouseEvent("pointerdown", { button: 0, bubbles: true }));
+    fire(window, new Event("blur"));
+    expect(flag(container)).toBe("idle");
   });
 });

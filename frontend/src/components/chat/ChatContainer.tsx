@@ -118,7 +118,7 @@ export function ChatContainer() {
         : null,
     [elaborationAnchor, elaborationContent, elaborationThread]
   );
-  const { selection, clear: clearSelection } = useTextSelection();
+  const { selection, clear: clearSelection, selecting } = useTextSelection();
   const {
     start: startElaboration,
     followUp: followUpElaboration,
@@ -439,6 +439,7 @@ export function ChatContainer() {
       <ElaborationTrigger
         rect={isStreaming || elaborationBusy ? null : (selection?.rect ?? null)}
         onOpen={handleStartElaboration}
+        interactive={!selecting}
       />
     </div>
   );

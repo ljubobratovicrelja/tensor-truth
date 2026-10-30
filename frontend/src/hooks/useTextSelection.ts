@@ -155,6 +155,15 @@ export function resolveSelectionAnchor(
 interface UseTextSelectionResult {
   selection: TextSelection | null;
   clear: () => void;
+  /**
+   * True between pressing the primary button and releasing it. While a drag is
+   * in progress the floating trigger must not be hit-testable: the browser
+   * extends a drag-selection from the pointer, and landing on the trigger
+   * (a non-text element parked right after the selection's last line) makes
+   * Chromium clamp the focus to the nearest block container, which selects
+   * everything below the anchor.
+   */
+  selecting: boolean;
 }
 
 /**
@@ -164,6 +173,7 @@ interface UseTextSelectionResult {
  */
 export function useTextSelection(): UseTextSelectionResult {
   const [selection, setSelection] = useState<TextSelection | null>(null);
+  const [selecting, setSelecting] = useState(false);
   const rafRef = useRef(0);
 
   const clear = useCallback(() => {
@@ -203,10 +213,26 @@ export function useTextSelection(): UseTextSelectionResult {
 
     const handleScroll = () => setSelection(null);
 
+    // Drag bookkeeping: the trigger is only clickable between drags.
+    const handleDragStart = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      // Pressing the trigger itself must not turn it inert mid-click: the
+      // pointerdown would disable it before the click could land on it.
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-elaboration-trigger]"))
+        return;
+      setSelecting(true);
+    };
+    const handleDragEnd = () => setSelecting(false);
+
     document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("mouseup", handlePointerUp);
     document.addEventListener("keyup", handlePointerUp);
     document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("pointerdown", handleDragStart, true);
+    document.addEventListener("pointerup", handleDragEnd, true);
+    document.addEventListener("pointercancel", handleDragEnd, true);
+    window.addEventListener("blur", handleDragEnd);
     // Capture phase: the message list scrolls, not the window.
     window.addEventListener("scroll", handleScroll, true);
 
@@ -216,9 +242,13 @@ export function useTextSelection(): UseTextSelectionResult {
       document.removeEventListener("mouseup", handlePointerUp);
       document.removeEventListener("keyup", handlePointerUp);
       document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("pointerdown", handleDragStart, true);
+      document.removeEventListener("pointerup", handleDragEnd, true);
+      document.removeEventListener("pointercancel", handleDragEnd, true);
+      window.removeEventListener("blur", handleDragEnd);
       window.removeEventListener("scroll", handleScroll, true);
     };
   }, [clear, update]);
 
-  return { selection, clear };
+  return { selection, clear, selecting };
 }
