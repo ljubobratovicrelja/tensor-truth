@@ -220,6 +220,32 @@ DEFAULT_FILLER_PHRASES = [
 
 
 @dataclass
+class ChatRunsConfig:
+    """Server-owned chat run settings."""
+
+    # A run that is not terminal, has no live asyncio task and whose last
+    # event is older than this is considered abandoned and is finalised so it
+    # stops blocking the session with a 409. Long live turns are safe: every
+    # appended event refreshes the timestamp.
+    stale_after_seconds: float = 300.0
+
+    def __post_init__(self):
+        """Validate configuration values."""
+        if self.stale_after_seconds <= 0:
+            raise ValueError(
+                "stale_after_seconds must be positive, "
+                f"got {self.stale_after_seconds}"
+            )
+
+
+@dataclass
+class ChatConfig:
+    """Chat configuration."""
+
+    runs: ChatRunsConfig = field(default_factory=ChatRunsConfig)
+
+
+@dataclass
 class WebSearchConfig:
     """Web search pipeline configuration."""
 
@@ -281,6 +307,7 @@ class TensorTruthConfig:
     history_cleaning: HistoryCleaningConfig
     web_search: WebSearchConfig
     providers: List[ProviderConfig] = field(default_factory=list)
+    chat: ChatConfig = field(default_factory=ChatConfig)
     extension_catalog_url: str = (
         "https://raw.githubusercontent.com/"
         "ljubobratovicrelja/tensor-truth/main/extension_library"
@@ -296,6 +323,7 @@ class TensorTruthConfig:
             "agent": asdict(self.agent),
             "history_cleaning": asdict(self.history_cleaning),
             "web_search": asdict(self.web_search),
+            "chat": asdict(self.chat),
             "extension_catalog_url": self.extension_catalog_url,
         }
         # Write ollama section for backward compatibility with external tools
@@ -371,6 +399,7 @@ class TensorTruthConfig:
         agent_data = data.get("agent", {})
         history_cleaning_data = data.get("history_cleaning", {})
         web_search_data = data.get("web_search", {})
+        chat_data = data.get("chat", {})
         providers_data = data.get("providers", [])
 
         def _filter(cls_, data_):
@@ -390,6 +419,12 @@ class TensorTruthConfig:
                     ollama_data = {"base_url": p.base_url, "timeout": p.timeout}
                     break
 
+        # Nested sections need explicit parsing: ``_filter`` is shallow.
+        runs_data = chat_data.get("runs") if isinstance(chat_data, dict) else None
+        chat = ChatConfig(
+            runs=ChatRunsConfig(**_filter(ChatRunsConfig, runs_data or {}))
+        )
+
         return cls(
             ollama=OllamaConfig(**_filter(OllamaConfig, ollama_data)),
             llm=LLMConfig(**_filter(LLMConfig, llm_data)),
@@ -402,6 +437,7 @@ class TensorTruthConfig:
                 **_filter(HistoryCleaningConfig, history_cleaning_data)
             ),
             web_search=WebSearchConfig(**_filter(WebSearchConfig, web_search_data)),
+            chat=chat,
             providers=providers,
             extension_catalog_url=data.get(
                 "extension_catalog_url",

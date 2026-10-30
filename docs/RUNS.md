@@ -53,6 +53,17 @@ frontend already handles both.
 - One active run per session: a second `POST` while a run is running returns `409`.
 - Finished runs are retained (with their events) for 10 minutes for late reconnects, then GC'd.
   Event log capped at 20,000 events per run (then oldest dropped, cursor still monotonic).
+- A run can never outlive its producer. When the run's asyncio task ends without reaching a
+  terminal status (cancelled before its first step, `SystemExit`/`KeyboardInterrupt`, a crash
+  the exception handlers did not model), a done-callback publishes the terminal `error` event
+  and closes the run as `cancelled` or `failed`.
+- Belt-and-braces for a lost task object (the process holding it dropped the reference): a
+  non-terminal run whose task is absent or already done *and* whose last event is older than
+  `chat.runs.stale_after_seconds` (default 300) is finalised as `failed` with an explanatory
+  error event. The sweep runs on `POST /api/sessions/{id}/runs` (inside the lock, before the
+  409 check) and on `GET /api/runs/{id}`. A run whose task is still alive and unfinished is
+  never swept; every appended event refreshes the timestamp, so a slow turn that keeps
+  streaming is safe.
 - Assistant messages are persisted to `session.json` exactly as today, by the runner.
 
 ## Implementation map

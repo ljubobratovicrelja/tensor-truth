@@ -204,6 +204,37 @@ class TestRunsAPI:
         await _poll_until_terminal(client, again.json()["run_id"])
 
     @pytest.mark.asyncio
+    async def test_orphan_running_run_does_not_block_next_turn(
+        self, client, session_id, monkeypatch, service
+    ):
+        """A run left "running" by a dead producer must not hold the session."""
+        service.stale_after_seconds = 5.0
+        install_stub(monkeypatch, stub_runner([{"type": "done", "content": "ok"}]))
+
+        orphan = crs.ChatRun(session_id=session_id, prompt="orphan")
+        orphan.publish({"type": "token", "content": "half"})
+        orphan.last_event_at -= 100.0
+        # No task: the process that owned it lost the reference.
+        service._runs[orphan.run_id] = orphan
+
+        # GET reports the abandoned run as failed, with a terminal event.
+        fetched = await client.get(f"/api/runs/{orphan.run_id}")
+        assert fetched.status_code == 200
+        fetched_body = fetched.json()
+        assert fetched_body["status"] == "failed"
+        assert fetched_body["error"]
+        assert fetched_body["events"][-1]["type"] == "error"
+        assert [e["seq"] for e in fetched_body["events"]] == [1, 2]
+
+        # And the session accepts a new turn instead of a 409.
+        response = await client.post(
+            f"/api/sessions/{session_id}/runs", json={"prompt": "next"}
+        )
+        assert response.status_code == 201, response.text
+        final = await _poll_until_terminal(client, response.json()["run_id"])
+        assert final["status"] == "completed"
+
+    @pytest.mark.asyncio
     async def test_cancel_unknown_run_404(self, client, session_id):
         response = await client.post("/api/runs/nope/cancel")
         assert response.status_code == 404
