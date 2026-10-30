@@ -83,7 +83,11 @@ CUSTOM_CONTEXT_PROMPT_TEMPLATE = (
     "Reference it directly (e.g., 'As shown in the previous ResNet block...').\n"
     "3. PRECISION: If the Context is insufficient, state exactly what is missing. "
     "Do not halluciation or fill gaps with generic fluff.\n"
-    "4. FORMATTING: Use Markdown headers for structure. Use LaTeX for math.\n\n"
+    "4. FORMATTING: Use Markdown headers for structure. Use LaTeX for math.\n"
+    "5. SOURCE ATTRIBUTION: Every excerpt is labelled with its own document and "
+    "section in its header. Cite only the document named in that excerpt's header; "
+    "never attribute a passage to a document that is not named in its own header. "
+    "When two documents disagree, name both and say which says what.\n\n"
     "User Query: {query_str}\n"
     "Response:"
 )

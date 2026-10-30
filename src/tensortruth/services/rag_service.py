@@ -68,6 +68,156 @@ logger = logging.getLogger(__name__)
 # tests, direct library use). Real sessions always pass their session id.
 DEFAULT_OWNER = "__default__"
 
+# Metadata keys that can stand in for a module name when a node never went
+# through MultiIndexRetriever's _source_index tagging (legacy single-index
+# retrievers, direct docstore reads in tests).
+_MODULE_METADATA_KEYS = (
+    "module",
+    "module_name",
+    "book_display_name",
+    "library_display_name",
+    "group_display_name",
+)
+
+
+def _node_metadata(node: Any) -> Dict[str, Any]:
+    """Metadata dict of a NodeWithScore or a bare node."""
+    inner = getattr(node, "node", node)
+    metadata = getattr(inner, "metadata", None)
+    if isinstance(metadata, dict) and metadata:
+        return metadata
+    metadata = getattr(node, "metadata", None)
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _module_labels(rag_set: Optional["SessionRagSet"]) -> List[str]:
+    """Retriever-order module labels for one session's index set.
+
+    ``MultiIndexRetriever`` tags every node with ``_source_index``, the
+    position of the retriever that produced it. Sessions build that list as
+    (loaded module retrievers, then ad-hoc index paths), so this list is the
+    index -> module map. Skipped modules never got a retriever and must not
+    occupy a slot.
+    """
+    if rag_set is None:
+        return []
+    labels = list(rag_set.acquired_modules)
+    labels.extend(
+        Path(path).name or str(path) for path in rag_set.additional_index_paths
+    )
+    return labels
+
+
+def _source_module_id(node: Any, module_labels: Optional[List[str]] = None) -> str:
+    """Stable module identity for a retrieved node.
+
+    Prefers the retriever position recorded during retrieval; falls back to
+    per-document display metadata, which still distinguishes one book/paper
+    module from another. Only returns "unknown" when nothing identifies it.
+    """
+    metadata = _node_metadata(node)
+    index = metadata.get("_source_index")
+    if isinstance(index, int) and module_labels and 0 <= index < len(module_labels):
+        label = module_labels[index]
+        if label:
+            return str(label)
+    for key in _MODULE_METADATA_KEYS:
+        value = metadata.get(key)
+        if value:
+            return str(value)
+    for key in ("display_name", "title", "file_name"):
+        value = metadata.get(key)
+        if value:
+            return str(value)
+    return "unknown"
+
+
+def _module_cap_from_config(config: Any) -> int:
+    """Read rag.max_sources_per_module defensively.
+
+    Services constructed with a mocked/partial config (tests, embedding in
+    another app) must not crash on the new key: anything that is not a real
+    non-negative int disables the cap.
+    """
+    rag = getattr(config, "rag", None)
+    value = getattr(rag, "max_sources_per_module", 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return max(0, value)
+
+
+def _excerpt_label(index: int, node: Any) -> str:
+    """One-line identity label for an excerpt in the direct RAG prompt.
+
+    Mirrors the orchestrator's source header (index, document, section) so
+    the attribution rule in CUSTOM_CONTEXT_PROMPT_TEMPLATE is true on both
+    prompt paths.
+    """
+    metadata = _node_metadata(node)
+    title = (
+        metadata.get("display_name")
+        or metadata.get("title")
+        or metadata.get("file_name")
+        or "Untitled"
+    )
+    label = f"[s{index}] {title}"
+    doc_type = metadata.get("doc_type")
+    if doc_type:
+        label += f" ({doc_type})"
+    heading = str(metadata.get("heading_path") or metadata.get("section_title") or "")
+    if heading and heading != title and not heading.startswith(f"{title} > "):
+        label += f" · §{heading}"
+    return label
+
+
+def _cap_sources_per_module(
+    nodes: List[Any],
+    max_per_module: int,
+    limit: Optional[int] = None,
+    module_labels: Optional[List[str]] = None,
+) -> List[Any]:
+    """Keep at most ``max_per_module`` excerpts per module, best first.
+
+    The reranker scores every candidate independently, so a single book can
+    take every slot and the answer gets attributed to whichever document the
+    model happens to name. This caps each module and then uses the freed
+    slots on the next-best candidates from under-represented modules only —
+    an over-cap module is never re-admitted. The result is sorted by score
+    and never exceeds ``limit`` (the reranker_top_n cutoff).
+    """
+    if max_per_module <= 0 or not nodes:
+        return list(nodes)
+
+    budget = len(nodes) if limit is None else max(0, limit)
+    selected: List[Any] = []
+    deferred: List[Any] = []
+    counts: Dict[str, int] = {}
+
+    for node in nodes:
+        module = _source_module_id(node, module_labels)
+        if counts.get(module, 0) < max_per_module:
+            selected.append(node)
+            counts[module] = counts.get(module, 0) + 1
+            if len(selected) >= budget:
+                break
+        else:
+            deferred.append(node)
+
+    if len(selected) < budget:
+        for node in deferred:
+            module = _source_module_id(node, module_labels)
+            if counts.get(module, 0) < max_per_module:
+                selected.append(node)
+                counts[module] = counts.get(module, 0) + 1
+                if len(selected) >= budget:
+                    break
+
+    selected.sort(
+        key=lambda n: getattr(n, "score", None) or 0.0,
+        reverse=True,
+    )
+    return selected
+
 
 @dataclass
 class SessionRagSet:
@@ -574,9 +724,29 @@ class RAGService:
                 f"After reranking: {len(source_nodes)} nodes "
                 f"(reranker_top_n={reranker_top_n})"
             )
+            ranked_nodes = source_nodes
             if reranker_top_n and len(source_nodes) > reranker_top_n:
                 source_nodes = source_nodes[:reranker_top_n]
                 logger.info(f"Truncated to {len(source_nodes)} nodes")
+
+            # Same cross-module cap as retrieve(): the direct RAG path had
+            # the identical single-module dominance after reranking.
+            multiple_indexes = (
+                isinstance(retriever, MultiIndexRetriever)
+                and len(retriever.retrievers) > 1
+            )
+            max_per_module = _module_cap_from_config(self.config)
+            if multiple_indexes and max_per_module > 0:
+                source_nodes = _cap_sources_per_module(
+                    ranked_nodes,
+                    max_per_module,
+                    limit=reranker_top_n or None,
+                    module_labels=_module_labels(rag_set),
+                )
+                logger.info(
+                    f"After per-module cap ({max_per_module}): "
+                    f"{len(source_nodes)} nodes"
+                )
 
             # Compute retrieval metrics from final reranked nodes
             metrics = compute_retrieval_metrics(source_nodes)
@@ -610,7 +780,10 @@ class RAGService:
         else:
             # Retrieval returned sources — check confidence
             confidence_threshold = effective_params.get("confidence_cutoff", 0.0)
-            context_str = "\n\n".join([n.get_content() for n in source_nodes])
+            context_str = "\n\n".join(
+                f"{_excerpt_label(index, node)}\n{node.get_content()}"
+                for index, node in enumerate(source_nodes, 1)
+            )
 
             if confidence_threshold > 0:
                 best_score = max(
@@ -845,8 +1018,33 @@ class RAGService:
 
         # Enforce reranker_top_n limit
         reranker_top_n = effective_params.get("reranker_top_n")
+        ranked_nodes = source_nodes
         if reranker_top_n and len(source_nodes) > reranker_top_n:
             source_nodes = source_nodes[:reranker_top_n]
+
+        # Cross-module cap: reranking scores chunks independently, so one
+        # book can occupy every slot after the per-index balancing that ran
+        # before it. Operate on the full ranked list so freed slots can be
+        # backfilled from candidates just below the top_n cutoff; the helper
+        # still enforces reranker_top_n.
+        multiple_indexes = (
+            isinstance(retriever, MultiIndexRetriever) and len(retriever.retrievers) > 1
+        )
+        max_per_module = _module_cap_from_config(self.config)
+        module_labels = _module_labels(rag_set)
+        if multiple_indexes and max_per_module > 0:
+            capped = _cap_sources_per_module(
+                ranked_nodes,
+                max_per_module,
+                limit=reranker_top_n or None,
+                module_labels=module_labels,
+            )
+            if len(capped) != len(source_nodes):
+                logger.info(
+                    f"Capped per module ({max_per_module}): "
+                    f"{len(source_nodes)} -> {len(capped)} nodes"
+                )
+            source_nodes = capped
 
         logger.info(f"After reranking: {len(source_nodes)} nodes")
 
@@ -854,6 +1052,16 @@ class RAGService:
         metrics = compute_retrieval_metrics(source_nodes)
         metrics.configured_top_n = effective_params.get("reranker_top_n")
         metrics_dict = metrics.to_dict()
+
+        # Surface module balance in the UI metrics. Without this a silently
+        # single-module answer looks identical to a healthy multi-module one.
+        if multiple_indexes:
+            distribution: Dict[str, int] = {}
+            for node in source_nodes:
+                module = _source_module_id(node, module_labels)
+                distribution[module] = distribution.get(module, 0) + 1
+            metrics_dict["module_distribution"] = distribution
+            metrics_dict["max_sources_per_module"] = max_per_module
 
         # Confidence scoring
         confidence_level = "normal"

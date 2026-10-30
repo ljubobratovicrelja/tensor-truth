@@ -593,7 +593,7 @@ class TestFullOutputCallback:
         assert "1 source" in result_str
         assert "confidence: high" in result_str
         assert "NN Paper" in result_str
-        assert "0.9200" in result_str
+        assert "0.920" in result_str
         # Chunk text must be present (budget permitting)
         assert "Detailed content about neural" in result_str
 
