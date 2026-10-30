@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_RETENTION_SECONDS = 600.0
 # Per-run event log cap; oldest events are dropped, ``seq`` stays monotonic.
 DEFAULT_MAX_EVENTS = 20000
+# A non-terminal run with no live task and no event for this long is abandoned.
+DEFAULT_STALE_AFTER_SECONDS = 300.0
 
 TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _TERMINAL_TYPES = frozenset({"done", "error"})
@@ -69,6 +71,8 @@ class ChatRun:
         self.error: Optional[str] = None
         self.events: List[Dict[str, Any]] = []
         self.created_at: float = time.monotonic()
+        # Refreshed on every appended event; the staleness sweep reads it.
+        self.last_event_at: float = self.created_at
         self.finished_at: Optional[float] = None
         self.task: Optional["asyncio.Task[Any]"] = None
         self.max_events = max_events
@@ -104,6 +108,10 @@ class ChatRun:
         event_type = event.get("type")
         if event_type in _TERMINAL_TYPES:
             self.last_terminal_type = event_type
+
+        # Any activity proves the producer is alive, so a long turn that keeps
+        # streaming is never mistaken for an abandoned one.
+        self.last_event_at = time.monotonic()
 
         self.events.append(event)
         overflow = len(self.events) - self.max_events
@@ -165,6 +173,27 @@ class ChatRun:
 RunnerFn = Callable[[Any], Awaitable[None]]
 
 
+def configured_stale_after_seconds() -> float:
+    """Return ``chat.runs.stale_after_seconds`` from config.
+
+    Read lazily so this module stays import-light: the config service lives
+    behind ``api.deps``, which imports route modules. Any config problem must
+    not disable the sweep, so failures fall back to the built-in default.
+    """
+    try:
+        from tensortruth.api.deps import get_config_service
+
+        config_service = get_config_service()
+        # Never let a config read create ~/.tensortruth on a bare machine: a
+        # missing file simply means "use the built-in default".
+        if not config_service.config_file.exists():
+            return DEFAULT_STALE_AFTER_SECONDS
+        return float(config_service.load().chat.runs.stale_after_seconds)
+    except Exception:  # pragma: no cover - defensive
+        logger.debug("Falling back to the default stale-run timeout", exc_info=True)
+        return DEFAULT_STALE_AFTER_SECONDS
+
+
 def make_default_runner(
     session_id: str,
     prompt: str,
@@ -198,9 +227,16 @@ class ChatRunService:
         self,
         retention_seconds: float = DEFAULT_RETENTION_SECONDS,
         max_events: int = DEFAULT_MAX_EVENTS,
+        stale_after_seconds: Optional[float] = None,
     ) -> None:
         self.retention_seconds = retention_seconds
         self.max_events = max_events
+        # ``None`` means "read chat.runs.stale_after_seconds from config".
+        self.stale_after_seconds = stale_after_seconds
+        # Resolved once: the sweep runs on request paths and re-parsing YAML on
+        # every poll would block the loop for no benefit. In-memory runs do not
+        # survive a restart anyway, so a changed timeout applies next boot.
+        self._resolved_stale_after: Optional[float] = None
         self._runs: Dict[str, ChatRun] = {}
         self._lock: Optional[asyncio.Lock] = None
         # Strong references; asyncio only keeps weak refs to tasks.
@@ -228,6 +264,54 @@ class ChatRunService:
             self._runs.pop(run_id, None)
             logger.debug("GC'd finished chat run %s", run_id)
 
+    def stale_after(self) -> float:
+        """Return the effective staleness timeout in seconds."""
+        if self.stale_after_seconds is not None:
+            return self.stale_after_seconds
+        if self._resolved_stale_after is None:
+            self._resolved_stale_after = configured_stale_after_seconds()
+        return self._resolved_stale_after
+
+    def sweep_stale(self) -> List[ChatRun]:
+        """Finalise runs whose producer is gone, releasing the session lock.
+
+        A run is dead when it is still non-terminal *and* either its asyncio
+        task was never registered (this process never owned it) or its task is
+        already done, *and* nothing has been appended to its log for longer
+        than the timeout. A live, unfinished task is never swept, no matter how
+        quiet the log is: a slow model call emits no events yet is healthy.
+
+        Synchronous on purpose — it runs inside ``create``'s lock and inside
+        request handlers, and finalising only touches in-memory state.
+        """
+        now = time.monotonic()
+        timeout = self.stale_after()
+        swept: List[ChatRun] = []
+        for run in list(self._runs.values()):
+            if run.is_terminal:
+                continue
+            task = run.task
+            if task is not None and not task.done():
+                continue
+            idle = now - run.last_event_at
+            if idle < timeout:
+                continue
+
+            detail = (
+                f"Run abandoned: no activity for {idle:.0f}s and its generation "
+                "task is no longer alive"
+            )
+            logger.warning(
+                "Sweeping stale chat run %s for session %s (%s)",
+                run.run_id,
+                run.session_id,
+                detail,
+            )
+            run.publish({"type": "error", "detail": detail})
+            run.close("failed", error=detail)
+            swept.append(run)
+        return swept
+
     # -- public API --------------------------------------------------------
 
     async def create(
@@ -248,6 +332,9 @@ class ChatRunService:
         """
         async with self._get_lock():
             self._gc()
+            # A run left behind by a dead producer must not hold the session
+            # lock forever, or the next turn can never start.
+            self.sweep_stale()
             active = self.active_for_session(session_id)
             if active is not None:
                 raise RunConflictError(session_id, active.run_id)
@@ -272,13 +359,18 @@ class ChatRunService:
             )
             run.task = task
             self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
+            task.add_done_callback(lambda done: self._on_task_done(run, done))
             logger.info("Started chat run %s for session %s", run.run_id, session_id)
             return run
 
     def get(self, run_id: str) -> Optional[ChatRun]:
-        """Return a run by id, or ``None`` once GC'd."""
+        """Return a run by id, or ``None`` once GC'd.
+
+        Sweeps first so ``GET /api/runs/{id}`` reports an abandoned run as
+        failed instead of a phantom that is forever "running".
+        """
         self._gc()
+        self.sweep_stale()
         return self._runs.get(run_id)
 
     def active_for_session(self, session_id: str) -> Optional[ChatRun]:
@@ -366,9 +458,45 @@ class ChatRunService:
             if sink.last_terminal_type != "error":
                 run.publish({"type": "error", "detail": str(exc)})
             run.close("failed", error=str(exc))
+        except BaseException as exc:
+            # SystemExit/KeyboardInterrupt and friends must not leave the run
+            # "running": publish the terminal event, then let it propagate.
+            logger.exception("Chat run %s aborted", run.run_id)
+            if not run.is_terminal:
+                run.publish({"type": "error", "detail": str(exc) or type(exc).__name__})
+                run.close("failed", error=str(exc) or type(exc).__name__)
+            raise
         else:
             if not run.is_terminal:
                 run.close("completed")
+
+    def _on_task_done(self, run: ChatRun, task: "asyncio.Task[Any]") -> None:
+        """Finalise a run whose task ended without reaching a terminal state.
+
+        ``_execute`` normally closes the run itself. This callback covers the
+        cases where its body never got to run at all — most importantly a task
+        cancelled before its first step — or where a BaseException escaped it.
+        Without it such a run stays "running" and blocks the session forever.
+        """
+        self._tasks.discard(task)
+        if run.is_terminal:
+            return
+
+        if task.cancelled():
+            logger.warning("Chat run %s task was cancelled; finalising", run.run_id)
+            run.publish({"type": "error", "detail": "Generation cancelled"})
+            run.close("cancelled", error="cancelled")
+            return
+
+        exc = task.exception()
+        if exc is None:
+            run.close("completed")
+            return
+
+        detail = str(exc) or type(exc).__name__
+        logger.error("Chat run %s ended without finalising: %s", run.run_id, detail)
+        run.publish({"type": "error", "detail": detail})
+        run.close("failed", error=detail)
 
 
 _service: Optional[ChatRunService] = None

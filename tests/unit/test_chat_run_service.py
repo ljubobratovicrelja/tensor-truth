@@ -279,6 +279,216 @@ class TestLifecycle:
         assert service.get(run_id) is None
 
 
+class TestProducerDeath:
+    """A run must never outlive its producer as a phantom "running" record."""
+
+    async def _settle(self) -> None:
+        """Let task done callbacks scheduled by the event loop run."""
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    @pytest.mark.asyncio
+    async def test_cancelled_task_publishes_terminal_event_and_releases_lock(self):
+        service = ChatRunService()
+        started = asyncio.Event()
+
+        async def runner(sink):
+            await sink.send_json({"type": "token", "content": "partial"})
+            started.set()
+            await asyncio.sleep(30)
+
+        run = await service.create("sess", "hi", runner=runner)
+        await started.wait()
+        assert run.status == "running"
+
+        assert run.task is not None
+        run.task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await run.task
+        await self._settle()
+
+        assert run.status == "cancelled"
+        assert run.is_terminal
+        assert run.events[-1]["type"] == "error"
+        assert service.active_for_session("sess") is None
+
+        async def quick(sink):
+            await sink.send_json({"type": "done", "content": "ok"})
+
+        again = await service.create("sess", "next", runner=quick)
+        await _wait_task(again)
+        assert again.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_task_cancelled_before_it_starts_still_finalises(self):
+        # Cancelled before its first step, ``_execute`` never runs, so only the
+        # done callback can release the lock.
+        service = ChatRunService()
+
+        async def runner(sink):
+            await asyncio.sleep(30)
+
+        run = await service.create("sess", "hi", runner=runner)
+        assert run.task is not None
+        run.task.cancel()
+        await asyncio.gather(run.task, return_exceptions=True)
+        await self._settle()
+
+        assert run.status == "cancelled"
+        assert run.events[-1]["type"] == "error"
+        assert service.active_for_session("sess") is None
+
+    @pytest.mark.asyncio
+    async def test_producer_exception_publishes_error_and_releases_lock(self):
+        service = ChatRunService()
+
+        async def runner(sink):
+            await sink.send_json({"type": "token", "content": "partial"})
+            raise RuntimeError("producer died")
+
+        run = await service.create("sess", "hi", runner=runner)
+        await _wait_task(run)
+        await self._settle()
+
+        assert run.status == "failed"
+        assert run.error == "producer died"
+        assert run.events[-1]["type"] == "error"
+        assert "producer died" in run.events[-1]["detail"]
+        assert service.active_for_session("sess") is None
+
+        async def quick(sink):
+            await sink.send_json({"type": "done", "content": "ok"})
+
+        again = await service.create("sess", "next", runner=quick)
+        await _wait_task(again)
+        assert again.status == "completed"
+
+
+class TestStaleRunSweep:
+    """Runs whose task object is gone must not wedge their session forever."""
+
+    @staticmethod
+    def _orphan(service: ChatRunService, session_id: str, idle: float) -> ChatRun:
+        """Register a run with no task, as left behind by a lost producer."""
+        run = ChatRun(session_id=session_id, prompt="orphan")
+        run.publish({"type": "token", "content": "half"})
+        run.last_event_at -= idle
+        # Simulates the registry record surviving without its asyncio task.
+        service._runs[run.run_id] = run
+        return run
+
+    @pytest.mark.asyncio
+    async def test_stale_run_without_task_is_swept_and_new_run_allowed(self):
+        service = ChatRunService(stale_after_seconds=5.0)
+        orphan = self._orphan(service, "sess", idle=10.0)
+
+        async def quick(sink):
+            await sink.send_json({"type": "done", "content": "ok"})
+
+        fresh = await service.create("sess", "next", runner=quick)
+
+        assert fresh.session_id == "sess"
+        assert orphan.status == "failed"
+        assert orphan.is_terminal
+        assert "abandoned" in (orphan.error or "").lower()
+        assert orphan.events[-1]["type"] == "error"
+        assert orphan.events[-1]["seq"] == 2
+        await _wait_task(fresh)
+
+    @pytest.mark.asyncio
+    async def test_get_sweeps_stale_run(self):
+        service = ChatRunService(stale_after_seconds=5.0)
+        orphan = self._orphan(service, "sess", idle=10.0)
+
+        fetched = service.get(orphan.run_id)
+
+        assert fetched is orphan
+        assert fetched is not None
+        assert fetched.status == "failed"
+        assert fetched.events[-1]["type"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_live_task_is_never_swept(self):
+        service = ChatRunService(stale_after_seconds=5.0)
+        started = asyncio.Event()
+
+        async def runner(sink):
+            await sink.send_json({"type": "token", "content": "working"})
+            started.set()
+            await asyncio.sleep(30)
+
+        run = await service.create("sess", "hi", runner=runner)
+        await started.wait()
+        # Quiet log, but the producer is alive: a long model call looks like this.
+        run.last_event_at -= 100.0
+
+        assert service.get(run.run_id) is run
+        assert run.status == "running"
+        with pytest.raises(RunConflictError):
+            await service.create("sess", "second", runner=runner)
+
+        await service.cancel(run.run_id)
+        assert run.status == "cancelled"
+
+    @pytest.mark.asyncio
+    async def test_recent_event_refreshes_staleness(self):
+        service = ChatRunService(stale_after_seconds=5.0)
+        run = await service.create("sess", "hi", runner=lambda sink: asyncio.sleep(30))
+        run.last_event_at -= 100.0
+        run.publish({"type": "token", "content": "still here"})
+
+        assert service.sweep_stale() == []
+        assert run.status == "running"
+        await service.cancel(run.run_id)
+
+    @pytest.mark.asyncio
+    async def test_timeout_is_configurable(self):
+        lenient = ChatRunService(stale_after_seconds=60.0)
+        strict = ChatRunService(stale_after_seconds=1.0)
+        run = ChatRun(session_id="sess", prompt="orphan")
+        run.last_event_at -= 5.0
+        lenient._runs[run.run_id] = run
+        strict._runs[run.run_id] = run
+
+        assert lenient.sweep_stale() == []
+        assert run.status == "running"
+
+        assert strict.sweep_stale() == [run]
+        assert run.status == "failed"
+
+    def test_timeout_comes_from_config_when_unset(self, monkeypatch):
+        from tensortruth.services import chat_run_service as crs
+
+        monkeypatch.setattr(crs, "configured_stale_after_seconds", lambda: 42.0)
+        assert ChatRunService().stale_after() == 42.0
+        assert ChatRunService(stale_after_seconds=7.0).stale_after() == 7.0
+
+
+class TestStaleTimeoutConfig:
+    """The chat.runs.stale_after_seconds setting round-trips through YAML."""
+
+    def test_default_is_five_minutes(self):
+        from tensortruth.app_utils.config_schema import TensorTruthConfig
+
+        config = TensorTruthConfig.from_dict({})
+        assert config.chat.runs.stale_after_seconds == 300.0
+
+    def test_override_is_parsed(self):
+        from tensortruth.app_utils.config_schema import TensorTruthConfig
+
+        config = TensorTruthConfig.from_dict(
+            {"chat": {"runs": {"stale_after_seconds": 45}}}
+        )
+        assert config.chat.runs.stale_after_seconds == 45
+        assert config.to_dict()["chat"]["runs"]["stale_after_seconds"] == 45
+
+    def test_non_positive_timeout_is_rejected(self):
+        from tensortruth.app_utils.config_schema import ChatRunsConfig
+
+        with pytest.raises(ValueError):
+            ChatRunsConfig(stale_after_seconds=0)
+
+
 class TestRunKindAndMetadata:
     """ChatRun kind/metadata survive creation and serialisation."""
 
