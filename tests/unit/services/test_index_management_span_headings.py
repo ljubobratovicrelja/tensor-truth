@@ -1,4 +1,5 @@
 import json
+
 from tensortruth.services.index_management_service import IndexManagementService
 
 DOC = "doc-head"

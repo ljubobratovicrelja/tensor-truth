@@ -1,6 +1,7 @@
 """Chunk spans must not drift when node text and root text differ in newlines."""
 
 import json
+
 import pytest
 
 from tensortruth.services.index_management_service import IndexManagementService
